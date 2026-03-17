@@ -1,0 +1,110 @@
+import {Args, Command, Flags} from '@oclif/core';
+import chalk from 'chalk';
+import {execa} from 'execa';
+
+import {discoverProjects, getChildCommit, getChildren, isDirty} from '../lib/git.js';
+
+export default class Push extends Command {
+	static override args = {
+		project: Args.string({description: 'Filter to a specific project name'}),
+	};
+
+	static override description = 'Push green children: create branches, push, and optionally create PRs';
+
+	static override examples = ['<%= config.bin %> push', '<%= config.bin %> push liftwizard', '<%= config.bin %> push --dry-run'];
+
+	static override flags = {
+		'dry-run': Flags.boolean({
+			char: 'n',
+			default: false,
+			description: 'Show what would be pushed without pushing',
+		}),
+		pr: Flags.boolean({
+			default: false,
+			description: 'Also create draft PRs for new branches',
+		}),
+	};
+
+	async run(): Promise<void> {
+		const {args, flags} = await this.parse(Push);
+		const projectsDir = `${process.env.HOME}/projects`;
+		const projects = await discoverProjects(projectsDir);
+
+		let pushed = 0;
+		let skippedCount = 0;
+
+		for (const p of projects) {
+			if (args.project && p.name !== args.project) continue;
+
+			const dirty = await isDirty(p.dir);
+			if (dirty) {
+				this.log(chalk.dim(`Skipping ${p.name} (dirty)`));
+				skippedCount++;
+				continue;
+			}
+
+			const shas = await getChildren(p.dir, p.upstreamRef);
+			if (shas.length === 0) continue;
+
+			const children = await Promise.all(shas.map((sha) => getChildCommit(p.dir, sha)));
+			const green = children.filter((c) => c.testStatus === 'passed' && !c.skippable);
+
+			if (green.length === 0) continue;
+
+			this.log(chalk.bold(`\n${p.name}`) + chalk.dim(` (${green.length} green children)`));
+
+			for (const child of green) {
+				const branchName = child.branch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+				if (flags['dry-run']) {
+					this.log(`  would push ${child.shortSha} ${child.subject} → ${branchName}`);
+					continue;
+				}
+
+				if (!child.branch) {
+					await execa('git', ['-C', p.dir, 'branch', branchName, child.sha], {reject: false});
+				}
+
+				const pushResult = await execa('git', ['-C', p.dir, 'push', '-u', p.upstreamRemote, `${child.sha}:refs/heads/${branchName}`], {
+					reject: false,
+				});
+
+				if (pushResult.exitCode === 0) {
+					this.log(chalk.green(`  ✓ pushed ${child.shortSha} → ${branchName}`));
+					pushed++;
+
+					if (flags.pr) {
+						await this.createPR(p.dir, branchName, child, p.upstreamBranch);
+					}
+				} else {
+					this.log(chalk.red(`  ✗ failed to push ${child.shortSha}: ${pushResult.stderr}`));
+				}
+			}
+		}
+
+		this.log(`\nPushed ${pushed} branches, skipped ${skippedCount} dirty projects`);
+	}
+
+	private async createPR(dir: string, branch: string, child: {shortSha: string; subject: string}, base: string): Promise<void> {
+		const existingPR = await execa('gh', ['pr', 'view', branch, '--repo', '.', '--json', 'number'], {
+			cwd: dir,
+			reject: false,
+		});
+
+		if (existingPR.exitCode === 0) {
+			this.log(chalk.dim(`    PR already exists for ${branch}`));
+			return;
+		}
+
+		const prResult = await execa('gh', ['pr', 'create', '--base', base, '--head', branch, '--title', child.subject, '--body', '', '--draft'], {
+			cwd: dir,
+			reject: false,
+		});
+
+		if (prResult.exitCode === 0) {
+			this.log(chalk.green(`    Created draft PR: ${prResult.stdout}`));
+		} else {
+			this.log(chalk.red(`    Failed to create PR: ${prResult.stderr}`));
+		}
+	}
+}

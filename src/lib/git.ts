@@ -110,7 +110,12 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		const dir = path.join(projectsDir, entry.name);
-		if (!fs.existsSync(path.join(dir, '.git'))) continue;
+		// Skip directories without .git, and skip non-root worktrees.
+		// Root repositories have .git as a directory; non-root worktrees have .git as a file
+		// containing a "gitdir:" pointer to the main repository's .git/worktrees/ directory.
+		const gitPath = path.join(dir, '.git');
+		if (!fs.existsSync(gitPath)) continue;
+		if (!fs.statSync(gitPath).isDirectory()) continue;
 
 		const {upstreamRemote, upstreamBranch} = parseEnvrc(dir);
 		const upstreamRef = `${upstreamRemote}/${upstreamBranch}`;

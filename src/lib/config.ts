@@ -10,6 +10,15 @@ function getConfigDir(): string {
 	return path.join(xdgConfig, APP_NAME);
 }
 
+export function getCacheDir(): string {
+	const xdgCache = process.env.XDG_CACHE_HOME ?? path.join(process.env.HOME ?? '', '.cache');
+	return path.join(xdgCache, APP_NAME);
+}
+
+export function getTestLogDir(projectName: string): string {
+	return path.join(getCacheDir(), 'test-logs', projectName);
+}
+
 function getConfigPath(): string {
 	return path.join(getConfigDir(), 'config.json5');
 }

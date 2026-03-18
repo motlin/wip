@@ -1,8 +1,10 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 import {execa} from 'execa';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-import {getProjectsDir} from '../lib/config.js';
+import {getProjectsDir, getTestLogDir} from '../lib/config.js';
 import {discoverProjects, getChildren, isDirty} from '../lib/git.js';
 
 export default class Test extends Command {
@@ -59,19 +61,38 @@ export default class Test extends Command {
 				continue;
 			}
 
-			const testArgs = ['test', 'run', '--keep-going', '--stdin'];
-			if (flags.force) testArgs.push('--force');
+			const logDir = getTestLogDir(p.name);
+			fs.mkdirSync(logDir, {recursive: true});
 
-			const result = await execa('git', ['-C', p.dir, ...testArgs], {
-				input: shas.join('\n'),
-				reject: false,
-				stdio: ['pipe', 'inherit', 'inherit'],
-			});
+			let allPassed = true;
 
-			if (result.exitCode === 0) {
+			for (const sha of shas) {
+				const testArgs = ['test', 'run'];
+				if (flags.force) testArgs.push('--force');
+				testArgs.push(sha);
+
+				const result = await execa('git', ['-C', p.dir, ...testArgs], {
+					reject: false,
+				});
+
+				const logContent = [result.stdout, result.stderr].filter(Boolean).join('\n');
+				const logPath = path.join(logDir, `${sha}.log`);
+				fs.writeFileSync(logPath, logContent + '\n');
+
+				const shortSha = sha.slice(0, 7);
+				if (result.exitCode === 0) {
+					this.log(chalk.green(`  ${shortSha} passed`));
+				} else {
+					this.log(chalk.red(`  ${shortSha} failed (exit ${result.exitCode})`));
+					this.log(chalk.dim(`  Log: ${logPath}`));
+					allPassed = false;
+				}
+			}
+
+			if (allPassed) {
 				this.log(chalk.green(`  All tests passed`));
 			} else {
-				this.log(chalk.red(`  Some tests failed (exit ${result.exitCode})`));
+				this.log(chalk.red(`  Some tests failed`));
 			}
 
 			tested++;

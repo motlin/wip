@@ -17,15 +17,10 @@ export default class Children extends Command {
 
 	static override description = 'List child commits across all projects with test status';
 
-	static override examples = ['<%= config.bin %> children', '<%= config.bin %> children liftwizard', '<%= config.bin %> children --status passed'];
+	static override examples = ['<%= config.bin %> children', '<%= config.bin %> children liftwizard'];
 
 	static override flags = {
 		'projects-dir': Flags.string({description: 'Override projects directory'}),
-		status: Flags.string({
-			char: 's',
-			description: 'Filter by test status',
-			options: ['passed', 'failed', 'unknown'],
-		}),
 	};
 
 	async run(): Promise<void> {
@@ -41,10 +36,8 @@ export default class Children extends Command {
 			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			if (children.length === 0) continue;
 
-			const filtered = flags.status ? children.filter((c) => c.testStatus === flags.status) : children;
-
-			if (filtered.length > 0) {
-				results.push({name: p.name, dir: p.dir, children: filtered});
+			if (children.length > 0) {
+				results.push({name: p.name, dir: p.dir, children});
 			}
 		}
 

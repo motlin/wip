@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import {execa} from 'execa';
 
 import {getProjectsDir} from '../lib/config.js';
-import {discoverProjects, getChildCommit, getChildren, isDirty} from '../lib/git.js';
+import {discoverProjects, getChildCommits, isDirty} from '../lib/git.js';
 import {log} from '../services/logger.js';
 
 export default class Push extends Command {
@@ -46,10 +46,7 @@ export default class Push extends Command {
 				continue;
 			}
 
-			const shas = await getChildren(p.dir, p.upstreamRef);
-			if (shas.length === 0) continue;
-
-			const children = await Promise.all(shas.map((sha) => getChildCommit(p.dir, sha)));
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			const green = children.filter((c) => c.testStatus === 'passed' && !c.skippable);
 
 			if (green.length === 0) continue;

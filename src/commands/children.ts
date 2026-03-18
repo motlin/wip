@@ -2,7 +2,7 @@ import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
 import {getProjectsDir} from '../lib/config.js';
-import {type ChildCommit, discoverProjects, getChildCommit, getChildren} from '../lib/git.js';
+import {type ChildCommit, discoverProjects, getChildCommits} from '../lib/git.js';
 
 interface ProjectChildren {
 	name: string;
@@ -38,10 +38,8 @@ export default class Children extends Command {
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
-			const shas = await getChildren(p.dir, p.upstreamRef);
-			if (shas.length === 0) continue;
-
-			const children = await Promise.all(shas.map((sha) => getChildCommit(p.dir, sha)));
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
+			if (children.length === 0) continue;
 
 			const filtered = flags.status ? children.filter((c) => c.testStatus === flags.status) : children;
 

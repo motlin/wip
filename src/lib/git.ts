@@ -2,6 +2,7 @@ import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import {getCachedCommitField, getCachedTestResult, setCachedCommitField, setCachedTestResult} from '../services/cache.js';
 import {log} from '../services/logger.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
@@ -90,15 +91,25 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 	return output.split('\n').filter(Boolean);
 }
 
+async function cachedGit(sha: string, cacheKey: string, dir: string, ...args: string[]): Promise<string> {
+	const cached = getCachedCommitField(sha, cacheKey);
+	if (cached !== undefined) return cached;
+	const result = await git(dir, ...args);
+	setCachedCommitField(sha, cacheKey, result);
+	return result;
+}
+
 export async function getChildCommit(dir: string, sha: string): Promise<ChildCommit> {
-	const [subject, fullMessage, date, shortSha, branchOutput] = await Promise.all([
-		git(dir, 'log', '--format=%s', '-n1', sha),
-		git(dir, 'log', '--format=%B', '-n1', sha),
-		git(dir, 'log', '--format=%ai', '-n1', sha).then((d) => d.split(' ')[0]),
-		git(dir, 'rev-parse', '--short', sha),
+	const [subject, fullMessage, rawDate, shortSha, branchOutput] = await Promise.all([
+		cachedGit(sha, 'subject', dir, 'log', '--format=%s', '-n1', sha),
+		cachedGit(sha, 'full_message', dir, 'log', '--format=%B', '-n1', sha),
+		cachedGit(sha, 'date', dir, 'log', '--format=%ai', '-n1', sha),
+		cachedGit(sha, 'short_sha', dir, 'rev-parse', '--short', sha),
+		// NOT cached: branches move
 		git(dir, 'branch', '--points-at', sha),
 	]);
 
+	const date = rawDate.split(' ')[0];
 	const skippable = isSkippable(fullMessage);
 
 	const branches = branchOutput
@@ -109,9 +120,16 @@ export async function getChildCommit(dir: string, sha: string): Promise<ChildCom
 
 	let testStatus: 'passed' | 'failed' | 'unknown' = 'unknown';
 	if (!skippable) {
-		const testResult = await git(dir, 'test', 'results', '--no-color', sha);
-		if (testResult.includes('good')) testStatus = 'passed';
-		else if (testResult.includes('bad')) testStatus = 'failed';
+		const cachedResult = getCachedTestResult(sha);
+		if (cachedResult !== undefined) {
+			if (cachedResult.includes('good')) testStatus = 'passed';
+			else if (cachedResult.includes('bad')) testStatus = 'failed';
+		} else {
+			const testResult = await git(dir, 'test', 'results', '--no-color', sha);
+			setCachedTestResult(sha, testResult);
+			if (testResult.includes('good')) testStatus = 'passed';
+			else if (testResult.includes('bad')) testStatus = 'failed';
+		}
 	}
 
 	return {sha, shortSha, subject, date, branch, testStatus, skippable};

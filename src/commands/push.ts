@@ -4,6 +4,7 @@ import {execa} from 'execa';
 
 import {getProjectsDir} from '../lib/config.js';
 import {discoverProjects, getChildCommit, getChildren, isDirty} from '../lib/git.js';
+import {log} from '../services/logger.js';
 
 export default class Push extends Command {
 	static override args = {
@@ -64,12 +65,18 @@ export default class Push extends Command {
 				}
 
 				if (!child.branch) {
+					const branchStart = performance.now();
 					await execa('git', ['-C', p.dir, 'branch', branchName, child.sha], {reject: false});
+					const branchDuration = Math.round(performance.now() - branchStart);
+					log.subprocess.debug({cmd: 'git', args: ['-C', p.dir, 'branch', branchName, child.sha], duration: branchDuration}, `git -C ${p.dir} branch ${branchName} ${child.sha} (${branchDuration}ms)`);
 				}
 
+				const pushStart = performance.now();
 				const pushResult = await execa('git', ['-C', p.dir, 'push', '-u', p.upstreamRemote, `${child.sha}:refs/heads/${branchName}`], {
 					reject: false,
 				});
+				const pushDuration = Math.round(performance.now() - pushStart);
+				log.subprocess.debug({cmd: 'git', args: ['-C', p.dir, 'push', '-u', p.upstreamRemote, `${child.sha}:refs/heads/${branchName}`], duration: pushDuration}, `git -C ${p.dir} push -u ${p.upstreamRemote} ${child.sha}:refs/heads/${branchName} (${pushDuration}ms)`);
 
 				if (pushResult.exitCode === 0) {
 					this.log(chalk.green(`  ✓ pushed ${child.shortSha} → ${branchName}`));

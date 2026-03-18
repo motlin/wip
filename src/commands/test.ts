@@ -6,6 +6,7 @@ import * as path from 'node:path';
 
 import {getProjectsDir, getTestLogDir} from '../lib/config.js';
 import {discoverProjects, getChildren, isDirty} from '../lib/git.js';
+import {log} from '../services/logger.js';
 
 export default class Test extends Command {
 	static override args = {
@@ -71,9 +72,12 @@ export default class Test extends Command {
 				if (flags.force) testArgs.push('--force');
 				testArgs.push(sha);
 
+				const testStart = performance.now();
 				const result = await execa('git', ['-C', p.dir, ...testArgs], {
 					reject: false,
 				});
+				const testDuration = Math.round(performance.now() - testStart);
+				log.subprocess.debug({cmd: 'git', args: ['-C', p.dir, ...testArgs], duration: testDuration}, `git -C ${p.dir} ${testArgs.join(' ')} (${testDuration}ms)`);
 
 				const logContent = [result.stdout, result.stderr].filter(Boolean).join('\n');
 				const logPath = path.join(logDir, `${sha}.log`);

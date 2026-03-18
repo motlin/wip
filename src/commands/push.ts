@@ -2,6 +2,7 @@ import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 import {execa} from 'execa';
 
+import {getProjectsDir} from '../lib/config.js';
 import {discoverProjects, getChildCommit, getChildren, isDirty} from '../lib/git.js';
 
 export default class Push extends Command {
@@ -23,11 +24,12 @@ export default class Push extends Command {
 			default: false,
 			description: 'Also create draft PRs for new branches',
 		}),
+		'projects-dir': Flags.string({description: 'Override projects directory'}),
 	};
 
 	async run(): Promise<void> {
 		const {args, flags} = await this.parse(Push);
-		const projectsDir = `${process.env.HOME}/projects`;
+		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
 		let pushed = 0;

@@ -1,6 +1,7 @@
-import {Command} from '@oclif/core';
+import {Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
+import {getProjectsDir} from '../lib/config.js';
 import {type ProjectInfo, discoverProjects, getChildren} from '../lib/git.js';
 
 interface ProjectRow {
@@ -14,12 +15,17 @@ interface ProjectRow {
 }
 
 export default class Scan extends Command {
-	static override description = 'Scan all projects in ~/projects for WIP status';
+	static override description = 'Scan all projects for WIP status';
 
 	static override examples = ['<%= config.bin %> scan'];
 
+	static override flags = {
+		'projects-dir': Flags.string({description: 'Override projects directory'}),
+	};
+
 	async run(): Promise<void> {
-		const projectsDir = `${process.env.HOME}/projects`;
+		const {flags} = await this.parse(Scan);
+		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
 		const rows: ProjectRow[] = await Promise.all(

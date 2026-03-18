@@ -2,6 +2,7 @@ import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 import {execa} from 'execa';
 
+import {getProjectsDir} from '../lib/config.js';
 import {discoverProjects, getChildren, isDirty} from '../lib/git.js';
 
 export default class Test extends Command {
@@ -24,11 +25,12 @@ export default class Test extends Command {
 			default: false,
 			description: 'Force retest even if cached results exist',
 		}),
+		'projects-dir': Flags.string({description: 'Override projects directory'}),
 	};
 
 	async run(): Promise<void> {
 		const {args, flags} = await this.parse(Test);
-		const projectsDir = `${process.env.HOME}/projects`;
+		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
 		let tested = 0;

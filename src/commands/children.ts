@@ -1,6 +1,7 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
+import {getProjectsDir} from '../lib/config.js';
 import {type ChildCommit, discoverProjects, getChildCommit, getChildren} from '../lib/git.js';
 
 interface ProjectChildren {
@@ -19,6 +20,7 @@ export default class Children extends Command {
 	static override examples = ['<%= config.bin %> children', '<%= config.bin %> children liftwizard', '<%= config.bin %> children --status passed'];
 
 	static override flags = {
+		'projects-dir': Flags.string({description: 'Override projects directory'}),
 		status: Flags.string({
 			char: 's',
 			description: 'Filter by test status',
@@ -28,7 +30,7 @@ export default class Children extends Command {
 
 	async run(): Promise<void> {
 		const {args, flags} = await this.parse(Children);
-		const projectsDir = `${process.env.HOME}/projects`;
+		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
 		const results: ProjectChildren[] = [];

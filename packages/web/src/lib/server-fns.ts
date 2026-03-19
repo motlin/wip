@@ -1,6 +1,6 @@
 import {createServerFn} from '@tanstack/react-start';
 import {execa} from 'execa';
-import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, unsnoozeItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 import {
 	type ActionResult,
@@ -79,6 +79,24 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 				branch: child.branch,
 				category,
 			});
+		}
+	}
+
+	// Batch-suggest branch names for branchless children
+	const branchless: Array<{sha: string; project: string; subject: string}> = [];
+	const allItems = Object.values(grouped).flat();
+	for (const item of allItems) {
+		if (!item.branch) {
+			branchless.push({sha: item.sha, project: item.project, subject: item.subject});
+		}
+	}
+
+	if (branchless.length > 0) {
+		const suggestions = await suggestBranchNames(branchless);
+		for (const item of allItems) {
+			if (!item.branch) {
+				item.suggestedBranch = suggestions.get(`${item.project}:${item.sha}`);
+			}
 		}
 	}
 

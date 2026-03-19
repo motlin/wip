@@ -1,6 +1,7 @@
 export {getProjectsDir, getCacheDir, getTestLogDir, readConfig, writeConfig, getConfigValue, setConfigValue, unsetConfigValue} from './lib/config.js';
 export {discoverProjects, getChildren, getChildCommits, getPrReviewStatuses, isDirty, hasUpstreamRef, hasTestConfigured, getMiseEnv, subjectToSlug, createBranchForChild, testBranch, testFix, hasLocalModifications} from './lib/git.js';
-export {type SnoozedItem, getDb, snoozeItem, unsnoozeItem, getActiveSnoozed, getSnoozedSet, getAllSnoozed, clearExpiredSnoozes, getSnoozeHistory} from './lib/db.js';
+export {type SnoozedItem, type BranchNameItem, getDb, snoozeItem, unsnoozeItem, getActiveSnoozed, getSnoozedSet, getAllSnoozed, clearExpiredSnoozes, getSnoozeHistory, getBranchName, getBranchNames, setBranchName} from './lib/db.js';
+export {suggestBranchNames} from './lib/branch-namer.js';
 export {
 	ReviewStatusSchema, type ReviewStatus,
 	TestStatusSchema, type TestStatus,

@@ -34,6 +34,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [snoozeOpen]);
 
+	const effectiveBranch = child.branch ?? child.suggestedBranch;
+
 	const handlePush = async () => {
 		setLoading(true);
 		setError(null);
@@ -43,7 +45,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 			sha: child.sha,
 			shortSha: child.shortSha,
 			subject: child.subject,
-			branch: child.branch,
+			branch: effectiveBranch,
 		}});
 		setLoading(false);
 		if (result.ok) {
@@ -84,8 +86,9 @@ export function KanbanCard({child}: KanbanCardProps) {
 		}
 	};
 
+	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
 	const action = child.category === 'ready_to_push'
-		? {label: 'Push', icon: ArrowRight, handler: handlePush, className: 'bg-green-600 hover:bg-green-700 text-white'}
+		? {label: pushLabel, icon: ArrowRight, handler: handlePush, className: 'bg-green-600 hover:bg-green-700 text-white'}
 		: child.category === 'ready_to_test'
 			? {label: 'Test', icon: Play, handler: handleTest, className: 'bg-yellow-600 hover:bg-yellow-700 text-white'}
 			: null;

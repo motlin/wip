@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import * as schema from './schema.js';
-import {snoozed} from './schema.js';
+import {branchNames, snoozed} from './schema.js';
 
 const APP_NAME = 'wip';
 const FAR_FUTURE = '9999-12-31 23:59:59';
@@ -49,6 +49,18 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (sha, project, system_from)
 		)
 	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS branch_names (
+			sha TEXT NOT NULL,
+			project TEXT NOT NULL,
+			name TEXT NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (sha, project, system_from)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS branch_names_active_idx ON branch_names (sha, project, system_to)`);
 
 	db = drizzle(sqlite, {schema});
 	return db;
@@ -126,4 +138,45 @@ export function getSnoozeHistory(sha: string, project: string): SnoozedItem[] {
 		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project)))
 		.orderBy(desc(snoozed.systemFrom))
 		.all();
+}
+
+// Branch name functions
+
+export type BranchNameItem = typeof branchNames.$inferSelect;
+
+export function getBranchName(sha: string, project: string): string | undefined {
+	const d = getDb();
+	const row = d.select()
+		.from(branchNames)
+		.where(and(eq(branchNames.sha, sha), eq(branchNames.project, project), eq(branchNames.systemTo, FAR_FUTURE)))
+		.get();
+	return row?.name;
+}
+
+export function getBranchNames(keys: Array<{sha: string; project: string}>): Map<string, string> {
+	const d = getDb();
+	const all = d.select()
+		.from(branchNames)
+		.where(eq(branchNames.systemTo, FAR_FUTURE))
+		.all();
+
+	const result = new Map<string, string>();
+	for (const row of all) {
+		result.set(`${row.project}:${row.sha}`, row.name);
+	}
+	return result;
+}
+
+export function setBranchName(sha: string, project: string, name: string): void {
+	const d = getDb();
+	const timestamp = now();
+
+	d.update(branchNames)
+		.set({systemTo: timestamp})
+		.where(and(eq(branchNames.sha, sha), eq(branchNames.project, project), eq(branchNames.systemTo, FAR_FUTURE)))
+		.run();
+
+	d.insert(branchNames)
+		.values({sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE})
+		.run();
 }

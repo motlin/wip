@@ -53,6 +53,7 @@ export const ClassifiedChildSchema = z.object({
 	subject: z.string(),
 	date: z.string(),
 	branch: z.string().optional(),
+	suggestedBranch: z.string().optional(),
 	category: CategorySchema,
 });
 export type ClassifiedChild = z.infer<typeof ClassifiedChildSchema>;

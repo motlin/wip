@@ -26,7 +26,7 @@ export function KanbanColumn({category, children}: KanbanColumnProps) {
 	const config = COLUMN_CONFIG[category];
 
 	return (
-		<div className={`flex w-72 shrink-0 flex-col rounded-xl ${config.colorClass} p-3`}>
+		<div className={`flex min-w-0 flex-col rounded-xl ${config.colorClass} p-3`}>
 			<div className="mb-3 flex items-center justify-between">
 				<h2 className={`text-sm font-semibold ${config.headerClass}`}>{config.label}</h2>
 				<span className={`rounded-full bg-bg-000/60 px-2 py-0.5 text-xs font-medium ${config.headerClass}`}>

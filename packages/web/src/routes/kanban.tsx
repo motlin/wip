@@ -24,7 +24,7 @@ function Kanban() {
 					{report.projects} projects, {report.children} children
 				</span>
 			</div>
-			<div className="flex gap-4 overflow-x-auto pb-4">
+			<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
 				{CATEGORY_ORDER.map((category) => {
 					const items = report.grouped[category];
 					if (items.length === 0) return null;

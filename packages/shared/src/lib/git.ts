@@ -6,6 +6,24 @@ import {log} from '../services/logger.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 
+const miseEnvCache = new Map<string, Record<string, string>>();
+
+export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
+	const cached = miseEnvCache.get(dir);
+	if (cached) return cached;
+
+	const start = performance.now();
+	const result = await execa('mise', ['env', '-C', dir, '--json'], {reject: false});
+	const duration = Math.round(performance.now() - start);
+	log.subprocess.debug({cmd: 'mise', args: ['env', '-C', dir, '--json'], duration}, `mise env -C ${dir} --json (${duration}ms)`);
+
+	if (result.exitCode !== 0) return {};
+
+	const env = JSON.parse(result.stdout) as Record<string, string>;
+	miseEnvCache.set(dir, env);
+	return env;
+}
+
 export interface ProjectInfo {
 	name: string;
 	dir: string;

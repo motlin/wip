@@ -4,7 +4,7 @@ import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import {discoverProjects, getChildren, getProjectsDir, getTestLogDir, isDirty, log} from '@wip/shared';
+import {discoverProjects, getChildren, getMiseEnv, getProjectsDir, getTestLogDir, isDirty, log} from '@wip/shared';
 
 export default class Test extends Command {
 	static override args = {
@@ -63,6 +63,8 @@ export default class Test extends Command {
 			const logDir = getTestLogDir(p.name);
 			fs.mkdirSync(logDir, {recursive: true});
 
+			const miseEnv = await getMiseEnv(p.dir);
+
 			let allPassed = true;
 
 			for (const sha of shas) {
@@ -73,6 +75,7 @@ export default class Test extends Command {
 				const testStart = performance.now();
 				const result = await execa('git', ['-C', p.dir, ...testArgs], {
 					reject: false,
+					env: miseEnv,
 				});
 				const testDuration = Math.round(performance.now() - testStart);
 				log.subprocess.debug({cmd: 'git', args: ['-C', p.dir, ...testArgs], duration: testDuration}, `git -C ${p.dir} ${testArgs.join(' ')} (${testDuration}ms)`);

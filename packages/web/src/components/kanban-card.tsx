@@ -94,15 +94,15 @@ export function KanbanCard({child}: KanbanCardProps) {
 			? {label: 'Test', icon: Play, handler: handleTest, className: 'bg-yellow-600 hover:bg-yellow-700 text-white'}
 			: null;
 
-	const PR_LINK_LABELS: Partial<Record<Category, string>> = {
-		changes_requested: 'View Changes',
-		review_comments: 'View Comments',
-		checks_failed: 'View Checks',
-		checks_running: 'View Checks',
-		checks_passed: 'View PR',
-		approved: 'View PR',
+	const PR_LINKS: Partial<Record<Category, {label: string; suffix: string}>> = {
+		changes_requested: {label: 'View Changes', suffix: '/files'},
+		review_comments: {label: 'View Comments', suffix: '/files'},
+		checks_failed: {label: 'View Checks', suffix: '/checks'},
+		checks_running: {label: 'View Checks', suffix: '/checks'},
+		checks_passed: {label: 'View PR', suffix: ''},
+		approved: {label: 'View PR', suffix: ''},
 	};
-	const prLinkLabel = PR_LINK_LABELS[child.category] ?? null;
+	const prLink = PR_LINKS[child.category] ?? null;
 
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-shadow hover:shadow-md">
@@ -116,15 +116,15 @@ export function KanbanCard({child}: KanbanCardProps) {
 			<div className="mt-2 flex items-center justify-between">
 				<span className="text-xs font-medium text-text-300">{child.project}</span>
 				<div className="flex items-center gap-1">
-					{child.prUrl && prLinkLabel && (
+					{child.prUrl && prLink && (
 						<a
-							href={child.prUrl}
+							href={`${child.prUrl}${prLink.suffix}`}
 							target="_blank"
 							rel="noopener noreferrer"
 							className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
 						>
 							<GitHubIcon className="h-3.5 w-3.5" />
-							{prLinkLabel}
+							{prLink.label}
 						</a>
 					)}
 					{action && (

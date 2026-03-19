@@ -88,7 +88,7 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm">
 			<div className="flex items-start justify-between gap-2">
 				<span className="shrink-0 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">
-					{item.short_sha || item.sha.slice(0, 7)}
+					{item.shortSha || item.sha.slice(0, 7)}
 				</span>
 				<span className="text-xs text-text-500">{formatUntil(item.until)}</span>
 			</div>

@@ -1,6 +1,11 @@
-import Database from 'better-sqlite3';
+import DatabaseConstructor from 'better-sqlite3';
+import {and, desc, eq, isNotNull, isNull, lte, or, sql} from 'drizzle-orm';
+import {drizzle, type BetterSQLite3Database} from 'drizzle-orm/better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
+import * as schema from './schema.js';
+import {snoozed} from './schema.js';
 
 const APP_NAME = 'wip';
 const FAR_FUTURE = '9999-12-31 23:59:59';
@@ -16,21 +21,23 @@ function now(): string {
 	return new Date().toISOString().replace('T', ' ').replace('Z', '');
 }
 
-let db: Database.Database | undefined;
+let db: BetterSQLite3Database<typeof schema> | undefined;
 
-export function getDb(): Database.Database {
+export function getDb(): BetterSQLite3Database<typeof schema> {
 	if (db) return db;
-	db = new Database(getDbPath());
-	db.pragma('journal_mode = WAL');
-	// Check if old schema exists (has created_at but no system_from)
-	const tableInfo = db.prepare("PRAGMA table_info('snoozed')").all() as Array<{name: string}>;
-	const hasOldSchema = tableInfo.length > 0 && tableInfo.some((c) => c.name === 'created_at') && !tableInfo.some((c) => c.name === 'system_from');
 
+	const sqlite = new DatabaseConstructor(getDbPath());
+	sqlite.pragma('journal_mode = WAL');
+
+	// Migrate from old schema if needed
+	const tableInfo = sqlite.prepare("PRAGMA table_info('snoozed')").all() as Array<{name: string}>;
+	const hasOldSchema = tableInfo.length > 0 && tableInfo.some((c) => c.name === 'created_at') && !tableInfo.some((c) => c.name === 'system_from');
 	if (hasOldSchema) {
-		db.exec('DROP TABLE snoozed');
+		sqlite.exec('DROP TABLE snoozed');
 	}
 
-	db.exec(`
+	// Create table if not exists
+	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS snoozed (
 			sha TEXT NOT NULL,
 			project TEXT NOT NULL,
@@ -42,47 +49,47 @@ export function getDb(): Database.Database {
 			PRIMARY KEY (sha, project, system_from)
 		)
 	`);
+
+	db = drizzle(sqlite, {schema});
 	return db;
 }
 
-export interface SnoozedItem {
-	sha: string;
-	project: string;
-	short_sha: string;
-	subject: string;
-	until: string | null;
-	system_from: string;
-	system_to: string;
-}
+export type SnoozedItem = typeof snoozed.$inferSelect;
 
 export function snoozeItem(sha: string, project: string, shortSha: string, subject: string, until: string | null): void {
-	const db = getDb();
+	const d = getDb();
 	const timestamp = now();
 
 	// Close any existing active snooze for this sha+project
-	db.prepare(
-		`UPDATE snoozed SET system_to = ? WHERE sha = ? AND project = ? AND system_to = '${FAR_FUTURE}'`,
-	).run(timestamp, sha, project);
+	d.update(snoozed)
+		.set({systemTo: timestamp})
+		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
+		.run();
 
 	// Insert new active record
-	db.prepare(
-		'INSERT INTO snoozed (sha, project, short_sha, subject, until, system_from, system_to) VALUES (?, ?, ?, ?, ?, ?, ?)',
-	).run(sha, project, shortSha, subject, until, timestamp, FAR_FUTURE);
+	d.insert(snoozed)
+		.values({sha, project, shortSha, subject, until, systemFrom: timestamp, systemTo: FAR_FUTURE})
+		.run();
 }
 
 export function unsnoozeItem(sha: string, project: string): void {
-	const db = getDb();
-	// Phase out — don't delete
-	db.prepare(
-		`UPDATE snoozed SET system_to = ? WHERE sha = ? AND project = ? AND system_to = '${FAR_FUTURE}'`,
-	).run(now(), sha, project);
+	const d = getDb();
+	d.update(snoozed)
+		.set({systemTo: now()})
+		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
+		.run();
 }
 
 export function getActiveSnoozed(): SnoozedItem[] {
-	const db = getDb();
-	return db.prepare(
-		`SELECT sha, project, short_sha, subject, until, system_from, system_to FROM snoozed WHERE system_to = '${FAR_FUTURE}' AND (until IS NULL OR until > datetime('now'))`,
-	).all() as SnoozedItem[];
+	const d = getDb();
+	const nowStr = now();
+	return d.select()
+		.from(snoozed)
+		.where(and(
+			eq(snoozed.systemTo, FAR_FUTURE),
+			or(isNull(snoozed.until), lte(sql`datetime('now')`, snoozed.until)),
+		))
+		.all();
 }
 
 export function getSnoozedSet(): Set<string> {
@@ -91,24 +98,32 @@ export function getSnoozedSet(): Set<string> {
 }
 
 export function getAllSnoozed(): SnoozedItem[] {
-	const db = getDb();
-	return db.prepare(
-		`SELECT sha, project, short_sha, subject, until, system_from, system_to FROM snoozed WHERE system_to = '${FAR_FUTURE}'`,
-	).all() as SnoozedItem[];
+	const d = getDb();
+	return d.select()
+		.from(snoozed)
+		.where(eq(snoozed.systemTo, FAR_FUTURE))
+		.all();
 }
 
 export function clearExpiredSnoozes(): number {
-	const db = getDb();
-	// Phase out expired timed snoozes instead of deleting
-	const result = db.prepare(
-		`UPDATE snoozed SET system_to = ? WHERE until IS NOT NULL AND until <= datetime('now') AND system_to = '${FAR_FUTURE}'`,
-	).run(now());
+	const d = getDb();
+	const timestamp = now();
+	const result = d.update(snoozed)
+		.set({systemTo: timestamp})
+		.where(and(
+			isNotNull(snoozed.until),
+			lte(snoozed.until, timestamp),
+			eq(snoozed.systemTo, FAR_FUTURE),
+		))
+		.run();
 	return result.changes;
 }
 
 export function getSnoozeHistory(sha: string, project: string): SnoozedItem[] {
-	const db = getDb();
-	return db.prepare(
-		'SELECT sha, project, short_sha, subject, until, system_from, system_to FROM snoozed WHERE sha = ? AND project = ? ORDER BY system_from DESC',
-	).all(sha, project) as SnoozedItem[];
+	const d = getDb();
+	return d.select()
+		.from(snoozed)
+		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project)))
+		.orderBy(desc(snoozed.systemFrom))
+		.all();
 }

@@ -30,11 +30,11 @@ export interface ReportData {
 export interface SnoozedChild {
 	sha: string;
 	project: string;
-	short_sha: string;
+	shortSha: string;
 	subject: string;
 	until: string | null;
-	system_from: string;
-	system_to: string;
+	systemFrom: string;
+	systemTo: string;
 }
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {

@@ -9,9 +9,15 @@ export default class ConfigGet extends Command {
 
 	static override description = 'Get a config value';
 
-	static override examples = ['<%= config.bin %> config get projectsDir', '<%= config.bin %> config get'];
+	static enableJsonFlag = true;
 
-	async run(): Promise<void> {
+	static override examples = [
+		'<%= config.bin %> config get projectsDir',
+		'<%= config.bin %> config get',
+		'<%= config.bin %> config get --json',
+	];
+
+	async run(): Promise<Record<string, string>> {
 		const {args} = await this.parse(ConfigGet);
 
 		if (args.key) {
@@ -20,11 +26,13 @@ export default class ConfigGet extends Command {
 				this.error(`Key '${args.key}' is not set`);
 			}
 			this.log(value);
-		} else {
-			const config = readConfig();
-			for (const [key, value] of Object.entries(config)) {
-				this.log(`${key}=${value}`);
-			}
+			return {[args.key]: value};
 		}
+
+		const config = readConfig();
+		for (const [key, value] of Object.entries(config)) {
+			this.log(`${key}=${value}`);
+		}
+		return config;
 	}
 }

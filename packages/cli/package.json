@@ -16,7 +16,8 @@
 	},
 	"devDependencies": {
 		"@types/node": "^25.5.0",
-		"typescript": "^5.9.3"
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.0"
 	},
 	"oclif": {
 		"bin": "wip",
@@ -29,6 +30,7 @@
 	},
 	"scripts": {
 		"build": "tsc -b",
+		"test": "vitest run",
 		"typecheck": "tsc --noEmit"
 	}
 }

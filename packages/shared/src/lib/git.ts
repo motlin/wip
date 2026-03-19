@@ -134,6 +134,7 @@ export async function getPrStatuses(dir: string): Promise<PrStatuses> {
 	const start = performance.now();
 	const result = await execa('gh', [
 		'pr', 'list',
+		'--author', '@me',
 		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup',
 		'--state', 'open',
 		'--limit', '100',

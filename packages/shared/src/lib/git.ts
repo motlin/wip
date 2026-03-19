@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
+import type {ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 
@@ -22,31 +23,6 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 	const env = JSON.parse(result.stdout) as Record<string, string>;
 	miseEnvCache.set(dir, env);
 	return env;
-}
-
-export interface ProjectInfo {
-	name: string;
-	dir: string;
-	remote: string;
-	upstreamRemote: string;
-	upstreamBranch: string;
-	upstreamRef: string;
-	dirty: boolean;
-	branchCount: number;
-	hasTestConfigured: boolean;
-}
-
-export type ReviewStatus = 'clean' | 'approved' | 'changes_requested' | 'commented' | 'no_pr';
-
-export interface ChildCommit {
-	sha: string;
-	shortSha: string;
-	subject: string;
-	date: string;
-	branch: string | undefined;
-	testStatus: 'passed' | 'failed' | 'unknown';
-	skippable: boolean;
-	reviewStatus: ReviewStatus;
 }
 
 function parseEnvrc(dir: string): {upstreamRemote: string; upstreamBranch: string} {

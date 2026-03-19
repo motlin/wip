@@ -1,41 +1,22 @@
 import {createServerFn} from '@tanstack/react-start';
 import {execa} from 'execa';
 import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, unsnoozeItem} from '@wip/shared';
-import type {SnoozedItem} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
+import {
+	type ActionResult,
+	type Category,
+	type ClassifiedChild,
+	type ReportData,
+	type SnoozedChild,
+	PushChildInputSchema,
+	TestChildInputSchema,
+	SnoozeChildInputSchema,
+	UnsnoozeChildInputSchema,
+} from '@wip/shared';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'test_failed' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
-
-export interface ClassifiedChild {
-	project: string;
-	projectDir: string;
-	upstreamRemote: string;
-	sha: string;
-	shortSha: string;
-	subject: string;
-	date: string;
-	branch: string | undefined;
-	category: Category;
-}
-
-export interface ReportData {
-	projects: number;
-	children: number;
-	snoozedCount: number;
-	grouped: Record<Category, ClassifiedChild[]>;
-}
-
-export interface SnoozedChild {
-	sha: string;
-	project: string;
-	shortSha: string;
-	subject: string;
-	until: string | null;
-	systemFrom: string;
-	systemTo: string;
-}
+export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 	if (child.skippable) return 'skippable';
@@ -111,13 +92,8 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	};
 });
 
-export interface ActionResult {
-	ok: boolean;
-	message: string;
-}
-
 export const pushChild = createServerFn({method: 'POST'})
-	.inputValidator((input: {projectDir: string; upstreamRemote: string; sha: string; shortSha: string; subject: string; branch: string | undefined}) => input)
+	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 		const {projectDir, upstreamRemote, sha, shortSha, subject, branch} = data;
 		const branchName = branch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -139,7 +115,7 @@ export const pushChild = createServerFn({method: 'POST'})
 	});
 
 export const testChild = createServerFn({method: 'POST'})
-	.inputValidator((input: {project: string; projectDir: string; sha: string; shortSha: string}) => input)
+	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 		const {project, projectDir, sha, shortSha} = data;
 		const miseEnv = await getMiseEnv(projectDir);
@@ -167,14 +143,14 @@ export const testChild = createServerFn({method: 'POST'})
 	});
 
 export const snoozeChildFn = createServerFn({method: 'POST'})
-	.inputValidator((input: {sha: string; project: string; shortSha: string; subject: string; until: string | null}) => input)
+	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 		snoozeItem(data.sha, data.project, data.shortSha, data.subject, data.until);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
 	});
 
 export const unsnoozeChildFn = createServerFn({method: 'POST'})
-	.inputValidator((input: {sha: string; project: string}) => input)
+	.inputValidator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 		unsnoozeItem(data.sha, data.project);
 		return {ok: true, message: 'Unsnoozed'};

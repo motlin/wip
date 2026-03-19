@@ -1,9 +1,9 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {type ChildCommit, type ProjectInfo, discoverProjects, getChildCommits, getProjectsDir} from '@wip/shared';
+import {type ChildCommit, type ProjectInfo, discoverProjects, getChildCommits, getPrReviewStatuses, getProjectsDir} from '@wip/shared';
 
-type Category = 'ready_to_push' | 'needs_attention' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
+type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'needs_attention' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
 
 interface ClassifiedChild {
 	project: string;
@@ -15,8 +15,11 @@ interface ClassifiedChild {
 }
 
 interface ReportJson {
-	summary: {projects: number; children: number; readyToPush: number; needsAttention: number; readyToTest: number; blocked: number; noTest: number; skippable: number};
+	summary: {projects: number; children: number; approved: number; readyToPush: number; changesRequested: number; reviewComments: number; needsAttention: number; readyToTest: number; blocked: number; noTest: number; skippable: number};
+	approved: ClassifiedChild[];
 	readyToPush: ClassifiedChild[];
+	changesRequested: ClassifiedChild[];
+	reviewComments: ClassifiedChild[];
 	needsAttention: ClassifiedChild[];
 	readyToTest: ClassifiedChild[];
 	blocked: ClassifiedChild[];
@@ -27,17 +30,25 @@ interface ReportJson {
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 	if (child.skippable) return 'skippable';
-	if (child.testStatus === 'passed') return 'ready_to_push';
+	if (child.testStatus === 'passed') {
+		if (child.reviewStatus === 'approved') return 'approved';
+		if (child.reviewStatus === 'changes_requested') return 'changes_requested';
+		if (child.reviewStatus === 'commented') return 'review_comments';
+		return 'ready_to_push';
+	}
 	if (child.testStatus === 'failed') return 'needs_attention';
 	if (project.dirty) return 'blocked';
 	if (!project.hasTestConfigured) return 'no_test';
 	return 'ready_to_test';
 }
 
-const CATEGORY_ORDER: Category[] = ['ready_to_push', 'needs_attention', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
+const CATEGORY_ORDER: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'needs_attention', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
+	approved: 'Approved',
 	ready_to_push: 'Ready to push',
+	changes_requested: 'Changes requested',
+	review_comments: 'Review comments',
 	needs_attention: 'Needs attention',
 	ready_to_test: 'Ready to test',
 	blocked: 'Blocked — dirty worktree',
@@ -47,8 +58,14 @@ const CATEGORY_LABELS: Record<Category, string> = {
 
 function categoryStyle(category: Category, text: string): string {
 	switch (category) {
+		case 'approved':
+			return chalk.green(text);
 		case 'ready_to_push':
 			return chalk.green(text);
+		case 'changes_requested':
+			return chalk.magenta(text);
+		case 'review_comments':
+			return chalk.cyan(text);
 		case 'needs_attention':
 			return chalk.red(text);
 		case 'ready_to_test':
@@ -67,6 +84,8 @@ export default class Report extends Command {
 
 	static override description = 'Show a holistic WIP report grouped by action needed';
 
+	static enableJsonFlag = true;
+
 	static override examples = [
 		'<%= config.bin %> report',
 		'<%= config.bin %> report liftwizard',
@@ -76,19 +95,21 @@ export default class Report extends Command {
 	];
 
 	static override flags = {
-		json: Flags.boolean({description: 'Output as JSON'}),
 		'projects-dir': Flags.string({description: 'Override projects directory'}),
 		quiet: Flags.boolean({char: 'q', default: false, description: 'SHAs only, grouped by category'}),
 		summary: Flags.boolean({char: 's', default: false, description: 'Counts only, no individual commits'}),
 	};
 
-	async run(): Promise<void> {
+	async run(): Promise<ReportJson> {
 		const {args, flags} = await this.parse(Report);
 		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
 		const grouped: Record<Category, ClassifiedChild[]> = {
+			approved: [],
 			ready_to_push: [],
+			changes_requested: [],
+			review_comments: [],
 			needs_attention: [],
 			ready_to_test: [],
 			blocked: [],
@@ -102,7 +123,8 @@ export default class Report extends Command {
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
+			const prStatuses = await getPrReviewStatuses(p.dir);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
 			if (children.length === 0 && !args.project) continue;
 
 			projectCount++;
@@ -124,29 +146,31 @@ export default class Report extends Command {
 		const totalChildren = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
 		const nextSteps = this.buildNextSteps(grouped, dirtyProjects);
 
-		if (flags.json) {
-			const output: ReportJson = {
-				summary: {
-					projects: projectCount,
-					children: totalChildren,
-					readyToPush: grouped.ready_to_push.length,
-					needsAttention: grouped.needs_attention.length,
-					readyToTest: grouped.ready_to_test.length,
-					blocked: grouped.blocked.length,
-					noTest: grouped.no_test.length,
-					skippable: grouped.skippable.length,
-				},
-				readyToPush: grouped.ready_to_push,
-				needsAttention: grouped.needs_attention,
-				readyToTest: grouped.ready_to_test,
-				blocked: grouped.blocked,
-				noTest: grouped.no_test,
-				skippable: grouped.skippable,
-				nextSteps,
-			};
-			this.log(JSON.stringify(output, null, 2));
-			return;
-		}
+		const output: ReportJson = {
+			summary: {
+				projects: projectCount,
+				children: totalChildren,
+				approved: grouped.approved.length,
+				readyToPush: grouped.ready_to_push.length,
+				changesRequested: grouped.changes_requested.length,
+				reviewComments: grouped.review_comments.length,
+				needsAttention: grouped.needs_attention.length,
+				readyToTest: grouped.ready_to_test.length,
+				blocked: grouped.blocked.length,
+				noTest: grouped.no_test.length,
+				skippable: grouped.skippable.length,
+			},
+			approved: grouped.approved,
+			readyToPush: grouped.ready_to_push,
+			changesRequested: grouped.changes_requested,
+			reviewComments: grouped.review_comments,
+			needsAttention: grouped.needs_attention,
+			readyToTest: grouped.ready_to_test,
+			blocked: grouped.blocked,
+			noTest: grouped.no_test,
+			skippable: grouped.skippable,
+			nextSteps,
+		};
 
 		if (flags.quiet) {
 			for (const category of CATEGORY_ORDER) {
@@ -157,7 +181,7 @@ export default class Report extends Command {
 					this.log(item.sha);
 				}
 			}
-			return;
+			return output;
 		}
 
 		this.log(`WIP Report — ${projectCount} projects, ${totalChildren} children\n`);
@@ -184,13 +208,27 @@ export default class Report extends Command {
 				this.log(`  ${step}`);
 			}
 		}
+
+		return output;
 	}
 
 	private buildNextSteps(grouped: Record<Category, ClassifiedChild[]>, dirtyProjects: Set<string>): string[] {
 		const steps: string[] = [];
 
+		if (grouped.approved.length > 0) {
+			steps.push(`gh pr merge                 # merge ${grouped.approved.length} approved PRs`);
+		}
+
 		if (grouped.ready_to_push.length > 0) {
 			steps.push(`wip push                    # push ${grouped.ready_to_push.length} green children`);
+		}
+
+		if (grouped.changes_requested.length > 0) {
+			steps.push(`gh pr view                  # address ${grouped.changes_requested.length} PRs with changes requested`);
+		}
+
+		if (grouped.review_comments.length > 0) {
+			steps.push(`gh pr view                  # respond to ${grouped.review_comments.length} PRs with review comments`);
 		}
 
 		if (grouped.needs_attention.length > 0) {

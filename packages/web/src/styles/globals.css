@@ -22,6 +22,8 @@
 	--color-green-column: var(--green-column);
 	--color-red-column: var(--red-column);
 	--color-yellow-column: var(--yellow-column);
+	--color-purple-column: var(--purple-column);
+	--color-blue-column: var(--blue-column);
 	--color-dim-column: var(--dim-column);
 }
 
@@ -41,6 +43,8 @@
 	--green-column: hsl(142 60% 95%);
 	--red-column: hsl(0 60% 96%);
 	--yellow-column: hsl(45 70% 95%);
+	--purple-column: hsl(280 60% 96%);
+	--blue-column: hsl(210 60% 96%);
 	--dim-column: hsl(210 10% 97%);
 }
 
@@ -60,6 +64,8 @@
 	--green-column: hsl(142 30% 12%);
 	--red-column: hsl(0 30% 13%);
 	--yellow-column: hsl(45 30% 12%);
+	--purple-column: hsl(280 30% 13%);
+	--blue-column: hsl(210 30% 13%);
 	--dim-column: hsl(220 12% 11%);
 }
 

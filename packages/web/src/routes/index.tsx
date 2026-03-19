@@ -3,7 +3,7 @@ import {KanbanColumn} from '../components/kanban-column';
 import {getReport} from '../lib/server-fns';
 import type {Category} from '../lib/server-fns';
 
-const CATEGORY_ORDER: Category[] = ['ready_to_push', 'needs_attention', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
+const CATEGORY_ORDER: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'needs_attention', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
 
 export const Route = createFileRoute('/')({
 	loader: () => getReport(),

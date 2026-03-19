@@ -2,7 +2,10 @@ import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from './kanban-card';
 
 const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; headerClass: string}> = {
+	approved: {label: 'Approved', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
 	ready_to_push: {label: 'Ready to Push', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
+	changes_requested: {label: 'Changes Requested', colorClass: 'bg-purple-column', headerClass: 'text-purple-700 dark:text-purple-400'},
+	review_comments: {label: 'Review Comments', colorClass: 'bg-blue-column', headerClass: 'text-blue-700 dark:text-blue-400'},
 	needs_attention: {label: 'Needs Attention', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},
 	ready_to_test: {label: 'Ready to Test', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
 	blocked: {label: 'Blocked', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},

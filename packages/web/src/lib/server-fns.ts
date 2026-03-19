@@ -1,11 +1,11 @@
 import {createServerFn} from '@tanstack/react-start';
 import {execa} from 'execa';
-import {discoverProjects, getChildCommits, getMiseEnv, getProjectsDir, getTestLogDir, log} from '@wip/shared';
+import {discoverProjects, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getTestLogDir, log} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export type Category = 'ready_to_push' | 'needs_attention' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
+export type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'needs_attention' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
 
 export interface ClassifiedChild {
 	project: string;
@@ -27,7 +27,12 @@ export interface ReportData {
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 	if (child.skippable) return 'skippable';
-	if (child.testStatus === 'passed') return 'ready_to_push';
+	if (child.testStatus === 'passed') {
+		if (child.reviewStatus === 'approved') return 'approved';
+		if (child.reviewStatus === 'changes_requested') return 'changes_requested';
+		if (child.reviewStatus === 'commented') return 'review_comments';
+		return 'ready_to_push';
+	}
 	if (child.testStatus === 'failed') return 'needs_attention';
 	if (project.dirty) return 'blocked';
 	if (!project.hasTestConfigured) return 'no_test';
@@ -39,7 +44,10 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	const projects = await discoverProjects(projectsDir);
 
 	const grouped: Record<Category, ClassifiedChild[]> = {
+		approved: [],
 		ready_to_push: [],
+		changes_requested: [],
+		review_comments: [],
 		needs_attention: [],
 		ready_to_test: [],
 		blocked: [],
@@ -50,7 +58,8 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	let projectCount = 0;
 
 	for (const p of projects) {
-		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
+		const prStatuses = await getPrReviewStatuses(p.dir);
+		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
 		if (children.length === 0) continue;
 
 		projectCount++;

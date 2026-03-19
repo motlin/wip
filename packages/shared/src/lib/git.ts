@@ -36,6 +36,8 @@ export interface ProjectInfo {
 	hasTestConfigured: boolean;
 }
 
+export type ReviewStatus = 'clean' | 'approved' | 'changes_requested' | 'commented' | 'no_pr';
+
 export interface ChildCommit {
 	sha: string;
 	shortSha: string;
@@ -44,6 +46,7 @@ export interface ChildCommit {
 	branch: string | undefined;
 	testStatus: 'passed' | 'failed' | 'unknown';
 	skippable: boolean;
+	reviewStatus: ReviewStatus;
 }
 
 function parseEnvrc(dir: string): {upstreamRemote: string; upstreamBranch: string} {
@@ -117,7 +120,45 @@ function parseBranch(decoration: string): string | undefined {
 	return undefined;
 }
 
-export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean): Promise<ChildCommit[]> {
+interface PrReviewInfo {
+	headRefName: string;
+	reviewDecision: string;
+	reviews: {nodes: Array<{state: string}>};
+}
+
+export async function getPrReviewStatuses(dir: string): Promise<Map<string, ReviewStatus>> {
+	const statusMap = new Map<string, ReviewStatus>();
+
+	const start = performance.now();
+	const result = await execa('gh', [
+		'pr', 'list',
+		'--json', 'headRefName,reviewDecision,reviews',
+		'--state', 'open',
+		'--limit', '100',
+	], {cwd: dir, reject: false});
+	const duration = Math.round(performance.now() - start);
+	log.subprocess.debug({cmd: 'gh', args: ['pr', 'list', '--json', '...', '--state', 'open'], duration}, `gh pr list (${duration}ms)`);
+
+	if (result.exitCode !== 0 || !result.stdout) return statusMap;
+
+	const prs = JSON.parse(result.stdout) as PrReviewInfo[];
+	for (const pr of prs) {
+		const branch = pr.headRefName;
+		if (pr.reviewDecision === 'CHANGES_REQUESTED') {
+			statusMap.set(branch, 'changes_requested');
+		} else if (pr.reviewDecision === 'APPROVED') {
+			statusMap.set(branch, 'approved');
+		} else if (pr.reviews.nodes.some((r) => r.state === 'COMMENTED' || r.state === 'PENDING')) {
+			statusMap.set(branch, 'commented');
+		} else {
+			statusMap.set(branch, 'clean');
+		}
+	}
+
+	return statusMap;
+}
+
+export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prReviewStatuses?: Map<string, ReviewStatus>): Promise<ChildCommit[]> {
 	const childrenOutput = await git(dir, 'children', upstreamRef);
 	if (!childrenOutput) return [];
 
@@ -174,8 +215,9 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const skippable = isSkippable(fullMessage);
 		const branch = parseBranch(decoration);
 		const testStatus = skippable ? 'unknown' : (testStatusMap.get(sha) ?? 'unknown');
+		const reviewStatus: ReviewStatus = branch && prReviewStatuses ? (prReviewStatuses.get(branch) ?? 'no_pr') : 'no_pr';
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, skippable});
+		children.push({sha, shortSha, subject, date, branch, testStatus, skippable, reviewStatus});
 	}
 
 	return children;

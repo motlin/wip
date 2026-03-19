@@ -1,3 +1,5 @@
 dist/
 node_modules/
 tsconfig.tsbuildinfo
+.output/
+packages/web/src/routeTree.gen.ts

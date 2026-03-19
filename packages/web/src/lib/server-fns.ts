@@ -82,12 +82,12 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		}
 	}
 
-	// Batch-suggest branch names for branchless children
-	const branchless: Array<{sha: string; project: string; subject: string}> = [];
+	// Suggest branch names for branchless children (one claude -p call each, cached in DB)
+	const branchless: Array<{sha: string; project: string; subject: string; dir: string}> = [];
 	const allItems = Object.values(grouped).flat();
 	for (const item of allItems) {
 		if (!item.branch) {
-			branchless.push({sha: item.sha, project: item.project, subject: item.subject});
+			branchless.push({sha: item.sha, project: item.project, subject: item.subject, dir: item.projectDir});
 		}
 	}
 

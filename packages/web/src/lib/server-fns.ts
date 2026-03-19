@@ -244,9 +244,8 @@ export const getCommitDiff = createServerFn({method: 'GET'})
 			const oldFileName = headerMatch[1];
 			const newFileName = headerMatch[2];
 
-			// Extract hunks (everything from first @@ onwards)
-			const hunkStart = chunk.indexOf('@@');
-			const hunks = hunkStart >= 0 ? chunk.slice(hunkStart) : '';
+			// Pass full chunk including diff --git header — @git-diff-view/core needs it
+			const hunks = chunk;
 
 			// Get old and new file content for syntax highlighting
 			const [oldResult, newResult] = await Promise.all([

@@ -76,6 +76,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@git-diff-view/core':
+        specifier: ^0.1.3
+        version: 0.1.3
       '@git-diff-view/react':
         specifier: ^0.1.3
         version: 0.1.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

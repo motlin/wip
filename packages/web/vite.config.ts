@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 // Stub server-only modules so Vite's dev client doesn't walk into execa → unicorn-magic
 function stubServerModules(): Plugin {
-	const SERVER_ONLY = ['execa', 'better-sqlite3', 'pino', 'pino-pretty'];
+	const SERVER_ONLY = ['execa', 'better-sqlite3', 'pino', 'pino-pretty', 'drizzle-orm/better-sqlite3'];
 	return {
 		name: 'stub-server-modules',
 		enforce: 'pre',
@@ -16,7 +16,8 @@ function stubServerModules(): Plugin {
 		},
 		load(id) {
 			if (id.startsWith('\0stub:')) {
-				return 'export default {}; export const execa = () => { throw new Error("server-only"); };';
+				const noop = 'new Proxy(() => noop, { get: (_, p) => p === Symbol.toPrimitive ? () => "" : noop, apply: () => noop })';
+				return `const noop = ${noop}; export default noop; export const execa = noop; export const drizzle = noop;`;
 			}
 		},
 	};

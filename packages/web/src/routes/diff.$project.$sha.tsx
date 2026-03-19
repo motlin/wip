@@ -1,8 +1,11 @@
-import {useState} from 'react';
+import {useMemo, useState} from 'react';
 import {createFileRoute} from '@tanstack/react-router';
 import {DiffView, DiffModeEnum} from '@git-diff-view/react';
+import {DiffFile} from '@git-diff-view/core';
 import '@git-diff-view/react/styles/diff-view.css';
 import {getCommitDiff, getProjectDir} from '../lib/server-fns';
+import type {FileDiff} from '../lib/server-fns';
+
 export const Route = createFileRoute('/diff/$project/$sha')({
 	loader: async ({params}) => {
 		const projectDir = await getProjectDir({data: {project: params.project}});
@@ -14,6 +17,50 @@ export const Route = createFileRoute('/diff/$project/$sha')({
 	}),
 	component: DiffViewer,
 });
+
+function useDiffFile(file: FileDiff, theme: 'light' | 'dark', mode: 'split' | 'unified') {
+	return useMemo(() => {
+		const ext = file.newFileName.split('.').pop() ?? '';
+		const instance = new DiffFile(
+			file.oldFileName,
+			file.oldContent ?? '',
+			file.newFileName,
+			file.newContent ?? '',
+			[file.hunks],
+			ext,
+			ext,
+		);
+		instance.initTheme(theme);
+		instance.init();
+		if (mode === 'split') {
+			instance.buildSplitDiffLines();
+		} else {
+			instance.buildUnifiedDiffLines();
+		}
+		return instance;
+	}, [file, theme, mode]);
+}
+
+function FileDiffSection({file, theme, mode}: {file: FileDiff; theme: 'light' | 'dark'; mode: 'split' | 'unified'}) {
+	const diffFile = useDiffFile(file, theme, mode);
+	return (
+		<div className="mb-6">
+			<div className="rounded-t-lg border border-border-300/50 bg-bg-200 px-4 py-2 font-mono text-xs text-text-300">
+				{file.oldFileName === file.newFileName ? file.newFileName : `${file.oldFileName} → ${file.newFileName}`}
+			</div>
+			<div className="overflow-hidden rounded-b-lg border border-t-0 border-border-300/50">
+				<DiffView
+					diffFile={diffFile}
+					diffViewMode={mode === 'split' ? DiffModeEnum.Split : DiffModeEnum.Unified}
+					diffViewTheme={theme}
+					diffViewHighlight
+					diffViewWrap={false}
+					diffViewFontSize={12}
+				/>
+			</div>
+		</div>
+	);
+}
 
 function DiffViewer() {
 	const {project, sha} = Route.useParams();
@@ -55,27 +102,7 @@ function DiffViewer() {
 			{files.length === 0 ? (
 				<p className="text-sm text-text-500">No files changed.</p>
 			) : (
-				files.map((file) => (
-					<div key={file.newFileName} className="mb-6">
-						<div className="rounded-t-lg border border-border-300/50 bg-bg-200 px-4 py-2 font-mono text-xs text-text-300">
-							{file.oldFileName === file.newFileName ? file.newFileName : `${file.oldFileName} → ${file.newFileName}`}
-						</div>
-						<div className="overflow-hidden rounded-b-lg border border-t-0 border-border-300/50">
-							<DiffView
-								data={{
-									oldFile: {fileName: file.oldFileName, content: file.oldContent, fileLang: file.newFileName.split('.').pop() ?? ''},
-									newFile: {fileName: file.newFileName, content: file.newContent, fileLang: file.newFileName.split('.').pop() ?? ''},
-									hunks: [file.hunks],
-								}}
-								diffViewMode={mode === 'split' ? DiffModeEnum.Split : DiffModeEnum.Unified}
-								diffViewTheme={theme}
-								diffViewHighlight
-								diffViewWrap={false}
-								diffViewFontSize={12}
-							/>
-						</div>
-					</div>
-				))
+				files.map((file) => <FileDiffSection key={file.newFileName} file={file} theme={theme} mode={mode} />)
 			)}
 		</div>
 	);

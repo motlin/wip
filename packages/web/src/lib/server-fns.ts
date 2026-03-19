@@ -1,11 +1,12 @@
 import {createServerFn} from '@tanstack/react-start';
 import {execa} from 'execa';
-import {discoverProjects, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getTestLogDir, log} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, unsnoozeItem} from '@wip/shared';
+import type {SnoozedItem} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'needs_attention' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
+export type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'test_failed' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
 
 export interface ClassifiedChild {
 	project: string;
@@ -22,7 +23,17 @@ export interface ClassifiedChild {
 export interface ReportData {
 	projects: number;
 	children: number;
+	snoozedCount: number;
 	grouped: Record<Category, ClassifiedChild[]>;
+}
+
+export interface SnoozedChild {
+	sha: string;
+	project: string;
+	short_sha: string;
+	subject: string;
+	until: string | null;
+	created_at: string;
 }
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
@@ -33,7 +44,7 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 		if (child.reviewStatus === 'commented') return 'review_comments';
 		return 'ready_to_push';
 	}
-	if (child.testStatus === 'failed') return 'needs_attention';
+	if (child.testStatus === 'failed') return 'test_failed';
 	if (project.dirty) return 'blocked';
 	if (!project.hasTestConfigured) return 'no_test';
 	return 'ready_to_test';
@@ -43,12 +54,15 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	const projectsDir = getProjectsDir();
 	const projects = await discoverProjects(projectsDir);
 
+	clearExpiredSnoozes();
+	const snoozedSet = getSnoozedSet();
+
 	const grouped: Record<Category, ClassifiedChild[]> = {
 		approved: [],
 		ready_to_push: [],
 		changes_requested: [],
 		review_comments: [],
-		needs_attention: [],
+		test_failed: [],
 		ready_to_test: [],
 		blocked: [],
 		no_test: [],
@@ -56,6 +70,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	};
 
 	let projectCount = 0;
+	let snoozedCount = 0;
 
 	for (const p of projects) {
 		const prStatuses = await getPrReviewStatuses(p.dir);
@@ -65,6 +80,11 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		projectCount++;
 
 		for (const child of children) {
+			if (snoozedSet.has(`${p.name}:${child.sha}`)) {
+				snoozedCount++;
+				continue;
+			}
+
 			const category = classifyChild(child, p);
 			grouped[category].push({
 				project: p.name,
@@ -85,6 +105,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	return {
 		projects: projectCount,
 		children: totalChildren,
+		snoozedCount,
 		grouped,
 	};
 });
@@ -143,3 +164,22 @@ export const testChild = createServerFn({method: 'POST'})
 
 		return {ok: false, message: `${shortSha} failed (exit ${result.exitCode})`};
 	});
+
+export const snoozeChildFn = createServerFn({method: 'POST'})
+	.inputValidator((input: {sha: string; project: string; shortSha: string; subject: string; until: string | null}) => input)
+	.handler(async ({data}): Promise<ActionResult> => {
+		snoozeItem(data.sha, data.project, data.shortSha, data.subject, data.until);
+		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
+	});
+
+export const unsnoozeChildFn = createServerFn({method: 'POST'})
+	.inputValidator((input: {sha: string; project: string}) => input)
+	.handler(async ({data}): Promise<ActionResult> => {
+		unsnoozeItem(data.sha, data.project);
+		return {ok: true, message: 'Unsnoozed'};
+	});
+
+export const getSnoozedList = createServerFn({method: 'GET'}).handler(async (): Promise<SnoozedChild[]> => {
+	clearExpiredSnoozes();
+	return getAllSnoozed() as SnoozedChild[];
+});

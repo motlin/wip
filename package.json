@@ -11,6 +11,9 @@
 		"build": "pnpm -r run build",
 		"typecheck": "pnpm -r run typecheck"
 	},
+	"pnpm": {
+		"onlyBuiltDependencies": ["better-sqlite3"]
+	},
 	"devDependencies": {
 		"typescript": "^5.9.3"
 	}

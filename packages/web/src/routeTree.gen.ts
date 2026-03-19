@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SnoozedRouteImport } from './routes/snoozed'
 import { Route as QueueRouteImport } from './routes/queue'
 import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SnoozedRoute = SnoozedRouteImport.update({
+  id: '/snoozed',
+  path: '/snoozed',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QueueRoute = QueueRouteImport.update({
   id: '/queue',
   path: '/queue',
@@ -33,34 +39,45 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
+  '/snoozed': typeof SnoozedRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
+  '/snoozed': typeof SnoozedRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
+  '/snoozed': typeof SnoozedRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/kanban' | '/queue'
+  fullPaths: '/' | '/kanban' | '/queue' | '/snoozed'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/kanban' | '/queue'
-  id: '__root__' | '/' | '/kanban' | '/queue'
+  to: '/' | '/kanban' | '/queue' | '/snoozed'
+  id: '__root__' | '/' | '/kanban' | '/queue' | '/snoozed'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   KanbanRoute: typeof KanbanRoute
   QueueRoute: typeof QueueRoute
+  SnoozedRoute: typeof SnoozedRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/snoozed': {
+      id: '/snoozed'
+      path: '/snoozed'
+      fullPath: '/snoozed'
+      preLoaderRoute: typeof SnoozedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/queue': {
       id: '/queue'
       path: '/queue'
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   KanbanRoute: KanbanRoute,
   QueueRoute: QueueRoute,
+  SnoozedRoute: SnoozedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -27,6 +27,7 @@ function RootComponent() {
 					<Link to="/" className="font-semibold text-text-100 hover:text-text-000">WIP</Link>
 					<Link to="/queue" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Queue</Link>
 					<Link to="/kanban" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Kanban</Link>
+					<Link to="/snoozed" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Snoozed</Link>
 				</nav>
 				<Outlet />
 			</div>

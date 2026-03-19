@@ -62,6 +62,20 @@ function Home() {
 						<span className="text-text-500">{report.children} cards</span>
 					</div>
 				</Link>
+				{report.snoozedCount > 0 && (
+					<Link
+						to="/snoozed"
+						className="group rounded-xl border border-border-300/50 bg-bg-100 p-5 transition-all hover:border-border-300 hover:shadow-md"
+					>
+						<h2 className="text-base font-semibold text-text-100 group-hover:text-text-000">Snoozed</h2>
+						<p className="mt-1 text-sm text-text-500">
+							Items you've put on hold or snoozed temporarily.
+						</p>
+						<div className="mt-3 flex gap-3 text-xs">
+							<span className="text-text-500">{report.snoozedCount} snoozed</span>
+						</div>
+					</Link>
+				)}
 			</div>
 		</div>
 	);

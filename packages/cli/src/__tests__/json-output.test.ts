@@ -21,6 +21,13 @@ vi.mock('@wip/shared', () => ({
 	testFix: vi.fn(async () => ({ok: true, message: 'fixed'})),
 	hasLocalModifications: vi.fn(async () => false),
 	subjectToSlug: vi.fn((s: string) => s.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')),
+	getDb: vi.fn(),
+	snoozeItem: vi.fn(),
+	unsnoozeItem: vi.fn(),
+	getActiveSnoozed: vi.fn(() => []),
+	getSnoozedSet: vi.fn(() => new Set()),
+	getAllSnoozed: vi.fn(() => []),
+	clearExpiredSnoozes: vi.fn(() => 0),
 	log: {subprocess: {debug: vi.fn()}},
 }));
 

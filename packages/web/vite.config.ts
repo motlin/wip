@@ -17,6 +17,7 @@ export default defineConfig({
 	},
 	ssr: {
 		noExternal: ['@wip/shared'],
+		external: ['better-sqlite3'],
 	},
 	plugins: [tailwindcss(), tanstackStart(), viteReact()],
 });

@@ -17,6 +17,9 @@ import {z} from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+let reportCache: {data: ReportData; expiresAt: number} | null = null;
+const CACHE_TTL_MS = 30_000;
+
 export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
@@ -43,6 +46,10 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 }
 
 export const getReport = createServerFn({method: 'GET'}).handler(async (): Promise<ReportData> => {
+	if (reportCache && Date.now() < reportCache.expiresAt) {
+		return reportCache.data;
+	}
+
 	const projectsDir = getProjectsDir();
 	const projects = await discoverProjects(projectsDir);
 
@@ -125,17 +132,20 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 
 	const totalChildren = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
 
-	return {
+	const result: ReportData = {
 		projects: projectCount,
 		children: totalChildren,
 		snoozedCount,
 		grouped,
 	};
+	reportCache = {data: result, expiresAt: Date.now() + CACHE_TTL_MS};
+	return result;
 });
 
 export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
 		const {projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
 		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -165,6 +175,7 @@ export interface TestJobStatus {
 export const testChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => {
+		reportCache = null;
 		const {enqueueTest} = await import('./test-queue.js');
 		const job = enqueueTest(data.project, data.projectDir, data.sha, data.shortSha);
 		return {id: job.id, status: job.status, message: job.message};
@@ -229,6 +240,7 @@ export const getTestLog = createServerFn({method: 'GET'})
 export const snoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
 		snoozeItem(data.sha, data.project, data.shortSha, data.subject, data.until);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
 	});
@@ -236,6 +248,7 @@ export const snoozeChildFn = createServerFn({method: 'POST'})
 export const unsnoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
 		unsnoozeItem(data.sha, data.project);
 		return {ok: true, message: 'Unsnoozed'};
 	});

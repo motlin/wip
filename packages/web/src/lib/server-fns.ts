@@ -66,17 +66,14 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		approved: [],
 	};
 
+	let projectCount = 0;
 	let snoozedCount = 0;
 
-	const projectResults = await Promise.all(projects.map(async (p) => {
+	for (const p of projects) {
 		const prStatuses = await getPrStatuses(p.dir);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
-		return {project: p, children};
-	}));
-
-	let projectCount = 0;
-	for (const {project: p, children} of projectResults) {
 		if (children.length === 0) continue;
+
 		projectCount++;
 
 		for (const child of children) {

@@ -54,6 +54,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 		setLoading(true);
 		setError(null);
 		const result = await pushChild({data: {
+			project: child.project,
 			projectDir: child.projectDir,
 			upstreamRemote: child.upstreamRemote,
 			sha: child.sha,

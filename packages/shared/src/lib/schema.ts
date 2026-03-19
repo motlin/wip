@@ -33,6 +33,21 @@ export const testResults = sqliteTable(
 	}),
 );
 
+export const prStatusCache = sqliteTable(
+	'pr_status_cache',
+	{
+		project: text('project').notNull(),
+		branch: text('branch').notNull(),
+		reviewStatus: text('review_status').notNull(),
+		checkStatus: text('check_status').notNull(),
+		prUrl: text('pr_url'),
+		cachedAt: text('cached_at').notNull(),
+	},
+	(table) => ({
+		pk: primaryKey({columns: [table.project, table.branch]}),
+	}),
+);
+
 export const snoozed = sqliteTable(
 	'snoozed',
 	{

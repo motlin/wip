@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
-import {getTestResultsForProject} from './db.js';
+import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getTestResultsForProject} from './db.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
@@ -127,10 +127,23 @@ function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
 	return 'pending';
 }
 
-export async function getPrStatuses(dir: string): Promise<PrStatuses> {
+export async function getPrStatuses(dir: string, projectName?: string): Promise<PrStatuses> {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
 	const urls = new Map<string, string>();
+
+	// Check cache first
+	if (projectName) {
+		const cached = getCachedPrStatuses(projectName);
+		if (cached) {
+			for (const s of cached) {
+				review.set(s.branch, s.reviewStatus);
+				checks.set(s.branch, s.checkStatus);
+				if (s.prUrl) urls.set(s.branch, s.prUrl);
+			}
+			return {review, checks, urls};
+		}
+	}
 
 	const start = performance.now();
 	const result = await execa('gh', [
@@ -146,25 +159,37 @@ export async function getPrStatuses(dir: string): Promise<PrStatuses> {
 	if (result.exitCode !== 0 || !result.stdout) return {review, checks, urls};
 
 	const prs = JSON.parse(result.stdout) as PrInfo[];
+	const toCache: CachedPrStatus[] = [];
+
 	for (const pr of prs) {
 		const branch = pr.headRefName;
 
 		// Review status
+		let reviewStatus: ReviewStatus;
 		if (pr.reviewDecision === 'CHANGES_REQUESTED') {
-			review.set(branch, 'changes_requested');
+			reviewStatus = 'changes_requested';
 		} else if (pr.reviewDecision === 'APPROVED') {
-			review.set(branch, 'approved');
+			reviewStatus = 'approved';
 		} else if (pr.reviews?.nodes?.some((r) => r.state === 'COMMENTED' || r.state === 'PENDING')) {
-			review.set(branch, 'commented');
+			reviewStatus = 'commented';
 		} else {
-			review.set(branch, 'clean');
+			reviewStatus = 'clean';
 		}
+		review.set(branch, reviewStatus);
 
 		// Check status
-		checks.set(branch, deriveCheckStatus(pr.statusCheckRollup ?? []));
+		const checkStatus = deriveCheckStatus(pr.statusCheckRollup ?? []);
+		checks.set(branch, checkStatus);
 
 		// PR URL
 		urls.set(branch, pr.url);
+
+		toCache.push({branch, reviewStatus, checkStatus, prUrl: pr.url});
+	}
+
+	// Cache the results
+	if (projectName) {
+		cachePrStatuses(projectName, toCache);
 	}
 
 	return {review, checks, urls};

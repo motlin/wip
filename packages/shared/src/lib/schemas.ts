@@ -97,6 +97,7 @@ export type SnoozedChild = z.infer<typeof SnoozedChildSchema>;
 
 // Server function input schemas
 export const PushChildInputSchema = z.object({
+	project: z.string(),
 	projectDir: z.string(),
 	upstreamRemote: z.string(),
 	sha: z.string(),

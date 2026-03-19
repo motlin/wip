@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 import {
 	type ActionResult,
@@ -76,7 +76,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	let snoozedCount = 0;
 
 	for (const p of projects) {
-		const prStatuses = await getPrStatuses(p.dir);
+		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
 		if (children.length === 0) continue;
 
@@ -146,7 +146,7 @@ export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 		reportCache = null;
-		const {projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
+		const {project, projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
 		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 		const {execa} = await import('execa');
@@ -160,6 +160,7 @@ export const pushChild = createServerFn({method: 'POST'})
 		const pushResult = await execa('git', ['-C', projectDir, 'push', '-u', upstreamRemote, `${branchName}:refs/heads/${branchName}`], {reject: false});
 
 		if (pushResult.exitCode === 0) {
+			invalidatePrCache(project);
 			return {ok: true, message: `Pushed ${shortSha} to ${branchName}`};
 		}
 
@@ -190,7 +191,7 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	const queued: TestJobStatus[] = [];
 	for (const p of projects) {
 		if (!p.hasTestConfigured || p.dirty) continue;
-		const prStatuses = await getPrStatuses(p.dir);
+		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
 		for (const child of children) {
 			if (child.skippable) continue;

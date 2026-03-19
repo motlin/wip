@@ -4,8 +4,9 @@ import {drizzle, type BetterSQLite3Database} from 'drizzle-orm/better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import type {CheckStatus, ReviewStatus} from './schemas.js';
 import * as schema from './schema.js';
-import {branchNames, snoozed, testResults} from './schema.js';
+import {branchNames, prStatusCache, snoozed, testResults} from './schema.js';
 
 const APP_NAME = 'wip';
 const FAR_FUTURE = '9999-12-31 23:59:59';
@@ -76,6 +77,18 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS test_results_active_idx ON test_results (project, system_to)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS pr_status_cache (
+			project TEXT NOT NULL,
+			branch TEXT NOT NULL,
+			review_status TEXT NOT NULL,
+			check_status TEXT NOT NULL,
+			pr_url TEXT,
+			cached_at TEXT NOT NULL,
+			PRIMARY KEY (project, branch)
+		)
+	`);
 
 	db = drizzle(sqlite, {schema});
 	return db;
@@ -230,5 +243,65 @@ export function recordTestResult(sha: string, project: string, status: 'passed' 
 
 	d.insert(testResults)
 		.values({sha, project, testName, status, exitCode, durationMs, systemFrom: timestamp, systemTo: FAR_FUTURE})
+		.run();
+}
+
+// PR status cache functions
+
+const PR_CACHE_TTL_MINUTES = 10;
+
+export interface CachedPrStatus {
+	branch: string;
+	reviewStatus: ReviewStatus;
+	checkStatus: CheckStatus;
+	prUrl: string | null;
+}
+
+export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
+	const d = getDb();
+	const cutoff = new Date(Date.now() - PR_CACHE_TTL_MINUTES * 60 * 1000).toISOString().replace('T', ' ').replace('Z', '');
+
+	const rows = d.select()
+		.from(prStatusCache)
+		.where(and(eq(prStatusCache.project, project), sql`${prStatusCache.cachedAt} > ${cutoff}`))
+		.all();
+
+	if (rows.length === 0) return null;
+	return rows.map((r) => ({
+		branch: r.branch,
+		reviewStatus: r.reviewStatus as ReviewStatus,
+		checkStatus: r.checkStatus as CheckStatus,
+		prUrl: r.prUrl,
+	}));
+}
+
+export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void {
+	const d = getDb();
+	const timestamp = now();
+
+	// Delete old cache for this project
+	d.delete(prStatusCache)
+		.where(eq(prStatusCache.project, project))
+		.run();
+
+	// Insert new cache
+	for (const s of statuses) {
+		d.insert(prStatusCache)
+			.values({
+				project,
+				branch: s.branch,
+				reviewStatus: s.reviewStatus,
+				checkStatus: s.checkStatus,
+				prUrl: s.prUrl,
+				cachedAt: timestamp,
+			})
+			.run();
+	}
+}
+
+export function invalidatePrCache(project: string): void {
+	const d = getDb();
+	d.delete(prStatusCache)
+		.where(eq(prStatusCache.project, project))
 		.run();
 }

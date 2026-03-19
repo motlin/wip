@@ -103,6 +103,7 @@ interface PrStatusCheckRun {
 
 interface PrInfo {
 	headRefName: string;
+	url: string;
 	reviewDecision: string;
 	reviews: {nodes: Array<{state: string}>};
 	statusCheckRollup: PrStatusCheckRun[];
@@ -111,6 +112,7 @@ interface PrInfo {
 export interface PrStatuses {
 	review: Map<string, ReviewStatus>;
 	checks: Map<string, CheckStatus>;
+	urls: Map<string, string>;
 }
 
 function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
@@ -127,18 +129,19 @@ function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
 export async function getPrStatuses(dir: string): Promise<PrStatuses> {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
+	const urls = new Map<string, string>();
 
 	const start = performance.now();
 	const result = await execa('gh', [
 		'pr', 'list',
-		'--json', 'headRefName,reviewDecision,reviews,statusCheckRollup',
+		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup',
 		'--state', 'open',
 		'--limit', '100',
 	], {cwd: dir, reject: false});
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'gh', args: ['pr', 'list', '--json', '...', '--state', 'open'], duration}, `gh pr list (${duration}ms)`);
 
-	if (result.exitCode !== 0 || !result.stdout) return {review, checks};
+	if (result.exitCode !== 0 || !result.stdout) return {review, checks, urls};
 
 	const prs = JSON.parse(result.stdout) as PrInfo[];
 	for (const pr of prs) {
@@ -157,9 +160,12 @@ export async function getPrStatuses(dir: string): Promise<PrStatuses> {
 
 		// Check status
 		checks.set(branch, deriveCheckStatus(pr.statusCheckRollup ?? []));
+
+		// PR URL
+		urls.set(branch, pr.url);
 	}
 
-	return {review, checks};
+	return {review, checks, urls};
 }
 
 export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses): Promise<ChildCommit[]> {
@@ -221,8 +227,9 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const testStatus = skippable ? 'unknown' : (testStatusMap.get(sha) ?? 'unknown');
 		const reviewStatus: ReviewStatus = branch && prStatuses ? (prStatuses.review.get(branch) ?? 'no_pr') : 'no_pr';
 		const checkStatus: CheckStatus = branch && prStatuses ? (prStatuses.checks.get(branch) ?? 'none') : 'none';
+		const prUrl = branch && prStatuses ? prStatuses.urls.get(branch) : undefined;
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, reviewStatus});
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, reviewStatus, prUrl});
 	}
 
 	return children;

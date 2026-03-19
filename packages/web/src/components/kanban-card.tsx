@@ -1,8 +1,9 @@
 import {useRouter} from '@tanstack/react-router';
 import {ArrowRight, Play, Loader2, Moon} from 'lucide-react';
+import {GitHubIcon} from './github-icon';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
-import type {ClassifiedChild} from '../lib/server-fns';
+import type {Category, ClassifiedChild} from '../lib/server-fns';
 
 interface KanbanCardProps {
 	child: ClassifiedChild;
@@ -93,6 +94,16 @@ export function KanbanCard({child}: KanbanCardProps) {
 			? {label: 'Test', icon: Play, handler: handleTest, className: 'bg-yellow-600 hover:bg-yellow-700 text-white'}
 			: null;
 
+	const PR_LINK_LABELS: Partial<Record<Category, string>> = {
+		changes_requested: 'View Changes',
+		review_comments: 'View Comments',
+		checks_failed: 'View Checks',
+		checks_running: 'View Checks',
+		checks_passed: 'View PR',
+		approved: 'View PR',
+	};
+	const prLinkLabel = PR_LINK_LABELS[child.category] ?? null;
+
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-shadow hover:shadow-md">
 			<div className="flex items-start justify-between gap-2">
@@ -105,6 +116,17 @@ export function KanbanCard({child}: KanbanCardProps) {
 			<div className="mt-2 flex items-center justify-between">
 				<span className="text-xs font-medium text-text-300">{child.project}</span>
 				<div className="flex items-center gap-1">
+					{child.prUrl && prLinkLabel && (
+						<a
+							href={child.prUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
+						>
+							<GitHubIcon className="h-3.5 w-3.5" />
+							{prLinkLabel}
+						</a>
+					)}
 					{action && (
 						<button
 							type="button"

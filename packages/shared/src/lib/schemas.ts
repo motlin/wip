@@ -50,6 +50,7 @@ export const ChildCommitSchema = z.object({
 	checkStatus: CheckStatusSchema,
 	skippable: z.boolean(),
 	reviewStatus: ReviewStatusSchema,
+	prUrl: z.string().optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
@@ -63,6 +64,7 @@ export const ClassifiedChildSchema = z.object({
 	date: z.string(),
 	branch: z.string().optional(),
 	suggestedBranch: z.string().optional(),
+	prUrl: z.string().optional(),
 	category: CategorySchema,
 });
 export type ClassifiedChild = z.infer<typeof ClassifiedChildSchema>;

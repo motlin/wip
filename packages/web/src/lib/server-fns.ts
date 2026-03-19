@@ -87,6 +87,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 				subject: child.subject,
 				date: child.date,
 				branch: child.branch,
+				prUrl: child.prUrl,
 				category,
 			});
 		}

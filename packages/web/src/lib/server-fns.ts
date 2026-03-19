@@ -13,6 +13,7 @@ import {
 	SnoozeChildInputSchema,
 	UnsnoozeChildInputSchema,
 } from '@wip/shared';
+import {z} from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -143,33 +144,33 @@ export const pushChild = createServerFn({method: 'POST'})
 		return {ok: false, message: `Failed to push: ${pushResult.stderr}`};
 	});
 
+export interface TestJobStatus {
+	id: string;
+	status: 'queued' | 'running' | 'passed' | 'failed';
+	message?: string;
+}
+
 export const testChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
-	.handler(async ({data}): Promise<ActionResult> => {
-		const {project, projectDir, sha, shortSha} = data;
-		const miseEnv = await getMiseEnv(projectDir);
-
-		const logDir = getTestLogDir(project);
-		fs.mkdirSync(logDir, {recursive: true});
-
-		const start = performance.now();
-		const result = await execa('git', ['-C', projectDir, 'test', 'run', '--force', sha], {
-			reject: false,
-			env: miseEnv,
-		});
-		const duration = Math.round(performance.now() - start);
-		log.subprocess.debug({cmd: 'git', args: ['-C', projectDir, 'test', 'run', '--force', sha], duration}, `git -C ${projectDir} test run --force ${sha} (${duration}ms)`);
-
-		const logContent = [result.stdout, result.stderr].filter(Boolean).join('\n');
-		const logPath = path.join(logDir, `${sha}.log`);
-		fs.writeFileSync(logPath, logContent + '\n');
-
-		if (result.exitCode === 0) {
-			return {ok: true, message: `${shortSha} passed`};
-		}
-
-		return {ok: false, message: `${shortSha} failed (exit ${result.exitCode})`};
+	.handler(async ({data}): Promise<TestJobStatus> => {
+		const {enqueueTest} = await import('./test-queue.js');
+		const job = enqueueTest(data.project, data.projectDir, data.sha, data.shortSha);
+		return {id: job.id, status: job.status, message: job.message};
 	});
+
+export const getTestJobStatus = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({sha: z.string(), project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<TestJobStatus | null> => {
+		const {findJob} = await import('./test-queue.js');
+		const job = findJob(data.sha, data.project);
+		if (!job) return null;
+		return {id: job.id, status: job.status, message: job.message};
+	});
+
+export const getActiveTests = createServerFn({method: 'GET'}).handler(async (): Promise<TestJobStatus[]> => {
+	const {getAllActiveJobs} = await import('./test-queue.js');
+	return getAllActiveJobs().map((j) => ({id: j.id, status: j.status, message: j.message}));
+});
 
 export const snoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))

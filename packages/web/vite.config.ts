@@ -15,9 +15,14 @@ export default defineConfig({
 	optimizeDeps: {
 		exclude: ['@wip/shared', 'execa'],
 	},
+	build: {
+		rollupOptions: {
+			external: ['execa', /^node:/],
+		},
+	},
 	ssr: {
 		noExternal: ['@wip/shared'],
-		external: ['better-sqlite3'],
+		external: ['better-sqlite3', 'execa'],
 	},
 	plugins: [tailwindcss(), tanstackStart(), viteReact()],
 });

@@ -1,9 +1,9 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon} from 'lucide-react';
-import {GitHubIcon} from './github-icon';
+import {ArrowRight, Play, Loader2, Moon, Clock} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
-import type {ClassifiedChild} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, getTestJobStatus} from '../lib/server-fns';
+import type {ClassifiedChild, TestJobStatus} from '../lib/server-fns';
+import {GitHubIcon} from './github-icon';
 
 interface KanbanCardProps {
 	child: ClassifiedChild;
@@ -21,6 +21,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const router = useRouter();
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [testJob, setTestJob] = useState<TestJobStatus | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 
@@ -34,6 +35,21 @@ export function KanbanCard({child}: KanbanCardProps) {
 		document.addEventListener('mousedown', handleClick);
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [snoozeOpen]);
+
+	// Poll for test job status
+	useEffect(() => {
+		if (!testJob || testJob.status === 'passed' || testJob.status === 'failed') return;
+		const interval = setInterval(async () => {
+			const status = await getTestJobStatus({data: {sha: child.sha, project: child.project}});
+			if (!status) return;
+			setTestJob(status);
+			if (status.status === 'passed' || status.status === 'failed') {
+				clearInterval(interval);
+				router.invalidate();
+			}
+		}, 2000);
+		return () => clearInterval(interval);
+	}, [testJob, child.sha, child.project, router]);
 
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 
@@ -57,20 +73,14 @@ export function KanbanCard({child}: KanbanCardProps) {
 	};
 
 	const handleTest = async () => {
-		setLoading(true);
 		setError(null);
-		const result = await testChild({data: {
+		const job = await testChild({data: {
 			project: child.project,
 			projectDir: child.projectDir,
 			sha: child.sha,
 			shortSha: child.shortSha,
 		}});
-		setLoading(false);
-		if (result.ok) {
-			router.invalidate();
-		} else {
-			setError(result.message);
-		}
+		setTestJob(job);
 	};
 
 	const handleSnooze = async (hours: number | null) => {
@@ -88,11 +98,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 	};
 
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
-	const action = child.category === 'ready_to_push'
-		? {label: pushLabel, icon: ArrowRight, handler: handlePush, className: 'bg-green-600 hover:bg-green-700 text-white'}
-		: child.category === 'ready_to_test'
-			? {label: 'Test', icon: Play, handler: handleTest, className: 'bg-yellow-600 hover:bg-yellow-700 text-white'}
-			: null;
+
+	const isTestActive = testJob && (testJob.status === 'queued' || testJob.status === 'running');
 
 	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
 
@@ -119,17 +126,32 @@ export function KanbanCard({child}: KanbanCardProps) {
 							PR
 						</a>
 					)}
-					{action && (
+					{child.category === 'ready_to_push' && (
 						<button
 							type="button"
-							onClick={action.handler}
+							onClick={handlePush}
 							disabled={loading}
 							className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-								loading ? 'cursor-not-allowed opacity-60' : action.className
+								loading ? 'cursor-not-allowed opacity-60' : 'bg-green-600 hover:bg-green-700 text-white'
 							}`}
 						>
-							{loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <action.icon className="h-3 w-3" />}
-							{loading ? 'Running...' : action.label}
+							{loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+							{loading ? 'Pushing...' : pushLabel}
+						</button>
+					)}
+					{child.category === 'ready_to_test' && (
+						<button
+							type="button"
+							onClick={handleTest}
+							disabled={!!isTestActive}
+							className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+								isTestActive ? 'bg-yellow-600/80 text-white' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+							}`}
+						>
+							{testJob?.status === 'running' && <Loader2 className="h-3 w-3 animate-spin" />}
+							{testJob?.status === 'queued' && <Clock className="h-3 w-3" />}
+							{!isTestActive && <Play className="h-3 w-3" />}
+							{testJob?.status === 'running' ? 'Testing...' : testJob?.status === 'queued' ? 'Queued' : 'Test'}
 						</button>
 					)}
 					<div className="relative" ref={snoozeRef}>
@@ -159,6 +181,12 @@ export function KanbanCard({child}: KanbanCardProps) {
 					</div>
 				</div>
 			</div>
+			{testJob?.status === 'failed' && (
+				<p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>
+			)}
+			{testJob?.status === 'passed' && (
+				<p className="mt-1.5 text-xs text-green-600 dark:text-green-400">{testJob.message}</p>
+			)}
 			{error && (
 				<p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{error}</p>
 			)}

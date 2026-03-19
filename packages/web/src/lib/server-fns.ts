@@ -211,17 +211,62 @@ export const getProjectDir = createServerFn({method: 'GET'})
 		return p?.dir ?? null;
 	});
 
+export interface FileDiff {
+	oldFileName: string;
+	newFileName: string;
+	hunks: string;
+	oldContent: string;
+	newContent: string;
+}
+
 export const getCommitDiff = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({projectDir: z.string(), sha: z.string()}).parse(input))
-	.handler(async ({data}): Promise<{diff: string; stat: string}> => {
+	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> => {
 		const {execa} = await import('execa');
-		const [diffResult, statResult] = await Promise.all([
-			execa('git', ['-C', data.projectDir, 'show', '--format=%B', data.sha], {reject: false}),
+		const [diffResult, statResult, subjectResult] = await Promise.all([
+			execa('git', ['-C', data.projectDir, 'show', '--format=', data.sha], {reject: false}),
 			execa('git', ['-C', data.projectDir, 'show', '--stat', '--format=', data.sha], {reject: false}),
+			execa('git', ['-C', data.projectDir, 'log', '-1', '--format=%s', data.sha], {reject: false}),
 		]);
+
+		if (diffResult.exitCode !== 0) {
+			return {files: [], stat: '', subject: `git show failed: ${diffResult.stderr}`};
+		}
+
+		// Split raw diff into per-file chunks
+		const rawDiff = diffResult.stdout;
+		const fileDiffs = rawDiff.split(/^(?=diff --git )/m).filter(Boolean);
+
+		const files: FileDiff[] = [];
+		for (const chunk of fileDiffs) {
+			const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
+			if (!headerMatch) continue;
+			const oldFileName = headerMatch[1];
+			const newFileName = headerMatch[2];
+
+			// Extract hunks (everything from first @@ onwards)
+			const hunkStart = chunk.indexOf('@@');
+			const hunks = hunkStart >= 0 ? chunk.slice(hunkStart) : '';
+
+			// Get old and new file content for syntax highlighting
+			const [oldResult, newResult] = await Promise.all([
+				execa('git', ['-C', data.projectDir, 'show', `${data.sha}^:${oldFileName}`], {reject: false}),
+				execa('git', ['-C', data.projectDir, 'show', `${data.sha}:${newFileName}`], {reject: false}),
+			]);
+
+			files.push({
+				oldFileName,
+				newFileName,
+				hunks,
+				oldContent: oldResult.exitCode === 0 ? oldResult.stdout : '',
+				newContent: newResult.exitCode === 0 ? newResult.stdout : '',
+			});
+		}
+
 		return {
-			diff: diffResult.exitCode === 0 ? diffResult.stdout : `git show failed: ${diffResult.stderr}`,
+			files,
 			stat: statResult.exitCode === 0 ? statResult.stdout : '',
+			subject: subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : '',
 		};
 	});
 

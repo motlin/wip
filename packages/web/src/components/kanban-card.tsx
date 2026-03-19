@@ -1,5 +1,5 @@
 import {useRouter, Link} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -102,9 +102,14 @@ export function KanbanCard({child}: KanbanCardProps) {
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-shadow hover:shadow-md">
 			<div className="flex items-start justify-between gap-2">
-				<span className="shrink-0 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">
+				<Link
+					to="/diff/$project/$sha"
+					params={{project: child.project, sha: child.sha}}
+					className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 transition-colors hover:bg-bg-300 hover:text-text-100"
+				>
+					<Diff className="h-3 w-3" />
 					{child.shortSha}
-				</span>
+				</Link>
 				<span className="text-xs text-text-500">{child.date}</span>
 			</div>
 			<p className="mt-1.5 text-sm leading-snug text-text-100">{child.subject}</p>

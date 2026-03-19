@@ -15,6 +15,7 @@ import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTestEventsRouteImport } from './routes/api/test-events'
 import { Route as LogProjectShaRouteImport } from './routes/log.$project.$sha'
+import { Route as DiffProjectShaRouteImport } from './routes/diff.$project.$sha'
 
 const SnoozedRoute = SnoozedRouteImport.update({
   id: '/snoozed',
@@ -46,6 +47,11 @@ const LogProjectShaRoute = LogProjectShaRouteImport.update({
   path: '/log/$project/$sha',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DiffProjectShaRoute = DiffProjectShaRouteImport.update({
+  id: '/diff/$project/$sha',
+  path: '/diff/$project/$sha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
   '/api/test-events': typeof ApiTestEventsRoute
+  '/diff/$project/$sha': typeof DiffProjectShaRoute
   '/log/$project/$sha': typeof LogProjectShaRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
   '/api/test-events': typeof ApiTestEventsRoute
+  '/diff/$project/$sha': typeof DiffProjectShaRoute
   '/log/$project/$sha': typeof LogProjectShaRoute
 }
 export interface FileRoutesById {
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
   '/api/test-events': typeof ApiTestEventsRoute
+  '/diff/$project/$sha': typeof DiffProjectShaRoute
   '/log/$project/$sha': typeof LogProjectShaRoute
 }
 export interface FileRouteTypes {
@@ -80,6 +89,7 @@ export interface FileRouteTypes {
     | '/queue'
     | '/snoozed'
     | '/api/test-events'
+    | '/diff/$project/$sha'
     | '/log/$project/$sha'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/queue'
     | '/snoozed'
     | '/api/test-events'
+    | '/diff/$project/$sha'
     | '/log/$project/$sha'
   id:
     | '__root__'
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/queue'
     | '/snoozed'
     | '/api/test-events'
+    | '/diff/$project/$sha'
     | '/log/$project/$sha'
   fileRoutesById: FileRoutesById
 }
@@ -105,6 +117,7 @@ export interface RootRouteChildren {
   QueueRoute: typeof QueueRoute
   SnoozedRoute: typeof SnoozedRoute
   ApiTestEventsRoute: typeof ApiTestEventsRoute
+  DiffProjectShaRoute: typeof DiffProjectShaRoute
   LogProjectShaRoute: typeof LogProjectShaRoute
 }
 
@@ -152,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LogProjectShaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/diff/$project/$sha': {
+      id: '/diff/$project/$sha'
+      path: '/diff/$project/$sha'
+      fullPath: '/diff/$project/$sha'
+      preLoaderRoute: typeof DiffProjectShaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -161,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   QueueRoute: QueueRoute,
   SnoozedRoute: SnoozedRoute,
   ApiTestEventsRoute: ApiTestEventsRoute,
+  DiffProjectShaRoute: DiffProjectShaRoute,
   LogProjectShaRoute: LogProjectShaRoute,
 }
 export const routeTree = rootRouteImport

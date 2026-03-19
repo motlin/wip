@@ -191,6 +191,19 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	return queued;
 });
 
+export const getCommitDiff = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({projectDir: z.string(), sha: z.string()}).parse(input))
+	.handler(async ({data}): Promise<{diff: string; stat: string}> => {
+		const [diffResult, statResult] = await Promise.all([
+			execa('git', ['-C', data.projectDir, 'show', '--format=%B', data.sha], {reject: false}),
+			execa('git', ['-C', data.projectDir, 'show', '--stat', '--format=', data.sha], {reject: false}),
+		]);
+		return {
+			diff: diffResult.exitCode === 0 ? diffResult.stdout : `git show failed: ${diffResult.stderr}`,
+			stat: statResult.exitCode === 0 ? statResult.stdout : '',
+		};
+	});
+
 export const getTestLog = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
 	.handler(async ({data}): Promise<{log: string | null; tail: string | null}> => {

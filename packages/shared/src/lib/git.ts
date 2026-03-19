@@ -148,7 +148,7 @@ export async function getPrReviewStatuses(dir: string): Promise<Map<string, Revi
 			statusMap.set(branch, 'changes_requested');
 		} else if (pr.reviewDecision === 'APPROVED') {
 			statusMap.set(branch, 'approved');
-		} else if (pr.reviews.nodes.some((r) => r.state === 'COMMENTED' || r.state === 'PENDING')) {
+		} else if (pr.reviews?.nodes?.some((r) => r.state === 'COMMENTED' || r.state === 'PENDING')) {
 			statusMap.set(branch, 'commented');
 		} else {
 			statusMap.set(branch, 'clean');

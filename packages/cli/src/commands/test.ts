@@ -4,7 +4,7 @@ import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import {createBranchForChild, discoverProjects, getChildCommits, getChildren, getMiseEnv, getProjectsDir, getTestLogDir, hasLocalModifications, isDirty, log, testBranch, testFix} from '@wip/shared';
+import {createBranchForChild, discoverProjects, getChildCommits, getChildren, getMiseEnv, getProjectsDir, getTestLogDir, hasLocalModifications, isDirty, log, recordTestResult, testBranch, testFix} from '@wip/shared';
 
 interface TestResult {
 	project: string;
@@ -115,7 +115,9 @@ export default class Test extends Command {
 				const branchName = await createBranchForChild(p.dir, child);
 
 				// Run git test on branch range
+				const branchStart = performance.now();
 				const result = await testBranch(p.dir, branchName, p.upstreamRef, miseEnv, {force: flags.force});
+				const branchDuration = Math.round(performance.now() - branchStart);
 
 				const logPath = path.join(logDir, `${child.sha}.log`);
 				fs.writeFileSync(logPath, result.logContent + '\n');
@@ -123,6 +125,7 @@ export default class Test extends Command {
 				if (result.exitCode === 0) {
 					this.log(chalk.green(`  ${child.shortSha} ${branchName} passed`));
 					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'passed', exitCode: 0, logPath});
+					recordTestResult(child.sha, p.name, 'passed', 0, branchDuration);
 				} else if (await hasLocalModifications(p.dir)) {
 					// Test failed with dirty worktree — attempt auto-fix
 					this.log(chalk.yellow(`  ${child.shortSha} ${branchName} failed with modifications, attempting fix...`));
@@ -131,16 +134,19 @@ export default class Test extends Command {
 					if (fixResult.ok) {
 						this.log(chalk.green(`  ${child.shortSha} ${branchName} fixed ✓`));
 						testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'fixed', exitCode: 0, logPath, message: fixResult.message});
+						recordTestResult(child.sha, p.name, 'passed', 0, branchDuration);
 					} else {
 						this.log(chalk.red(`  ${child.shortSha} ${branchName} fix failed: ${fixResult.message}`));
 						this.log(chalk.dim(`  Log: ${logPath}`));
 						testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'failed', exitCode: result.exitCode, logPath, message: fixResult.message});
+						recordTestResult(child.sha, p.name, 'failed', result.exitCode ?? 1, branchDuration);
 					}
 				} else {
 					// Test failed with clean worktree — real failure
 					this.log(chalk.red(`  ${child.shortSha} ${branchName} failed (exit ${result.exitCode})`));
 					this.log(chalk.dim(`  Log: ${logPath}`));
 					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'failed', exitCode: result.exitCode, logPath});
+					recordTestResult(child.sha, p.name, 'failed', result.exitCode ?? 1, branchDuration);
 				}
 			}
 
@@ -234,10 +240,12 @@ export default class Test extends Command {
 				if (result.exitCode === 0) {
 					this.log(chalk.green(`  ${shortSha} passed`));
 					testResults.push({project: p.name, sha, shortSha, status: 'passed', exitCode: 0, logPath});
+					recordTestResult(sha, p.name, 'passed', 0, testDuration);
 				} else {
 					this.log(chalk.red(`  ${shortSha} failed (exit ${result.exitCode})`));
 					this.log(chalk.dim(`  Log: ${logPath}`));
 					testResults.push({project: p.name, sha, shortSha, status: 'failed', exitCode: result.exitCode ?? 1, logPath});
+					recordTestResult(sha, p.name, 'failed', result.exitCode ?? 1, testDuration);
 					allPassed = false;
 				}
 			}

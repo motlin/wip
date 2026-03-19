@@ -1,5 +1,4 @@
 import {createServerFn} from '@tanstack/react-start';
-import {execa} from 'execa';
 import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 import {
@@ -140,6 +139,7 @@ export const pushChild = createServerFn({method: 'POST'})
 		const {projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
 		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+		const {execa} = await import('execa');
 		if (!branch) {
 			const branchResult = await execa('git', ['-C', projectDir, 'branch', branchName, sha], {reject: false});
 			if (branchResult.exitCode !== 0) {
@@ -203,6 +203,7 @@ export const getProjectDir = createServerFn({method: 'GET'})
 export const getCommitDiff = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({projectDir: z.string(), sha: z.string()}).parse(input))
 	.handler(async ({data}): Promise<{diff: string; stat: string}> => {
+		const {execa} = await import('execa');
 		const [diffResult, statResult] = await Promise.all([
 			execa('git', ['-C', data.projectDir, 'show', '--format=%B', data.sha], {reject: false}),
 			execa('git', ['-C', data.projectDir, 'show', '--stat', '--format=', data.sha], {reject: false}),

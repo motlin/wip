@@ -1,5 +1,5 @@
 import {execa} from 'execa';
-import {getMiseEnv, getTestLogDir, log} from '@wip/shared';
+import {getMiseEnv, getTestLogDir, log, recordTestResult} from '@wip/shared';
 import {EventEmitter} from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -84,13 +84,11 @@ async function runTest(job: TestJob): Promise<void> {
 	fs.writeFileSync(logPath, logContent + '\n');
 
 	job.finishedAt = Date.now();
-	if (result.exitCode === 0) {
-		job.status = 'passed';
-		job.message = `${job.shortSha} passed`;
-	} else {
-		job.status = 'failed';
-		job.message = `${job.shortSha} failed (exit ${result.exitCode})`;
-	}
+	const status = result.exitCode === 0 ? 'passed' : 'failed';
+	job.status = status;
+	job.message = status === 'passed' ? `${job.shortSha} passed` : `${job.shortSha} failed (exit ${result.exitCode})`;
+
+	recordTestResult(job.sha, job.project, status, result.exitCode ?? 1, duration);
 	emit(job);
 }
 

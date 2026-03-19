@@ -1,7 +1,20 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {discoverProjects, getChildCommits, getProjectsDir} from '@wip/shared';
+import {type ChildCommit, discoverProjects, getChildCommits, getProjectsDir} from '@wip/shared';
+
+interface ResultEntry {
+	project: string;
+	sha: string;
+	shortSha: string;
+	subject: string;
+	testStatus: string;
+}
+
+interface ResultsJson {
+	results: ResultEntry[];
+	summary: {total: number; passed: number; failed: number; unknown: number};
+}
 
 export default class Results extends Command {
 	static override args = {
@@ -10,10 +23,13 @@ export default class Results extends Command {
 
 	static override description = 'Show test results for children across projects';
 
+	static enableJsonFlag = true;
+
 	static override examples = [
 		'<%= config.bin %> results',
 		'<%= config.bin %> results --status failed',
 		'<%= config.bin %> results liftwizard --quiet',
+		'<%= config.bin %> results --json',
 	];
 
 	static override flags = {
@@ -30,12 +46,12 @@ export default class Results extends Command {
 		}),
 	};
 
-	async run(): Promise<void> {
+	async run(): Promise<ResultsJson> {
 		const {args, flags} = await this.parse(Results);
 		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
-		let totalCount = 0;
+		const allResults: ResultEntry[] = [];
 		let passedCount = 0;
 		let failedCount = 0;
 		let unknownCount = 0;
@@ -44,7 +60,7 @@ export default class Results extends Command {
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
 			if (children.length === 0) continue;
 
 			const nonSkippable = children.filter((c) => !c.skippable);
@@ -56,6 +72,14 @@ export default class Results extends Command {
 			}
 
 			for (const c of filtered) {
+				allResults.push({
+					project: p.name,
+					sha: c.sha,
+					shortSha: c.shortSha,
+					subject: c.subject,
+					testStatus: c.testStatus,
+				});
+
 				if (flags.quiet) {
 					this.log(c.sha);
 				} else {
@@ -69,22 +93,28 @@ export default class Results extends Command {
 					this.log(`${statusLabel} ${c.shortSha} ${c.subject}`);
 				}
 
-				totalCount++;
 				if (c.testStatus === 'passed') passedCount++;
 				else if (c.testStatus === 'failed') failedCount++;
 				else unknownCount++;
 			}
 		}
 
-		if (totalCount === 0) {
+		const output: ResultsJson = {
+			results: allResults,
+			summary: {total: allResults.length, passed: passedCount, failed: failedCount, unknown: unknownCount},
+		};
+
+		if (allResults.length === 0) {
 			this.log('No test results found.');
-			return;
+			return output;
 		}
 
 		if (!flags.quiet) {
 			this.log(
-				`\n${totalCount} results: ${chalk.green(`${passedCount} good`)}, ${chalk.red(`${failedCount} bad`)}, ${chalk.yellow(`${unknownCount} unknown`)}`,
+				`\n${allResults.length} results: ${chalk.green(`${passedCount} good`)}, ${chalk.red(`${failedCount} bad`)}, ${chalk.yellow(`${unknownCount} unknown`)}`,
 			);
 		}
+
+		return output;
 	}
 }

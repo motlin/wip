@@ -71,7 +71,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 
 	for (const p of projects) {
 		const prStatuses = await getPrStatuses(p.dir);
-		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
+		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
 		if (children.length === 0) continue;
 
 		projectCount++;
@@ -180,7 +180,7 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	for (const p of projects) {
 		if (!p.hasTestConfigured || p.dirty) continue;
 		const prStatuses = await getPrStatuses(p.dir);
-		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
+		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
 		for (const child of children) {
 			if (child.skippable) continue;
 			if (child.testStatus !== 'unknown') continue;

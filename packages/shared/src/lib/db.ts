@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import * as schema from './schema.js';
-import {branchNames, snoozed} from './schema.js';
+import {branchNames, snoozed, testResults} from './schema.js';
 
 const APP_NAME = 'wip';
 const FAR_FUTURE = '9999-12-31 23:59:59';
@@ -61,6 +61,21 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS branch_names_active_idx ON branch_names (sha, project, system_to)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS test_results (
+			sha TEXT NOT NULL,
+			project TEXT NOT NULL,
+			test_name TEXT NOT NULL DEFAULT 'default',
+			status TEXT NOT NULL,
+			exit_code INTEGER,
+			duration_ms INTEGER,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (sha, project, test_name, system_from)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS test_results_active_idx ON test_results (project, system_to)`);
 
 	db = drizzle(sqlite, {schema});
 	return db;
@@ -178,5 +193,42 @@ export function setBranchName(sha: string, project: string, name: string): void 
 
 	d.insert(branchNames)
 		.values({sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE})
+		.run();
+}
+
+// Test result functions
+
+export type TestResultItem = typeof testResults.$inferSelect;
+
+export function getTestResultsForProject(project: string): Map<string, 'passed' | 'failed'> {
+	const d = getDb();
+	const rows = d.select({sha: testResults.sha, status: testResults.status})
+		.from(testResults)
+		.where(and(eq(testResults.project, project), eq(testResults.systemTo, FAR_FUTURE)))
+		.all();
+
+	const result = new Map<string, 'passed' | 'failed'>();
+	for (const row of rows) {
+		result.set(row.sha, row.status as 'passed' | 'failed');
+	}
+	return result;
+}
+
+export function recordTestResult(sha: string, project: string, status: 'passed' | 'failed', exitCode: number, durationMs: number, testName = 'default'): void {
+	const d = getDb();
+	const timestamp = now();
+
+	d.update(testResults)
+		.set({systemTo: timestamp})
+		.where(and(
+			eq(testResults.sha, sha),
+			eq(testResults.project, project),
+			eq(testResults.testName, testName),
+			eq(testResults.systemTo, FAR_FUTURE),
+		))
+		.run();
+
+	d.insert(testResults)
+		.values({sha, project, testName, status, exitCode, durationMs, systemFrom: timestamp, systemTo: FAR_FUTURE})
 		.run();
 }

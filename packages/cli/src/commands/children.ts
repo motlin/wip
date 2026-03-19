@@ -9,6 +9,11 @@ interface ProjectChildren {
 	children: ChildCommit[];
 }
 
+interface ChildrenJson {
+	projects: ProjectChildren[];
+	summary: {total: number; passed: number; failed: number; unknown: number};
+}
+
 export default class Children extends Command {
 	static override args = {
 		project: Args.string({description: 'Filter to a specific project name'}),
@@ -16,13 +21,19 @@ export default class Children extends Command {
 
 	static override description = 'List child commits across all projects with test status';
 
-	static override examples = ['<%= config.bin %> children', '<%= config.bin %> children liftwizard'];
+	static enableJsonFlag = true;
+
+	static override examples = [
+		'<%= config.bin %> children',
+		'<%= config.bin %> children liftwizard',
+		'<%= config.bin %> children --json',
+	];
 
 	static override flags = {
 		'projects-dir': Flags.string({description: 'Override projects directory'}),
 	};
 
-	async run(): Promise<void> {
+	async run(): Promise<ChildrenJson> {
 		const {args, flags} = await this.parse(Children);
 		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
@@ -32,7 +43,7 @@ export default class Children extends Command {
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
 			if (children.length === 0) continue;
 
 			if (children.length > 0) {
@@ -40,9 +51,19 @@ export default class Children extends Command {
 			}
 		}
 
+		const total = results.reduce((sum, r) => sum + r.children.length, 0);
+		const passed = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === 'passed').length, 0);
+		const failed = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === 'failed').length, 0);
+		const unknown = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === 'unknown').length, 0);
+
+		const output: ChildrenJson = {
+			projects: results,
+			summary: {total, passed, failed, unknown},
+		};
+
 		if (results.length === 0) {
 			this.log('No children found.');
-			return;
+			return output;
 		}
 
 		for (const proj of results) {
@@ -60,13 +81,10 @@ export default class Children extends Command {
 			}
 		}
 
-		const total = results.reduce((sum, r) => sum + r.children.length, 0);
-		const passed = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === 'passed').length, 0);
-		const failed = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === 'failed').length, 0);
-		const unknown = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === 'unknown').length, 0);
-
 		this.log(
 			`\nTotal: ${total} children — ${chalk.green(`${passed} passed`)}, ${chalk.red(`${failed} failed`)}, ${chalk.yellow(`${unknown} unknown`)}`,
 		);
+
+		return output;
 	}
 }

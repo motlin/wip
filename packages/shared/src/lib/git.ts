@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
+import {getTestResultsForProject} from './db.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
@@ -169,7 +170,7 @@ export async function getPrStatuses(dir: string): Promise<PrStatuses> {
 	return {review, checks, urls};
 }
 
-export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses): Promise<ChildCommit[]> {
+export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses, projectName?: string): Promise<ChildCommit[]> {
 	const childrenOutput = await git(dir, 'children', upstreamRef);
 	if (!childrenOutput) return [];
 
@@ -188,30 +189,9 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 
 	if (logResult.exitCode !== 0) return [];
 
-	const testStatusMap = new Map<string, 'passed' | 'failed' | 'unknown'>();
-	if (hasTest) {
-		const testStart = performance.now();
-		const testResult = await execa('git', ['-C', dir, 'test', 'results', '--stdin', '--no-color'], {
-			input: shas.join('\n'),
-			reject: false,
-		});
-		const testDuration = Math.round(performance.now() - testStart);
-		log.subprocess.debug({cmd: 'git', args: ['-C', dir, 'test', 'results', '--stdin', '--no-color'], duration: testDuration}, `git -C ${dir} test results --stdin --no-color (${testDuration}ms)`);
-
-		if (testResult.exitCode === 0 && testResult.stdout) {
-			for (const line of testResult.stdout.split('\n').filter(Boolean)) {
-				const match = line.match(/^(good|bad|unknown)\s*(?:\([^)]*\)\s*)?(\w+)/);
-				if (match) {
-					const [, status, shortSha] = match;
-					const fullSha = shas.find((s) => s.startsWith(shortSha));
-					if (fullSha) {
-						if (status === 'good') testStatusMap.set(fullSha, 'passed');
-						else if (status === 'bad') testStatusMap.set(fullSha, 'failed');
-					}
-				}
-			}
-		}
-	}
+	const testStatusMap: Map<string, 'passed' | 'failed'> = hasTest && projectName
+		? getTestResultsForProject(projectName)
+		: new Map();
 
 	const records = logResult.stdout.split(RS).filter((r) => r.trim());
 	const children: ChildCommit[] = [];

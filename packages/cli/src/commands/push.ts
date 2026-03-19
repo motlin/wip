@@ -4,6 +4,22 @@ import {execa} from 'execa';
 
 import {discoverProjects, getChildCommits, getProjectsDir, isDirty, log} from '@wip/shared';
 
+interface PushResult {
+	sha: string;
+	shortSha: string;
+	branch: string;
+	subject: string;
+	status: 'pushed' | 'failed';
+	error?: string;
+	prUrl?: string;
+}
+
+interface PushJson {
+	pushed: PushResult[];
+	skippedProjects: string[];
+	summary: {pushed: number; failed: number; skipped: number};
+}
+
 export default class Push extends Command {
 	static override args = {
 		project: Args.string({description: 'Filter to a specific project name'}),
@@ -11,7 +27,14 @@ export default class Push extends Command {
 
 	static override description = 'Push green children: create branches, push, and optionally create PRs';
 
-	static override examples = ['<%= config.bin %> push', '<%= config.bin %> push liftwizard', '<%= config.bin %> push --dry-run'];
+	static enableJsonFlag = true;
+
+	static override examples = [
+		'<%= config.bin %> push',
+		'<%= config.bin %> push liftwizard',
+		'<%= config.bin %> push --dry-run',
+		'<%= config.bin %> push --json',
+	];
 
 	static override flags = {
 		'dry-run': Flags.boolean({
@@ -26,13 +49,13 @@ export default class Push extends Command {
 		'projects-dir': Flags.string({description: 'Override projects directory'}),
 	};
 
-	async run(): Promise<void> {
+	async run(): Promise<PushJson> {
 		const {args, flags} = await this.parse(Push);
 		const projectsDir = getProjectsDir(flags['projects-dir']);
 		const projects = await discoverProjects(projectsDir);
 
-		let pushed = 0;
-		let skippedCount = 0;
+		const pushResults: PushResult[] = [];
+		const skippedProjects: string[] = [];
 
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
@@ -40,11 +63,11 @@ export default class Push extends Command {
 			const dirty = await isDirty(p.dir);
 			if (dirty) {
 				this.log(chalk.dim(`Skipping ${p.name} (dirty)`));
-				skippedCount++;
+				skippedProjects.push(p.name);
 				continue;
 			}
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
 			const green = children.filter((c) => c.testStatus === 'passed' && !c.skippable);
 
 			if (green.length === 0) continue;
@@ -56,6 +79,7 @@ export default class Push extends Command {
 
 				if (flags['dry-run']) {
 					this.log(`  would push ${child.shortSha} ${child.subject} \u2192 ${branchName}`);
+					pushResults.push({sha: child.sha, shortSha: child.shortSha, branch: branchName, subject: child.subject, status: 'pushed'});
 					continue;
 				}
 
@@ -75,21 +99,34 @@ export default class Push extends Command {
 
 				if (pushResult.exitCode === 0) {
 					this.log(chalk.green(`  \u2713 pushed ${child.shortSha} \u2192 ${branchName}`));
-					pushed++;
+					const result: PushResult = {sha: child.sha, shortSha: child.shortSha, branch: branchName, subject: child.subject, status: 'pushed'};
 
 					if (flags.pr) {
-						await this.createPR(p.dir, branchName, child, p.upstreamBranch);
+						const prUrl = await this.createPR(p.dir, branchName, child, p.upstreamBranch);
+						if (prUrl) result.prUrl = prUrl;
 					}
+
+					pushResults.push(result);
 				} else {
 					this.log(chalk.red(`  \u2717 failed to push ${child.shortSha}: ${pushResult.stderr}`));
+					pushResults.push({sha: child.sha, shortSha: child.shortSha, branch: branchName, subject: child.subject, status: 'failed', error: pushResult.stderr});
 				}
 			}
 		}
 
-		this.log(`\nPushed ${pushed} branches, skipped ${skippedCount} dirty projects`);
+		const pushedCount = pushResults.filter((r) => r.status === 'pushed').length;
+		const failedCount = pushResults.filter((r) => r.status === 'failed').length;
+
+		this.log(`\nPushed ${pushedCount} branches, skipped ${skippedProjects.length} dirty projects`);
+
+		return {
+			pushed: pushResults,
+			skippedProjects,
+			summary: {pushed: pushedCount, failed: failedCount, skipped: skippedProjects.length},
+		};
 	}
 
-	private async createPR(dir: string, branch: string, child: {shortSha: string; subject: string}, base: string): Promise<void> {
+	private async createPR(dir: string, branch: string, child: {shortSha: string; subject: string}, base: string): Promise<string | undefined> {
 		const existingPR = await execa('gh', ['pr', 'view', branch, '--repo', '.', '--json', 'number'], {
 			cwd: dir,
 			reject: false,
@@ -97,7 +134,7 @@ export default class Push extends Command {
 
 		if (existingPR.exitCode === 0) {
 			this.log(chalk.dim(`    PR already exists for ${branch}`));
-			return;
+			return undefined;
 		}
 
 		const prResult = await execa('gh', ['pr', 'create', '--base', base, '--head', branch, '--title', child.subject, '--body', '', '--draft'], {
@@ -107,8 +144,10 @@ export default class Push extends Command {
 
 		if (prResult.exitCode === 0) {
 			this.log(chalk.green(`    Created draft PR: ${prResult.stdout}`));
-		} else {
-			this.log(chalk.red(`    Failed to create PR: ${prResult.stderr}`));
+			return prResult.stdout;
 		}
+
+		this.log(chalk.red(`    Failed to create PR: ${prResult.stderr}`));
+		return undefined;
 	}
 }

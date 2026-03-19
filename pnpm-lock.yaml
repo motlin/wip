@@ -73,6 +73,9 @@ importers:
       '@wip/shared':
         specifier: workspace:*
         version: link:../shared
+      execa:
+        specifier: ^9.6.1
+        version: 9.6.1
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.2.4)

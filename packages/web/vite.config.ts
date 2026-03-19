@@ -13,7 +13,7 @@ export default defineConfig({
 		watch: {ignored: ['**/routeTree.gen.ts']},
 	},
 	optimizeDeps: {
-		exclude: ['@wip/shared'],
+		exclude: ['@wip/shared', 'execa'],
 	},
 	ssr: {
 		noExternal: ['@wip/shared'],

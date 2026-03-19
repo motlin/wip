@@ -33,7 +33,8 @@ export interface SnoozedChild {
 	short_sha: string;
 	subject: string;
 	until: string | null;
-	created_at: string;
+	system_from: string;
+	system_to: string;
 }
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {

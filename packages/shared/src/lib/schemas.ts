@@ -3,19 +3,27 @@ import {z} from 'zod';
 export const ReviewStatusSchema = z.enum(['clean', 'approved', 'changes_requested', 'commented', 'no_pr']);
 export type ReviewStatus = z.infer<typeof ReviewStatusSchema>;
 
+export const CheckStatusSchema = z.enum(['pending', 'running', 'passed', 'failed', 'none']);
+export type CheckStatus = z.infer<typeof CheckStatusSchema>;
+
 export const TestStatusSchema = z.enum(['passed', 'failed', 'unknown']);
 export type TestStatus = z.infer<typeof TestStatusSchema>;
 
+// Kanban left-to-right: full SDLC flow
 export const CategorySchema = z.enum([
-	'approved',
-	'ready_to_push',
-	'changes_requested',
-	'review_comments',
-	'test_failed',
-	'ready_to_test',
-	'blocked',
-	'no_test',
 	'skippable',
+	'snoozed',
+	'no_test',
+	'blocked',
+	'ready_to_test',
+	'test_failed',
+	'ready_to_push',
+	'checks_running',
+	'checks_failed',
+	'checks_passed',
+	'review_comments',
+	'changes_requested',
+	'approved',
 ]);
 export type Category = z.infer<typeof CategorySchema>;
 
@@ -39,6 +47,7 @@ export const ChildCommitSchema = z.object({
 	date: z.string(),
 	branch: z.string().optional(),
 	testStatus: TestStatusSchema,
+	checkStatus: CheckStatusSchema,
 	skippable: z.boolean(),
 	reviewStatus: ReviewStatusSchema,
 });

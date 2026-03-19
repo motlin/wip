@@ -8,7 +8,7 @@ vi.mock('@wip/shared', () => ({
 	discoverProjects: vi.fn(),
 	getChildCommits: vi.fn(),
 	getChildren: vi.fn(),
-	getPrReviewStatuses: vi.fn(async () => new Map()),
+	getPrStatuses: vi.fn(async () => ({review: new Map(), checks: new Map()})),
 	isDirty: vi.fn(),
 	readConfig: vi.fn(),
 	getConfigValue: vi.fn(),
@@ -67,6 +67,7 @@ const fakeChild: ChildCommit = {
 	date: '2025-01-15',
 	branch: 'feature-x',
 	testStatus: 'passed',
+	checkStatus: 'none',
 	skippable: false,
 	reviewStatus: 'no_pr',
 };
@@ -78,6 +79,7 @@ const fakeChildFailed: ChildCommit = {
 	date: '2025-01-16',
 	branch: undefined,
 	testStatus: 'failed',
+	checkStatus: 'none',
 	skippable: false,
 	reviewStatus: 'no_pr',
 };

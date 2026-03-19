@@ -1,6 +1,6 @@
 import {createServerFn} from '@tanstack/react-start';
 import {execa} from 'execa';
-import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrReviewStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 import {
 	type ActionResult,
@@ -20,12 +20,21 @@ export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 	if (child.skippable) return 'skippable';
-	if (child.testStatus === 'passed') {
+
+	// Has a PR on GitHub — classify by check/review status
+	if (child.branch && child.reviewStatus !== 'no_pr') {
 		if (child.reviewStatus === 'approved') return 'approved';
 		if (child.reviewStatus === 'changes_requested') return 'changes_requested';
 		if (child.reviewStatus === 'commented') return 'review_comments';
-		return 'ready_to_push';
+		// No review yet — classify by CI check status
+		if (child.checkStatus === 'running') return 'checks_running';
+		if (child.checkStatus === 'failed') return 'checks_failed';
+		if (child.checkStatus === 'passed') return 'checks_passed';
+		return 'checks_running'; // pending/none treated as running
 	}
+
+	// No PR — classify by local test status
+	if (child.testStatus === 'passed') return 'ready_to_push';
 	if (child.testStatus === 'failed') return 'test_failed';
 	if (project.dirty) return 'blocked';
 	if (!project.hasTestConfigured) return 'no_test';
@@ -40,34 +49,35 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	const snoozedSet = getSnoozedSet();
 
 	const grouped: Record<Category, ClassifiedChild[]> = {
-		approved: [],
-		ready_to_push: [],
-		changes_requested: [],
-		review_comments: [],
-		test_failed: [],
-		ready_to_test: [],
-		blocked: [],
-		no_test: [],
 		skippable: [],
+		snoozed: [],
+		no_test: [],
+		blocked: [],
+		ready_to_test: [],
+		test_failed: [],
+		ready_to_push: [],
+		checks_running: [],
+		checks_failed: [],
+		checks_passed: [],
+		review_comments: [],
+		changes_requested: [],
+		approved: [],
 	};
 
 	let projectCount = 0;
 	let snoozedCount = 0;
 
 	for (const p of projects) {
-		const prStatuses = await getPrReviewStatuses(p.dir);
+		const prStatuses = await getPrStatuses(p.dir);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
 		if (children.length === 0) continue;
 
 		projectCount++;
 
 		for (const child of children) {
-			if (snoozedSet.has(`${p.name}:${child.sha}`)) {
-				snoozedCount++;
-				continue;
-			}
-
-			const category = classifyChild(child, p);
+			const isSnoozed = snoozedSet.has(`${p.name}:${child.sha}`);
+			if (isSnoozed) snoozedCount++;
+			const category = isSnoozed ? 'snoozed' as Category : classifyChild(child, p);
 			grouped[category].push({
 				project: p.name,
 				projectDir: p.dir,

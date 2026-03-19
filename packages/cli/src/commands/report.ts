@@ -1,9 +1,9 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {type ChildCommit, type ProjectInfo, discoverProjects, getChildCommits, getPrReviewStatuses, getProjectsDir} from '@wip/shared';
+import {type ChildCommit, type ProjectInfo, discoverProjects, getChildCommits, getPrStatuses, getProjectsDir} from '@wip/shared';
 
-type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'needs_attention' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
+type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'test_failed' | 'ready_to_test' | 'blocked' | 'no_test' | 'skippable';
 
 interface ClassifiedChild {
 	project: string;
@@ -15,12 +15,12 @@ interface ClassifiedChild {
 }
 
 interface ReportJson {
-	summary: {projects: number; children: number; approved: number; readyToPush: number; changesRequested: number; reviewComments: number; needsAttention: number; readyToTest: number; blocked: number; noTest: number; skippable: number};
+	summary: {projects: number; children: number; approved: number; readyToPush: number; changesRequested: number; reviewComments: number; testFailed: number; readyToTest: number; blocked: number; noTest: number; skippable: number};
 	approved: ClassifiedChild[];
 	readyToPush: ClassifiedChild[];
 	changesRequested: ClassifiedChild[];
 	reviewComments: ClassifiedChild[];
-	needsAttention: ClassifiedChild[];
+	testFailed: ClassifiedChild[];
 	readyToTest: ClassifiedChild[];
 	blocked: ClassifiedChild[];
 	noTest: ClassifiedChild[];
@@ -36,20 +36,20 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 		if (child.reviewStatus === 'commented') return 'review_comments';
 		return 'ready_to_push';
 	}
-	if (child.testStatus === 'failed') return 'needs_attention';
+	if (child.testStatus === 'failed') return 'test_failed';
 	if (project.dirty) return 'blocked';
 	if (!project.hasTestConfigured) return 'no_test';
 	return 'ready_to_test';
 }
 
-const CATEGORY_ORDER: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'needs_attention', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
+const CATEGORY_ORDER: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'test_failed', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	approved: 'Approved',
 	ready_to_push: 'Ready to push',
 	changes_requested: 'Changes requested',
 	review_comments: 'Review comments',
-	needs_attention: 'Needs attention',
+	test_failed: 'Test failed',
 	ready_to_test: 'Ready to test',
 	blocked: 'Blocked — dirty worktree',
 	no_test: 'No test configured',
@@ -66,7 +66,7 @@ function categoryStyle(category: Category, text: string): string {
 			return chalk.magenta(text);
 		case 'review_comments':
 			return chalk.cyan(text);
-		case 'needs_attention':
+		case 'test_failed':
 			return chalk.red(text);
 		case 'ready_to_test':
 			return chalk.yellow(text);
@@ -110,7 +110,7 @@ export default class Report extends Command {
 			ready_to_push: [],
 			changes_requested: [],
 			review_comments: [],
-			needs_attention: [],
+			test_failed: [],
 			ready_to_test: [],
 			blocked: [],
 			no_test: [],
@@ -123,7 +123,7 @@ export default class Report extends Command {
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
-			const prStatuses = await getPrReviewStatuses(p.dir);
+			const prStatuses = await getPrStatuses(p.dir);
 			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
 			if (children.length === 0 && !args.project) continue;
 
@@ -154,7 +154,7 @@ export default class Report extends Command {
 				readyToPush: grouped.ready_to_push.length,
 				changesRequested: grouped.changes_requested.length,
 				reviewComments: grouped.review_comments.length,
-				needsAttention: grouped.needs_attention.length,
+				testFailed: grouped.test_failed.length,
 				readyToTest: grouped.ready_to_test.length,
 				blocked: grouped.blocked.length,
 				noTest: grouped.no_test.length,
@@ -164,7 +164,7 @@ export default class Report extends Command {
 			readyToPush: grouped.ready_to_push,
 			changesRequested: grouped.changes_requested,
 			reviewComments: grouped.review_comments,
-			needsAttention: grouped.needs_attention,
+			testFailed: grouped.test_failed,
 			readyToTest: grouped.ready_to_test,
 			blocked: grouped.blocked,
 			noTest: grouped.no_test,
@@ -231,8 +231,8 @@ export default class Report extends Command {
 			steps.push(`gh pr view                  # respond to ${grouped.review_comments.length} PRs with review comments`);
 		}
 
-		if (grouped.needs_attention.length > 0) {
-			steps.push(`wip results --status failed # investigate ${grouped.needs_attention.length} failures`);
+		if (grouped.test_failed.length > 0) {
+			steps.push(`wip results --status failed # investigate ${grouped.test_failed.length} failures`);
 		}
 
 		if (grouped.ready_to_test.length > 0) {

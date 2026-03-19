@@ -2,15 +2,19 @@ import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from './kanban-card';
 
 const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; headerClass: string}> = {
-	approved: {label: 'Approved', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
-	ready_to_push: {label: 'Ready to Push', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
-	changes_requested: {label: 'Changes Requested', colorClass: 'bg-purple-column', headerClass: 'text-purple-700 dark:text-purple-400'},
-	review_comments: {label: 'Review Comments', colorClass: 'bg-blue-column', headerClass: 'text-blue-700 dark:text-blue-400'},
-	needs_attention: {label: 'Needs Attention', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},
-	ready_to_test: {label: 'Ready to Test', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
-	blocked: {label: 'Blocked', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},
-	no_test: {label: 'No Test', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},
 	skippable: {label: 'Skippable', colorClass: 'bg-dim-column', headerClass: 'text-text-500'},
+	snoozed: {label: 'Snoozed', colorClass: 'bg-dim-column', headerClass: 'text-text-500'},
+	no_test: {label: 'No Test', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},
+	blocked: {label: 'Blocked', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},
+	ready_to_test: {label: 'Ready to Test', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
+	test_failed: {label: 'Test Failed', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},
+	ready_to_push: {label: 'Ready to Push', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
+	checks_running: {label: 'Checks Running', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
+	checks_failed: {label: 'Checks Failed', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},
+	checks_passed: {label: 'Checks Passed', colorClass: 'bg-blue-column', headerClass: 'text-blue-700 dark:text-blue-400'},
+	review_comments: {label: 'Review Comments', colorClass: 'bg-blue-column', headerClass: 'text-blue-700 dark:text-blue-400'},
+	changes_requested: {label: 'Changes Requested', colorClass: 'bg-purple-column', headerClass: 'text-purple-700 dark:text-purple-400'},
+	approved: {label: 'Approved', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
 };
 
 interface KanbanColumnProps {

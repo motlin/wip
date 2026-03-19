@@ -3,29 +3,38 @@ import {getReport} from '../lib/server-fns';
 import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from '../components/kanban-card';
 
-const CATEGORY_PRIORITY: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'test_failed', 'ready_to_test', 'no_test', 'blocked', 'skippable'];
+// Queue: furthest-along-first (reverse of kanban left-to-right)
+const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'ready_to_push', 'test_failed', 'ready_to_test', 'blocked', 'no_test', 'snoozed', 'skippable'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	approved: 'Approved',
-	ready_to_push: 'Ready to Push',
 	changes_requested: 'Changes Requested',
 	review_comments: 'Review Comments',
+	checks_passed: 'Checks Passed',
+	checks_failed: 'Checks Failed',
+	checks_running: 'Checks Running',
+	ready_to_push: 'Ready to Push',
 	test_failed: 'Test Failed',
 	ready_to_test: 'Ready to Test',
-	no_test: 'No Test',
 	blocked: 'Blocked',
+	no_test: 'No Test',
+	snoozed: 'Snoozed',
 	skippable: 'Skippable',
 };
 
 const CATEGORY_COLORS: Record<Category, string> = {
 	approved: 'text-green-700 dark:text-green-400',
-	ready_to_push: 'text-green-700 dark:text-green-400',
 	changes_requested: 'text-purple-700 dark:text-purple-400',
 	review_comments: 'text-blue-700 dark:text-blue-400',
+	checks_passed: 'text-blue-700 dark:text-blue-400',
+	checks_failed: 'text-red-700 dark:text-red-400',
+	checks_running: 'text-yellow-700 dark:text-yellow-400',
+	ready_to_push: 'text-green-700 dark:text-green-400',
 	test_failed: 'text-red-700 dark:text-red-400',
 	ready_to_test: 'text-yellow-700 dark:text-yellow-400',
-	no_test: 'text-text-300',
 	blocked: 'text-text-300',
+	no_test: 'text-text-300',
+	snoozed: 'text-text-500',
 	skippable: 'text-text-500',
 };
 

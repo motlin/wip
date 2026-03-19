@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
-import type {ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
+import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 
@@ -96,45 +96,73 @@ function parseBranch(decoration: string): string | undefined {
 	return undefined;
 }
 
-interface PrReviewInfo {
+interface PrStatusCheckRun {
+	status: string;
+	conclusion: string | null;
+}
+
+interface PrInfo {
 	headRefName: string;
 	reviewDecision: string;
 	reviews: {nodes: Array<{state: string}>};
+	statusCheckRollup: PrStatusCheckRun[];
 }
 
-export async function getPrReviewStatuses(dir: string): Promise<Map<string, ReviewStatus>> {
-	const statusMap = new Map<string, ReviewStatus>();
+export interface PrStatuses {
+	review: Map<string, ReviewStatus>;
+	checks: Map<string, CheckStatus>;
+}
+
+function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
+	if (checks.length === 0) return 'none';
+	const hasRunning = checks.some((c) => c.status === 'IN_PROGRESS' || c.status === 'QUEUED' || c.status === 'PENDING');
+	if (hasRunning) return 'running';
+	const hasFailed = checks.some((c) => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED' || c.conclusion === 'TIMED_OUT');
+	if (hasFailed) return 'failed';
+	const allPassed = checks.every((c) => c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED');
+	if (allPassed) return 'passed';
+	return 'pending';
+}
+
+export async function getPrStatuses(dir: string): Promise<PrStatuses> {
+	const review = new Map<string, ReviewStatus>();
+	const checks = new Map<string, CheckStatus>();
 
 	const start = performance.now();
 	const result = await execa('gh', [
 		'pr', 'list',
-		'--json', 'headRefName,reviewDecision,reviews',
+		'--json', 'headRefName,reviewDecision,reviews,statusCheckRollup',
 		'--state', 'open',
 		'--limit', '100',
 	], {cwd: dir, reject: false});
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'gh', args: ['pr', 'list', '--json', '...', '--state', 'open'], duration}, `gh pr list (${duration}ms)`);
 
-	if (result.exitCode !== 0 || !result.stdout) return statusMap;
+	if (result.exitCode !== 0 || !result.stdout) return {review, checks};
 
-	const prs = JSON.parse(result.stdout) as PrReviewInfo[];
+	const prs = JSON.parse(result.stdout) as PrInfo[];
 	for (const pr of prs) {
 		const branch = pr.headRefName;
+
+		// Review status
 		if (pr.reviewDecision === 'CHANGES_REQUESTED') {
-			statusMap.set(branch, 'changes_requested');
+			review.set(branch, 'changes_requested');
 		} else if (pr.reviewDecision === 'APPROVED') {
-			statusMap.set(branch, 'approved');
+			review.set(branch, 'approved');
 		} else if (pr.reviews?.nodes?.some((r) => r.state === 'COMMENTED' || r.state === 'PENDING')) {
-			statusMap.set(branch, 'commented');
+			review.set(branch, 'commented');
 		} else {
-			statusMap.set(branch, 'clean');
+			review.set(branch, 'clean');
 		}
+
+		// Check status
+		checks.set(branch, deriveCheckStatus(pr.statusCheckRollup ?? []));
 	}
 
-	return statusMap;
+	return {review, checks};
 }
 
-export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prReviewStatuses?: Map<string, ReviewStatus>): Promise<ChildCommit[]> {
+export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses): Promise<ChildCommit[]> {
 	const childrenOutput = await git(dir, 'children', upstreamRef);
 	if (!childrenOutput) return [];
 
@@ -191,9 +219,10 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const skippable = isSkippable(fullMessage);
 		const branch = parseBranch(decoration);
 		const testStatus = skippable ? 'unknown' : (testStatusMap.get(sha) ?? 'unknown');
-		const reviewStatus: ReviewStatus = branch && prReviewStatuses ? (prReviewStatuses.get(branch) ?? 'no_pr') : 'no_pr';
+		const reviewStatus: ReviewStatus = branch && prStatuses ? (prStatuses.review.get(branch) ?? 'no_pr') : 'no_pr';
+		const checkStatus: CheckStatus = branch && prStatuses ? (prStatuses.checks.get(branch) ?? 'none') : 'none';
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, skippable, reviewStatus});
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, reviewStatus});
 	}
 
 	return children;

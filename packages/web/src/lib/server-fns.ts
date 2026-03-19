@@ -14,6 +14,7 @@ import {
 	UnsnoozeChildInputSchema,
 } from '@wip/shared';
 
+import {z} from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -79,6 +80,16 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 			const isSnoozed = snoozedSet.has(`${p.name}:${child.sha}`);
 			if (isSnoozed) snoozedCount++;
 			const category = isSnoozed ? 'snoozed' as Category : classifyChild(child, p);
+			let failureTail: string | undefined;
+			if (category === 'test_failed') {
+				const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
+				if (fs.existsSync(logPath)) {
+					const content = fs.readFileSync(logPath, 'utf-8').trimEnd();
+					const lines = content.split('\n');
+					failureTail = lines.slice(-5).join('\n');
+				}
+			}
+
 			grouped[category].push({
 				project: p.name,
 				projectDir: p.dir,
@@ -89,6 +100,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 				date: child.date,
 				branch: child.branch,
 				prUrl: child.prUrl,
+				failureTail,
 				category,
 			});
 		}
@@ -178,6 +190,18 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	}
 	return queued;
 });
+
+export const getTestLog = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+	.handler(async ({data}): Promise<{log: string | null; tail: string | null}> => {
+		const logDir = getTestLogDir(data.project);
+		const logPath = path.join(logDir, `${data.sha}.log`);
+		if (!fs.existsSync(logPath)) return {log: null, tail: null};
+		const content = fs.readFileSync(logPath, 'utf-8');
+		const lines = content.trimEnd().split('\n');
+		const tail = lines.slice(-20).join('\n');
+		return {log: content, tail};
+	});
 
 export const snoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))

@@ -14,6 +14,7 @@ import { Route as QueueRouteImport } from './routes/queue'
 import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTestEventsRouteImport } from './routes/api/test-events'
+import { Route as LogProjectShaRouteImport } from './routes/log.$project.$sha'
 
 const SnoozedRoute = SnoozedRouteImport.update({
   id: '/snoozed',
@@ -40,6 +41,11 @@ const ApiTestEventsRoute = ApiTestEventsRouteImport.update({
   path: '/api/test-events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LogProjectShaRoute = LogProjectShaRouteImport.update({
+  id: '/log/$project/$sha',
+  path: '/log/$project/$sha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
   '/api/test-events': typeof ApiTestEventsRoute
+  '/log/$project/$sha': typeof LogProjectShaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
   '/api/test-events': typeof ApiTestEventsRoute
+  '/log/$project/$sha': typeof LogProjectShaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +70,33 @@ export interface FileRoutesById {
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
   '/api/test-events': typeof ApiTestEventsRoute
+  '/log/$project/$sha': typeof LogProjectShaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/kanban' | '/queue' | '/snoozed' | '/api/test-events'
+  fullPaths:
+    | '/'
+    | '/kanban'
+    | '/queue'
+    | '/snoozed'
+    | '/api/test-events'
+    | '/log/$project/$sha'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/kanban' | '/queue' | '/snoozed' | '/api/test-events'
-  id: '__root__' | '/' | '/kanban' | '/queue' | '/snoozed' | '/api/test-events'
+  to:
+    | '/'
+    | '/kanban'
+    | '/queue'
+    | '/snoozed'
+    | '/api/test-events'
+    | '/log/$project/$sha'
+  id:
+    | '__root__'
+    | '/'
+    | '/kanban'
+    | '/queue'
+    | '/snoozed'
+    | '/api/test-events'
+    | '/log/$project/$sha'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +105,7 @@ export interface RootRouteChildren {
   QueueRoute: typeof QueueRoute
   SnoozedRoute: typeof SnoozedRoute
   ApiTestEventsRoute: typeof ApiTestEventsRoute
+  LogProjectShaRoute: typeof LogProjectShaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTestEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/log/$project/$sha': {
+      id: '/log/$project/$sha'
+      path: '/log/$project/$sha'
+      fullPath: '/log/$project/$sha'
+      preLoaderRoute: typeof LogProjectShaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   QueueRoute: QueueRoute,
   SnoozedRoute: SnoozedRoute,
   ApiTestEventsRoute: ApiTestEventsRoute,
+  LogProjectShaRoute: LogProjectShaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

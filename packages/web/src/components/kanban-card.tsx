@@ -1,5 +1,5 @@
-import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock} from 'lucide-react';
+import {useRouter, Link} from '@tanstack/react-router';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -176,6 +176,23 @@ export function KanbanCard({child}: KanbanCardProps) {
 					</div>
 				</div>
 			</div>
+			{child.category === 'test_failed' && (
+				<div className="mt-2 rounded bg-red-50 p-2 dark:bg-red-950/30">
+					{child.failureTail && (
+						<pre className="mb-1.5 overflow-x-auto font-mono text-[10px] leading-tight text-red-700 dark:text-red-300">
+							{child.failureTail}
+						</pre>
+					)}
+					<Link
+						to="/log/$project/$sha"
+						params={{project: child.project, sha: child.sha}}
+						className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+					>
+						<FileText className="h-3 w-3" />
+						View Full Log
+					</Link>
+				</div>
+			)}
 			{testJob?.status === 'failed' && (
 				<p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>
 			)}

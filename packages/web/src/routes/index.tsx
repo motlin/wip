@@ -1,35 +1,67 @@
-import {createFileRoute} from '@tanstack/react-router';
-import {KanbanColumn} from '../components/kanban-column';
+import {createFileRoute, Link} from '@tanstack/react-router';
 import {getReport} from '../lib/server-fns';
-import type {Category} from '../lib/server-fns';
-
-const CATEGORY_ORDER: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'needs_attention', 'ready_to_test', 'blocked', 'no_test', 'skippable'];
 
 export const Route = createFileRoute('/')({
 	loader: () => getReport(),
 	head: () => ({
 		meta: [{title: 'WIP Dashboard'}],
 	}),
-	component: Dashboard,
+	component: Home,
 });
 
-function Dashboard() {
+function Home() {
 	const report = Route.useLoaderData();
 
+	const actionable = report.grouped.changes_requested.length
+		+ report.grouped.test_failed.length
+		+ report.grouped.review_comments.length;
+	const ready = report.grouped.approved.length + report.grouped.ready_to_push.length;
+	const waiting = report.grouped.ready_to_test.length
+		+ report.grouped.blocked.length
+		+ report.grouped.no_test.length
+		+ report.grouped.skippable.length;
+
 	return (
-		<div className="p-6">
-			<div className="mb-6 flex items-baseline justify-between">
+		<div className="mx-auto max-w-2xl p-6">
+			<div className="mb-8">
 				<h1 className="text-xl font-semibold">WIP Dashboard</h1>
-				<span className="text-sm text-text-500">
-					{report.projects} projects, {report.children} children
-				</span>
+				<p className="mt-1 text-sm text-text-500">
+					{report.children} children across {report.projects} projects
+				</p>
 			</div>
-			<div className="flex gap-4 overflow-x-auto pb-4">
-				{CATEGORY_ORDER.map((category) => {
-					const items = report.grouped[category];
-					if (items.length === 0) return null;
-					return <KanbanColumn key={category} category={category} children={items} />;
-				})}
+			<div className="grid grid-cols-2 gap-4">
+				<Link
+					to="/queue"
+					className="group rounded-xl border border-border-300/50 bg-bg-100 p-5 transition-all hover:border-border-300 hover:shadow-md"
+				>
+					<h2 className="text-base font-semibold text-text-100 group-hover:text-text-000">Queue</h2>
+					<p className="mt-1 text-sm text-text-500">
+						Linear priority list. Most actionable item at the top.
+					</p>
+					<div className="mt-3 flex gap-3 text-xs">
+						{actionable > 0 && (
+							<span className="text-red-600 dark:text-red-400">{actionable} need action</span>
+						)}
+						{ready > 0 && (
+							<span className="text-green-600 dark:text-green-400">{ready} ready</span>
+						)}
+						{waiting > 0 && (
+							<span className="text-text-500">{waiting} waiting</span>
+						)}
+					</div>
+				</Link>
+				<Link
+					to="/kanban"
+					className="group rounded-xl border border-border-300/50 bg-bg-100 p-5 transition-all hover:border-border-300 hover:shadow-md"
+				>
+					<h2 className="text-base font-semibold text-text-100 group-hover:text-text-000">Kanban</h2>
+					<p className="mt-1 text-sm text-text-500">
+						Board view grouped by status. See everything at a glance.
+					</p>
+					<div className="mt-3 flex gap-3 text-xs">
+						<span className="text-text-500">{report.children} cards</span>
+					</div>
+				</Link>
 			</div>
 		</div>
 	);

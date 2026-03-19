@@ -1,4 +1,4 @@
-import {Outlet, createRootRoute, HeadContent, Scripts} from '@tanstack/react-router';
+import {Outlet, createRootRoute, HeadContent, Scripts, Link} from '@tanstack/react-router';
 import type {ReactNode} from 'react';
 import appCss from '../styles/globals.css?url';
 
@@ -23,6 +23,11 @@ function RootComponent() {
 	return (
 		<RootDocument>
 			<div className="min-h-screen bg-bg-000">
+				<nav className="flex items-center gap-4 border-b border-border-300/50 px-6 py-2 text-sm">
+					<Link to="/" className="font-semibold text-text-100 hover:text-text-000">WIP</Link>
+					<Link to="/queue" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Queue</Link>
+					<Link to="/kanban" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Kanban</Link>
+				</nav>
 				<Outlet />
 			</div>
 		</RootDocument>

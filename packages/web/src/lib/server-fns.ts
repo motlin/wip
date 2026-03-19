@@ -191,6 +191,15 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	return queued;
 });
 
+export const getProjectDir = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<string | null> => {
+		const projectsDir = getProjectsDir();
+		const projects = await discoverProjects(projectsDir);
+		const p = projects.find((proj) => proj.name === data.project);
+		return p?.dir ?? null;
+	});
+
 export const getCommitDiff = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({projectDir: z.string(), sha: z.string()}).parse(input))
 	.handler(async ({data}): Promise<{diff: string; stat: string}> => {

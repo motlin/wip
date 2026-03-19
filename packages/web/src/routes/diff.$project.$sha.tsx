@@ -1,14 +1,12 @@
 import {createFileRoute} from '@tanstack/react-router';
-import {getCommitDiff, getReport} from '../lib/server-fns';
+import {getCommitDiff, getProjectDir} from '../lib/server-fns';
 
 export const Route = createFileRoute('/diff/$project/$sha')({
 	loader: async ({params}) => {
-		const report = await getReport();
-		const allItems = Object.values(report.grouped).flat();
-		const child = allItems.find((c) => c.sha === params.sha && c.project === params.project);
-		if (!child) throw new Error(`Commit ${params.sha.slice(0, 7)} not found in ${params.project}`);
-		const {diff, stat} = await getCommitDiff({data: {projectDir: child.projectDir, sha: params.sha}});
-		return {child, diff, stat};
+		const projectDir = await getProjectDir({data: {project: params.project}});
+		if (!projectDir) throw new Error(`Project ${params.project} not found`);
+		const {diff, stat} = await getCommitDiff({data: {projectDir, sha: params.sha}});
+		return {diff, stat};
 	},
 	head: ({params}) => ({
 		meta: [{title: `Diff: ${params.sha.slice(0, 7)}`}],
@@ -26,14 +24,14 @@ function classifyLine(line: string): string {
 }
 
 function DiffViewer() {
-	const {child, diff, stat} = Route.useLoaderData();
+	const {project, sha} = Route.useParams();
+	const {diff, stat} = Route.useLoaderData();
 
 	return (
 		<div className="p-6">
 			<div className="mb-4">
-				<h1 className="text-lg font-semibold">{child.subject}</h1>
 				<p className="text-sm text-text-500">
-					{child.project} / {child.shortSha} / {child.date}
+					{project} / {sha.slice(0, 7)}
 				</p>
 			</div>
 			{stat && (

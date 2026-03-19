@@ -223,6 +223,113 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 	return children;
 }
 
+export function subjectToSlug(subject: string): string {
+	return subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+export async function createBranchForChild(dir: string, child: ChildCommit): Promise<string> {
+	const branchName = child.branch ?? subjectToSlug(child.subject);
+	if (!child.branch) {
+		await execa('git', ['-C', dir, 'branch', branchName, child.sha], {reject: false});
+	}
+	return branchName;
+}
+
+export async function testBranch(
+	dir: string,
+	branch: string,
+	upstreamRef: string,
+	env: Record<string, string>,
+	opts?: {force?: boolean},
+): Promise<{exitCode: number; logContent: string}> {
+	// Write JUSTFILE_BRANCH as crash-recovery courtesy
+	const branchFilePath = path.join(dir, 'JUSTFILE_BRANCH');
+	fs.writeFileSync(branchFilePath, branch + '\n');
+
+	const testArgs = ['test', 'run', '--retest'];
+	if (opts?.force) testArgs.push('--force');
+	testArgs.push(`${upstreamRef}..${branch}`);
+
+	const start = performance.now();
+	const result = await execa('git', ['-C', dir, ...testArgs], {reject: false, env});
+	const duration = Math.round(performance.now() - start);
+	log.subprocess.debug({cmd: 'git', args: ['-C', dir, ...testArgs], duration}, `git -C ${dir} ${testArgs.join(' ')} (${duration}ms)`);
+
+	const logContent = [result.stdout, result.stderr].filter(Boolean).join('\n');
+	return {exitCode: result.exitCode ?? 1, logContent};
+}
+
+export async function hasLocalModifications(dir: string): Promise<boolean> {
+	const diffResult = await execa('git', ['-C', dir, 'diff', '--ignore-submodules', '--quiet'], {reject: false});
+	if (diffResult.exitCode !== 0) return true;
+
+	const stagedResult = await execa('git', ['-C', dir, 'diff', '--ignore-submodules', '--staged', '--quiet'], {reject: false});
+	if (stagedResult.exitCode !== 0) return true;
+
+	const untrackedResult = await execa('git', ['-C', dir, 'status', '--porcelain', '--ignore-submodules'], {reject: false});
+	if (untrackedResult.stdout.split('\n').some((line) => line.startsWith('??'))) return true;
+
+	return false;
+}
+
+export async function testFix(
+	dir: string,
+	branch: string,
+	upstreamRef: string,
+	env: Record<string, string>,
+	opts?: {force?: boolean},
+): Promise<{ok: boolean; message: string}> {
+	// 1. Stage modified tracked files
+	await execa('git', ['-C', dir, 'add', '--update'], {reject: false});
+
+	// 2. Run pre-commit hooks on staged files (allow failure — hooks may auto-format)
+	const cachedFiles = await execa('git', ['-C', dir, 'diff', '--cached', '--name-only'], {reject: false});
+	if (cachedFiles.stdout.trim()) {
+		const files = cachedFiles.stdout.trim().split('\n').join(' ');
+		await execa('uv', ['tool', 'run', 'pre-commit', 'run', '--files', ...files.split(' ')], {cwd: dir, reject: false, env});
+	}
+
+	// 3. Re-stage after pre-commit modifications
+	await execa('git', ['-C', dir, 'add', '--update'], {reject: false});
+
+	// 4. Create fixup commit
+	const commitResult = await execa('git', ['-C', dir, 'commit', '--quiet', '--fixup', 'HEAD', '--no-verify'], {reject: false});
+	if (commitResult.exitCode !== 0) {
+		return {ok: false, message: `fixup commit failed: ${commitResult.stderr}`};
+	}
+
+	// 5. Check for remaining dirty files
+	if (await hasLocalModifications(dir)) {
+		return {ok: false, message: 'worktree still dirty after fixup commit'};
+	}
+
+	// 6. Rebase onto HEAD to include fixup, then checkout branch
+	const rebaseOnto = await execa('git', ['-C', dir, 'rebase', '--quiet', '--onto', 'HEAD', 'HEAD^', branch], {reject: false});
+	if (rebaseOnto.exitCode !== 0) {
+		return {ok: false, message: `rebase --onto failed: ${rebaseOnto.stderr}`};
+	}
+
+	await execa('git', ['-C', dir, 'checkout', '--quiet', branch], {reject: false});
+
+	// 7. Autosquash rebase
+	const autosquash = await execa('git', ['-C', dir, 'rebase', '--autosquash', '--rebase-merges', '--update-refs', upstreamRef], {reject: false, env: {...env, GIT_SEQUENCE_EDITOR: 'true'}});
+	if (autosquash.exitCode !== 0) {
+		return {ok: false, message: `autosquash rebase failed: ${autosquash.stderr}`};
+	}
+
+	// 8. Clean up JUSTFILE_BRANCH
+	const branchFilePath = path.join(dir, 'JUSTFILE_BRANCH');
+	if (fs.existsSync(branchFilePath)) fs.unlinkSync(branchFilePath);
+
+	// 9. Re-run test on fixed branch
+	const retest = await testBranch(dir, branch, upstreamRef, env, opts);
+	if (retest.exitCode === 0) {
+		return {ok: true, message: 'fixed and retested successfully'};
+	}
+
+	return {ok: false, message: `retest failed after fix (exit ${retest.exitCode})`};
+}
+
 export async function discoverProjects(projectsDir: string): Promise<ProjectInfo[]> {
 	const entries = fs.readdirSync(projectsDir, {withFileTypes: true});
 	const projects: ProjectInfo[] = [];

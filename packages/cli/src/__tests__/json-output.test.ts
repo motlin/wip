@@ -16,6 +16,11 @@ vi.mock('@wip/shared', () => ({
 	unsetConfigValue: vi.fn(),
 	getTestLogDir: vi.fn(() => '/tmp/fake-test-logs'),
 	getMiseEnv: vi.fn(async () => ({})),
+	createBranchForChild: vi.fn(async (_dir: string, child: {branch?: string; subject: string}) => child.branch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')),
+	testBranch: vi.fn(async () => ({exitCode: 0, logContent: ''})),
+	testFix: vi.fn(async () => ({ok: true, message: 'fixed'})),
+	hasLocalModifications: vi.fn(async () => false),
+	subjectToSlug: vi.fn((s: string) => s.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')),
 	log: {subprocess: {debug: vi.fn()}},
 }));
 
@@ -192,7 +197,7 @@ describe('JSON output mode', () => {
 
 			expect(parsed).toHaveProperty('summary');
 			expect(parsed).toHaveProperty('readyToPush');
-			expect(parsed).toHaveProperty('needsAttention');
+			expect(parsed).toHaveProperty('testFailed');
 			expect(parsed).toHaveProperty('nextSteps');
 			expect((parsed as any).summary.children).toBe(2);
 		});

@@ -3,7 +3,7 @@ import {ArrowRight, Play, Loader2, Moon} from 'lucide-react';
 import {GitHubIcon} from './github-icon';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
-import type {Category, ClassifiedChild} from '../lib/server-fns';
+import type {ClassifiedChild} from '../lib/server-fns';
 
 interface KanbanCardProps {
 	child: ClassifiedChild;
@@ -94,15 +94,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 			? {label: 'Test', icon: Play, handler: handleTest, className: 'bg-yellow-600 hover:bg-yellow-700 text-white'}
 			: null;
 
-	const PR_LINKS: Partial<Record<Category, {label: string; suffix: string}>> = {
-		changes_requested: {label: 'View Changes', suffix: '/files'},
-		review_comments: {label: 'View Comments', suffix: '/files'},
-		checks_failed: {label: 'View Checks', suffix: '/checks'},
-		checks_running: {label: 'View Checks', suffix: '/checks'},
-		checks_passed: {label: 'View PR', suffix: ''},
-		approved: {label: 'View PR', suffix: ''},
-	};
-	const prLink = PR_LINKS[child.category] ?? null;
+	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
 
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-shadow hover:shadow-md">
@@ -116,15 +108,15 @@ export function KanbanCard({child}: KanbanCardProps) {
 			<div className="mt-2 flex items-center justify-between">
 				<span className="text-xs font-medium text-text-300">{child.project}</span>
 				<div className="flex items-center gap-1">
-					{child.prUrl && prLink && (
+					{showPrLink && (
 						<a
-							href={`${child.prUrl}${prLink.suffix}`}
+							href={child.prUrl}
 							target="_blank"
 							rel="noopener noreferrer"
 							className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
 						>
 							<GitHubIcon className="h-3.5 w-3.5" />
-							{prLink.label}
+							PR
 						</a>
 					)}
 					{action && (

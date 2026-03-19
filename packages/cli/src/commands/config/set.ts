@@ -1,6 +1,6 @@
 import {Args, Command} from '@oclif/core';
 
-import {setConfigValue} from '../../lib/config.js';
+import {setConfigValue} from '@wip/shared';
 
 export default class ConfigSet extends Command {
 	static override args = {

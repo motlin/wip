@@ -1,8 +1,7 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {getProjectsDir} from '../lib/config.js';
-import {discoverProjects, getChildCommits} from '../lib/git.js';
+import {discoverProjects, getChildCommits, getProjectsDir} from '@wip/shared';
 
 export default class Results extends Command {
 	static override args = {

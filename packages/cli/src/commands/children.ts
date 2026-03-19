@@ -1,8 +1,7 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {getProjectsDir} from '../lib/config.js';
-import {type ChildCommit, discoverProjects, getChildCommits} from '../lib/git.js';
+import {type ChildCommit, discoverProjects, getChildCommits, getProjectsDir} from '@wip/shared';
 
 interface ProjectChildren {
 	name: string;
@@ -51,7 +50,7 @@ export default class Children extends Command {
 
 			for (const c of proj.children) {
 				const statusIcon =
-					c.testStatus === 'passed' ? chalk.green('✓') : c.testStatus === 'failed' ? chalk.red('✗') : chalk.yellow('?');
+					c.testStatus === 'passed' ? chalk.green('\u2713') : c.testStatus === 'failed' ? chalk.red('\u2717') : chalk.yellow('?');
 
 				const branch = c.branch ? chalk.cyan(c.branch) : chalk.dim('no branch');
 				const skip = c.skippable ? chalk.dim(' [skip]') : '';

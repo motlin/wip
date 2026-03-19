@@ -2,9 +2,7 @@ import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 import {execa} from 'execa';
 
-import {getProjectsDir} from '../lib/config.js';
-import {discoverProjects, getChildCommits, isDirty} from '../lib/git.js';
-import {log} from '../services/logger.js';
+import {discoverProjects, getChildCommits, getProjectsDir, isDirty, log} from '@wip/shared';
 
 export default class Push extends Command {
 	static override args = {
@@ -57,7 +55,7 @@ export default class Push extends Command {
 				const branchName = child.branch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 				if (flags['dry-run']) {
-					this.log(`  would push ${child.shortSha} ${child.subject} → ${branchName}`);
+					this.log(`  would push ${child.shortSha} ${child.subject} \u2192 ${branchName}`);
 					continue;
 				}
 
@@ -76,14 +74,14 @@ export default class Push extends Command {
 				log.subprocess.debug({cmd: 'git', args: ['-C', p.dir, 'push', '-u', p.upstreamRemote, `${child.sha}:refs/heads/${branchName}`], duration: pushDuration}, `git -C ${p.dir} push -u ${p.upstreamRemote} ${child.sha}:refs/heads/${branchName} (${pushDuration}ms)`);
 
 				if (pushResult.exitCode === 0) {
-					this.log(chalk.green(`  ✓ pushed ${child.shortSha} → ${branchName}`));
+					this.log(chalk.green(`  \u2713 pushed ${child.shortSha} \u2192 ${branchName}`));
 					pushed++;
 
 					if (flags.pr) {
 						await this.createPR(p.dir, branchName, child, p.upstreamBranch);
 					}
 				} else {
-					this.log(chalk.red(`  ✗ failed to push ${child.shortSha}: ${pushResult.stderr}`));
+					this.log(chalk.red(`  \u2717 failed to push ${child.shortSha}: ${pushResult.stderr}`));
 				}
 			}
 		}

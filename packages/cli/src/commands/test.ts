@@ -4,9 +4,7 @@ import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import {getProjectsDir, getTestLogDir} from '../lib/config.js';
-import {discoverProjects, getChildren, isDirty} from '../lib/git.js';
-import {log} from '../services/logger.js';
+import {discoverProjects, getChildren, getProjectsDir, getTestLogDir, isDirty, log} from '@wip/shared';
 
 export default class Test extends Command {
 	static override args = {

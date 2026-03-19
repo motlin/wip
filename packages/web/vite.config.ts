@@ -10,6 +10,7 @@ export default defineConfig({
 	server: {
 		port: 3456,
 		host: true,
+		allowedHosts: true,
 		watch: {ignored: ['**/routeTree.gen.ts']},
 	},
 	optimizeDeps: {

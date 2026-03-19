@@ -1,9 +1,10 @@
 import {useRouter} from '@tanstack/react-router';
 import {ArrowRight, Play, Loader2, Moon, Clock} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, getTestJobStatus} from '../lib/server-fns';
-import type {ClassifiedChild, TestJobStatus} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
+import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
+import {useTestJob} from '../lib/test-events-context';
 
 interface KanbanCardProps {
 	child: ClassifiedChild;
@@ -21,9 +22,20 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const router = useRouter();
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [testJob, setTestJob] = useState<TestJobStatus | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const snoozeRef = useRef<HTMLDivElement>(null);
+	const testJob = useTestJob(child.sha, child.project);
+	const prevTestStatus = useRef(testJob?.status);
+
+	// Auto-refresh page when a test completes
+	useEffect(() => {
+		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
+			if (testJob?.status === 'passed' || testJob?.status === 'failed') {
+				router.invalidate();
+			}
+		}
+		prevTestStatus.current = testJob?.status;
+	}, [testJob?.status, router]);
 
 	useEffect(() => {
 		if (!snoozeOpen) return;
@@ -35,21 +47,6 @@ export function KanbanCard({child}: KanbanCardProps) {
 		document.addEventListener('mousedown', handleClick);
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [snoozeOpen]);
-
-	// Poll for test job status
-	useEffect(() => {
-		if (!testJob || testJob.status === 'passed' || testJob.status === 'failed') return;
-		const interval = setInterval(async () => {
-			const status = await getTestJobStatus({data: {sha: child.sha, project: child.project}});
-			if (!status) return;
-			setTestJob(status);
-			if (status.status === 'passed' || status.status === 'failed') {
-				clearInterval(interval);
-				router.invalidate();
-			}
-		}, 2000);
-		return () => clearInterval(interval);
-	}, [testJob, child.sha, child.project, router]);
 
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 
@@ -74,13 +71,12 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 	const handleTest = async () => {
 		setError(null);
-		const job = await testChild({data: {
+		await testChild({data: {
 			project: child.project,
 			projectDir: child.projectDir,
 			sha: child.sha,
 			shortSha: child.shortSha,
 		}});
-		setTestJob(job);
 	};
 
 	const handleSnooze = async (hours: number | null) => {
@@ -98,7 +94,6 @@ export function KanbanCard({child}: KanbanCardProps) {
 	};
 
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
-
 	const isTestActive = testJob && (testJob.status === 'queued' || testJob.status === 'running');
 
 	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);

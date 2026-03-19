@@ -13,6 +13,7 @@ import { Route as SnoozedRouteImport } from './routes/snoozed'
 import { Route as QueueRouteImport } from './routes/queue'
 import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiTestEventsRouteImport } from './routes/api/test-events'
 
 const SnoozedRoute = SnoozedRouteImport.update({
   id: '/snoozed',
@@ -34,18 +35,25 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTestEventsRoute = ApiTestEventsRouteImport.update({
+  id: '/api/test-events',
+  path: '/api/test-events',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
+  '/api/test-events': typeof ApiTestEventsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
+  '/api/test-events': typeof ApiTestEventsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,14 @@ export interface FileRoutesById {
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
+  '/api/test-events': typeof ApiTestEventsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/kanban' | '/queue' | '/snoozed'
+  fullPaths: '/' | '/kanban' | '/queue' | '/snoozed' | '/api/test-events'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/kanban' | '/queue' | '/snoozed'
-  id: '__root__' | '/' | '/kanban' | '/queue' | '/snoozed'
+  to: '/' | '/kanban' | '/queue' | '/snoozed' | '/api/test-events'
+  id: '__root__' | '/' | '/kanban' | '/queue' | '/snoozed' | '/api/test-events'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +76,7 @@ export interface RootRouteChildren {
   KanbanRoute: typeof KanbanRoute
   QueueRoute: typeof QueueRoute
   SnoozedRoute: typeof SnoozedRoute
+  ApiTestEventsRoute: typeof ApiTestEventsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/test-events': {
+      id: '/api/test-events'
+      path: '/api/test-events'
+      fullPath: '/api/test-events'
+      preLoaderRoute: typeof ApiTestEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +124,7 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanRoute: KanbanRoute,
   QueueRoute: QueueRoute,
   SnoozedRoute: SnoozedRoute,
+  ApiTestEventsRoute: ApiTestEventsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

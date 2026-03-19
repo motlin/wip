@@ -13,7 +13,7 @@ import {
 	SnoozeChildInputSchema,
 	UnsnoozeChildInputSchema,
 } from '@wip/shared';
-import {z} from 'zod';
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -158,18 +158,25 @@ export const testChild = createServerFn({method: 'POST'})
 		return {id: job.id, status: job.status, message: job.message};
 	});
 
-export const getTestJobStatus = createServerFn({method: 'GET'})
-	.inputValidator((input: unknown) => z.object({sha: z.string(), project: z.string()}).parse(input))
-	.handler(async ({data}): Promise<TestJobStatus | null> => {
-		const {findJob} = await import('./test-queue.js');
-		const job = findJob(data.sha, data.project);
-		if (!job) return null;
-		return {id: job.id, status: job.status, message: job.message};
-	});
 
-export const getActiveTests = createServerFn({method: 'GET'}).handler(async (): Promise<TestJobStatus[]> => {
-	const {getAllActiveJobs} = await import('./test-queue.js');
-	return getAllActiveJobs().map((j) => ({id: j.id, status: j.status, message: j.message}));
+export const testAllChildren = createServerFn({method: 'POST'}).handler(async (): Promise<TestJobStatus[]> => {
+	const {enqueueTest} = await import('./test-queue.js');
+	const projectsDir = getProjectsDir();
+	const projects = await discoverProjects(projectsDir);
+
+	const queued: TestJobStatus[] = [];
+	for (const p of projects) {
+		if (!p.hasTestConfigured || p.dirty) continue;
+		const prStatuses = await getPrStatuses(p.dir);
+		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
+		for (const child of children) {
+			if (child.skippable) continue;
+			if (child.testStatus !== 'unknown') continue;
+			const job = enqueueTest(p.name, p.dir, child.sha, child.shortSha);
+			queued.push({id: job.id, status: job.status, message: job.message});
+		}
+	}
+	return queued;
 });
 
 export const snoozeChildFn = createServerFn({method: 'POST'})

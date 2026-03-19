@@ -1,7 +1,10 @@
-import {createFileRoute, Link} from '@tanstack/react-router';
-import {getReport} from '../lib/server-fns';
+import {createFileRoute} from '@tanstack/react-router';
+import {Play, Loader2} from 'lucide-react';
+import {useState} from 'react';
+import {getReport, testAllChildren} from '../lib/server-fns';
 import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from '../components/kanban-card';
+import {useHasActiveTests} from '../lib/test-events-context';
 
 // Queue: furthest-along-first (reverse of kanban left-to-right)
 const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'ready_to_push', 'test_failed', 'ready_to_test', 'blocked', 'no_test', 'snoozed', 'skippable'];
@@ -48,6 +51,8 @@ export const Route = createFileRoute('/queue')({
 
 function Queue() {
 	const report = Route.useLoaderData();
+	const [testingAll, setTestingAll] = useState(false);
+	const hasActiveTests = useHasActiveTests();
 
 	const sorted: {category: Category; items: ClassifiedChild[]}[] = [];
 	for (const category of CATEGORY_PRIORITY) {
@@ -57,13 +62,38 @@ function Queue() {
 		}
 	}
 
+	const readyToTestCount = report.grouped.ready_to_test.length;
+
+	const handleTestAll = async () => {
+		setTestingAll(true);
+		await testAllChildren();
+		setTestingAll(false);
+	};
+
 	return (
 		<div className="mx-auto max-w-2xl p-6">
-			<div className="mb-6 flex items-baseline justify-between">
-				<h1 className="text-xl font-semibold">Queue</h1>
-				<span className="text-sm text-text-500">
-					{report.children} items across {report.projects} projects
-				</span>
+			<div className="mb-6 flex items-center justify-between">
+				<div>
+					<h1 className="text-xl font-semibold">Queue</h1>
+					<span className="text-sm text-text-500">
+						{report.children} items across {report.projects} projects
+					</span>
+				</div>
+				{readyToTestCount > 0 && (
+					<button
+						type="button"
+						onClick={handleTestAll}
+						disabled={testingAll || hasActiveTests}
+						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+							testingAll || hasActiveTests
+								? 'bg-yellow-600/80 text-white'
+								: 'bg-yellow-600 hover:bg-yellow-700 text-white'
+						}`}
+					>
+						{testingAll || hasActiveTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+						{hasActiveTests ? 'Tests Running...' : `Test All (${readyToTestCount})`}
+					</button>
+				)}
 			</div>
 			<div className="flex flex-col gap-6">
 				{sorted.map(({category, items}) => (

@@ -103,6 +103,7 @@ export const PushChildInputSchema = z.object({
 	shortSha: z.string(),
 	subject: z.string(),
 	branch: z.string().optional(),
+	suggestedBranch: z.string().optional(),
 });
 export type PushChildInput = z.infer<typeof PushChildInputSchema>;
 

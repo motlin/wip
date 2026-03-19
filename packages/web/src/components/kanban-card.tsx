@@ -59,7 +59,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 			sha: child.sha,
 			shortSha: child.shortSha,
 			subject: child.subject,
-			branch: effectiveBranch,
+			branch: child.branch,
+			suggestedBranch: child.suggestedBranch,
 		}});
 		setLoading(false);
 		if (result.ok) {

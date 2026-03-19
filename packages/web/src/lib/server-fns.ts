@@ -137,8 +137,8 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		const {projectDir, upstreamRemote, sha, shortSha, subject, branch} = data;
-		const branchName = branch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+		const {projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
+		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 		if (!branch) {
 			const branchResult = await execa('git', ['-C', projectDir, 'branch', branchName, sha], {reject: false});
@@ -147,7 +147,7 @@ export const pushChild = createServerFn({method: 'POST'})
 			}
 		}
 
-		const pushResult = await execa('git', ['-C', projectDir, 'push', '-u', upstreamRemote, `${sha}:refs/heads/${branchName}`], {reject: false});
+		const pushResult = await execa('git', ['-C', projectDir, 'push', '-u', upstreamRemote, `${branchName}:refs/heads/${branchName}`], {reject: false});
 
 		if (pushResult.exitCode === 0) {
 			return {ok: true, message: `Pushed ${shortSha} to ${branchName}`};

@@ -252,9 +252,9 @@ async function buildReport(): Promise<ReportData> {
 		}
 	}
 
-	// Suggest branch names for branchless children (one claude -p call each, cached in DB)
-	const branchless: Array<{sha: string; project: string; subject: string; dir: string}> = [];
+	// Apply cached branch names synchronously; trigger background generation for uncached
 	const allItems = Object.values(grouped).flat();
+	const branchless: Array<{sha: string; project: string; subject: string; dir: string}> = [];
 	for (const item of allItems) {
 		if (!item.branch && !item.issueUrl) {
 			branchless.push({sha: item.sha, project: item.project, subject: item.subject, dir: item.projectDir});
@@ -262,11 +262,19 @@ async function buildReport(): Promise<ReportData> {
 	}
 
 	if (branchless.length > 0) {
-		const suggestions = await suggestBranchNames(branchless);
+		// Apply only cached names (instant, no network calls)
+		const {getBranchNames} = await import('@wip/shared');
+		const cached = getBranchNames(branchless);
 		for (const item of allItems) {
-			if (!item.branch) {
-				item.suggestedBranch = suggestions.get(`${item.project}:${item.sha}`);
+			if (!item.branch && !item.issueUrl) {
+				item.suggestedBranch = cached.get(`${item.project}:${item.sha}`);
 			}
+		}
+
+		// Fire-and-forget: generate uncached names in background for next refresh
+		const uncachedCount = branchless.filter((r) => !cached.has(`${r.project}:${r.sha}`)).length;
+		if (uncachedCount > 0) {
+			suggestBranchNames(branchless).catch(() => {});
 		}
 	}
 

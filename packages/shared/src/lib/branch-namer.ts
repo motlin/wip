@@ -10,7 +10,7 @@ interface NamingRequest {
 	dir: string;
 }
 
-async function nameBranch(req: NamingRequest): Promise<string> {
+async function nameBranch(req: NamingRequest): Promise<string | null> {
 	const prompt = `You are naming a git branch for a single commit.
 
 Run: git -C ${req.dir} show --stat ${req.sha}
@@ -18,12 +18,12 @@ Run: git -C ${req.dir} show --stat ${req.sha}
 Then output a single descriptive kebab-case branch name (3-6 words) that captures WHAT changed specifically. Be concrete — "deprecate-commons-lang2-dependency" not "deprecate". No prefixes, no explanation, just the branch name.`;
 
 	const start = performance.now();
-	const result = await execa('claude', ['-p', prompt], {reject: false, timeout: 60_000});
+	const result = await execa('claude', ['-p', prompt], {reject: false, timeout: 60_000, input: ''});
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'claude', args: ['-p', '...'], duration}, `claude -p branch naming for ${req.sha.slice(0, 7)} (${duration}ms)`);
 
 	if (result.exitCode !== 0 || !result.stdout.trim()) {
-		throw new Error(`claude -p failed for ${req.sha.slice(0, 7)}: ${result.stderr || 'no output'}`);
+		return null;
 	}
 
 	// Take the last non-empty line (Claude may prefix with thinking)
@@ -49,12 +49,19 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
 		}
 	}
 
-	// One claude -p call per child, no batching
-	for (const req of uncached) {
-		const key = `${req.project}:${req.sha}`;
-		const name = await nameBranch(req);
-		result.set(key, name);
-		setBranchName(req.sha, req.project, name);
+	// Run claude -p calls in parallel (max 3 concurrent to avoid overload)
+	const CONCURRENCY = 3;
+	for (let i = 0; i < uncached.length; i += CONCURRENCY) {
+		const batch = uncached.slice(i, i + CONCURRENCY);
+		const names = await Promise.all(batch.map((req) => nameBranch(req)));
+		for (let j = 0; j < batch.length; j++) {
+			const name = names[j];
+			if (name) {
+				const key = `${batch[j].project}:${batch[j].sha}`;
+				result.set(key, name);
+				setBranchName(batch[j].sha, batch[j].project, name);
+			}
+		}
 	}
 
 	return result;

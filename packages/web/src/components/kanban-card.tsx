@@ -181,7 +181,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 			>
 				{/* Front face */}
 				<div
-					className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm [backface-visibility:hidden] cursor-pointer hover:shadow-md transition-shadow"
+					className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm [backface-visibility:hidden] cursor-pointer hover:shadow-md transition-shadow min-h-[180px]"
 					onClick={() => setFlipped(true)}
 				>
 					<div className="flex items-start justify-between gap-2">
@@ -280,7 +280,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 				{/* Back face — click blank area to flip back */}
 				<div
-					className="absolute inset-x-0 top-0 min-h-full rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)] cursor-pointer"
+					className="absolute inset-0 rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)] cursor-pointer overflow-y-auto"
 					onClick={() => setFlipped(false)}
 				>
 					<div className="flex h-full flex-col">

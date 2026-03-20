@@ -1,5 +1,5 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -166,6 +166,12 @@ export function KanbanCard({child}: KanbanCardProps) {
 						<pre className="mt-2 overflow-x-auto rounded bg-red-50 p-1.5 font-mono text-[10px] leading-tight text-red-700 dark:bg-red-950/30 dark:text-red-300">
 							{child.failureTail}
 						</pre>
+					)}
+					{child.category === 'blocked' && child.blockReason && (
+						<div className="mt-2 flex items-start gap-1.5 rounded bg-amber-50 p-1.5 dark:bg-amber-950/30">
+							<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+							<p className="text-[11px] leading-snug text-amber-700 dark:text-amber-300">{child.blockReason}</p>
+						</div>
 					)}
 				</div>
 

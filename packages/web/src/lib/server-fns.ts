@@ -22,30 +22,35 @@ const CACHE_TTL_MS = 30_000;
 
 export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
 
-function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
-	if (child.skippable) return 'skippable';
+interface Classification {
+	category: Category;
+	blockReason?: string;
+}
+
+function classifyChild(child: ChildCommit, project: ProjectInfo): Classification {
+	if (child.skippable) return {category: 'skippable'};
 
 	// Has a PR on GitHub — classify by check/review status
 	if (child.branch && child.reviewStatus !== 'no_pr') {
-		if (child.reviewStatus === 'approved') return 'approved';
-		if (child.reviewStatus === 'changes_requested') return 'changes_requested';
-		if (child.reviewStatus === 'commented') return 'review_comments';
+		if (child.reviewStatus === 'approved') return {category: 'approved'};
+		if (child.reviewStatus === 'changes_requested') return {category: 'changes_requested'};
+		if (child.reviewStatus === 'commented') return {category: 'review_comments'};
 		// No review yet — classify by CI check status
-		if (child.checkStatus === 'running') return 'checks_running';
-		if (child.checkStatus === 'failed') return 'checks_failed';
-		if (child.checkStatus === 'passed') return 'checks_passed';
-		return 'checks_running'; // pending/none treated as running
+		if (child.checkStatus === 'running') return {category: 'checks_running'};
+		if (child.checkStatus === 'failed') return {category: 'checks_failed'};
+		if (child.checkStatus === 'passed') return {category: 'checks_passed'};
+		return {category: 'checks_running'}; // pending/none treated as running
 	}
 
 	// Branch pushed to remote but no PR yet
-	if (child.branch && child.pushedToRemote && child.reviewStatus === 'no_pr') return 'pushed_no_pr';
+	if (child.branch && child.pushedToRemote && child.reviewStatus === 'no_pr') return {category: 'pushed_no_pr'};
 
 	// No PR — classify by local test status
-	if (child.testStatus === 'passed') return 'ready_to_push';
-	if (child.testStatus === 'failed') return 'test_failed';
-	if (project.dirty) return 'blocked';
-	if (!project.hasTestConfigured) return 'no_test';
-	return 'ready_to_test';
+	if (child.testStatus === 'passed') return {category: 'ready_to_push'};
+	if (child.testStatus === 'failed') return {category: 'test_failed'};
+	if (project.dirty) return {category: 'blocked', blockReason: `Working tree is dirty — commit or stash changes in ${project.name} before testing`};
+	if (!project.hasTestConfigured) return {category: 'no_test'};
+	return {category: 'ready_to_test'};
 }
 
 export const getReport = createServerFn({method: 'GET'}).handler(async (): Promise<ReportData> => {
@@ -94,7 +99,8 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		for (const child of children) {
 			const isSnoozed = snoozedSet.has(`${p.name}:${child.sha}`);
 			if (isSnoozed) snoozedCount++;
-			const category = isSnoozed ? 'snoozed' as Category : classifyChild(child, p);
+			const classification = isSnoozed ? {category: 'snoozed' as Category} : classifyChild(child, p);
+			const {category, blockReason} = classification;
 			let failureTail: string | undefined;
 			if (category === 'test_failed') {
 				const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
@@ -117,6 +123,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 				branch: child.branch,
 				prUrl: child.prUrl,
 				failureTail,
+				blockReason,
 				category,
 			});
 		}

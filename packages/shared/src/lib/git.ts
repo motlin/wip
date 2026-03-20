@@ -219,13 +219,14 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 	const RS = '\x1e';
 
 	const start = performance.now();
-	const format = '%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x1e';
-	const [logResult, remoteBranchOutput] = await Promise.all([
+	const format = '%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x00%ae%x1e';
+	const [logResult, remoteBranchOutput, userEmail] = await Promise.all([
 		execa('git', ['-C', dir, 'log', '--stdin', '--no-walk', '--decorate-refs=refs/heads/', `--format=${format}`], {
 			input: shas.join('\n'),
 			reject: false,
 		}),
 		git(dir, 'branch', '-r'),
+		git(dir, 'config', 'user.email'),
 	]);
 	const logDuration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'git', args: ['-C', dir, 'log', '--stdin', '--no-walk', '--format=...'], duration: logDuration}, `git -C ${dir} log --stdin --no-walk --format=... (${logDuration}ms)`);
@@ -253,9 +254,12 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 	for (const record of records) {
 		const trimmedRecord = record.replace(/^\n+/, '');
 		const fields = trimmedRecord.split('\0');
-		if (fields.length < 6) continue;
+		if (fields.length < 7) continue;
 
-		const [sha, shortSha, subject, fullMessage, rawDate, decoration] = fields;
+		const [sha, shortSha, subject, fullMessage, rawDate, decoration, authorEmail] = fields;
+
+		// Filter out commits from other authors (e.g. dependabot, renovate)
+		if (userEmail && authorEmail.trim() !== userEmail) continue;
 		const date = rawDate.trim().split(' ')[0];
 		const skippable = isSkippable(fullMessage);
 		const branch = parseBranch(decoration);

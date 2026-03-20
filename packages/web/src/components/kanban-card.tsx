@@ -1,5 +1,5 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -47,6 +47,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const snoozeRef = useRef<HTMLDivElement>(null);
+	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
+	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
 	const testJob = useTestJob(child.sha, child.project);
 	const prevTestStatus = useRef(testJob?.status);
 
@@ -62,7 +64,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 	useEffect(() => {
 		if (!snoozeOpen) return;
 		function handleClick(e: MouseEvent) {
-			if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) {
+			if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node) &&
+				snoozeButtonRef.current && !snoozeButtonRef.current.contains(e.target as Node)) {
 				setSnoozeOpen(false);
 			}
 		}
@@ -70,6 +73,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [snoozeOpen]);
 
+	const isIssue = Boolean(child.issueUrl);
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
 
@@ -134,29 +138,62 @@ export function KanbanCard({child}: KanbanCardProps) {
 					onClick={() => setFlipped(true)}
 				>
 					<div className="flex items-start justify-between gap-2">
-						<a
-							href={`https://github.com/${child.remote}/commit/${child.sha}`}
-							target="_blank"
-							rel="noopener noreferrer"
-							title={`${child.sha}\n${child.subject}`}
-							className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 hover:bg-bg-300 hover:text-text-100 transition-colors"
-							onClick={(e) => e.stopPropagation()}
-						>
-							<Diff className="h-3 w-3" />
-							{child.shortSha}
-						</a>
-						<span
-							className="text-xs text-text-500"
-							title={`Commit date: ${child.date} (${relativeTime(child.date)})`}
-						>
-							{child.date}
-						</span>
+						{isIssue ? (
+							<a
+								href={child.issueUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								title={`${child.remote}#${child.issueNumber}`}
+								className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-100 px-1.5 py-0.5 font-mono text-xs text-purple-700 hover:bg-purple-200 hover:text-purple-900 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/50 dark:hover:text-purple-100 transition-colors"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<CircleDot className="h-3 w-3" />
+								{child.shortSha}
+							</a>
+						) : (
+							<a
+								href={`https://github.com/${child.remote}/commit/${child.sha}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								title={`${child.sha}\n${child.subject}`}
+								className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 hover:bg-bg-300 hover:text-text-100 transition-colors"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<Diff className="h-3 w-3" />
+								{child.shortSha}
+							</a>
+						)}
+						{child.date && (
+							<span
+								className="text-xs text-text-500"
+								title={`Commit date: ${child.date} (${relativeTime(child.date)})`}
+							>
+								{child.date}
+							</span>
+						)}
 					</div>
 					<p className="mt-1.5 text-sm leading-snug text-text-100">{child.subject}</p>
+					{child.issueLabels && child.issueLabels.length > 0 && (
+						<div className="mt-1.5 flex flex-wrap gap-1">
+							{child.issueLabels.map((label) => (
+								<span
+									key={label.name}
+									className="rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-tight"
+									style={{
+										backgroundColor: `#${label.color}20`,
+										color: `#${label.color}`,
+										border: `1px solid #${label.color}40`,
+									}}
+								>
+									{label.name}
+								</span>
+							))}
+						</div>
+					)}
 					<div className="mt-2 flex items-center justify-between">
 						<span
 							className="text-xs font-medium text-text-300"
-							title={child.projectDir}
+							title={child.projectDir || child.remote}
 						>
 							{child.project}
 						</span>
@@ -187,16 +224,31 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 						{/* Stop click-to-flip from firing when clicking action buttons/links */}
 						<div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
-							{/* Diff link — new tab */}
-							<a
-								href={`/diff/${child.project}/${child.sha}`}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
-							>
-								<Diff className="h-3.5 w-3.5" />
-								View Diff
-							</a>
+							{/* Issue link — for GitHub Issue cards */}
+							{isIssue && child.issueUrl && (
+								<a
+									href={child.issueUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex items-center gap-1.5 rounded bg-purple-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-purple-700"
+								>
+									<CircleDot className="h-3.5 w-3.5" />
+									Open Issue
+								</a>
+							)}
+
+							{/* Diff link — new tab (commits only) */}
+							{!isIssue && (
+								<a
+									href={`/diff/${child.project}/${child.sha}`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
+								>
+									<Diff className="h-3.5 w-3.5" />
+									View Diff
+								</a>
+							)}
 
 							{/* PR link — new tab */}
 							{showPrLink && (
@@ -264,32 +316,45 @@ export function KanbanCard({child}: KanbanCardProps) {
 								</a>
 							)}
 
-							{/* Snooze */}
-							<div className="relative" ref={snoozeRef}>
-								<button
-									type="button"
-									onClick={() => setSnoozeOpen(!snoozeOpen)}
-									disabled={loading}
-									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
-								>
-									<Moon className="h-3.5 w-3.5" />
-									Snooze
-								</button>
-								{snoozeOpen && (
-									<div className="absolute left-0 top-full z-10 mt-1 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg">
-										{SNOOZE_PRESETS.map((preset) => (
-											<button
-												key={preset.label}
-												type="button"
-												onClick={() => handleSnooze(preset.hours)}
-												className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
-											>
-												{preset.label}
-											</button>
-										))}
-									</div>
-								)}
-							</div>
+							{/* Snooze (not for issues) */}
+							{!isIssue && (
+								<div className="relative">
+									<button
+										ref={snoozeButtonRef}
+										type="button"
+										onClick={() => {
+											if (!snoozeOpen && snoozeButtonRef.current) {
+												const rect = snoozeButtonRef.current.getBoundingClientRect();
+												setSnoozePos({top: rect.bottom + 4, left: rect.left});
+											}
+											setSnoozeOpen(!snoozeOpen);
+										}}
+										disabled={loading}
+										className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+									>
+										<Moon className="h-3.5 w-3.5" />
+										Snooze
+									</button>
+									{snoozeOpen && snoozePos && (
+										<div
+											ref={snoozeRef}
+											className="fixed z-50 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg"
+											style={{top: snoozePos.top, left: snoozePos.left}}
+										>
+											{SNOOZE_PRESETS.map((preset) => (
+												<button
+													key={preset.label}
+													type="button"
+													onClick={() => handleSnooze(preset.hours)}
+													className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
+												>
+													{preset.label}
+												</button>
+											))}
+										</div>
+									)}
+								</div>
+							)}
 						</div>
 
 						{pushResult && (

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TestsRouteImport } from './routes/tests'
 import { Route as SnoozedRouteImport } from './routes/snoozed'
 import { Route as QueueRouteImport } from './routes/queue'
 import { Route as KanbanRouteImport } from './routes/kanban'
@@ -17,6 +18,11 @@ import { Route as ApiTestEventsRouteImport } from './routes/api/test-events'
 import { Route as LogProjectShaRouteImport } from './routes/log.$project.$sha'
 import { Route as DiffProjectShaRouteImport } from './routes/diff.$project.$sha'
 
+const TestsRoute = TestsRouteImport.update({
+  id: '/tests',
+  path: '/tests',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SnoozedRoute = SnoozedRouteImport.update({
   id: '/snoozed',
   path: '/snoozed',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
+  '/tests': typeof TestsRoute
   '/api/test-events': typeof ApiTestEventsRoute
   '/diff/$project/$sha': typeof DiffProjectShaRoute
   '/log/$project/$sha': typeof LogProjectShaRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
+  '/tests': typeof TestsRoute
   '/api/test-events': typeof ApiTestEventsRoute
   '/diff/$project/$sha': typeof DiffProjectShaRoute
   '/log/$project/$sha': typeof LogProjectShaRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/kanban': typeof KanbanRoute
   '/queue': typeof QueueRoute
   '/snoozed': typeof SnoozedRoute
+  '/tests': typeof TestsRoute
   '/api/test-events': typeof ApiTestEventsRoute
   '/diff/$project/$sha': typeof DiffProjectShaRoute
   '/log/$project/$sha': typeof LogProjectShaRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/queue'
     | '/snoozed'
+    | '/tests'
     | '/api/test-events'
     | '/diff/$project/$sha'
     | '/log/$project/$sha'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/queue'
     | '/snoozed'
+    | '/tests'
     | '/api/test-events'
     | '/diff/$project/$sha'
     | '/log/$project/$sha'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/queue'
     | '/snoozed'
+    | '/tests'
     | '/api/test-events'
     | '/diff/$project/$sha'
     | '/log/$project/$sha'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   KanbanRoute: typeof KanbanRoute
   QueueRoute: typeof QueueRoute
   SnoozedRoute: typeof SnoozedRoute
+  TestsRoute: typeof TestsRoute
   ApiTestEventsRoute: typeof ApiTestEventsRoute
   DiffProjectShaRoute: typeof DiffProjectShaRoute
   LogProjectShaRoute: typeof LogProjectShaRoute
@@ -123,6 +136,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tests': {
+      id: '/tests'
+      path: '/tests'
+      fullPath: '/tests'
+      preLoaderRoute: typeof TestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/snoozed': {
       id: '/snoozed'
       path: '/snoozed'
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanRoute: KanbanRoute,
   QueueRoute: QueueRoute,
   SnoozedRoute: SnoozedRoute,
+  TestsRoute: TestsRoute,
   ApiTestEventsRoute: ApiTestEventsRoute,
   DiffProjectShaRoute: DiffProjectShaRoute,
   LogProjectShaRoute: LogProjectShaRoute,
@@ -187,12 +208,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

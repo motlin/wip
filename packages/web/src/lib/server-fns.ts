@@ -316,3 +316,31 @@ export const getSnoozedList = createServerFn({method: 'GET'}).handler(async (): 
 	clearExpiredSnoozes();
 	return getAllSnoozed() as SnoozedChild[];
 });
+
+export interface TestQueueJob {
+	id: string;
+	project: string;
+	sha: string;
+	shortSha: string;
+	status: 'queued' | 'running' | 'passed' | 'failed';
+	message?: string;
+	queuedAt: number;
+	startedAt?: number;
+	finishedAt?: number;
+}
+
+export const getTestQueue = createServerFn({method: 'GET'}).handler(async (): Promise<TestQueueJob[]> => {
+	const {getAllJobs} = await import('./test-queue.js');
+	const jobs = getAllJobs();
+	return Array.from(jobs.values()).map((j) => ({
+		id: j.id,
+		project: j.project,
+		sha: j.sha,
+		shortSha: j.shortSha,
+		status: j.status,
+		message: j.message,
+		queuedAt: j.queuedAt,
+		startedAt: j.startedAt,
+		finishedAt: j.finishedAt,
+	}));
+});

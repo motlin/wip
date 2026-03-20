@@ -59,6 +59,12 @@ export default class Test extends Command {
 		'projects-dir': Flags.string({description: 'Override projects directory'}),
 	};
 
+	private clearLine(): void {
+		if (process.stdout.isTTY) {
+			process.stdout.write('\x1b[2K\r');
+		}
+	}
+
 	async run(): Promise<TestJson> {
 		const {args, flags} = await this.parse(Test);
 
@@ -115,6 +121,9 @@ export default class Test extends Command {
 				// Ensure branch exists
 				const branchName = await createBranchForChild(p.dir, child);
 
+				// Show what's currently running
+				process.stdout.write(chalk.dim(`  ${child.shortSha} ${branchName} `));
+
 				// Run git test on branch range
 				const branchStart = performance.now();
 				const result = await testBranch(p.dir, branchName, p.upstreamRef, miseEnv, {force: flags.force});
@@ -124,11 +133,13 @@ export default class Test extends Command {
 				fs.writeFileSync(logPath, result.logContent + '\n');
 
 				if (result.exitCode === 0) {
+					this.clearLine();
 					this.log(chalk.green(`  ${child.shortSha} ${branchName} passed`));
 					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'passed', exitCode: 0, logPath});
 					recordTestResult(child.sha, p.name, 'passed', 0, branchDuration);
 				} else if (await hasLocalModifications(p.dir)) {
 					// Test failed with dirty worktree — attempt auto-fix
+					this.clearLine();
 					this.log(chalk.yellow(`  ${child.shortSha} ${branchName} failed with modifications, attempting fix...`));
 					const fixResult = await testFix(p.dir, branchName, p.upstreamRef, miseEnv, {force: flags.force});
 
@@ -144,6 +155,7 @@ export default class Test extends Command {
 					}
 				} else {
 					// Test failed with clean worktree — real failure
+					this.clearLine();
 					this.log(chalk.red(`  ${child.shortSha} ${branchName} failed (exit ${result.exitCode})`));
 					this.log(chalk.dim(`  Log: ${logPath}`));
 					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'failed', exitCode: result.exitCode, logPath});
@@ -226,6 +238,9 @@ export default class Test extends Command {
 				if (flags.force) testArgs.push('--force');
 				testArgs.push(sha);
 
+				const shortSha = sha.slice(0, 7);
+				process.stdout.write(chalk.dim(`  ${shortSha} `));
+
 				const testStart = performance.now();
 				const result = await execa('git', ['-C', p.dir, ...testArgs], {
 					reject: false,
@@ -238,12 +253,13 @@ export default class Test extends Command {
 				const logPath = path.join(logDir, `${sha}.log`);
 				fs.writeFileSync(logPath, logContent + '\n');
 
-				const shortSha = sha.slice(0, 7);
 				if (result.exitCode === 0) {
+					this.clearLine();
 					this.log(chalk.green(`  ${shortSha} passed`));
 					testResults.push({project: p.name, sha, shortSha, status: 'passed', exitCode: 0, logPath});
 					recordTestResult(sha, p.name, 'passed', 0, testDuration);
 				} else {
+					this.clearLine();
 					this.log(chalk.red(`  ${shortSha} failed (exit ${result.exitCode})`));
 					this.log(chalk.dim(`  Log: ${logPath}`));
 					testResults.push({project: p.name, sha, shortSha, status: 'failed', exitCode: result.exitCode ?? 1, logPath});

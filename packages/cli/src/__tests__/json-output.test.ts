@@ -342,6 +342,30 @@ describe('JSON output mode', () => {
 		});
 	});
 
+	describe('serve --json', () => {
+		it('outputs only valid JSON to stdout with --dry-run', async () => {
+			const {default: Serve} = await import('../commands/serve.js');
+			await Serve.run(['--json', '--dry-run']);
+
+			const output = capture.getOutput();
+			const parsed = assertValidJsonOutput(output);
+
+			expect(parsed).toHaveProperty('port');
+			expect(parsed).toHaveProperty('webDir');
+			expect(parsed).toHaveProperty('dryRun', true);
+		});
+
+		it('includes no human-readable output when --json is passed', async () => {
+			const {default: Serve} = await import('../commands/serve.js');
+			await Serve.run(['--json', '--dry-run']);
+
+			const output = capture.getOutput();
+			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
+			expect(stripped).not.toContain('Would start');
+			expect(stripped).not.toContain('web directory');
+		});
+	});
+
 	describe('config get --json', () => {
 		it('outputs only valid JSON to stdout when listing all config', async () => {
 			const {default: ConfigGet} = await import('../commands/config/get.js');

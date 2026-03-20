@@ -20,6 +20,10 @@ import * as path from 'node:path';
 let reportCache: {data: ReportData; expiresAt: number} | null = null;
 const CACHE_TTL_MS = 30_000;
 
+export function invalidateReportCache(): void {
+	reportCache = null;
+}
+
 export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
 
 interface Classification {
@@ -39,7 +43,8 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Classification
 		if (child.checkStatus === 'running') return {category: 'checks_running'};
 		if (child.checkStatus === 'failed') return {category: 'checks_failed'};
 		if (child.checkStatus === 'passed') return {category: 'checks_passed'};
-		return {category: 'checks_running'}; // pending/none treated as running
+		if (child.checkStatus === 'unknown' || child.checkStatus === 'none') return {category: 'checks_unknown'};
+		return {category: 'checks_running'}; // pending treated as running
 	}
 
 	// Branch pushed to remote but no PR yet
@@ -73,6 +78,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		test_failed: [],
 		ready_to_push: [],
 		pushed_no_pr: [],
+		checks_unknown: [],
 		checks_running: [],
 		checks_failed: [],
 		checks_passed: [],
@@ -205,18 +211,29 @@ export const testChild = createServerFn({method: 'POST'})
 
 
 export const testAllChildren = createServerFn({method: 'POST'}).handler(async (): Promise<TestJobStatus[]> => {
+	reportCache = null;
 	const {enqueueTest} = await import('./test-queue.js');
 	const projectsDir = getProjectsDir();
 	const projects = await discoverProjects(projectsDir);
 
-	const queued: TestJobStatus[] = [];
-	for (const p of projects) {
-		if (!p.hasTestConfigured || p.dirty) continue;
+	clearExpiredSnoozes();
+	const snoozedSet = getSnoozedSet();
+
+	// Gather children per project in parallel (matches getReport pattern)
+	const testableProjects = projects.filter((p) => p.hasTestConfigured && !p.dirty);
+	const projectResults = await Promise.all(testableProjects.map(async (p) => {
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
+		return {project: p, children};
+	}));
+
+	const queued: TestJobStatus[] = [];
+	for (const {project: p, children} of projectResults) {
 		for (const child of children) {
-			if (child.skippable) continue;
-			if (child.testStatus !== 'unknown') continue;
+			const isSnoozed = snoozedSet.has(`${p.name}:${child.sha}`);
+			if (isSnoozed) continue;
+			const {category} = classifyChild(child, p);
+			if (category !== 'ready_to_test') continue;
 			const job = enqueueTest(p.name, p.dir, child.sha, child.shortSha);
 			queued.push({id: job.id, status: job.status, message: job.message});
 		}

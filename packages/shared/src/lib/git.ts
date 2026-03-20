@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
-import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getTestResultsForProject} from './db.js';
+import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject} from './db.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
@@ -156,7 +156,22 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'gh', args: ['pr', 'list', '--json', '...', '--state', 'open'], duration}, `gh pr list (${duration}ms)`);
 
-	if (result.exitCode !== 0 || !result.stdout) return {review, checks, urls};
+	if (result.exitCode !== 0 || !result.stdout) {
+		// API call failed (rate limit, network error, etc.) — fall back to stale cache
+		if (projectName) {
+			const stale = getStalePrStatuses(projectName);
+			if (stale) {
+				for (const s of stale) {
+					review.set(s.branch, s.reviewStatus);
+					// Mark check status as unknown since we can't verify current state
+					checks.set(s.branch, 'unknown');
+					if (s.prUrl) urls.set(s.branch, s.prUrl);
+				}
+				return {review, checks, urls};
+			}
+		}
+		return {review, checks, urls};
+	}
 
 	const prs = JSON.parse(result.stdout) as PrInfo[];
 	const toCache: CachedPrStatus[] = [];

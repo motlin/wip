@@ -3,7 +3,7 @@ import {z} from 'zod';
 export const ReviewStatusSchema = z.enum(['clean', 'approved', 'changes_requested', 'commented', 'no_pr']);
 export type ReviewStatus = z.infer<typeof ReviewStatusSchema>;
 
-export const CheckStatusSchema = z.enum(['pending', 'running', 'passed', 'failed', 'none']);
+export const CheckStatusSchema = z.enum(['pending', 'running', 'passed', 'failed', 'none', 'unknown']);
 export type CheckStatus = z.infer<typeof CheckStatusSchema>;
 
 export const TestStatusSchema = z.enum(['passed', 'failed', 'unknown']);
@@ -19,6 +19,7 @@ export const CategorySchema = z.enum([
 	'test_failed',
 	'ready_to_push',
 	'pushed_no_pr',
+	'checks_unknown',
 	'checks_running',
 	'checks_failed',
 	'checks_passed',

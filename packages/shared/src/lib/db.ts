@@ -275,6 +275,22 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
 	}));
 }
 
+export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
+	const d = getDb();
+	const rows = d.select()
+		.from(prStatusCache)
+		.where(eq(prStatusCache.project, project))
+		.all();
+
+	if (rows.length === 0) return null;
+	return rows.map((r) => ({
+		branch: r.branch,
+		reviewStatus: r.reviewStatus as ReviewStatus,
+		checkStatus: r.checkStatus as CheckStatus,
+		prUrl: r.prUrl,
+	}));
+}
+
 export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void {
 	const d = getDb();
 	const timestamp = now();

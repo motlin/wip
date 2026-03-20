@@ -3,6 +3,7 @@ import {getMiseEnv, getTestLogDir, log, recordTestResult} from '@wip/shared';
 import {EventEmitter} from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {invalidateReportCache} from './server-fns.js';
 
 export type JobStatus = 'queued' | 'running' | 'passed' | 'failed';
 
@@ -89,6 +90,7 @@ async function runTest(job: TestJob): Promise<void> {
 	job.message = status === 'passed' ? `${job.shortSha} passed` : `${job.shortSha} failed (exit ${result.exitCode})`;
 
 	recordTestResult(job.sha, job.project, status, result.exitCode ?? 1, duration);
+	invalidateReportCache();
 	emit(job);
 }
 

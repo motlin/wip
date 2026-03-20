@@ -23,6 +23,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const [flipped, setFlipped] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const testJob = useTestJob(child.sha, child.project);
@@ -68,7 +69,10 @@ export function KanbanCard({child}: KanbanCardProps) {
 		}});
 		setLoading(false);
 		if (result.ok) {
-			router.invalidate();
+			setPushResult({message: result.message, compareUrl: result.compareUrl});
+			if (result.compareUrl) {
+				window.open(result.compareUrl, '_blank');
+			}
 		} else {
 			setError(result.message);
 		}
@@ -235,6 +239,22 @@ export function KanbanCard({child}: KanbanCardProps) {
 							</div>
 						</div>
 
+						{pushResult && (
+							<div className="mt-auto pt-2">
+								<p className="text-xs text-green-600 dark:text-green-400">{pushResult.message}</p>
+								{pushResult.compareUrl && (
+									<a
+										href={pushResult.compareUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+									>
+										<GitHubIcon className="h-3 w-3" />
+										Create PR
+									</a>
+								)}
+							</div>
+						)}
 						{testJob?.status === 'failed' && (
 							<p className="mt-auto pt-2 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>
 						)}

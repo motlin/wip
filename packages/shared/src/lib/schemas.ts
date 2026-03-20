@@ -81,6 +81,7 @@ export type ReportData = z.infer<typeof ReportDataSchema>;
 export const ActionResultSchema = z.object({
 	ok: z.boolean(),
 	message: z.string(),
+	compareUrl: z.string().optional(),
 });
 export type ActionResult = z.infer<typeof ActionResultSchema>;
 

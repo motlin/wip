@@ -166,7 +166,11 @@ export const pushChild = createServerFn({method: 'POST'})
 
 		if (pushResult.exitCode === 0) {
 			invalidatePrCache(project);
-			return {ok: true, message: `Pushed ${shortSha} to ${branchName}`};
+			// Get the GitHub remote URL to build a "Create PR" link
+			const remoteResult = await execa('git', ['-C', projectDir, 'remote', 'get-url', upstreamRemote], {reject: false});
+			const ghRemote = remoteResult.stdout?.replace(/.*github\.com[:/]/, '').replace(/\.git$/, '');
+			const compareUrl = ghRemote ? `https://github.com/${ghRemote}/compare/${branchName}?expand=1` : undefined;
+			return {ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl};
 		}
 
 		return {ok: false, message: `Failed to push: ${pushResult.stderr}`};

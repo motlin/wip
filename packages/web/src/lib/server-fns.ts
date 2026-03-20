@@ -12,6 +12,7 @@ import {
 	SnoozeChildInputSchema,
 	UnsnoozeChildInputSchema,
 	CancelTestInputSchema,
+	CreatePrInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -310,6 +311,34 @@ export const pushChild = createServerFn({method: 'POST'})
 		}
 
 		return {ok: false, message: `Failed to push: ${pushResult.stderr}`};
+	});
+
+export const createPr = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
+		const {project, projectDir, branch, title, body, draft} = data;
+
+		const {execa} = await import('execa');
+
+		const args = ['pr', 'create',
+			'--head', branch,
+			'--title', title,
+			'--body', body ?? '',
+		];
+		if (draft !== false) {
+			args.push('--draft');
+		}
+
+		const result = await execa('gh', args, {cwd: projectDir, reject: false});
+
+		if (result.exitCode === 0) {
+			invalidatePrCache(project);
+			const prUrl = result.stdout.trim();
+			return {ok: true, message: `Created PR: ${prUrl}`, compareUrl: prUrl};
+		}
+
+		return {ok: false, message: `Failed to create PR: ${result.stderr}`};
 	});
 
 export interface TestJobStatus {

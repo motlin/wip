@@ -150,3 +150,14 @@ export const CancelTestInputSchema = z.object({
 	id: z.string(),
 });
 export type CancelTestInput = z.infer<typeof CancelTestInputSchema>;
+
+export const CreatePrInputSchema = z.object({
+	project: z.string(),
+	projectDir: z.string(),
+	upstreamRemote: z.string(),
+	branch: z.string(),
+	title: z.string(),
+	body: z.string().optional(),
+	draft: z.boolean().optional(),
+});
+export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;

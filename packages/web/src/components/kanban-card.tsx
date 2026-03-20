@@ -280,7 +280,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 				{/* Back face — click blank area to flip back */}
 				<div
-					className="absolute inset-0 rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)] cursor-pointer"
+					className="absolute inset-x-0 top-0 min-h-full rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)] cursor-pointer"
 					onClick={() => setFlipped(false)}
 				>
 					<div className="flex h-full flex-col">

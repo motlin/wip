@@ -20,6 +20,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 let reportCache: {data: ReportData; expiresAt: number} | null = null;
+let refreshPromise: Promise<ReportData> | null = null;
 const CACHE_TTL_MS = 30_000;
 
 export function invalidateReportCache(): void {
@@ -60,11 +61,7 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Classification
 	return {category: 'ready_to_test'};
 }
 
-export const getReport = createServerFn({method: 'GET'}).handler(async (): Promise<ReportData> => {
-	if (reportCache && Date.now() < reportCache.expiresAt) {
-		return reportCache.data;
-	}
-
+async function buildReport(): Promise<ReportData> {
 	const projectsDir = getProjectsDir();
 	const projects = await discoverProjects(projectsDir);
 
@@ -282,6 +279,37 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	};
 	reportCache = {data: result, expiresAt: Date.now() + CACHE_TTL_MS};
 	return result;
+}
+
+function triggerBackgroundRefresh(): void {
+	if (refreshPromise) return; // Already refreshing
+	refreshPromise = buildReport().finally(() => {
+		refreshPromise = null;
+	});
+}
+
+export const getReport = createServerFn({method: 'GET'}).handler(async (): Promise<ReportData> => {
+	// Cache hit: fresh data
+	if (reportCache && Date.now() < reportCache.expiresAt) {
+		return reportCache.data;
+	}
+
+	// Stale cache: return stale data immediately, refresh in background
+	if (reportCache) {
+		triggerBackgroundRefresh();
+		return reportCache.data;
+	}
+
+	// Cold start: no cache at all, must block
+	if (refreshPromise) {
+		// Another request already triggered a cold-start refresh; wait for it
+		return refreshPromise;
+	}
+
+	refreshPromise = buildReport().finally(() => {
+		refreshPromise = null;
+	});
+	return refreshPromise;
 });
 
 export const pushChild = createServerFn({method: 'POST'})

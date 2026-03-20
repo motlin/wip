@@ -574,6 +574,17 @@ export const refreshChild = createServerFn({method: 'POST'})
 		return {ok: true, message: `Refreshed ${data.project}`};
 	});
 
+export const getChildBySha = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+	.handler(async ({data}): Promise<ClassifiedChild | null> => {
+		const report = await getReport();
+		for (const children of Object.values(report.grouped)) {
+			const match = children.find((c) => c.sha === data.sha && c.project === data.project);
+			if (match) return match;
+		}
+		return null;
+	});
+
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
 	// Invalidate all caches
 	invalidateIssuesCache();

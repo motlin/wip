@@ -167,7 +167,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 							{child.failureTail}
 						</pre>
 					)}
-					{child.category === 'blocked' && child.blockReason && (
+					{child.category === 'local_changes' && child.blockReason && (
 						<div className="mt-2 flex items-start gap-1.5 rounded bg-amber-50 p-1.5 dark:bg-amber-950/30">
 							<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
 							<p className="text-[11px] leading-snug text-amber-700 dark:text-amber-300">{child.blockReason}</p>

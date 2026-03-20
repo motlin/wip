@@ -48,7 +48,7 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Classification
 	// No PR — classify by local test status
 	if (child.testStatus === 'passed') return {category: 'ready_to_push'};
 	if (child.testStatus === 'failed') return {category: 'test_failed'};
-	if (project.dirty) return {category: 'blocked', blockReason: `Working tree is dirty — commit or stash changes in ${project.name} before testing`};
+	if (project.dirty) return {category: 'local_changes', blockReason: `Working tree is dirty — commit or stash changes in ${project.name} before testing`};
 	if (!project.hasTestConfigured) return {category: 'no_test'};
 	return {category: 'ready_to_test'};
 }
@@ -68,7 +68,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		skippable: [],
 		snoozed: [],
 		no_test: [],
-		blocked: [],
+		local_changes: [],
 		ready_to_test: [],
 		test_failed: [],
 		ready_to_push: [],

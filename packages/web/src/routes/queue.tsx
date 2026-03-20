@@ -7,7 +7,7 @@ import {KanbanCard} from '../components/kanban-card';
 import {useHasActiveTests} from '../lib/test-events-context';
 
 // Queue: furthest-along-first (reverse of kanban left-to-right)
-const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'blocked', 'no_test', 'snoozed', 'skippable'];
+const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'local_changes', 'no_test', 'snoozed', 'skippable'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	approved: 'Approved',
@@ -20,7 +20,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	pushed_no_pr: 'Needs PR',
 	test_failed: 'Test Failed',
 	ready_to_test: 'Ready to Test',
-	blocked: 'Blocked',
+	local_changes: 'Local Changes',
 	no_test: 'No Test',
 	snoozed: 'Snoozed',
 	skippable: 'Skippable',
@@ -37,7 +37,7 @@ const CATEGORY_COLORS: Record<Category, string> = {
 	pushed_no_pr: 'text-blue-700 dark:text-blue-400',
 	test_failed: 'text-red-700 dark:text-red-400',
 	ready_to_test: 'text-yellow-700 dark:text-yellow-400',
-	blocked: 'text-text-300',
+	local_changes: 'text-text-300',
 	no_test: 'text-text-300',
 	snoozed: 'text-text-500',
 	skippable: 'text-text-500',

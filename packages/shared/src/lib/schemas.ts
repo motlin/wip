@@ -14,7 +14,7 @@ export const CategorySchema = z.enum([
 	'skippable',
 	'snoozed',
 	'no_test',
-	'blocked',
+	'local_changes',
 	'ready_to_test',
 	'test_failed',
 	'ready_to_push',

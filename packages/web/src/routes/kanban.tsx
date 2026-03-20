@@ -3,7 +3,7 @@ import {KanbanColumn} from '../components/kanban-column';
 import {getReport} from '../lib/server-fns';
 import type {Category} from '../lib/server-fns';
 
-const CATEGORY_ORDER: Category[] = ['skippable', 'snoozed', 'no_test', 'blocked', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
+const CATEGORY_ORDER: Category[] = ['skippable', 'snoozed', 'no_test', 'local_changes', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
 
 export const Route = createFileRoute('/kanban')({
 	loader: () => getReport(),

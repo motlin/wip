@@ -199,7 +199,9 @@ export function KanbanCard({child}: KanbanCardProps) {
 							</a>
 						) : (
 							<a
-								href={`https://github.com/${child.remote}/commit/${child.sha}`}
+								href={child.prUrl || child.category === 'pushed_no_pr'
+									? `https://github.com/${child.remote}/commit/${child.sha}`
+									: `/diff/${child.project}/${child.sha}`}
 								target="_blank"
 								rel="noopener noreferrer"
 								title={`${child.sha}\n${child.subject}`}

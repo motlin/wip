@@ -175,7 +175,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 	};
 
 	return (
-		<div className="perspective-[600px] relative z-10">
+		<div className={`perspective-[600px] relative ${flipped ? 'z-10' : ''}`}>
 			<div
 				className={`relative transition-transform duration-500 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}
 			>

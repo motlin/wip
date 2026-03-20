@@ -5,7 +5,7 @@ export interface JobEvent {
 	sha: string;
 	project: string;
 	shortSha: string;
-	status: 'queued' | 'running' | 'passed' | 'failed';
+	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 	message?: string;
 }
 

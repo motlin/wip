@@ -1,10 +1,10 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useState} from 'react';
-import {getTestQueue, testAllChildren} from '../lib/server-fns';
+import {getTestQueue, testAllChildren, cancelTestFn} from '../lib/server-fns';
 import type {TestQueueJob} from '../lib/server-fns';
 import {useTestEvents} from '../lib/use-test-events';
 import {useHasActiveTests} from '../lib/test-events-context';
-import {Clock, Play, CheckCircle, XCircle, Loader2} from 'lucide-react';
+import {Clock, Play, CheckCircle, XCircle, Loader2, Ban, X} from 'lucide-react';
 
 export const Route = createFileRoute('/tests')({
 	loader: () => getTestQueue(),
@@ -16,7 +16,7 @@ export const Route = createFileRoute('/tests')({
 
 type JobStatus = TestQueueJob['status'];
 
-const STATUS_ORDER: JobStatus[] = ['running', 'queued', 'failed', 'passed'];
+const STATUS_ORDER: JobStatus[] = ['running', 'queued', 'failed', 'cancelled', 'passed'];
 
 function statusIcon(status: JobStatus) {
 	switch (status) {
@@ -28,6 +28,8 @@ function statusIcon(status: JobStatus) {
 			return <CheckCircle className="h-4 w-4 text-green-500" />;
 		case 'failed':
 			return <XCircle className="h-4 w-4 text-red-500" />;
+		case 'cancelled':
+			return <Ban className="h-4 w-4 text-text-500" />;
 	}
 }
 
@@ -41,6 +43,8 @@ function statusLabel(status: JobStatus): string {
 			return 'Passed';
 		case 'failed':
 			return 'Failed';
+		case 'cancelled':
+			return 'Cancelled';
 	}
 }
 
@@ -54,6 +58,8 @@ function statusColor(status: JobStatus): string {
 			return 'bg-green-900/30 text-green-400';
 		case 'failed':
 			return 'bg-red-900/30 text-red-400';
+		case 'cancelled':
+			return 'bg-bg-200 text-text-500';
 	}
 }
 
@@ -217,6 +223,18 @@ function Tests() {
 														? `started ${formatTime(job.startedAt)}`
 														: `queued ${formatTime(job.queuedAt)}`}
 											</span>
+											{(job.status === 'queued' || job.status === 'running') && (
+												<button
+													type="button"
+													onClick={async () => {
+														await cancelTestFn({data: {id: job.id}});
+													}}
+													className="rounded p-0.5 text-current opacity-60 transition-opacity hover:opacity-100"
+													title="Cancel test"
+												>
+													<X className="h-3.5 w-3.5" />
+												</button>
+											)}
 										</div>
 									))}
 								</div>

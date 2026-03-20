@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {invalidateReportCache} from './server-fns.js';
 
-export type JobStatus = 'queued' | 'running' | 'passed' | 'failed';
+export type JobStatus = 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 
 export interface TestJob {
 	id: string;
@@ -33,6 +33,7 @@ let nextId = 1;
 const jobs = new Map<string, TestJob>();
 const projectQueues = new Map<string, string[]>();
 const runningProjects = new Set<string>();
+const runningProcesses = new Map<string, {kill: () => void}>();
 
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
@@ -73,10 +74,18 @@ async function runTest(job: TestJob): Promise<void> {
 	fs.mkdirSync(logDir, {recursive: true});
 
 	const start = performance.now();
-	const result = await execa('git', ['-C', job.projectDir, 'test', 'run', '--retest', job.sha], {
+	const childProcess = execa('git', ['-C', job.projectDir, 'test', 'run', '--retest', job.sha], {
 		reject: false,
 		env: {...miseEnv, FORCE_COLOR: '1', CLICOLOR_FORCE: '1'},
 	});
+	runningProcesses.set(job.id, {kill: () => childProcess.kill('SIGTERM')});
+
+	const result = await childProcess;
+	runningProcesses.delete(job.id);
+
+	// If the job was cancelled while running, don't overwrite the cancelled status
+	if (job.status === 'cancelled') return;
+
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'git', args: ['-C', job.projectDir, 'test', 'run', '--retest', job.sha], duration}, `git -C ${job.projectDir} test run --retest ${job.sha} (${duration}ms)`);
 
@@ -127,4 +136,42 @@ export function getAllActiveJobs(): TestJob[] {
 
 export function getAllJobs(): Map<string, TestJob> {
 	return jobs;
+}
+
+export function cancelTest(id: string): {ok: boolean; message: string} {
+	const job = jobs.get(id);
+	if (!job) return {ok: false, message: 'Job not found'};
+	if (job.status === 'passed' || job.status === 'failed' || job.status === 'cancelled') {
+		return {ok: false, message: `Job already ${job.status}`};
+	}
+
+	if (job.status === 'queued') {
+		// Remove from the project queue
+		const queue = projectQueues.get(job.project);
+		if (queue) {
+			const idx = queue.indexOf(id);
+			if (idx !== -1) queue.splice(idx, 1);
+		}
+		job.status = 'cancelled';
+		job.finishedAt = Date.now();
+		job.message = `${job.shortSha} cancelled`;
+		emit(job);
+		return {ok: true, message: job.message};
+	}
+
+	if (job.status === 'running') {
+		// Kill the child process
+		const proc = runningProcesses.get(id);
+		if (proc) {
+			proc.kill();
+			runningProcesses.delete(id);
+		}
+		job.status = 'cancelled';
+		job.finishedAt = Date.now();
+		job.message = `${job.shortSha} cancelled`;
+		emit(job);
+		return {ok: true, message: job.message};
+	}
+
+	return {ok: false, message: 'Unknown job status'};
 }

@@ -145,3 +145,8 @@ export const UnsnoozeChildInputSchema = z.object({
 	project: z.string(),
 });
 export type UnsnoozeChildInput = z.infer<typeof UnsnoozeChildInputSchema>;
+
+export const CancelTestInputSchema = z.object({
+	id: z.string(),
+});
+export type CancelTestInput = z.infer<typeof CancelTestInputSchema>;

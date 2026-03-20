@@ -1,7 +1,7 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot, LayoutGrid} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot, LayoutGrid, X} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
@@ -114,6 +114,12 @@ export function KanbanCard({child}: KanbanCardProps) {
 		}});
 	};
 
+	const handleCancelTest = async () => {
+		if (!testJob) return;
+		setError(null);
+		await cancelTestFn({data: {id: testJob.id}});
+	};
+
 	const handleSnooze = async (hours: number | null) => {
 		setSnoozeOpen(false);
 		setLoading(true);
@@ -205,8 +211,18 @@ export function KanbanCard({child}: KanbanCardProps) {
 						>
 							{child.project}
 						</span>
-						{testJob?.status === 'running' && <Loader2 className="h-3 w-3 animate-spin text-yellow-500" />}
-						{testJob?.status === 'queued' && <Clock className="h-3 w-3 text-yellow-500" />}
+						{testJob?.status === 'running' && (
+							<span className="flex items-center gap-1">
+								<Loader2 className="h-3 w-3 animate-spin text-yellow-500" />
+								<button type="button" onClick={(e) => { e.stopPropagation(); handleCancelTest(); }} className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400" title="Cancel test"><X className="h-3 w-3" /></button>
+							</span>
+						)}
+						{testJob?.status === 'queued' && (
+							<span className="flex items-center gap-1">
+								<Clock className="h-3 w-3 text-yellow-500" />
+								<button type="button" onClick={(e) => { e.stopPropagation(); handleCancelTest(); }} className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400" title="Cancel test"><X className="h-3 w-3" /></button>
+							</span>
+						)}
 					</div>
 					{child.category === 'test_failed' && child.failureTail && (
 						<AnsiText
@@ -319,6 +335,18 @@ export function KanbanCard({child}: KanbanCardProps) {
 								</button>
 							)}
 
+							{/* Cancel test */}
+							{(testJob?.status === 'running' || testJob?.status === 'queued') && (
+								<button
+									type="button"
+									onClick={handleCancelTest}
+									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+								>
+									<X className="h-3.5 w-3.5" />
+									Cancel Test
+								</button>
+							)}
+
 							{/* Test failure log — new tab */}
 							{child.category === 'test_failed' && (
 								<a
@@ -394,6 +422,9 @@ export function KanbanCard({child}: KanbanCardProps) {
 						)}
 						{testJob?.status === 'passed' && (
 							<p className="mt-auto pt-2 text-xs text-green-600 dark:text-green-400">{testJob.message}</p>
+						)}
+						{testJob?.status === 'cancelled' && (
+							<p className="mt-auto pt-2 text-xs text-text-500">{testJob.message}</p>
 						)}
 						{error && (
 							<p className="mt-auto pt-2 text-xs text-red-600 dark:text-red-400">{error}</p>

@@ -11,6 +11,7 @@ import {
 	TestChildInputSchema,
 	SnoozeChildInputSchema,
 	UnsnoozeChildInputSchema,
+	CancelTestInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -313,7 +314,7 @@ export const pushChild = createServerFn({method: 'POST'})
 
 export interface TestJobStatus {
 	id: string;
-	status: 'queued' | 'running' | 'passed' | 'failed';
+	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 	message?: string;
 }
 
@@ -463,7 +464,7 @@ export interface TestQueueJob {
 	project: string;
 	sha: string;
 	shortSha: string;
-	status: 'queued' | 'running' | 'passed' | 'failed';
+	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 	message?: string;
 	queuedAt: number;
 	startedAt?: number;
@@ -485,3 +486,14 @@ export const getTestQueue = createServerFn({method: 'GET'}).handler(async (): Pr
 		finishedAt: j.finishedAt,
 	}));
 });
+
+export const cancelTestFn = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => CancelTestInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		const {cancelTest} = await import('./test-queue.js');
+		const result = cancelTest(data.id);
+		if (result.ok) {
+			reportCache = null;
+		}
+		return {ok: result.ok, message: result.message};
+	});

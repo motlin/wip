@@ -19,6 +19,7 @@ export {
 	TestChildInputSchema, type TestChildInput,
 	SnoozeChildInputSchema, type SnoozeChildInput,
 	UnsnoozeChildInputSchema, type UnsnoozeChildInput,
+	CancelTestInputSchema, type CancelTestInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
 export {log} from './services/logger.js';

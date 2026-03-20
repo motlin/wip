@@ -10,7 +10,18 @@ export interface GitHubIssue {
 	repository: {name: string; nameWithOwner: string};
 }
 
+const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+let issuesCache: {data: GitHubIssue[]; expiresAt: number} | null = null;
+
+export function invalidateIssuesCache(): void {
+	issuesCache = null;
+}
+
 export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
+	if (issuesCache && Date.now() < issuesCache.expiresAt) {
+		return issuesCache.data;
+	}
+
 	const start = performance.now();
 	const result = await execa('gh', [
 		'search', 'issues',
@@ -30,5 +41,7 @@ export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
 		return [];
 	}
 
-	return JSON.parse(result.stdout) as GitHubIssue[];
+	const issues = JSON.parse(result.stdout) as GitHubIssue[];
+	issuesCache = {data: issues, expiresAt: Date.now() + ISSUES_CACHE_TTL_MS};
+	return issues;
 }

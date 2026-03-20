@@ -21,7 +21,7 @@ import * as path from 'node:path';
 
 let reportCache: {data: ReportData; expiresAt: number} | null = null;
 let refreshPromise: Promise<ReportData> | null = null;
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 180_000; // 3 minutes
 
 export function invalidateReportCache(): void {
 	reportCache = null;

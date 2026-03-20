@@ -135,11 +135,23 @@ export function mapProjectStatusToCategory(status: string): Category {
 	return 'not_started';
 }
 
+const PROJECT_ITEMS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+let projectItemsCache: {data: GitHubProjectItem[]; expiresAt: number} | null = null;
+
+export function invalidateProjectItemsCache(): void {
+	projectItemsCache = null;
+}
+
 /**
  * Fetch all project items across all of the user's projects.
  * Filters out Done items and returns the rest mapped to kanban categories.
+ * Results are cached for 10 minutes to reduce GitHub API calls.
  */
 export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
+	if (projectItemsCache && Date.now() < projectItemsCache.expiresAt) {
+		return projectItemsCache.data;
+	}
+
 	const projects = await fetchProjects();
 	if (projects.length === 0) return [];
 
@@ -147,5 +159,7 @@ export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
 		projects.map((p) => fetchProjectItems(p.number)),
 	);
 
-	return allItems.flat();
+	const result = allItems.flat();
+	projectItemsCache = {data: result, expiresAt: Date.now() + PROJECT_ITEMS_CACHE_TTL_MS};
+	return result;
 }

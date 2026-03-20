@@ -40,6 +40,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
+	const branchButtonRef = useRef<HTMLButtonElement>(null);
+	const branchFormRef = useRef<HTMLDivElement>(null);
+	const [branchPos, setBranchPos] = useState<{top: number; left: number} | null>(null);
 	const testJob = useTestJob(child.sha, child.project);
 
 	useEffect(() => {
@@ -53,6 +56,18 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		document.addEventListener('mousedown', handleClick);
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [snoozeOpen]);
+
+	useEffect(() => {
+		if (!branchFormOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (branchFormRef.current && !branchFormRef.current.contains(e.target as Node) &&
+				branchButtonRef.current && !branchButtonRef.current.contains(e.target as Node)) {
+				setBranchFormOpen(false);
+			}
+		}
+		document.addEventListener('mousedown', handleClick);
+		return () => document.removeEventListener('mousedown', handleClick);
+	}, [branchFormOpen]);
 
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
@@ -278,46 +293,59 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				)}
 
 				{/* Create Branch (detached HEAD) */}
-				{child.category === 'detached_head' && !branchFormOpen && (
-					<button
-						type="button"
-						onClick={() => setBranchFormOpen(true)}
-						disabled={loading}
-						className="inline-flex items-center gap-1.5 rounded bg-yellow-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-yellow-700"
-					>
-						<GitBranch className="h-3.5 w-3.5" />
-						Create Branch
-					</button>
-				)}
-				{child.category === 'detached_head' && branchFormOpen && (
-					<div className="flex flex-col gap-1.5">
-						<input
-							type="text"
-							value={branchName}
-							onChange={(e) => setBranchName(e.target.value)}
-							placeholder="Branch name"
-							className="rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-yellow-500"
-						/>
-						<div className="flex gap-1.5">
-							<button
-								type="button"
-								onClick={handleCreateBranch}
-								disabled={loading || !branchName.trim()}
-								className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-									loading || !branchName.trim() ? 'cursor-not-allowed opacity-60' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-								}`}
+				{child.category === 'detached_head' && (
+					<div className="relative">
+						<button
+							ref={branchButtonRef}
+							type="button"
+							onClick={() => {
+								if (!branchFormOpen && branchButtonRef.current) {
+									const rect = branchButtonRef.current.getBoundingClientRect();
+									setBranchPos({top: rect.bottom + 4, left: rect.left});
+								}
+								setBranchFormOpen(!branchFormOpen);
+							}}
+							disabled={loading}
+							className="inline-flex items-center gap-1.5 rounded bg-yellow-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-yellow-700"
+						>
+							<GitBranch className="h-3.5 w-3.5" />
+							Create Branch
+						</button>
+						{branchFormOpen && branchPos && (
+							<div
+								ref={branchFormRef}
+								className="fixed z-50 w-56 rounded-lg border border-border-300/50 bg-bg-000 p-2 shadow-lg"
+								style={{top: branchPos.top, left: branchPos.left}}
 							>
-								{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-								{loading ? 'Creating...' : 'Create'}
-							</button>
-							<button
-								type="button"
-								onClick={() => setBranchFormOpen(false)}
-								className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
-							>
-								Cancel
-							</button>
-						</div>
+								<input
+									type="text"
+									value={branchName}
+									onChange={(e) => setBranchName(e.target.value)}
+									placeholder="Branch name"
+									className="w-full rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-yellow-500"
+								/>
+								<div className="mt-1.5 flex gap-1.5">
+									<button
+										type="button"
+										onClick={handleCreateBranch}
+										disabled={loading || !branchName.trim()}
+										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+											loading || !branchName.trim() ? 'cursor-not-allowed opacity-60' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+										}`}
+									>
+										{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+										{loading ? 'Creating...' : 'Create'}
+									</button>
+									<button
+										type="button"
+										onClick={() => setBranchFormOpen(false)}
+										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
+									>
+										Cancel
+									</button>
+								</div>
+							</div>
+						)}
 					</div>
 				)}
 

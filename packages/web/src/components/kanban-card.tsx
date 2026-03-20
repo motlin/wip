@@ -5,6 +5,7 @@ import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
+import {AnsiText} from './ansi-text';
 
 interface KanbanCardProps {
 	child: ClassifiedChild;
@@ -72,7 +73,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
 
-	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
+	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_unknown', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
 
 	const handlePush = async () => {
 		setLoading(true);
@@ -163,9 +164,10 @@ export function KanbanCard({child}: KanbanCardProps) {
 						{testJob?.status === 'queued' && <Clock className="h-3 w-3 text-yellow-500" />}
 					</div>
 					{child.category === 'test_failed' && child.failureTail && (
-						<pre className="mt-2 overflow-x-auto rounded bg-red-50 p-1.5 font-mono text-[10px] leading-tight text-red-700 dark:bg-red-950/30 dark:text-red-300">
-							{child.failureTail}
-						</pre>
+						<AnsiText
+							text={child.failureTail}
+							className="mt-2 overflow-x-auto rounded bg-red-50 p-1.5 font-mono text-[10px] leading-tight text-red-700 dark:bg-red-950/30 dark:text-red-300"
+						/>
 					)}
 					{child.category === 'local_changes' && child.blockReason && (
 						<div className="mt-2 flex items-start gap-1.5 rounded bg-amber-50 p-1.5 dark:bg-amber-950/30">

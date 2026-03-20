@@ -1,5 +1,6 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {getTestLog} from '../lib/server-fns';
+import {AnsiText} from '../components/ansi-text';
 
 export const Route = createFileRoute('/log/$project/$sha')({
 	loader: ({params}) => getTestLog({data: {project: params.project, sha: params.sha}}),
@@ -22,9 +23,10 @@ function LogViewer() {
 				</p>
 			</div>
 			{log ? (
-				<pre className="overflow-auto rounded-lg bg-bg-200 p-4 font-mono text-xs leading-relaxed text-text-100">
-					{log}
-				</pre>
+				<AnsiText
+					text={log}
+					className="overflow-auto rounded-lg bg-bg-200 p-4 font-mono text-xs leading-relaxed text-text-100"
+				/>
 			) : (
 				<p className="text-sm text-text-500">No log file found.</p>
 			)}

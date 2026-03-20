@@ -74,7 +74,7 @@ async function runTest(job: TestJob): Promise<void> {
 	const start = performance.now();
 	const result = await execa('git', ['-C', job.projectDir, 'test', 'run', '--retest', job.sha], {
 		reject: false,
-		env: miseEnv,
+		env: {...miseEnv, FORCE_COLOR: '1', CLICOLOR_FORCE: '1'},
 	});
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'git', args: ['-C', job.projectDir, 'test', 'run', '--retest', job.sha], duration}, `git -C ${job.projectDir} test run --retest ${job.sha} (${duration}ms)`);

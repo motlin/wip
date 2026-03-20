@@ -16,6 +16,7 @@
 		"@tanstack/react-router": "^1.166.7",
 		"@tanstack/react-start": "^1.166.16",
 		"@wip/shared": "workspace:*",
+		"ansi-to-html": "^0.7.2",
 		"execa": "^9.6.1",
 		"lucide-react": "^0.577.0",
 		"react": "^19.2.4",

@@ -1,5 +1,5 @@
 import {useRouter, Link} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, RotateCcw} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -20,6 +20,7 @@ const SNOOZE_PRESETS = [
 
 export function KanbanCard({child}: KanbanCardProps) {
 	const router = useRouter();
+	const [flipped, setFlipped] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
@@ -27,7 +28,6 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const testJob = useTestJob(child.sha, child.project);
 	const prevTestStatus = useRef(testJob?.status);
 
-	// Auto-refresh page when a test completes
 	useEffect(() => {
 		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
 			if (testJob?.status === 'passed' || testJob?.status === 'failed') {
@@ -49,6 +49,9 @@ export function KanbanCard({child}: KanbanCardProps) {
 	}, [snoozeOpen]);
 
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
+	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
+	const isTestActive = testJob && (testJob.status === 'queued' || testJob.status === 'running');
+	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
 
 	const handlePush = async () => {
 		setLoading(true);
@@ -95,120 +98,160 @@ export function KanbanCard({child}: KanbanCardProps) {
 		}
 	};
 
-	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
-	const isTestActive = testJob && (testJob.status === 'queued' || testJob.status === 'running');
-
-	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
-
 	return (
-		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-shadow hover:shadow-md">
-			<div className="flex items-start justify-between gap-2">
-				<Link
-					to="/diff/$project/$sha"
-					params={{project: child.project, sha: child.sha}}
-					className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 transition-colors hover:bg-bg-300 hover:text-text-100"
+		<div className="perspective-[600px]">
+			<div
+				className={`relative transition-transform duration-500 [transform-style:preserve-3d] ${flipped ? '[transform:rotateY(180deg)]' : ''}`}
+			>
+				{/* Front face */}
+				<div
+					className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm [backface-visibility:hidden] cursor-pointer hover:shadow-md transition-shadow"
+					onClick={() => setFlipped(true)}
 				>
-					<Diff className="h-3 w-3" />
-					{child.shortSha}
-				</Link>
-				<span className="text-xs text-text-500">{child.date}</span>
-			</div>
-			<p className="mt-1.5 text-sm leading-snug text-text-100">{child.subject}</p>
-			<div className="mt-2 flex items-center justify-between">
-				<span className="text-xs font-medium text-text-300">{child.project}</span>
-				<div className="flex items-center gap-1">
-					{showPrLink && (
-						<a
-							href={child.prUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
-						>
-							<GitHubIcon className="h-3.5 w-3.5" />
-							PR
-						</a>
+					<div className="flex items-start justify-between gap-2">
+						<span className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">
+							<Diff className="h-3 w-3" />
+							{child.shortSha}
+						</span>
+						<span className="text-xs text-text-500">{child.date}</span>
+					</div>
+					<p className="mt-1.5 text-sm leading-snug text-text-100">{child.subject}</p>
+					<div className="mt-2 flex items-center justify-between">
+						<span className="text-xs font-medium text-text-300">{child.project}</span>
+						{testJob?.status === 'running' && <Loader2 className="h-3 w-3 animate-spin text-yellow-500" />}
+						{testJob?.status === 'queued' && <Clock className="h-3 w-3 text-yellow-500" />}
+					</div>
+					{child.category === 'test_failed' && child.failureTail && (
+						<pre className="mt-2 overflow-x-auto rounded bg-red-50 p-1.5 font-mono text-[10px] leading-tight text-red-700 dark:bg-red-950/30 dark:text-red-300">
+							{child.failureTail}
+						</pre>
 					)}
-					{child.category === 'ready_to_push' && (
-						<button
-							type="button"
-							onClick={handlePush}
-							disabled={loading}
-							className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-								loading ? 'cursor-not-allowed opacity-60' : 'bg-green-600 hover:bg-green-700 text-white'
-							}`}
-						>
-							{loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
-							{loading ? 'Pushing...' : pushLabel}
-						</button>
-					)}
-					{child.category === 'ready_to_test' && (
-						<button
-							type="button"
-							onClick={handleTest}
-							disabled={!!isTestActive}
-							className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-								isTestActive ? 'bg-yellow-600/80 text-white' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-							}`}
-						>
-							{testJob?.status === 'running' && <Loader2 className="h-3 w-3 animate-spin" />}
-							{testJob?.status === 'queued' && <Clock className="h-3 w-3" />}
-							{!isTestActive && <Play className="h-3 w-3" />}
-							{testJob?.status === 'running' ? 'Testing...' : testJob?.status === 'queued' ? 'Queued' : 'Test'}
-						</button>
-					)}
-					<div className="relative" ref={snoozeRef}>
-						<button
-							type="button"
-							onClick={() => setSnoozeOpen(!snoozeOpen)}
-							disabled={loading}
-							className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-text-500 transition-colors hover:bg-bg-200 hover:text-text-300"
-							title="Snooze"
-						>
-							<Moon className="h-3 w-3" />
-						</button>
-						{snoozeOpen && (
-							<div className="absolute right-0 top-full z-10 mt-1 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg">
-								{SNOOZE_PRESETS.map((preset) => (
-									<button
-										key={preset.label}
-										type="button"
-										onClick={() => handleSnooze(preset.hours)}
-										className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
-									>
-										{preset.label}
-									</button>
-								))}
+				</div>
+
+				{/* Back face */}
+				<div
+					className="absolute inset-0 rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)]"
+				>
+					<div className="flex h-full flex-col">
+						<div className="mb-2 flex items-center justify-between">
+							<span className="text-xs font-medium text-text-100 truncate">{child.subject}</span>
+							<button
+								type="button"
+								onClick={() => setFlipped(false)}
+								className="shrink-0 rounded p-0.5 text-text-400 hover:bg-bg-200 hover:text-text-100"
+							>
+								<RotateCcw className="h-3.5 w-3.5" />
+							</button>
+						</div>
+
+						<div className="flex flex-col gap-1.5">
+							{/* Diff link */}
+							<Link
+								to="/diff/$project/$sha"
+								params={{project: child.project, sha: child.sha}}
+								className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
+							>
+								<Diff className="h-3.5 w-3.5" />
+								View Diff
+							</Link>
+
+							{/* PR link */}
+							{showPrLink && (
+								<a
+									href={child.prUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
+								>
+									<GitHubIcon className="h-3.5 w-3.5" />
+									Open PR
+								</a>
+							)}
+
+							{/* Push */}
+							{child.category === 'ready_to_push' && (
+								<button
+									type="button"
+									onClick={handlePush}
+									disabled={loading}
+									className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+										loading ? 'cursor-not-allowed opacity-60' : 'bg-green-600 hover:bg-green-700 text-white'
+									}`}
+								>
+									{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
+									{loading ? 'Pushing...' : pushLabel}
+								</button>
+							)}
+
+							{/* Test */}
+							{child.category === 'ready_to_test' && (
+								<button
+									type="button"
+									onClick={handleTest}
+									disabled={!!isTestActive}
+									className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+										isTestActive ? 'bg-yellow-600/80 text-white' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+									}`}
+								>
+									{testJob?.status === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+									{testJob?.status === 'queued' && <Clock className="h-3.5 w-3.5" />}
+									{!isTestActive && <Play className="h-3.5 w-3.5" />}
+									{testJob?.status === 'running' ? 'Testing...' : testJob?.status === 'queued' ? 'Queued' : 'Run Test'}
+								</button>
+							)}
+
+							{/* Test failure log */}
+							{child.category === 'test_failed' && (
+								<Link
+									to="/log/$project/$sha"
+									params={{project: child.project, sha: child.sha}}
+									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+								>
+									<FileText className="h-3.5 w-3.5" />
+									View Test Log
+								</Link>
+							)}
+
+							{/* Snooze */}
+							<div className="relative" ref={snoozeRef}>
+								<button
+									type="button"
+									onClick={() => setSnoozeOpen(!snoozeOpen)}
+									disabled={loading}
+									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+								>
+									<Moon className="h-3.5 w-3.5" />
+									Snooze
+								</button>
+								{snoozeOpen && (
+									<div className="absolute left-0 top-full z-10 mt-1 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg">
+										{SNOOZE_PRESETS.map((preset) => (
+											<button
+												key={preset.label}
+												type="button"
+												onClick={() => handleSnooze(preset.hours)}
+												className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
+											>
+												{preset.label}
+											</button>
+										))}
+									</div>
+								)}
 							</div>
+						</div>
+
+						{testJob?.status === 'failed' && (
+							<p className="mt-auto pt-2 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>
+						)}
+						{testJob?.status === 'passed' && (
+							<p className="mt-auto pt-2 text-xs text-green-600 dark:text-green-400">{testJob.message}</p>
+						)}
+						{error && (
+							<p className="mt-auto pt-2 text-xs text-red-600 dark:text-red-400">{error}</p>
 						)}
 					</div>
 				</div>
 			</div>
-			{child.category === 'test_failed' && (
-				<div className="mt-2 rounded bg-red-50 p-2 dark:bg-red-950/30">
-					{child.failureTail && (
-						<pre className="mb-1.5 overflow-x-auto font-mono text-[10px] leading-tight text-red-700 dark:text-red-300">
-							{child.failureTail}
-						</pre>
-					)}
-					<Link
-						to="/log/$project/$sha"
-						params={{project: child.project, sha: child.sha}}
-						className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
-					>
-						<FileText className="h-3 w-3" />
-						View Full Log
-					</Link>
-				</div>
-			)}
-			{testJob?.status === 'failed' && (
-				<p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>
-			)}
-			{testJob?.status === 'passed' && (
-				<p className="mt-1.5 text-xs text-green-600 dark:text-green-400">{testJob.message}</p>
-			)}
-			{error && (
-				<p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{error}</p>
-			)}
 		</div>
 	);
 }

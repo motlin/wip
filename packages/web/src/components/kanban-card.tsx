@@ -65,7 +65,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 					onClick={() => setFlipped(true)}
 				>
 					<div className="flex items-start justify-between gap-2">
-						{isIssue ? (
+						{isIssue && (
 							<a
 								href={child.issueUrl}
 								target="_blank"
@@ -77,22 +77,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 								<CircleDot className="h-3 w-3" />
 								{child.shortSha}
 							</a>
-						) : (
-							<a
-								href={child.prUrl || child.category === 'pushed_no_pr'
-									? `https://github.com/${child.remote}/commit/${child.sha}`
-									: `/diff/${child.project}/${child.sha}`}
-								target="_blank"
-								rel="noopener noreferrer"
-								title={`${child.sha}\n${child.subject}`}
-								className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 hover:bg-bg-300 hover:text-text-100 transition-colors"
-								onClick={(e) => e.stopPropagation()}
-							>
-								<Diff className="h-3 w-3" />
-								{child.shortSha}
-							</a>
 						)}
-						{child.date && (
+					{child.date && (
 							<span
 								className="text-xs text-text-500"
 								title={`Commit date: ${child.date} (${relativeTime(child.date)})`}

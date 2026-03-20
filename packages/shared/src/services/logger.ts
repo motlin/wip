@@ -20,7 +20,9 @@ function createLogger() {
 				sync: true,
 				colorize: true,
 				translateTime: 'HH:MM:ss.l',
-				ignore: 'pid,hostname',
+				ignore: 'pid,hostname,category,cmd,args,duration',
+				messageFormat: '{msg}',
+				singleLine: true,
 			},
 		}),
 	);
@@ -30,4 +32,5 @@ const baseLogger = createLogger();
 
 export const log = {
 	subprocess: baseLogger.child({category: 'subprocess'}),
+	progress: baseLogger.child({category: 'progress'}),
 };

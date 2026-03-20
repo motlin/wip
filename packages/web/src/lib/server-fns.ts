@@ -360,12 +360,25 @@ export const createPr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 		reportCache = null;
-		const {project, projectDir, branch, title, body, draft} = data;
+		const {project, projectDir, upstreamRemote, branch, title, body, draft} = data;
 
 		const {execa} = await import('execa');
 
+		// For fork workflows, --head needs the fork owner prefix (e.g. "motlin:branch-name")
+		// Detect by checking if origin differs from upstreamRemote
+		let headRef = branch;
+		if (upstreamRemote !== 'origin') {
+			const originUrl = await execa('git', ['-C', projectDir, 'remote', 'get-url', 'origin'], {reject: false});
+			if (originUrl.exitCode === 0) {
+				const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
+				if (match) {
+					headRef = `${match[1]}:${branch}`;
+				}
+			}
+		}
+
 		const args = ['pr', 'create',
-			'--head', branch,
+			'--head', headRef,
 			'--title', title,
 			'--body', body ?? '',
 		];

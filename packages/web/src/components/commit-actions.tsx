@@ -130,22 +130,30 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const handleCreatePr = async () => {
 		setLoading(true);
 		setError(null);
-		const result = await createPr({data: {
-			project: child.project,
-			projectDir: child.projectDir,
-			upstreamRemote: child.upstreamRemote,
-			branch: child.branch!,
-			title: prTitle,
-			body: prBody || undefined,
-			draft: prDraft,
-		}});
-		setLoading(false);
-		if (result.ok) {
-			setPrResult({message: result.message, prUrl: result.compareUrl});
-			setPrFormOpen(false);
-			router.invalidate();
-		} else {
-			setError(result.message);
+		try {
+			const result = await createPr({data: {
+				project: child.project,
+				projectDir: child.projectDir,
+				upstreamRemote: child.upstreamRemote,
+				branch: child.branch!,
+				title: prTitle,
+				body: prBody || undefined,
+				draft: prDraft,
+			}});
+			setLoading(false);
+			if (result.ok) {
+				setPrResult({message: result.message, prUrl: result.compareUrl});
+				setPrFormOpen(false);
+				if (result.compareUrl) {
+					window.open(result.compareUrl, '_blank');
+				}
+				router.invalidate();
+			} else {
+				setError(result.message);
+			}
+		} catch (e) {
+			setLoading(false);
+			setError(e instanceof Error ? e.message : 'Failed to create PR');
 		}
 	};
 

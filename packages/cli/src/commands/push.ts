@@ -9,15 +9,16 @@ interface PushResult {
 	shortSha: string;
 	branch: string;
 	subject: string;
-	status: 'pushed' | 'failed';
+	status: 'pushed' | 'failed' | 'planned';
 	error?: string;
 	prUrl?: string;
 }
 
 interface PushJson {
+	dryRun: boolean;
 	pushed: PushResult[];
 	skippedProjects: string[];
-	summary: {pushed: number; failed: number; skipped: number};
+	summary: {pushed: number; planned: number; failed: number; skipped: number};
 }
 
 export default class Push extends Command {
@@ -79,7 +80,7 @@ export default class Push extends Command {
 
 				if (flags['dry-run']) {
 					this.log(`  would push ${child.shortSha} ${child.subject} \u2192 ${branchName}`);
-					pushResults.push({sha: child.sha, shortSha: child.shortSha, branch: branchName, subject: child.subject, status: 'pushed'});
+					pushResults.push({sha: child.sha, shortSha: child.shortSha, branch: branchName, subject: child.subject, status: 'planned'});
 					continue;
 				}
 
@@ -115,14 +116,20 @@ export default class Push extends Command {
 		}
 
 		const pushedCount = pushResults.filter((r) => r.status === 'pushed').length;
+		const plannedCount = pushResults.filter((r) => r.status === 'planned').length;
 		const failedCount = pushResults.filter((r) => r.status === 'failed').length;
 
-		this.log(`\nPushed ${pushedCount} branches, skipped ${skippedProjects.length} dirty projects`);
+		if (flags['dry-run']) {
+			this.log(`\nWould push ${plannedCount} branches, skipped ${skippedProjects.length} dirty projects`);
+		} else {
+			this.log(`\nPushed ${pushedCount} branches, skipped ${skippedProjects.length} dirty projects`);
+		}
 
 		return {
+			dryRun: flags['dry-run'],
 			pushed: pushResults,
 			skippedProjects,
-			summary: {pushed: pushedCount, failed: failedCount, skipped: skippedProjects.length},
+			summary: {pushed: pushedCount, planned: plannedCount, failed: failedCount, skipped: skippedProjects.length},
 		};
 	}
 

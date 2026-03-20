@@ -11,13 +11,14 @@ interface TestResult {
 	sha: string;
 	shortSha: string;
 	branch?: string;
-	status: 'passed' | 'failed' | 'fixed';
+	status: 'passed' | 'failed' | 'fixed' | 'planned';
 	exitCode: number;
 	logPath?: string;
 	message?: string;
 }
 
 interface TestJson {
+	dryRun: boolean;
 	results: TestResult[];
 	skippedProjects: string[];
 	summary: {tested: number; passed: number; failed: number; fixed: number; skipped: number};
@@ -101,7 +102,7 @@ export default class Test extends Command {
 					const branchName = child.branch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 					const action = child.branch ? 'test' : 'create branch + test';
 					this.log(`  would ${action} ${child.shortSha} → ${branchName}`);
-					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'passed', exitCode: 0});
+					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'planned', exitCode: 0});
 				}
 				continue;
 			}
@@ -171,6 +172,7 @@ export default class Test extends Command {
 		}
 
 		return {
+			dryRun: flags['dry-run'],
 			results: testResults,
 			skippedProjects,
 			summary: {tested: testedProjectCount, passed: passedCount, failed: failedCount, fixed: fixedCount, skipped: skippedProjects.length},
@@ -207,7 +209,7 @@ export default class Test extends Command {
 			if (flags['dry-run']) {
 				for (const sha of shas) {
 					this.log(`  would test ${sha.slice(0, 7)}`);
-					testResults.push({project: p.name, sha, shortSha: sha.slice(0, 7), status: 'passed', exitCode: 0});
+					testResults.push({project: p.name, sha, shortSha: sha.slice(0, 7), status: 'planned', exitCode: 0});
 				}
 				continue;
 			}
@@ -265,6 +267,7 @@ export default class Test extends Command {
 		this.log(`\nTested ${testedProjectCount} projects, skipped ${skippedProjects.length} dirty`);
 
 		return {
+			dryRun: flags['dry-run'],
 			results: testResults,
 			skippedProjects,
 			summary: {tested: testedProjectCount, passed: passedCount, failed: failedCount, fixed: 0, skipped: skippedProjects.length},

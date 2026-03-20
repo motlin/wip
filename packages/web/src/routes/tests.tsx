@@ -1,7 +1,9 @@
 import {createFileRoute} from '@tanstack/react-router';
-import {getTestQueue} from '../lib/server-fns';
+import {useState} from 'react';
+import {getTestQueue, testAllChildren} from '../lib/server-fns';
 import type {TestQueueJob} from '../lib/server-fns';
 import {useTestEvents} from '../lib/use-test-events';
+import {useHasActiveTests} from '../lib/test-events-context';
 import {Clock, Play, CheckCircle, XCircle, Loader2} from 'lucide-react';
 
 export const Route = createFileRoute('/tests')({
@@ -89,6 +91,8 @@ function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, {id: string
 function Tests() {
 	const serverJobs = Route.useLoaderData();
 	const {jobs: liveJobs} = useTestEvents();
+	const [testingAll, setTestingAll] = useState(false);
+	const hasActiveTests = useHasActiveTests();
 
 	const allJobs = mergeJobs(serverJobs, liveJobs);
 
@@ -126,37 +130,58 @@ function Tests() {
 		failed: allJobs.filter((j) => j.status === 'failed').length,
 	};
 
+	const handleTestAll = async () => {
+		setTestingAll(true);
+		await testAllChildren();
+		setTestingAll(false);
+	};
+
 	return (
 		<div className="mx-auto max-w-3xl p-6">
-			<div className="mb-6">
-				<h1 className="text-xl font-semibold">Tests</h1>
-				<div className="mt-1 flex items-center gap-4 text-sm text-text-500">
-					{counts.running > 0 && (
-						<span className="flex items-center gap-1">
-							<Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />
-							{counts.running} running
-						</span>
-					)}
-					{counts.queued > 0 && (
-						<span className="flex items-center gap-1">
-							<Clock className="h-3.5 w-3.5" />
-							{counts.queued} queued
-						</span>
-					)}
-					{counts.passed > 0 && (
-						<span className="flex items-center gap-1">
-							<CheckCircle className="h-3.5 w-3.5 text-green-500" />
-							{counts.passed} passed
-						</span>
-					)}
-					{counts.failed > 0 && (
-						<span className="flex items-center gap-1">
-							<XCircle className="h-3.5 w-3.5 text-red-500" />
-							{counts.failed} failed
-						</span>
-					)}
-					{allJobs.length === 0 && <span>No test jobs</span>}
+			<div className="mb-6 flex items-center justify-between">
+				<div>
+					<h1 className="text-xl font-semibold">Tests</h1>
+					<div className="mt-1 flex items-center gap-4 text-sm text-text-500">
+						{counts.running > 0 && (
+							<span className="flex items-center gap-1">
+								<Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />
+								{counts.running} running
+							</span>
+						)}
+						{counts.queued > 0 && (
+							<span className="flex items-center gap-1">
+								<Clock className="h-3.5 w-3.5" />
+								{counts.queued} queued
+							</span>
+						)}
+						{counts.passed > 0 && (
+							<span className="flex items-center gap-1">
+								<CheckCircle className="h-3.5 w-3.5 text-green-500" />
+								{counts.passed} passed
+							</span>
+						)}
+						{counts.failed > 0 && (
+							<span className="flex items-center gap-1">
+								<XCircle className="h-3.5 w-3.5 text-red-500" />
+								{counts.failed} failed
+							</span>
+						)}
+						{allJobs.length === 0 && <span>No test jobs</span>}
+					</div>
 				</div>
+				<button
+					type="button"
+					onClick={handleTestAll}
+					disabled={testingAll || hasActiveTests}
+					className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+						testingAll || hasActiveTests
+							? 'bg-yellow-600/80 text-white'
+							: 'bg-yellow-600 hover:bg-yellow-700 text-white'
+					}`}
+				>
+					{testingAll || hasActiveTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+					{hasActiveTests ? 'Tests Running...' : 'Run All Tests'}
+				</button>
 			</div>
 
 			{allJobs.length === 0 ? (

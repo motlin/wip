@@ -22,6 +22,7 @@ export {
 	CancelTestInputSchema, type CancelTestInput,
 	CreatePrInputSchema, type CreatePrInput,
 	RefreshChildInputSchema, type RefreshChildInput,
+	RebasePrInputSchema, type RebasePrInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
 export {log} from './services/logger.js';

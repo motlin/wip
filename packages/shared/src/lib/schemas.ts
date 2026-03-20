@@ -167,3 +167,11 @@ export const RefreshChildInputSchema = z.object({
 	sha: z.string(),
 });
 export type RefreshChildInput = z.infer<typeof RefreshChildInputSchema>;
+
+export const RebasePrInputSchema = z.object({
+	project: z.string(),
+	projectDir: z.string(),
+	upstreamRemote: z.string(),
+	prUrl: z.string(),
+});
+export type RebasePrInput = z.infer<typeof RebasePrInputSchema>;

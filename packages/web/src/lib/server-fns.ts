@@ -14,6 +14,7 @@ import {
 	CancelTestInputSchema,
 	CreatePrInputSchema,
 	RefreshChildInputSchema,
+	RebasePrInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -572,6 +573,36 @@ export const refreshChild = createServerFn({method: 'POST'})
 		// Invalidate the report cache to force a full rebuild
 		reportCache = null;
 		return {ok: true, message: `Refreshed ${data.project}`};
+	});
+
+export const rebasePr = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => RebasePrInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
+		const {project, projectDir, upstreamRemote, prUrl} = data;
+
+		// Extract owner/repo/pr_number from prUrl like https://github.com/owner/repo/pull/123
+		const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+		if (!match) {
+			return {ok: false, message: `Could not parse PR URL: ${prUrl}`};
+		}
+		const [, owner, repo, prNumber] = match;
+
+		const {execa} = await import('execa');
+
+		// Use gh api to call the update-branch endpoint (rebases PR branch against base)
+		const result = await execa('gh', [
+			'api',
+			'--method', 'PUT',
+			`/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
+		], {cwd: projectDir, reject: false});
+
+		if (result.exitCode === 0) {
+			invalidatePrCache(project);
+			return {ok: true, message: `Rebased PR #${prNumber} against target branch`};
+		}
+
+		return {ok: false, message: `Failed to rebase PR: ${result.stderr}`};
 	});
 
 export const getChildBySha = createServerFn({method: 'GET'})

@@ -1,7 +1,7 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, refreshChild} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
@@ -32,6 +32,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const [prDraft, setPrDraft] = useState(true);
 	const [prResult, setPrResult] = useState<{message: string; prUrl?: string} | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
+	const [rebasing, setRebasing] = useState(false);
+	const [rebaseResult, setRebaseResult] = useState<{message: string} | null>(null);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
@@ -141,6 +143,26 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}
 	};
 
+	const handleRebase = async () => {
+		if (!child.prUrl) return;
+		setRebasing(true);
+		setError(null);
+		setRebaseResult(null);
+		const result = await rebasePr({data: {
+			project: child.project,
+			projectDir: child.projectDir,
+			upstreamRemote: child.upstreamRemote,
+			prUrl: child.prUrl,
+		}});
+		setRebasing(false);
+		if (result.ok) {
+			setRebaseResult({message: result.message});
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
 	const isRow = layout === 'row';
 
 	return (
@@ -157,6 +179,21 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 						<GitHubIcon className="h-3.5 w-3.5" />
 						Open PR
 					</a>
+				)}
+
+				{/* Rebase PR */}
+				{showPrLink && (
+					<button
+						type="button"
+						onClick={handleRebase}
+						disabled={rebasing}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							rebasing ? 'cursor-not-allowed opacity-60 text-text-300' : 'text-text-300 hover:bg-bg-200 hover:text-text-100'
+						}`}
+					>
+						{rebasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+						{rebasing ? 'Rebasing...' : 'Rebase'}
+					</button>
 				)}
 
 				{/* Create PR */}
@@ -353,6 +390,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 						</a>
 					)}
 				</div>
+			)}
+			{rebaseResult && (
+				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{rebaseResult.message}</p>
 			)}
 			{testJob?.status === 'failed' && (
 				<p className="mt-2 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>

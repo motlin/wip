@@ -350,35 +350,40 @@ export async function testFix(
 
 export async function discoverProjects(projectsDir: string): Promise<ProjectInfo[]> {
 	const entries = fs.readdirSync(projectsDir, {withFileTypes: true});
-	const projects: ProjectInfo[] = [];
 
+	// Filter to git root repos (synchronous filesystem checks)
+	const gitDirs: Array<{name: string; dir: string}> = [];
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		const dir = path.join(projectsDir, entry.name);
-		// Skip directories without .git, and skip non-root worktrees.
-		// Root repositories have .git as a directory; non-root worktrees have .git as a file
-		// containing a "gitdir:" pointer to the main repository's .git/worktrees/ directory.
 		const gitPath = path.join(dir, '.git');
 		if (!fs.existsSync(gitPath)) continue;
 		if (!fs.statSync(gitPath).isDirectory()) continue;
+		gitDirs.push({name: entry.name, dir});
+	}
 
+	// Gather per-project info in parallel — each project's git calls are independent
+	const results = await Promise.all(gitDirs.map(async ({name, dir}) => {
 		const {upstreamRemote, upstreamBranch} = parseEnvrc(dir);
 		const upstreamRef = `${upstreamRemote}/${upstreamBranch}`;
 
-		if (!(await hasUpstreamRef(dir, upstreamRef))) continue;
+		if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
 
-		const remote = await git(dir, 'remote', 'get-url', 'origin');
+		const [remote, dirtyFlag, branchList, hasTest] = await Promise.all([
+			git(dir, 'remote', 'get-url', 'origin'),
+			isDirty(dir),
+			git(dir, 'branch', '--list'),
+			hasTestConfigured(dir),
+		]);
+
 		const ghRemote = remote.replace(/.*github\.com[:/]/, '').replace(/\.git$/, '');
-		const dirtyFlag = await isDirty(dir);
-		const branchList = await git(dir, 'branch', '--list');
 		const branchCount = branchList
 			.split('\n')
 			.filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
 			.filter(Boolean).length;
-		const hasTest = await hasTestConfigured(dir);
 
-		projects.push({
-			name: entry.name,
+		return {
+			name,
 			dir,
 			remote: ghRemote,
 			upstreamRemote,
@@ -387,8 +392,8 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 			dirty: dirtyFlag,
 			branchCount,
 			hasTestConfigured: hasTest,
-		});
-	}
+		} satisfies ProjectInfo;
+	}));
 
-	return projects;
+	return results.filter((p): p is ProjectInfo => p !== null);
 }

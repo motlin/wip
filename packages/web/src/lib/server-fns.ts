@@ -75,9 +75,14 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	let projectCount = 0;
 	let snoozedCount = 0;
 
-	for (const p of projects) {
+	// Gather per-project data in parallel — each project's git/gh calls are independent
+	const projectResults = await Promise.all(projects.map(async (p) => {
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
+		return {project: p, children};
+	}));
+
+	for (const {project: p, children} of projectResults) {
 		if (children.length === 0) continue;
 
 		projectCount++;

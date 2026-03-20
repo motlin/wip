@@ -1,5 +1,5 @@
-import {useRouter, Link} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, RotateCcw} from 'lucide-react';
+import {useRouter} from '@tanstack/react-router';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -128,34 +128,28 @@ export function KanbanCard({child}: KanbanCardProps) {
 					)}
 				</div>
 
-				{/* Back face */}
+				{/* Back face — click blank area to flip back */}
 				<div
-					className="absolute inset-0 rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)]"
+					className="absolute inset-0 rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)] cursor-pointer"
+					onClick={() => setFlipped(false)}
 				>
 					<div className="flex h-full flex-col">
-						<div className="mb-2 flex items-center justify-between">
-							<span className="text-xs font-medium text-text-100 truncate">{child.subject}</span>
-							<button
-								type="button"
-								onClick={() => setFlipped(false)}
-								className="shrink-0 rounded p-0.5 text-text-400 hover:bg-bg-200 hover:text-text-100"
-							>
-								<RotateCcw className="h-3.5 w-3.5" />
-							</button>
-						</div>
+						<p className="mb-2 text-xs font-medium text-text-100 truncate">{child.subject}</p>
 
-						<div className="flex flex-col gap-1.5">
-							{/* Diff link */}
-							<Link
-								to="/diff/$project/$sha"
-								params={{project: child.project, sha: child.sha}}
+						{/* Stop click-to-flip from firing when clicking action buttons/links */}
+						<div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
+							{/* Diff link — new tab */}
+							<a
+								href={`/diff/${child.project}/${child.sha}`}
+								target="_blank"
+								rel="noopener noreferrer"
 								className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
 							>
 								<Diff className="h-3.5 w-3.5" />
 								View Diff
-							</Link>
+							</a>
 
-							{/* PR link */}
+							{/* PR link — new tab */}
 							{showPrLink && (
 								<a
 									href={child.prUrl}
@@ -200,16 +194,17 @@ export function KanbanCard({child}: KanbanCardProps) {
 								</button>
 							)}
 
-							{/* Test failure log */}
+							{/* Test failure log — new tab */}
 							{child.category === 'test_failed' && (
-								<Link
-									to="/log/$project/$sha"
-									params={{project: child.project, sha: child.sha}}
+								<a
+									href={`/log/${child.project}/${child.sha}`}
+									target="_blank"
+									rel="noopener noreferrer"
 									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
 								>
 									<FileText className="h-3.5 w-3.5" />
 									View Test Log
-								</Link>
+								</a>
 							)}
 
 							{/* Snooze */}

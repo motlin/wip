@@ -166,7 +166,7 @@ export default class Report extends Command {
 			reviewComments: grouped.review_comments,
 			testFailed: grouped.test_failed,
 			readyToTest: grouped.ready_to_test,
-			local_changes: grouped.local_changes,
+			localChanges: grouped.local_changes,
 			noTest: grouped.no_test,
 			skippable: grouped.skippable,
 			nextSteps,

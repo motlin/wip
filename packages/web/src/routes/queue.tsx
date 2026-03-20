@@ -7,9 +7,10 @@ import {KanbanCard} from '../components/kanban-card';
 import {useHasActiveTests} from '../lib/test-events-context';
 
 // Queue: furthest-along-first (reverse of kanban left-to-right)
-const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'local_changes', 'no_test', 'snoozed', 'skippable'];
+const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
+	not_started: 'Not Started',
 	approved: 'Approved',
 	changes_requested: 'Changes Requested',
 	review_comments: 'Review Comments',
@@ -28,6 +29,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 const CATEGORY_COLORS: Record<Category, string> = {
+	not_started: 'text-purple-700 dark:text-purple-400',
 	approved: 'text-green-700 dark:text-green-400',
 	changes_requested: 'text-purple-700 dark:text-purple-400',
 	review_comments: 'text-blue-700 dark:text-blue-400',

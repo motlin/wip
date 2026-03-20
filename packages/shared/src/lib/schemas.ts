@@ -11,6 +11,7 @@ export type TestStatus = z.infer<typeof TestStatusSchema>;
 
 // Kanban left-to-right: full SDLC flow
 export const CategorySchema = z.enum([
+	'not_started',
 	'skippable',
 	'snoozed',
 	'no_test',
@@ -72,6 +73,14 @@ export const ClassifiedChildSchema = z.object({
 	failureTail: z.string().optional(),
 	blockReason: z.string().optional(),
 	category: CategorySchema,
+	// GitHub Issue fields (present when this item represents an issue, not a commit)
+	issueUrl: z.string().optional(),
+	issueNumber: z.number().optional(),
+	issueLabels: z.array(z.object({name: z.string(), color: z.string()})).optional(),
+	// GitHub Project fields (present when this item comes from a GitHub Project)
+	projectItemUrl: z.string().optional(),
+	projectItemStatus: z.string().optional(),
+	projectItemType: z.enum(['ISSUE', 'PULL_REQUEST', 'DRAFT_ISSUE']).optional(),
 });
 export type ClassifiedChild = z.infer<typeof ClassifiedChildSchema>;
 

@@ -1,6 +1,6 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
-import type {ChildCommit, ProjectInfo} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, mapProjectStatusToCategory, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
+import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask} from '@wip/shared';
 import {
 	type ActionResult,
 	type Category,
@@ -70,6 +70,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 	const snoozedSet = getSnoozedSet();
 
 	const grouped: Record<Category, ClassifiedChild[]> = {
+		not_started: [],
 		skippable: [],
 		snoozed: [],
 		no_test: [],
@@ -135,11 +136,127 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		}
 	}
 
+	// Build a set of known project remotes for matching (used by both issues and project items)
+	const projectByRemote = new Map<string, ProjectInfo>();
+	for (const {project: p} of projectResults) {
+		projectByRemote.set(p.remote.toLowerCase(), p);
+	}
+
+	// Fetch GitHub Issues assigned to me and add unmatched ones as "not_started" cards
+	const allSubjects = new Set(Object.values(grouped).flat().map((item) => item.subject.toLowerCase()));
+	const allPrUrls = new Set(Object.values(grouped).flat().map((item) => item.prUrl).filter(Boolean));
+
+	try {
+		const issues = await fetchAssignedIssues();
+
+		for (const issue of issues) {
+			// Skip issues that already have a corresponding PR in our board
+			if (allPrUrls.has(issue.url)) continue;
+			// Skip issues whose title matches a commit subject (rough heuristic)
+			if (allSubjects.has(issue.title.toLowerCase())) continue;
+
+			const repoKey = issue.repository.nameWithOwner.toLowerCase();
+			const matchedProject = projectByRemote.get(repoKey);
+			const projectName = matchedProject?.name ?? issue.repository.name;
+			const projectDir = matchedProject?.dir ?? '';
+			const remote = issue.repository.nameWithOwner;
+
+			grouped.not_started.push({
+				project: projectName,
+				projectDir,
+				remote,
+				upstreamRemote: matchedProject?.upstreamRemote ?? 'origin',
+				sha: `issue-${issue.number}`,
+				shortSha: `#${issue.number}`,
+				subject: issue.title,
+				date: '',
+				category: 'not_started',
+				issueUrl: issue.url,
+				issueNumber: issue.number,
+				issueLabels: issue.labels.map((l) => ({name: l.name, color: l.color})),
+			});
+		}
+	} catch {
+		// If issue fetching fails, continue without issues
+	}
+
+	// Fetch GitHub Project items and add unmatched ones as kanban cards
+	try {
+		const projectItems = await fetchAllProjectItems();
+		// Build sets of known URLs to avoid duplicates with issues or PRs already on the board
+		const allUrls = new Set(Object.values(grouped).flat().map((item) => item.prUrl ?? item.issueUrl).filter(Boolean));
+		const allTitles = new Set(Object.values(grouped).flat().map((item) => item.subject.toLowerCase()));
+
+		for (const item of projectItems) {
+			// Skip items already represented on the board (by URL or title match)
+			if (item.url && allUrls.has(item.url)) continue;
+			if (allTitles.has(item.title.toLowerCase())) continue;
+
+			const category = mapProjectStatusToCategory(item.status);
+			// Skip "Done" items mapped to approved — they clutter the board
+			if (category === 'approved') continue;
+
+			const repoName = item.repository ?? 'unknown';
+			const repoKey = repoName.toLowerCase();
+			const matchedProject = projectByRemote.get(repoKey);
+			const projectName = matchedProject?.name ?? repoName.split('/').pop() ?? repoName;
+			const projectDir = matchedProject?.dir ?? '';
+
+			grouped[category].push({
+				project: projectName,
+				projectDir,
+				remote: repoName,
+				upstreamRemote: matchedProject?.upstreamRemote ?? 'origin',
+				sha: `project-${item.id}`,
+				shortSha: item.number ? `#${item.number}` : item.title.slice(0, 8),
+				subject: item.title,
+				date: '',
+				category,
+				issueUrl: item.url,
+				issueNumber: item.number,
+				issueLabels: item.labels.map((l) => ({name: l.name, color: l.color})),
+				projectItemUrl: item.url,
+				projectItemStatus: item.status,
+				projectItemType: item.type,
+			});
+		}
+	} catch {
+		// If project fetching fails (e.g. missing read:project scope), continue without project items
+	}
+
+	// Scan project directories for todo.md task files and add incomplete tasks as "not_started" cards
+	{
+		const allTitles = new Set(Object.values(grouped).flat().map((item) => item.subject.toLowerCase()));
+
+		for (const {project: p} of projectResults) {
+			const todoTasks = findIncompleteTodoTasks(p.dir);
+			for (const task of todoTasks) {
+				// Skip tasks whose text already matches a card subject
+				if (allTitles.has(task.text.toLowerCase())) continue;
+				allTitles.add(task.text.toLowerCase());
+
+				const sourceLabel = path.relative(p.dir, task.sourceFile);
+
+				grouped.not_started.push({
+					project: p.name,
+					projectDir: p.dir,
+					remote: p.remote,
+					upstreamRemote: p.upstreamRemote,
+					sha: `todo-${p.name}-${Buffer.from(task.text).toString('base64url').slice(0, 12)}`,
+					shortSha: sourceLabel,
+					subject: task.text,
+					date: '',
+					category: 'not_started',
+				});
+			}
+		}
+	}
+
 	// Suggest branch names for branchless children (one claude -p call each, cached in DB)
 	const branchless: Array<{sha: string; project: string; subject: string; dir: string}> = [];
 	const allItems = Object.values(grouped).flat();
 	for (const item of allItems) {
-		if (!item.branch) {
+		if (!item.branch && !item.issueUrl) {
 			branchless.push({sha: item.sha, project: item.project, subject: item.subject, dir: item.projectDir});
 		}
 	}

@@ -1,5 +1,5 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot, LayoutGrid} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -74,6 +74,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 	}, [snoozeOpen]);
 
 	const isIssue = Boolean(child.issueUrl);
+	const isProjectItem = Boolean(child.projectItemStatus);
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
 
@@ -190,6 +191,13 @@ export function KanbanCard({child}: KanbanCardProps) {
 							))}
 						</div>
 					)}
+					{isProjectItem && child.projectItemStatus && (
+						<div className="mt-1.5">
+							<span className="inline-flex items-center rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+								{child.projectItemStatus}
+							</span>
+						</div>
+					)}
 					<div className="mt-2 flex items-center justify-between">
 						<span
 							className="text-xs font-medium text-text-300"
@@ -235,6 +243,14 @@ export function KanbanCard({child}: KanbanCardProps) {
 									<CircleDot className="h-3.5 w-3.5" />
 									Open Issue
 								</a>
+							)}
+
+							{/* Project status — for GitHub Project items */}
+							{isProjectItem && child.projectItemStatus && (
+								<span className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+									<LayoutGrid className="h-3.5 w-3.5" />
+									Project: {child.projectItemStatus}
+								</span>
 							)}
 
 							{/* Diff link — new tab (commits only) */}

@@ -2,6 +2,7 @@ import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from './kanban-card';
 
 const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; headerClass: string}> = {
+	not_started: {label: 'Not Started', colorClass: 'bg-purple-column', headerClass: 'text-purple-700 dark:text-purple-400'},
 	skippable: {label: 'Skippable', colorClass: 'bg-dim-column', headerClass: 'text-text-500'},
 	snoozed: {label: 'Snoozed', colorClass: 'bg-dim-column', headerClass: 'text-text-500'},
 	no_test: {label: 'No Test', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},

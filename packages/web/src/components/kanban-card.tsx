@@ -411,7 +411,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 							)}
 
 							{/* Test */}
-							{child.category === 'ready_to_test' && (
+							{(child.category === 'ready_to_test' || child.category === 'test_failed') && (
 								<button
 									type="button"
 									onClick={handleTest}

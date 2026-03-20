@@ -1,7 +1,7 @@
 import {useRouter} from '@tanstack/react-router';
 import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
@@ -34,6 +34,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const [refreshing, setRefreshing] = useState(false);
 	const [rebasing, setRebasing] = useState(false);
 	const [rebaseResult, setRebaseResult] = useState<{message: string} | null>(null);
+	const [branchFormOpen, setBranchFormOpen] = useState(false);
+	const [branchName, setBranchName] = useState(child.suggestedBranch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+	const [branchResult, setBranchResult] = useState<{message: string} | null>(null);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
@@ -125,6 +128,24 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		if (result.ok) {
 			setPrResult({message: result.message, prUrl: result.compareUrl});
 			setPrFormOpen(false);
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
+	const handleCreateBranch = async () => {
+		setLoading(true);
+		setError(null);
+		const result = await createBranch({data: {
+			projectDir: child.projectDir,
+			sha: child.sha,
+			branchName,
+		}});
+		setLoading(false);
+		if (result.ok) {
+			setBranchResult({message: result.message});
+			setBranchFormOpen(false);
 			router.invalidate();
 		} else {
 			setError(result.message);
@@ -256,6 +277,50 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					</div>
 				)}
 
+				{/* Create Branch (detached HEAD) */}
+				{child.category === 'detached_head' && !branchFormOpen && (
+					<button
+						type="button"
+						onClick={() => setBranchFormOpen(true)}
+						disabled={loading}
+						className="inline-flex items-center gap-1.5 rounded bg-yellow-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-yellow-700"
+					>
+						<GitBranch className="h-3.5 w-3.5" />
+						Create Branch
+					</button>
+				)}
+				{child.category === 'detached_head' && branchFormOpen && (
+					<div className="flex flex-col gap-1.5">
+						<input
+							type="text"
+							value={branchName}
+							onChange={(e) => setBranchName(e.target.value)}
+							placeholder="Branch name"
+							className="rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-yellow-500"
+						/>
+						<div className="flex gap-1.5">
+							<button
+								type="button"
+								onClick={handleCreateBranch}
+								disabled={loading || !branchName.trim()}
+								className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+									loading || !branchName.trim() ? 'cursor-not-allowed opacity-60' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+								}`}
+							>
+								{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+								{loading ? 'Creating...' : 'Create'}
+							</button>
+							<button
+								type="button"
+								onClick={() => setBranchFormOpen(false)}
+								className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
+							>
+								Cancel
+							</button>
+						</div>
+					</div>
+				)}
+
 				{/* Push */}
 				{child.category === 'ready_to_push' && (
 					<button
@@ -359,6 +424,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			</div>
 
 			{/* Status messages */}
+			{branchResult && (
+				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{branchResult.message}</p>
+			)}
 			{pushResult && (
 				<div className="mt-2">
 					<p className="text-xs text-green-600 dark:text-green-400">{pushResult.message}</p>

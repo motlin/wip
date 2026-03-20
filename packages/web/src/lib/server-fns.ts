@@ -15,6 +15,7 @@ import {
 	CreatePrInputSchema,
 	RefreshChildInputSchema,
 	RebasePrInputSchema,
+	CreateBranchInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -38,6 +39,9 @@ interface Classification {
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Classification {
 	if (child.skippable) return {category: 'skippable'};
+
+	// Detached HEAD — user needs to create a branch before pushing or creating PRs
+	if (project.detachedHead) return {category: 'detached_head'};
 
 	// Has a PR on GitHub — classify by check/review status
 	if (child.branch && child.reviewStatus !== 'no_pr') {
@@ -75,6 +79,7 @@ async function buildReport(): Promise<ReportData> {
 		skippable: [],
 		snoozed: [],
 		no_test: [],
+		detached_head: [],
 		local_changes: [],
 		ready_to_test: [],
 		test_failed: [],
@@ -614,6 +619,22 @@ export const getChildBySha = createServerFn({method: 'GET'})
 			if (match) return match;
 		}
 		return null;
+	});
+
+export const createBranch = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
+		const {projectDir, sha, branchName} = data;
+
+		const {execa} = await import('execa');
+		const result = await execa('git', ['-C', projectDir, 'checkout', '-b', branchName, sha], {reject: false});
+
+		if (result.exitCode === 0) {
+			return {ok: true, message: `Created branch ${branchName}`};
+		}
+
+		return {ok: false, message: `Failed to create branch: ${result.stderr}`};
 	});
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {

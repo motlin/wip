@@ -66,6 +66,14 @@ export async function isDirty(dir: string): Promise<boolean> {
 	return untracked.length > 0;
 }
 
+export async function isDetachedHead(dir: string): Promise<boolean> {
+	const start = performance.now();
+	const result = await execa('git', ['-C', dir, 'symbolic-ref', '-q', 'HEAD'], {reject: false});
+	const duration = Math.round(performance.now() - start);
+	log.subprocess.debug({cmd: 'git', args: ['-C', dir, 'symbolic-ref', '-q', 'HEAD'], duration}, `git -C ${dir} symbolic-ref -q HEAD (${duration}ms)`);
+	return result.exitCode !== 0;
+}
+
 export async function hasUpstreamRef(dir: string, ref: string): Promise<boolean> {
 	const start = performance.now();
 	const result = await execa('git', ['-C', dir, 'rev-parse', '--verify', ref], {reject: false});
@@ -403,9 +411,10 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 
 		if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
 
-		const [remote, dirtyFlag, branchList, hasTest] = await Promise.all([
+		const [remote, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
 			git(dir, 'remote', 'get-url', 'origin'),
 			isDirty(dir),
+			isDetachedHead(dir),
 			git(dir, 'branch', '--list'),
 			hasTestConfigured(dir),
 		]);
@@ -424,6 +433,7 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 			upstreamBranch,
 			upstreamRef,
 			dirty: dirtyFlag,
+			detachedHead: detached,
 			branchCount,
 			hasTestConfigured: hasTest,
 		} satisfies ProjectInfo;

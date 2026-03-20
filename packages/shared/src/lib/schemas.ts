@@ -15,6 +15,7 @@ export const CategorySchema = z.enum([
 	'skippable',
 	'snoozed',
 	'no_test',
+	'detached_head',
 	'local_changes',
 	'ready_to_test',
 	'test_failed',
@@ -38,6 +39,7 @@ export const ProjectInfoSchema = z.object({
 	upstreamBranch: z.string(),
 	upstreamRef: z.string(),
 	dirty: z.boolean(),
+	detachedHead: z.boolean(),
 	branchCount: z.number(),
 	hasTestConfigured: z.boolean(),
 });
@@ -175,3 +177,10 @@ export const RebasePrInputSchema = z.object({
 	prUrl: z.string(),
 });
 export type RebasePrInput = z.infer<typeof RebasePrInputSchema>;
+
+export const CreateBranchInputSchema = z.object({
+	projectDir: z.string(),
+	sha: z.string(),
+	branchName: z.string(),
+});
+export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;

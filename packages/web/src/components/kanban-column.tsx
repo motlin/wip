@@ -6,6 +6,7 @@ const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; header
 	skippable: {label: 'Skippable', colorClass: 'bg-dim-column', headerClass: 'text-text-500'},
 	snoozed: {label: 'Snoozed', colorClass: 'bg-dim-column', headerClass: 'text-text-500'},
 	no_test: {label: 'No Test', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},
+	detached_head: {label: 'Detached HEAD', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
 	local_changes: {label: 'Local Changes', colorClass: 'bg-dim-column', headerClass: 'text-text-300'},
 	ready_to_test: {label: 'Ready to Test', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
 	test_failed: {label: 'Test Failed', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},

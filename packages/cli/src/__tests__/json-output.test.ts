@@ -56,6 +56,7 @@ const fakeProject: ProjectInfo = {
 	upstreamBranch: 'main',
 	upstreamRef: 'origin/main',
 	dirty: false,
+	detachedHead: false,
 	branchCount: 1,
 	hasTestConfigured: true,
 };

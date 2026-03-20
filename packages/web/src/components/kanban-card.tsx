@@ -18,6 +18,26 @@ const SNOOZE_PRESETS = [
 	{label: 'On Hold', hours: null},
 ] as const;
 
+function relativeTime(dateStr: string): string {
+	const date = new Date(dateStr);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+	if (diffDays === 0) return 'today';
+	if (diffDays === 1) return 'yesterday';
+	if (diffDays < 7) return `${diffDays} days ago`;
+	if (diffDays < 30) {
+		const weeks = Math.floor(diffDays / 7);
+		return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+	}
+	if (diffDays < 365) {
+		const months = Math.floor(diffDays / 30);
+		return months === 1 ? '1 month ago' : `${months} months ago`;
+	}
+	const years = Math.floor(diffDays / 365);
+	return years === 1 ? '1 year ago' : `${years} years ago`;
+}
+
 export function KanbanCard({child}: KanbanCardProps) {
 	const router = useRouter();
 	const [flipped, setFlipped] = useState(false);
@@ -113,15 +133,32 @@ export function KanbanCard({child}: KanbanCardProps) {
 					onClick={() => setFlipped(true)}
 				>
 					<div className="flex items-start justify-between gap-2">
-						<span className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">
+						<a
+							href={`https://github.com/${child.remote}/commit/${child.sha}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							title={`${child.sha}\n${child.subject}`}
+							className="inline-flex shrink-0 items-center gap-1 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 hover:bg-bg-300 hover:text-text-100 transition-colors"
+							onClick={(e) => e.stopPropagation()}
+						>
 							<Diff className="h-3 w-3" />
 							{child.shortSha}
+						</a>
+						<span
+							className="text-xs text-text-500"
+							title={`Commit date: ${child.date} (${relativeTime(child.date)})`}
+						>
+							{child.date}
 						</span>
-						<span className="text-xs text-text-500">{child.date}</span>
 					</div>
 					<p className="mt-1.5 text-sm leading-snug text-text-100">{child.subject}</p>
 					<div className="mt-2 flex items-center justify-between">
-						<span className="text-xs font-medium text-text-300">{child.project}</span>
+						<span
+							className="text-xs font-medium text-text-300"
+							title={child.projectDir}
+						>
+							{child.project}
+						</span>
 						{testJob?.status === 'running' && <Loader2 className="h-3 w-3 animate-spin text-yellow-500" />}
 						{testJob?.status === 'queued' && <Clock className="h-3 w-3 text-yellow-500" />}
 					</div>

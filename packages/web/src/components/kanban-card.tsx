@@ -51,7 +51,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 	const effectiveBranch = child.branch ?? child.suggestedBranch;
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
-	const isTestActive = testJob && (testJob.status === 'queued' || testJob.status === 'running');
+
 	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
 
 	const handlePush = async () => {
@@ -186,14 +186,9 @@ export function KanbanCard({child}: KanbanCardProps) {
 								<button
 									type="button"
 									onClick={handleTest}
-									disabled={!!isTestActive}
-									className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-										isTestActive ? 'bg-yellow-600/80 text-white' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-									}`}
+									className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
 								>
-									{testJob?.status === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-									{testJob?.status === 'queued' && <Clock className="h-3.5 w-3.5" />}
-									{!isTestActive && <Play className="h-3.5 w-3.5" />}
+									{testJob?.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : testJob?.status === 'queued' ? <Clock className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
 									{testJob?.status === 'running' ? 'Testing...' : testJob?.status === 'queued' ? 'Queued' : 'Run Test'}
 								</button>
 							)}

@@ -205,14 +205,28 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 
 	const start = performance.now();
 	const format = '%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x1e';
-	const logResult = await execa('git', ['-C', dir, 'log', '--stdin', '--no-walk', '--decorate-refs=refs/heads/', `--format=${format}`], {
-		input: shas.join('\n'),
-		reject: false,
-	});
+	const [logResult, remoteBranchOutput] = await Promise.all([
+		execa('git', ['-C', dir, 'log', '--stdin', '--no-walk', '--decorate-refs=refs/heads/', `--format=${format}`], {
+			input: shas.join('\n'),
+			reject: false,
+		}),
+		git(dir, 'branch', '-r'),
+	]);
 	const logDuration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'git', args: ['-C', dir, 'log', '--stdin', '--no-walk', '--format=...'], duration: logDuration}, `git -C ${dir} log --stdin --no-walk --format=... (${logDuration}ms)`);
 
 	if (logResult.exitCode !== 0) return [];
+
+	// Build a set of remote branch names (strip the remote prefix, e.g. "origin/foo" -> "foo")
+	const remoteBranches = new Set<string>();
+	for (const line of remoteBranchOutput.split('\n')) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.includes(' -> ')) continue;
+		const slashIdx = trimmed.indexOf('/');
+		if (slashIdx >= 0) {
+			remoteBranches.add(trimmed.slice(slashIdx + 1));
+		}
+	}
 
 	const testStatusMap: Map<string, 'passed' | 'failed'> = hasTest && projectName
 		? getTestResultsForProject(projectName)
@@ -234,8 +248,9 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const reviewStatus: ReviewStatus = branch && prStatuses ? (prStatuses.review.get(branch) ?? 'no_pr') : 'no_pr';
 		const checkStatus: CheckStatus = branch && prStatuses ? (prStatuses.checks.get(branch) ?? 'none') : 'none';
 		const prUrl = branch && prStatuses ? prStatuses.urls.get(branch) : undefined;
+		const pushedToRemote = branch ? remoteBranches.has(branch) : false;
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, reviewStatus, prUrl});
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, reviewStatus, prUrl});
 	}
 
 	return children;

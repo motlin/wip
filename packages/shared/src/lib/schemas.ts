@@ -18,6 +18,7 @@ export const CategorySchema = z.enum([
 	'ready_to_test',
 	'test_failed',
 	'ready_to_push',
+	'pushed_no_pr',
 	'checks_running',
 	'checks_failed',
 	'checks_passed',
@@ -49,6 +50,7 @@ export const ChildCommitSchema = z.object({
 	testStatus: TestStatusSchema,
 	checkStatus: CheckStatusSchema,
 	skippable: z.boolean(),
+	pushedToRemote: z.boolean(),
 	reviewStatus: ReviewStatusSchema,
 	prUrl: z.string().optional(),
 });
@@ -57,6 +59,7 @@ export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 export const ClassifiedChildSchema = z.object({
 	project: z.string(),
 	projectDir: z.string(),
+	remote: z.string(),
 	upstreamRemote: z.string(),
 	sha: z.string(),
 	shortSha: z.string(),

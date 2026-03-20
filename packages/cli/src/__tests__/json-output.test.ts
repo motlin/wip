@@ -69,6 +69,7 @@ const fakeChild: ChildCommit = {
 	testStatus: 'passed',
 	checkStatus: 'none',
 	skippable: false,
+	pushedToRemote: false,
 	reviewStatus: 'no_pr',
 };
 
@@ -81,6 +82,7 @@ const fakeChildFailed: ChildCommit = {
 	testStatus: 'failed',
 	checkStatus: 'none',
 	skippable: false,
+	pushedToRemote: false,
 	reviewStatus: 'no_pr',
 };
 
@@ -235,6 +237,22 @@ describe('JSON output mode', () => {
 			expect(parsed).toHaveProperty('summary');
 		});
 
+		it('includes dryRun flag in JSON output', async () => {
+			const {default: Push} = await import('../commands/push.js');
+			const result = await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
+
+			expect(result).toHaveProperty('dryRun', true);
+		});
+
+		it('uses planned status in dry-run mode', async () => {
+			const {default: Push} = await import('../commands/push.js');
+			const result = await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
+
+			for (const item of (result as any).pushed) {
+				expect(item.status).toBe('planned');
+			}
+		});
+
 		it('includes no human-readable output when --json is passed', async () => {
 			const {default: Push} = await import('../commands/push.js');
 			await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
@@ -260,6 +278,22 @@ describe('JSON output mode', () => {
 			expect(parsed).toHaveProperty('summary');
 		});
 
+		it('includes dryRun flag in JSON output', async () => {
+			const {default: Test} = await import('../commands/test.js');
+			const result = await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
+
+			expect(result).toHaveProperty('dryRun', true);
+		});
+
+		it('uses planned status in dry-run mode', async () => {
+			const {default: Test} = await import('../commands/test.js');
+			const result = await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
+
+			for (const item of (result as any).results) {
+				expect(item.status).toBe('planned');
+			}
+		});
+
 		it('includes no human-readable output when --json is passed', async () => {
 			const {default: Test} = await import('../commands/test.js');
 			await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
@@ -269,6 +303,22 @@ describe('JSON output mode', () => {
 			expect(stripped).not.toContain('would test');
 			expect(stripped).not.toContain('Testing');
 			expect(stripped).not.toContain('Tested');
+		});
+
+		it('includes dryRun flag in fast mode JSON output', async () => {
+			const {default: Test} = await import('../commands/test.js');
+			const result = await Test.run(['--json', '--dry-run', '--fast', '--projects-dir', '/tmp/fake-projects']);
+
+			expect(result).toHaveProperty('dryRun', true);
+		});
+
+		it('uses planned status in fast dry-run mode', async () => {
+			const {default: Test} = await import('../commands/test.js');
+			const result = await Test.run(['--json', '--dry-run', '--fast', '--projects-dir', '/tmp/fake-projects']);
+
+			for (const item of (result as any).results) {
+				expect(item.status).toBe('planned');
+			}
 		});
 	});
 

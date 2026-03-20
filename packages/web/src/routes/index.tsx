@@ -15,7 +15,7 @@ function Home() {
 	const actionable = report.grouped.changes_requested.length
 		+ report.grouped.test_failed.length
 		+ report.grouped.review_comments.length;
-	const ready = report.grouped.approved.length + report.grouped.ready_to_push.length;
+	const ready = report.grouped.approved.length + report.grouped.ready_to_push.length + report.grouped.pushed_no_pr.length;
 	const waiting = report.grouped.ready_to_test.length
 		+ report.grouped.blocked.length
 		+ report.grouped.no_test.length

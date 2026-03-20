@@ -37,6 +37,9 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 		return 'checks_running'; // pending/none treated as running
 	}
 
+	// Branch pushed to remote but no PR yet
+	if (child.branch && child.pushedToRemote && child.reviewStatus === 'no_pr') return 'pushed_no_pr';
+
 	// No PR — classify by local test status
 	if (child.testStatus === 'passed') return 'ready_to_push';
 	if (child.testStatus === 'failed') return 'test_failed';
@@ -64,6 +67,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 		ready_to_test: [],
 		test_failed: [],
 		ready_to_push: [],
+		pushed_no_pr: [],
 		checks_running: [],
 		checks_failed: [],
 		checks_passed: [],
@@ -104,6 +108,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 			grouped[category].push({
 				project: p.name,
 				projectDir: p.dir,
+				remote: p.remote,
 				upstreamRemote: p.upstreamRemote,
 				sha: child.sha,
 				shortSha: child.shortSha,

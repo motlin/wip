@@ -9,6 +9,7 @@ const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; header
 	ready_to_test: {label: 'Ready to Test', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
 	test_failed: {label: 'Test Failed', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},
 	ready_to_push: {label: 'Ready to Push', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
+	pushed_no_pr: {label: 'Needs PR', colorClass: 'bg-blue-column', headerClass: 'text-blue-700 dark:text-blue-400'},
 	checks_running: {label: 'Checks Running', colorClass: 'bg-yellow-column', headerClass: 'text-yellow-700 dark:text-yellow-400'},
 	checks_failed: {label: 'Checks Failed', colorClass: 'bg-red-column', headerClass: 'text-red-700 dark:text-red-400'},
 	checks_passed: {label: 'Checks Passed', colorClass: 'bg-blue-column', headerClass: 'text-blue-700 dark:text-blue-400'},

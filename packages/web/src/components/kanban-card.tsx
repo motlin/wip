@@ -166,6 +166,19 @@ export function KanbanCard({child}: KanbanCardProps) {
 								</a>
 							)}
 
+							{/* Create PR — branch is pushed but no PR exists */}
+							{child.category === 'pushed_no_pr' && child.branch && (
+								<a
+									href={`https://github.com/${child.remote}/compare/${child.branch}?expand=1`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+								>
+									<GitHubIcon className="h-3.5 w-3.5" />
+									Create PR
+								</a>
+							)}
+
 							{/* Push */}
 							{child.category === 'ready_to_push' && (
 								<button

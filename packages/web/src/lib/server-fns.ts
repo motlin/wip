@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, mapProjectStatusToCategory, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, mapProjectStatusToCategory, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask} from '@wip/shared';
 import {
 	type ActionResult,
@@ -13,6 +13,7 @@ import {
 	UnsnoozeChildInputSchema,
 	CancelTestInputSchema,
 	CreatePrInputSchema,
+	RefreshChildInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -554,3 +555,28 @@ export const cancelTestFn = createServerFn({method: 'POST'})
 		}
 		return {ok: result.ok, message: result.message};
 	});
+
+export const refreshChild = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => RefreshChildInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		// Invalidate the PR cache for this project so the next report fetches fresh data
+		invalidatePrCache(data.project);
+		// Invalidate the report cache to force a full rebuild
+		reportCache = null;
+		return {ok: true, message: `Refreshed ${data.project}`};
+	});
+
+export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
+	// Invalidate all caches
+	invalidateIssuesCache();
+	invalidateProjectItemsCache();
+	// Invalidate PR caches for all projects
+	const projectsDir = getProjectsDir();
+	const projects = await discoverProjects(projectsDir);
+	for (const p of projects) {
+		invalidatePrCache(p.name);
+	}
+	// Invalidate the report cache
+	reportCache = null;
+	return {ok: true, message: 'All caches invalidated'};
+});

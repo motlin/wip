@@ -161,3 +161,9 @@ export const CreatePrInputSchema = z.object({
 	draft: z.boolean().optional(),
 });
 export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;
+
+export const RefreshChildInputSchema = z.object({
+	project: z.string(),
+	sha: z.string(),
+});
+export type RefreshChildInput = z.infer<typeof RefreshChildInputSchema>;

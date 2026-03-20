@@ -1,7 +1,7 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot, LayoutGrid, X} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, Diff, AlertTriangle, CircleDot, LayoutGrid, X, RefreshCw} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, refreshChild} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
@@ -51,6 +51,7 @@ export function KanbanCard({child}: KanbanCardProps) {
 	const [prBody, setPrBody] = useState('');
 	const [prDraft, setPrDraft] = useState(true);
 	const [prResult, setPrResult] = useState<{message: string; prUrl?: string} | null>(null);
+	const [refreshing, setRefreshing] = useState(false);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
@@ -155,6 +156,18 @@ export function KanbanCard({child}: KanbanCardProps) {
 		if (result.ok) {
 			setPrResult({message: result.message, prUrl: result.compareUrl});
 			setPrFormOpen(false);
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
+	const handleRefresh = async () => {
+		setRefreshing(true);
+		setError(null);
+		const result = await refreshChild({data: {project: child.project, sha: child.sha}});
+		setRefreshing(false);
+		if (result.ok) {
 			router.invalidate();
 		} else {
 			setError(result.message);
@@ -473,6 +486,17 @@ export function KanbanCard({child}: KanbanCardProps) {
 									)}
 								</div>
 							)}
+
+							{/* Refresh */}
+							<button
+								type="button"
+								onClick={handleRefresh}
+								disabled={refreshing}
+								className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+							>
+								<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+								{refreshing ? 'Refreshing...' : 'Refresh'}
+							</button>
 						</div>
 
 						{pushResult && (

@@ -1,4 +1,4 @@
-import {useRouter} from '@tanstack/react-router';
+import {useQueryClient} from '@tanstack/react-query';
 import {Loader2, Clock, AlertTriangle, CircleDot, LayoutGrid, X, GitBranch, AlertCircle, Diff, ExternalLink, XCircle} from 'lucide-react';
 import {useRef, useEffect} from 'react';
 import type {ClassifiedChild} from '../lib/server-fns';
@@ -33,18 +33,18 @@ function relativeTime(dateStr: string): string {
 }
 
 export function KanbanCard({child}: KanbanCardProps) {
-	const router = useRouter();
+	const queryClient = useQueryClient();
 	const testJob = useTestJob(child.sha, child.project);
 	const prevTestStatus = useRef(testJob?.status);
 
 	useEffect(() => {
 		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
 			if (testJob?.status === 'passed' || testJob?.status === 'failed') {
-				router.invalidate();
+				queryClient.invalidateQueries({queryKey: ['children', child.project]});
 			}
 		}
 		prevTestStatus.current = testJob?.status;
-	}, [testJob?.status, router]);
+	}, [testJob?.status, queryClient, child.project]);
 
 	const isIssue = Boolean(child.issueUrl);
 	const isProjectItem = Boolean(child.projectItemStatus);

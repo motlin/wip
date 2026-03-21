@@ -1,4 +1,4 @@
-import {useRouter} from '@tanstack/react-router';
+import {useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, getCommitDiff} from '../lib/server-fns';
@@ -22,7 +22,7 @@ interface CommitActionsProps {
 }
 
 export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
-	const router = useRouter();
+	const queryClient = useQueryClient();
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
@@ -163,7 +163,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		const result = await snoozeChildFn({data: {sha: child.sha, project: child.project, shortSha: child.shortSha, subject: child.subject, until}});
 		setLoading(false);
 		if (result.ok) {
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			queryClient.invalidateQueries({queryKey: ['snoozed']});
 		} else {
 			setError(result.message);
 		}
@@ -189,7 +190,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				if (result.compareUrl) {
 					window.open(result.compareUrl, '_blank');
 				}
-				router.invalidate();
+				queryClient.invalidateQueries({queryKey: ['children', child.project]});
 			} else {
 				setError(result.message);
 			}
@@ -211,7 +212,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		if (result.ok) {
 			setBranchResult({message: result.message});
 			setBranchFormOpen(false);
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}
@@ -223,7 +224,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		const result = await refreshChild({data: {project: child.project, sha: child.sha}});
 		setRefreshing(false);
 		if (result.ok) {
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}
@@ -243,7 +244,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		setRebasing(false);
 		if (result.ok) {
 			setRebaseResult({message: result.message});
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}
@@ -262,7 +263,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}});
 		setForcePushing(false);
 		if (result.ok) {
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}
@@ -281,7 +282,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		setRenaming(false);
 		if (result.ok) {
 			setRenameOpen(false);
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}
@@ -300,7 +301,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}});
 		setApplyingFixes(false);
 		if (result.ok) {
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}
@@ -341,7 +342,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		if (result.ok) {
 			setDeleteResult({message: result.message});
 			setDeleteConfirmOpen(false);
-			router.invalidate();
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
 		}

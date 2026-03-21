@@ -1,11 +1,13 @@
-import {createFileRoute, useRouter} from '@tanstack/react-router';
+import {createFileRoute} from '@tanstack/react-router';
+import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {AlarmClockOff, Loader2} from 'lucide-react';
 import {useState} from 'react';
-import {getSnoozedList, unsnoozeChildFn} from '../lib/server-fns';
+import {unsnoozeChildFn} from '../lib/server-fns';
 import type {SnoozedChild} from '../lib/server-fns';
+import {snoozedQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/snoozed')({
-	loader: () => getSnoozedList(),
+	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(snoozedQueryOptions()),
 	head: () => ({
 		meta: [{title: 'WIP Snoozed'}],
 	}),
@@ -26,7 +28,7 @@ function formatUntil(until: string | null): string {
 }
 
 function Snoozed() {
-	const snoozed = Route.useLoaderData();
+	const {data: snoozed} = useSuspenseQuery(snoozedQueryOptions());
 
 	const onHold = snoozed.filter((s) => s.until === null);
 	const timed = snoozed.filter((s) => s.until !== null);
@@ -74,14 +76,15 @@ function Snoozed() {
 }
 
 function SnoozedCard({item}: {item: SnoozedChild}) {
-	const router = useRouter();
+	const queryClient = useQueryClient();
 	const [loading, setLoading] = useState(false);
 
 	const handleUnsnooze = async () => {
 		setLoading(true);
 		await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
 		setLoading(false);
-		router.invalidate();
+		queryClient.invalidateQueries({queryKey: ['snoozed']});
+		queryClient.invalidateQueries({queryKey: ['children', item.project]});
 	};
 
 	return (

@@ -1,9 +1,11 @@
-import {Outlet, createRootRoute, HeadContent, Scripts, Link} from '@tanstack/react-router';
+import {Outlet, createRootRouteWithContext, HeadContent, Scripts, Link} from '@tanstack/react-router';
+import {ReactQueryDevtools} from '@tanstack/react-query-devtools';
 import type {ReactNode} from 'react';
+import type {QueryClient} from '@tanstack/react-query';
 import appCss from '../styles/globals.css?url';
 import {TestEventsProvider} from '../lib/test-events-context';
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
 	head: () => ({
 		meta: [{charSet: 'utf-8'}, {name: 'viewport', content: 'width=device-width, initial-scale=1'}],
 		links: [
@@ -75,6 +77,7 @@ function RootDocument({children}: Readonly<{children: ReactNode}>) {
 			</head>
 			<body>
 				{children}
+				<ReactQueryDevtools buttonPosition="bottom-left" />
 				<Scripts />
 			</body>
 		</html>

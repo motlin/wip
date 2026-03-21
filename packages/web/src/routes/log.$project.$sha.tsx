@@ -1,9 +1,11 @@
 import {createFileRoute} from '@tanstack/react-router';
-import {getTestLog} from '../lib/server-fns';
+import {useSuspenseQuery} from '@tanstack/react-query';
 import {AnsiText} from '../components/ansi-text';
+import {testLogQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/log/$project/$sha')({
-	loader: ({params}) => getTestLog({data: {project: params.project, sha: params.sha}}),
+	loader: ({context: {queryClient}, params}) =>
+		queryClient.ensureQueryData(testLogQueryOptions(params.project, params.sha)),
 	head: ({params}) => ({
 		meta: [{title: `Log: ${params.sha.slice(0, 7)}`}],
 	}),
@@ -12,7 +14,7 @@ export const Route = createFileRoute('/log/$project/$sha')({
 
 function LogViewer() {
 	const {project, sha} = Route.useParams();
-	const {log} = Route.useLoaderData();
+	const {data: {log}} = useSuspenseQuery(testLogQueryOptions(project, sha));
 
 	return (
 		<div className="p-6">

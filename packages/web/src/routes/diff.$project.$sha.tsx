@@ -1,22 +1,16 @@
 import {useMemo, useState} from 'react';
 import {createFileRoute} from '@tanstack/react-router';
+import {useSuspenseQuery} from '@tanstack/react-query';
 import {DiffView, DiffModeEnum} from '@git-diff-view/react';
 import {DiffFile} from '@git-diff-view/core';
 import '@git-diff-view/react/styles/diff-view.css';
-import {getCommitDiff, getProjectDir, getChildBySha} from '../lib/server-fns';
 import type {FileDiff} from '../lib/server-fns';
 import {CommitActions} from '../components/commit-actions';
+import {diffQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/diff/$project/$sha')({
-	loader: async ({params}) => {
-		const projectDir = await getProjectDir({data: {project: params.project}});
-		if (!projectDir) throw new Error(`Project ${params.project} not found`);
-		const [diff, child] = await Promise.all([
-			getCommitDiff({data: {projectDir, sha: params.sha}}),
-			getChildBySha({data: {project: params.project, sha: params.sha}}),
-		]);
-		return {...diff, child};
-	},
+	loader: ({context: {queryClient}, params}) =>
+		queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
 	head: ({params}) => ({
 		meta: [{title: `Diff: ${params.sha.slice(0, 7)}`}],
 	}),
@@ -69,7 +63,7 @@ function FileDiffSection({file, theme, mode, wrap}: {file: FileDiff; theme: 'lig
 
 function DiffViewer() {
 	const {project, sha} = Route.useParams();
-	const {files, stat, subject, child} = Route.useLoaderData();
+	const {data: {files, stat, subject, child}} = useSuspenseQuery(diffQueryOptions(project, sha));
 	const [mode, setMode] = useState<'split' | 'unified'>('split');
 	const [wrap, setWrap] = useState(false);
 

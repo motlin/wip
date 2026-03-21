@@ -1,8 +1,18 @@
 import {createFileRoute, Link} from '@tanstack/react-router';
-import {getReport} from '../lib/server-fns';
+import {useSuspenseQuery} from '@tanstack/react-query';
+import {projectsQueryOptions, projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {useGroupedChildren} from '../lib/use-grouped-children';
 
 export const Route = createFileRoute('/')({
-	loader: () => getReport(),
+	loader: async ({context: {queryClient}}) => {
+		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
+		await Promise.all([
+			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
+			queryClient.ensureQueryData(issuesQueryOptions()),
+			queryClient.ensureQueryData(projectItemsQueryOptions()),
+			queryClient.ensureQueryData(snoozedQueryOptions()),
+		]);
+	},
 	head: () => ({
 		meta: [{title: 'WIP Dashboard'}],
 	}),
@@ -10,23 +20,25 @@ export const Route = createFileRoute('/')({
 });
 
 function Home() {
-	const report = Route.useLoaderData();
+	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
+	const {grouped, totalChildren, projectCount} = useGroupedChildren(projects);
+	const {data: snoozed} = useSuspenseQuery(snoozedQueryOptions());
 
-	const actionable = report.grouped.changes_requested.length
-		+ report.grouped.test_failed.length
-		+ report.grouped.review_comments.length;
-	const ready = report.grouped.approved.length + report.grouped.ready_to_push.length + report.grouped.pushed_no_pr.length;
-	const waiting = report.grouped.ready_to_test.length
-		+ report.grouped.local_changes.length
-		+ report.grouped.no_test.length
-		+ report.grouped.skippable.length;
+	const actionable = grouped.changes_requested.length
+		+ grouped.test_failed.length
+		+ grouped.review_comments.length;
+	const ready = grouped.approved.length + grouped.ready_to_push.length + grouped.pushed_no_pr.length;
+	const waiting = grouped.ready_to_test.length
+		+ grouped.local_changes.length
+		+ grouped.no_test.length
+		+ grouped.skippable.length;
 
 	return (
 		<div className="mx-auto max-w-2xl p-6">
 			<div className="mb-8">
 				<h1 className="text-xl font-semibold">WIP Dashboard</h1>
 				<p className="mt-1 text-sm text-text-500">
-					{report.children} children across {report.projects} projects
+					{totalChildren} children across {projectCount} projects
 				</p>
 			</div>
 			<div className="grid grid-cols-2 gap-4">
@@ -59,10 +71,10 @@ function Home() {
 						Board view grouped by status. See everything at a glance.
 					</p>
 					<div className="mt-3 flex gap-3 text-xs">
-						<span className="text-text-500">{report.children} cards</span>
+						<span className="text-text-500">{totalChildren} cards</span>
 					</div>
 				</Link>
-				{report.snoozedCount > 0 && (
+				{snoozed.length > 0 && (
 					<Link
 						to="/snoozed"
 						className="group rounded-xl border border-border-300/50 bg-bg-100 p-5 transition-all hover:border-border-300 hover:shadow-md"
@@ -72,7 +84,7 @@ function Home() {
 							Items you've put on hold or snoozed temporarily.
 						</p>
 						<div className="mt-3 flex gap-3 text-xs">
-							<span className="text-text-500">{report.snoozedCount} snoozed</span>
+							<span className="text-text-500">{snoozed.length} snoozed</span>
 						</div>
 					</Link>
 				)}

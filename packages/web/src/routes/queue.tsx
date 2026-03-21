@@ -1,12 +1,14 @@
 import {createFileRoute} from '@tanstack/react-router';
+import {useSuspenseQuery} from '@tanstack/react-query';
 import {Play, Loader2} from 'lucide-react';
 import {useState} from 'react';
-import {getReport, testAllChildren} from '../lib/server-fns';
+import {testAllChildren} from '../lib/server-fns';
 import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from '../components/kanban-card';
 import {useHasActiveTests} from '../lib/test-events-context';
+import {projectsQueryOptions, projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {useGroupedChildren} from '../lib/use-grouped-children';
 
-// Queue: furthest-along-first (reverse of kanban left-to-right)
 const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
@@ -50,7 +52,15 @@ const CATEGORY_COLORS: Record<Category, string> = {
 };
 
 export const Route = createFileRoute('/queue')({
-	loader: () => getReport(),
+	loader: async ({context: {queryClient}}) => {
+		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
+		await Promise.all([
+			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
+			queryClient.ensureQueryData(issuesQueryOptions()),
+			queryClient.ensureQueryData(projectItemsQueryOptions()),
+			queryClient.ensureQueryData(snoozedQueryOptions()),
+		]);
+	},
 	head: () => ({
 		meta: [{title: 'WIP Queue'}],
 	}),
@@ -58,19 +68,20 @@ export const Route = createFileRoute('/queue')({
 });
 
 function Queue() {
-	const report = Route.useLoaderData();
+	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
+	const {grouped, totalChildren, projectCount} = useGroupedChildren(projects);
 	const [testingAll, setTestingAll] = useState(false);
 	const hasActiveTests = useHasActiveTests();
 
 	const sorted: {category: Category; items: ClassifiedChild[]}[] = [];
 	for (const category of CATEGORY_PRIORITY) {
-		const items = report.grouped[category];
+		const items = grouped[category];
 		if (items.length > 0) {
 			sorted.push({category, items});
 		}
 	}
 
-	const readyToTestCount = report.grouped.ready_to_test.length;
+	const readyToTestCount = grouped.ready_to_test.length;
 
 	const handleTestAll = async () => {
 		setTestingAll(true);
@@ -84,7 +95,7 @@ function Queue() {
 				<div>
 					<h1 className="text-xl font-semibold">Queue</h1>
 					<span className="text-sm text-text-500">
-						{report.children} items across {report.projects} projects
+						{totalChildren} items across {projectCount} projects
 					</span>
 				</div>
 				{readyToTestCount > 0 && (

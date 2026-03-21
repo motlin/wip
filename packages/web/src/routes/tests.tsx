@@ -1,13 +1,15 @@
 import {createFileRoute} from '@tanstack/react-router';
+import {useSuspenseQuery} from '@tanstack/react-query';
 import {useState} from 'react';
-import {getTestQueue, testAllChildren, cancelTestFn} from '../lib/server-fns';
+import {testAllChildren, cancelTestFn} from '../lib/server-fns';
 import type {TestQueueJob} from '../lib/server-fns';
 import {useTestEvents} from '../lib/use-test-events';
 import {useHasActiveTests} from '../lib/test-events-context';
 import {Clock, Play, CheckCircle, XCircle, Loader2, Ban, X} from 'lucide-react';
+import {testQueueQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/tests')({
-	loader: () => getTestQueue(),
+	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(testQueueQueryOptions()),
 	head: () => ({
 		meta: [{title: 'WIP Tests'}],
 	}),
@@ -95,7 +97,7 @@ function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, {id: string
 }
 
 function Tests() {
-	const serverJobs = Route.useLoaderData();
+	const {data: serverJobs} = useSuspenseQuery(testQueueQueryOptions());
 	const {jobs: liveJobs} = useTestEvents();
 	const [testingAll, setTestingAll] = useState(false);
 	const hasActiveTests = useHasActiveTests();

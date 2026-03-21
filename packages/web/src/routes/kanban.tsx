@@ -1,14 +1,25 @@
-import {createFileRoute, useRouter} from '@tanstack/react-router';
+import {createFileRoute} from '@tanstack/react-router';
+import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {RefreshCw} from 'lucide-react';
 import {useState} from 'react';
 import {KanbanColumn} from '../components/kanban-column';
-import {getReport, refreshAll} from '../lib/server-fns';
+import {refreshAll} from '../lib/server-fns';
 import type {Category} from '../lib/server-fns';
+import {projectsQueryOptions, projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {useGroupedChildren} from '../lib/use-grouped-children';
 
 const CATEGORY_ORDER: Category[] = ['not_started', 'skippable', 'snoozed', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
 
 export const Route = createFileRoute('/kanban')({
-	loader: () => getReport(),
+	loader: async ({context: {queryClient}}) => {
+		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
+		await Promise.all([
+			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
+			queryClient.ensureQueryData(issuesQueryOptions()),
+			queryClient.ensureQueryData(projectItemsQueryOptions()),
+			queryClient.ensureQueryData(snoozedQueryOptions()),
+		]);
+	},
 	head: () => ({
 		meta: [{title: 'WIP Kanban'}],
 	}),
@@ -16,14 +27,15 @@ export const Route = createFileRoute('/kanban')({
 });
 
 function Kanban() {
-	const report = Route.useLoaderData();
-	const router = useRouter();
+	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
+	const {grouped, totalChildren, projectCount} = useGroupedChildren(projects);
+	const queryClient = useQueryClient();
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
 	const handleRefreshAll = async () => {
 		setRefreshingAll(true);
 		await refreshAll();
-		router.invalidate();
+		queryClient.invalidateQueries();
 		setRefreshingAll(false);
 	};
 
@@ -42,13 +54,13 @@ function Kanban() {
 						{refreshingAll ? 'Refreshing...' : 'Refresh All'}
 					</button>
 					<span className="text-sm text-text-500">
-						{report.projects} projects, {report.children} children
+						{projectCount} projects, {totalChildren} children
 					</span>
 				</div>
 			</div>
 			<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
 				{CATEGORY_ORDER.map((category) => {
-					const items = report.grouped[category];
+					const items = grouped[category];
 					if (items.length === 0) return null;
 					return <KanbanColumn key={category} category={category} children={items} />;
 				})}

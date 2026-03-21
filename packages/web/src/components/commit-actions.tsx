@@ -1,7 +1,7 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, getCommitDiff} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, getCommitDiff} from '../lib/server-fns';
 import type {FileDiff} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
@@ -46,11 +46,6 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
-	const [prFormOpen, setPrFormOpen] = useState(false);
-	const [prTitle, setPrTitle] = useState(child.subject);
-	const [prBody, setPrBody] = useState('');
-	const [prDraft, setPrDraft] = useState(true);
-	const [prResult, setPrResult] = useState<{message: string; prUrl?: string} | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
 	const [rebasing, setRebasing] = useState(false);
 	const [rebaseResult, setRebaseResult] = useState<{message: string} | null>(null);
@@ -188,34 +183,10 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}
 	};
 
-	const handleCreatePr = async () => {
-		setLoading(true);
-		setError(null);
-		try {
-			const result = await createPr({data: {
-				project: child.project,
-				projectDir: child.projectDir,
-				upstreamRemote: child.upstreamRemote,
-				branch: child.branch!,
-				title: prTitle,
-				body: prBody || undefined,
-				draft: prDraft,
-			}});
-			setLoading(false);
-			if (result.ok) {
-				setPrResult({message: result.message, prUrl: result.compareUrl});
-				setPrFormOpen(false);
-				if (result.compareUrl) {
-					window.open(result.compareUrl, '_blank');
-				}
-				queryClient.invalidateQueries({queryKey: ['children', child.project]});
-			} else {
-				setError(result.message);
-			}
-		} catch (e) {
-			setLoading(false);
-			setError(e instanceof Error ? e.message : 'Failed to create PR');
-		}
+	const handleCreatePr = () => {
+		if (!child.branch) return;
+		const compareUrl = `https://github.com/${child.remote}/compare/${child.branch}?expand=1`;
+		window.open(compareUrl, '_blank');
 	};
 
 	const handleCreateBranch = async () => {
@@ -496,63 +467,15 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				)}
 
 				{/* Create PR */}
-				{child.category === 'pushed_no_pr' && child.branch && !prFormOpen && (
+				{child.category === 'pushed_no_pr' && child.branch && (
 					<button
 						type="button"
-						onClick={() => setPrFormOpen(true)}
-						disabled={loading}
+						onClick={handleCreatePr}
 						className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
 					>
 						<GitHubIcon className="h-3.5 w-3.5" />
 						Create PR
 					</button>
-				)}
-				{child.category === 'pushed_no_pr' && child.branch && prFormOpen && (
-					<div className="flex flex-col gap-1.5">
-						<input
-							type="text"
-							value={prTitle}
-							onChange={(e) => setPrTitle(e.target.value)}
-							placeholder="PR title"
-							className="rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-blue-500"
-						/>
-						<textarea
-							value={prBody}
-							onChange={(e) => setPrBody(e.target.value)}
-							placeholder="PR description (optional)"
-							rows={2}
-							className="rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-blue-500 resize-y"
-						/>
-						<label className="inline-flex items-center gap-1 text-xs text-text-300">
-							<input
-								type="checkbox"
-								checked={prDraft}
-								onChange={(e) => setPrDraft(e.target.checked)}
-								className="rounded"
-							/>
-							Draft
-						</label>
-						<div className="flex gap-1.5">
-							<button
-								type="button"
-								onClick={handleCreatePr}
-								disabled={loading || !prTitle.trim()}
-								className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-									loading || !prTitle.trim() ? 'cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 text-white'
-								}`}
-							>
-								{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitHubIcon className="h-3.5 w-3.5" />}
-								{loading ? 'Creating...' : 'Create'}
-							</button>
-							<button
-								type="button"
-								onClick={() => setPrFormOpen(false)}
-								className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
-							>
-								Cancel
-							</button>
-						</div>
-					</div>
 				)}
 
 				{/* Create Branch (detached HEAD) */}
@@ -790,22 +713,6 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 						>
 							<GitHubIcon className="h-3 w-3" />
 							Create PR
-						</a>
-					)}
-				</div>
-			)}
-			{prResult && (
-				<div className="mt-2">
-					<p className="text-xs text-green-600 dark:text-green-400">{prResult.message}</p>
-					{prResult.prUrl && (
-						<a
-							href={prResult.prUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
-						>
-							<GitHubIcon className="h-3 w-3" />
-							View PR
 						</a>
 					)}
 				</div>

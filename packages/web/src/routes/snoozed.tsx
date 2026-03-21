@@ -1,7 +1,6 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
-import {AlarmClockOff, Loader2} from 'lucide-react';
-import {useState} from 'react';
+import {AlarmClockOff} from 'lucide-react';
 import {unsnoozeChildFn} from '../lib/server-fns';
 import type {SnoozedChild} from '../lib/server-fns';
 import {snoozedQueryOptions} from '../lib/queries';
@@ -77,14 +76,16 @@ function Snoozed() {
 
 function SnoozedCard({item}: {item: SnoozedChild}) {
 	const queryClient = useQueryClient();
-	const [loading, setLoading] = useState(false);
 
 	const handleUnsnooze = async () => {
-		setLoading(true);
-		await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
-		setLoading(false);
-		queryClient.invalidateQueries({queryKey: ['snoozed']});
-		queryClient.invalidateQueries({queryKey: ['children', item.project]});
+		// Optimistically remove from snoozed list
+		queryClient.setQueryData<SnoozedChild[]>(['snoozed'], (old) => old?.filter((s) => !(s.sha === item.sha && s.project === item.project)));
+		const result = await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
+		if (result.ok) {
+			queryClient.invalidateQueries({queryKey: ['children', item.project]});
+		} else {
+			queryClient.invalidateQueries({queryKey: ['snoozed']});
+		}
 	};
 
 	return (
@@ -103,10 +104,9 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 				<button
 					type="button"
 					onClick={handleUnsnooze}
-					disabled={loading}
 					className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
 				>
-					{loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlarmClockOff className="h-3 w-3" />}
+					<AlarmClockOff className="h-3 w-3" />
 					Wake
 				</button>
 			</div>

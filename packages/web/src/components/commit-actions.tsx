@@ -21,8 +21,27 @@ interface CommitActionsProps {
 	layout?: 'row' | 'column';
 }
 
+function useOptimisticChildren(project: string) {
+	const queryClient = useQueryClient();
+	const queryKey = ['children', project] as const;
+
+	return {
+		queryClient,
+		removeChild(sha: string) {
+			queryClient.setQueryData<ClassifiedChild[]>(queryKey, (old) => old?.filter((c) => c.sha !== sha));
+		},
+		updateChild(sha: string, updates: Partial<ClassifiedChild>) {
+			queryClient.setQueryData<ClassifiedChild[]>(queryKey, (old) => old?.map((c) => c.sha === sha ? {...c, ...updates} : c));
+		},
+		rollback() {
+			queryClient.invalidateQueries({queryKey});
+		},
+	};
+}
+
 export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const queryClient = useQueryClient();
+	const optimistic = useOptimisticChildren(child.project);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
@@ -157,16 +176,15 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 
 	const handleSnooze = async (hours: number | null) => {
 		setSnoozeOpen(false);
-		setLoading(true);
 		setError(null);
+		optimistic.removeChild(child.sha);
 		const until = hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
 		const result = await snoozeChildFn({data: {sha: child.sha, project: child.project, shortSha: child.shortSha, subject: child.subject, until}});
-		setLoading(false);
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 			queryClient.invalidateQueries({queryKey: ['snoozed']});
 		} else {
 			setError(result.message);
+			optimistic.rollback();
 		}
 	};
 
@@ -210,9 +228,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}});
 		setLoading(false);
 		if (result.ok) {
-			setBranchResult({message: result.message});
 			setBranchFormOpen(false);
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.updateChild(child.sha, {branch: branchName, category: 'ready_to_test'});
 		} else {
 			setError(result.message);
 		}
@@ -235,6 +252,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		setRebasing(true);
 		setError(null);
 		setRebaseResult(null);
+		optimistic.updateChild(child.sha, {behind: false});
 		const result = await rebasePr({data: {
 			project: child.project,
 			projectDir: child.projectDir,
@@ -247,6 +265,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
+			optimistic.rollback();
 		}
 	};
 
@@ -254,6 +273,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		if (!child.branch) return;
 		setForcePushing(true);
 		setError(null);
+		optimistic.updateChild(child.sha, {needsRebase: false});
 		const result = await forcePush({data: {
 			projectDir: child.projectDir,
 			project: child.project,
@@ -266,6 +286,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			queryClient.invalidateQueries({queryKey: ['children', child.project]});
 		} else {
 			setError(result.message);
+			optimistic.rollback();
 		}
 	};
 
@@ -282,7 +303,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		setRenaming(false);
 		if (result.ok) {
 			setRenameOpen(false);
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.updateChild(child.sha, {branch: newBranchName.trim()});
 		} else {
 			setError(result.message);
 		}
@@ -301,7 +322,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}});
 		setApplyingFixes(false);
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.updateChild(child.sha, {failedChecks: [], category: 'checks_running'});
 		} else {
 			setError(result.message);
 		}
@@ -340,9 +361,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}});
 		setDeleteLoading(false);
 		if (result.ok) {
-			setDeleteResult({message: result.message});
 			setDeleteConfirmOpen(false);
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.removeChild(child.sha);
 		} else {
 			setError(result.message);
 		}

@@ -58,6 +58,9 @@ export const ChildCommitSchema = z.object({
 	needsRebase: z.boolean().optional(),
 	reviewStatus: ReviewStatusSchema,
 	prUrl: z.string().optional(),
+	prNumber: z.number().optional(),
+	failedChecks: z.array(z.object({name: z.string(), url: z.string().optional()})).optional(),
+	behind: z.boolean().optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
@@ -85,6 +88,15 @@ export const RenameBranchInputSchema = z.object({
 });
 export type RenameBranchInput = z.infer<typeof RenameBranchInputSchema>;
 
+export const ApplyFixesInputSchema = z.object({
+	projectDir: z.string(),
+	project: z.string(),
+	branch: z.string(),
+	prNumber: z.number(),
+	upstreamRemote: z.string(),
+});
+export type ApplyFixesInput = z.infer<typeof ApplyFixesInputSchema>;
+
 export const ClassifiedChildSchema = z.object({
 	project: z.string(),
 	projectDir: z.string(),
@@ -97,9 +109,12 @@ export const ClassifiedChildSchema = z.object({
 	branch: z.string().optional(),
 	suggestedBranch: z.string().optional(),
 	prUrl: z.string().optional(),
+	prNumber: z.number().optional(),
 	failureTail: z.string().optional(),
 	blockReason: z.string().optional(),
 	needsRebase: z.boolean().optional(),
+	failedChecks: z.array(z.object({name: z.string(), url: z.string().optional()})).optional(),
+	behind: z.boolean().optional(),
 	category: CategorySchema,
 	// GitHub Issue fields (present when this item represents an issue, not a commit)
 	issueUrl: z.string().optional(),

@@ -69,9 +69,12 @@
 	--dim-column: hsl(220 12% 11%);
 }
 
+html, body {
+	background: var(--bg-000);
+}
+
 body {
 	font-family: var(--font-sans);
-	background: var(--bg-000);
 	color: var(--text-000);
 	-webkit-font-smoothing: antialiased;
 }

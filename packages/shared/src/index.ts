@@ -27,6 +27,7 @@ export {
 	DeleteBranchInputSchema, type DeleteBranchInput,
 	ForcePushInputSchema, type ForcePushInput,
 	RenameBranchInputSchema, type RenameBranchInput,
+	ApplyFixesInputSchema, type ApplyFixesInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
 export {log} from './services/logger.js';

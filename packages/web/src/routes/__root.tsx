@@ -17,6 +17,7 @@ export const Route = createRootRoute({
 		],
 	}),
 	component: RootComponent,
+	errorComponent: RootError,
 	notFoundComponent: NotFound,
 });
 
@@ -35,6 +36,21 @@ function RootComponent() {
 					<Outlet />
 				</div>
 			</TestEventsProvider>
+		</RootDocument>
+	);
+}
+
+function RootError({error}: {error: unknown}) {
+	return (
+		<RootDocument>
+			<div className="min-h-screen bg-bg-000 p-8">
+				<div className="mx-auto max-w-2xl">
+					<h1 className="text-lg font-semibold text-red-600 dark:text-red-400">Something went wrong</h1>
+					<pre className="mt-4 overflow-auto rounded-lg bg-bg-200 p-4 font-mono text-sm text-text-200">
+						{error instanceof Error ? error.message : String(error)}
+					</pre>
+				</div>
+			</div>
 		</RootDocument>
 	);
 }

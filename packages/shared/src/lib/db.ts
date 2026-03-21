@@ -90,6 +90,15 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 
+	// Migrations
+	const columns = sqlite.prepare('PRAGMA table_info(pr_status_cache)').all() as Array<{name: string}>;
+	if (!columns.some((c) => c.name === 'failed_checks')) {
+		sqlite.exec('ALTER TABLE pr_status_cache ADD COLUMN failed_checks TEXT');
+	}
+	if (!columns.some((c) => c.name === 'behind')) {
+		sqlite.exec('ALTER TABLE pr_status_cache ADD COLUMN behind INTEGER');
+	}
+
 	db = drizzle(sqlite, {schema});
 	return db;
 }
@@ -250,11 +259,19 @@ export function recordTestResult(sha: string, project: string, status: 'passed' 
 
 const PR_CACHE_TTL_MINUTES = 10;
 
+function parseFailedChecks(json: string): Array<{name: string; url?: string}> {
+	const parsed = JSON.parse(json) as unknown;
+	if (!Array.isArray(parsed)) return [];
+	return parsed.map((item) => typeof item === 'string' ? {name: item} : item as {name: string; url?: string});
+}
+
 export interface CachedPrStatus {
 	branch: string;
 	reviewStatus: ReviewStatus;
 	checkStatus: CheckStatus;
 	prUrl: string | null;
+	failedChecks?: Array<{name: string; url?: string}>;
+	behind?: boolean;
 }
 
 export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
@@ -272,6 +289,8 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
 		reviewStatus: r.reviewStatus as ReviewStatus,
 		checkStatus: r.checkStatus as CheckStatus,
 		prUrl: r.prUrl,
+		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
+		behind: r.behind === 1 ? true : undefined,
 	}));
 }
 
@@ -288,6 +307,8 @@ export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
 		reviewStatus: r.reviewStatus as ReviewStatus,
 		checkStatus: r.checkStatus as CheckStatus,
 		prUrl: r.prUrl,
+		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
+		behind: r.behind === 1 ? true : undefined,
 	}));
 }
 
@@ -309,6 +330,8 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				reviewStatus: s.reviewStatus,
 				checkStatus: s.checkStatus,
 				prUrl: s.prUrl,
+				failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
+				behind: s.behind ? 1 : 0,
 				cachedAt: timestamp,
 			})
 			.run();

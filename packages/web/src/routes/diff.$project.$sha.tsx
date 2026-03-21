@@ -46,20 +46,20 @@ function useDiffFile(file: FileDiff, theme: 'light' | 'dark', mode: 'split' | 'u
 	}, [file, theme, mode]);
 }
 
-function FileDiffSection({file, theme, mode}: {file: FileDiff; theme: 'light' | 'dark'; mode: 'split' | 'unified'}) {
+function FileDiffSection({file, theme, mode, wrap}: {file: FileDiff; theme: 'light' | 'dark'; mode: 'split' | 'unified'; wrap: boolean}) {
 	const diffFile = useDiffFile(file, theme, mode);
 	return (
 		<div className="mb-6">
 			<div className="rounded-t-lg border border-border-300/50 bg-bg-200 px-4 py-2 font-mono text-xs text-text-300">
 				{file.oldFileName === file.newFileName ? file.newFileName : `${file.oldFileName} → ${file.newFileName}`}
 			</div>
-			<div className="overflow-hidden rounded-b-lg border border-t-0 border-border-300/50">
+			<div className="overflow-x-auto rounded-b-lg border border-t-0 border-border-300/50">
 				<DiffView
 					diffFile={diffFile}
 					diffViewMode={mode === 'split' ? DiffModeEnum.Split : DiffModeEnum.Unified}
 					diffViewTheme={theme}
 					diffViewHighlight
-					diffViewWrap={false}
+					diffViewWrap={wrap}
 					diffViewFontSize={12}
 				/>
 			</div>
@@ -71,6 +71,7 @@ function DiffViewer() {
 	const {project, sha} = Route.useParams();
 	const {files, stat, subject, child} = Route.useLoaderData();
 	const [mode, setMode] = useState<'split' | 'unified'>('split');
+	const [wrap, setWrap] = useState(false);
 
 	const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 	const theme = isDark ? 'dark' : 'light';
@@ -84,19 +85,35 @@ function DiffViewer() {
 						{project} / {sha.slice(0, 7)}
 					</p>
 				</div>
-				<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
-					<button
-						className={`rounded-md px-2 py-1 ${mode === 'split' ? 'bg-bg-000 font-medium text-text-100' : 'text-text-400 hover:text-text-200'}`}
-						onClick={() => setMode('split')}
-					>
-						Split
-					</button>
-					<button
-						className={`rounded-md px-2 py-1 ${mode === 'unified' ? 'bg-bg-000 font-medium text-text-100' : 'text-text-400 hover:text-text-200'}`}
-						onClick={() => setMode('unified')}
-					>
-						Unified
-					</button>
+				<div className="flex items-center gap-2">
+					<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
+						<button
+							className={`rounded-md px-2 py-1 ${mode === 'split' ? 'bg-bg-000 font-medium text-text-100' : 'text-text-400 hover:text-text-200'}`}
+							onClick={() => setMode('split')}
+						>
+							Split
+						</button>
+						<button
+							className={`rounded-md px-2 py-1 ${mode === 'unified' ? 'bg-bg-000 font-medium text-text-100' : 'text-text-400 hover:text-text-200'}`}
+							onClick={() => setMode('unified')}
+						>
+							Unified
+						</button>
+					</div>
+					<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
+						<button
+							className={`rounded-md px-2 py-1 ${wrap ? 'bg-bg-000 font-medium text-text-100' : 'text-text-400 hover:text-text-200'}`}
+							onClick={() => setWrap(true)}
+						>
+							Wrap
+						</button>
+						<button
+							className={`rounded-md px-2 py-1 ${!wrap ? 'bg-bg-000 font-medium text-text-100' : 'text-text-400 hover:text-text-200'}`}
+							onClick={() => setWrap(false)}
+						>
+							No Wrap
+						</button>
+					</div>
 				</div>
 			</div>
 			{child && (
@@ -112,7 +129,7 @@ function DiffViewer() {
 			{files.length === 0 ? (
 				<p className="text-sm text-text-500">No files changed.</p>
 			) : (
-				files.map((file) => <FileDiffSection key={file.newFileName} file={file} theme={theme} mode={mode} />)
+				files.map((file) => <FileDiffSection key={file.newFileName} file={file} theme={theme} mode={mode} wrap={wrap} />)
 			)}
 		</div>
 	);

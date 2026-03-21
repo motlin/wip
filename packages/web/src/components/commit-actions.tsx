@@ -1,7 +1,7 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, getCommitDiff} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, getCommitDiff} from '../lib/server-fns';
 import type {FileDiff} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
@@ -60,6 +60,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const renameFormRef = useRef<HTMLDivElement>(null);
 	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
 	const [renaming, setRenaming] = useState(false);
+	const [applyingFixes, setApplyingFixes] = useState(false);
 	const testJob = useTestJob(child.sha, child.project);
 
 	useEffect(() => {
@@ -286,6 +287,25 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}
 	};
 
+	const handleApplyFixes = async () => {
+		if (!child.branch || !child.prNumber) return;
+		setApplyingFixes(true);
+		setError(null);
+		const result = await applyFixes({data: {
+			projectDir: child.projectDir,
+			project: child.project,
+			branch: child.branch,
+			prNumber: child.prNumber,
+			upstreamRemote: child.upstreamRemote,
+		}});
+		setApplyingFixes(false);
+		if (result.ok) {
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
 	const handleDeleteBranchClick = async () => {
 		if (!deleteConfirmOpen && deleteButtonRef.current) {
 			const rect = deleteButtonRef.current.getBoundingClientRect();
@@ -355,12 +375,15 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 						type="button"
 						onClick={handleRebase}
 						disabled={rebasing}
+						title={child.behind ? 'PR is behind base branch — rebase recommended' : 'PR is up to date with base branch'}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							rebasing ? 'cursor-not-allowed opacity-60 text-text-300' : 'text-text-300 hover:bg-bg-200 hover:text-text-100'
+							rebasing ? 'cursor-not-allowed opacity-60 text-text-300'
+							: child.behind ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+							: 'text-text-500 hover:bg-bg-200 hover:text-text-300'
 						}`}
 					>
 						{rebasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-						{rebasing ? 'Rebasing...' : 'Rebase'}
+						{rebasing ? 'Rebasing...' : child.behind ? 'Rebase (behind)' : 'Rebase'}
 					</button>
 				)}
 
@@ -376,6 +399,22 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					>
 						{forcePushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
 						{forcePushing ? 'Pushing...' : 'Force Push'}
+					</button>
+				)}
+
+				{/* Apply Fixes — shown when checks_failed and there are -fix check names */}
+				{child.category === 'checks_failed' && child.branch && child.prNumber && child.failedChecks?.some((c) => c.name.endsWith('-fix')) && (
+					<button
+						type="button"
+						onClick={handleApplyFixes}
+						disabled={applyingFixes}
+						title="Fetch fix branches, cherry-pick, squash into commit, and force-push"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							applyingFixes ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-orange-600 hover:bg-orange-700 text-white'
+						}`}
+					>
+						{applyingFixes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
+						{applyingFixes ? 'Applying...' : 'Apply Fixes'}
 					</button>
 				)}
 

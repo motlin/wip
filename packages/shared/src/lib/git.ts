@@ -106,8 +106,10 @@ function parseBranch(decoration: string): string | undefined {
 }
 
 interface PrStatusCheckRun {
+	name: string;
 	status: string;
 	conclusion: string | null;
+	detailsUrl?: string;
 }
 
 interface PrInfo {
@@ -117,12 +119,17 @@ interface PrInfo {
 	reviews: {nodes: Array<{state: string}>};
 	statusCheckRollup: PrStatusCheckRun[];
 	author: {login: string};
+	mergeStateStatus: string;
+	number: number;
 }
 
 export interface PrStatuses {
 	review: Map<string, ReviewStatus>;
 	checks: Map<string, CheckStatus>;
 	urls: Map<string, string>;
+	failedChecks: Map<string, Array<{name: string; url?: string}>>;
+	behind: Map<string, boolean>;
+	prNumbers: Map<string, number>;
 }
 
 function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
@@ -152,6 +159,9 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
 	const urls = new Map<string, string>();
+	const failedChecks = new Map<string, Array<{name: string; url?: string}>>();
+	const behind = new Map<string, boolean>();
+	const prNumbers = new Map<string, number>();
 
 	// Check cache first
 	if (projectName) {
@@ -161,8 +171,10 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 				review.set(s.branch, s.reviewStatus);
 				checks.set(s.branch, s.checkStatus);
 				if (s.prUrl) urls.set(s.branch, s.prUrl);
+				if (s.failedChecks) failedChecks.set(s.branch, s.failedChecks);
+				if (s.behind) behind.set(s.branch, true);
 			}
-			return {review, checks, urls};
+			return {review, checks, urls, failedChecks, behind, prNumbers};
 		}
 	}
 
@@ -171,7 +183,7 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 	const start = performance.now();
 	const result = await execa('gh', [
 		'pr', 'list',
-		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup,author',
+		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup,author,mergeStateStatus,number',
 		'--state', 'open',
 		'--limit', '100',
 	], {cwd: dir, reject: false});
@@ -189,10 +201,10 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 					checks.set(s.branch, 'unknown');
 					if (s.prUrl) urls.set(s.branch, s.prUrl);
 				}
-				return {review, checks, urls};
+				return {review, checks, urls, failedChecks, behind, prNumbers};
 			}
 		}
-		return {review, checks, urls};
+		return {review, checks, urls, failedChecks, behind, prNumbers};
 	}
 
 	const allPrs = JSON.parse(result.stdout) as PrInfo[];
@@ -217,13 +229,25 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		review.set(branch, reviewStatus);
 
 		// Check status
-		const checkStatus = deriveCheckStatus(pr.statusCheckRollup ?? []);
+		const rollup = pr.statusCheckRollup ?? [];
+		const checkStatus = deriveCheckStatus(rollup);
 		checks.set(branch, checkStatus);
+		const failed = rollup
+			.filter((c) => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED' || c.conclusion === 'TIMED_OUT')
+			.map((c) => ({name: c.name, url: c.detailsUrl}));
+		if (failed.length > 0) failedChecks.set(branch, failed);
 
 		// PR URL
 		urls.set(branch, pr.url);
 
-		toCache.push({branch, reviewStatus, checkStatus, prUrl: pr.url});
+		// Behind base branch
+		const isBehind = pr.mergeStateStatus === 'BEHIND';
+		if (isBehind) behind.set(branch, true);
+
+		// PR number
+		prNumbers.set(branch, pr.number);
+
+		toCache.push({branch, reviewStatus, checkStatus, prUrl: pr.url, failedChecks: failed.length > 0 ? failed : undefined, behind: isBehind});
 	}
 
 	// Cache the results
@@ -231,7 +255,7 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		cachePrStatuses(projectName, toCache);
 	}
 
-	return {review, checks, urls};
+	return {review, checks, urls, failedChecks, behind, prNumbers};
 }
 
 export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses, projectName?: string): Promise<ChildCommit[]> {
@@ -260,9 +284,17 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 	// Build a map of remote branch names to their full ref (e.g. "foo" -> "origin/foo")
 	const remoteBranches = new Set<string>();
 	const remoteBranchRefs = new Map<string, string>();
+	let defaultBranch: string | undefined;
 	for (const line of remoteBranchOutput.split('\n')) {
 		const trimmed = line.trim();
-		if (!trimmed || trimmed.includes(' -> ')) continue;
+		if (!trimmed) continue;
+		const arrowIdx = trimmed.indexOf(' -> ');
+		if (arrowIdx >= 0) {
+			const target = trimmed.slice(arrowIdx + 4);
+			const slashIdx = target.indexOf('/');
+			if (slashIdx >= 0) defaultBranch = target.slice(slashIdx + 1);
+			continue;
+		}
 		const slashIdx = trimmed.indexOf('/');
 		if (slashIdx >= 0) {
 			const branchName = trimmed.slice(slashIdx + 1);
@@ -297,7 +329,7 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const pushedToRemote = branch ? remoteBranches.has(branch) : false;
 		// Detect if local branch diverges from remote (needs rebase)
 		let needsRebase: boolean | undefined;
-		if (branch && pushedToRemote) {
+		if (branch && pushedToRemote && branch !== defaultBranch) {
 			const remoteRef = remoteBranchRefs.get(branch);
 			if (remoteRef) {
 				const remoteSha = await git(dir, 'rev-parse', remoteRef);
@@ -305,7 +337,10 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 			}
 		}
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, needsRebase, reviewStatus, prUrl});
+		const failedChecks = branch && prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
+		const behind = branch && prStatuses ? prStatuses.behind.get(branch) : undefined;
+		const prNumber = branch && prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, needsRebase, reviewStatus, prUrl, prNumber, failedChecks, behind});
 	}
 
 	return children;
@@ -447,7 +482,9 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 			hasTestConfigured(dir),
 		]);
 
-		const ghRemote = remote.replace(/.*github\.com[:/]/, '').replace(/\.git$/, '');
+		// Extract owner/repo from any git remote URL format:
+		// git@github.com:owner/repo.git, git@SshAlias:owner/repo.git, https://github.com/owner/repo.git
+		const ghRemote = remote.replace(/^.*[:/]([^/]+\/[^/]+?)(?:\.git)?$/, '$1');
 		const branchCount = branchList
 			.split('\n')
 			.filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))

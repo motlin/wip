@@ -19,6 +19,7 @@ import {
 	DeleteBranchInputSchema,
 	ForcePushInputSchema,
 	RenameBranchInputSchema,
+	ApplyFixesInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -30,7 +31,7 @@ let refreshPromise: Promise<ReportData> | null = null;
 const CACHE_TTL_MS = 180_000; // 3 minutes
 
 export function invalidateReportCache(): void {
-	reportCache = null;
+	reportCache = null; refreshPromise = null;
 }
 
 export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
@@ -43,8 +44,8 @@ interface Classification {
 function classifyChild(child: ChildCommit, project: ProjectInfo): Classification {
 	if (child.skippable) return {category: 'skippable'};
 
-	// Detached HEAD — user needs to create a branch before pushing or creating PRs
-	if (project.detachedHead) return {category: 'detached_head'};
+	// Detached HEAD — only for children without a branch (need to create one before pushing)
+	if (project.detachedHead && !child.branch) return {category: 'detached_head'};
 
 	// Has a PR on GitHub — classify by check/review status
 	if (child.branch && child.reviewStatus !== 'no_pr') {
@@ -59,8 +60,8 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Classification
 		return {category: 'checks_running'}; // pending treated as running
 	}
 
-	// Branch pushed to remote but no PR yet
-	if (child.branch && child.pushedToRemote && child.reviewStatus === 'no_pr') return {category: 'pushed_no_pr'};
+	// Branch pushed to remote but no PR yet (skip default branch — can't PR into itself)
+	if (child.branch && child.branch !== project.upstreamBranch && child.pushedToRemote && child.reviewStatus === 'no_pr') return {category: 'pushed_no_pr'};
 
 	// No PR — classify by local test status
 	if (child.testStatus === 'passed') return {category: 'ready_to_push'};
@@ -138,9 +139,12 @@ async function buildReport(): Promise<ReportData> {
 				date: child.date,
 				branch: child.branch,
 				prUrl: child.prUrl,
+				prNumber: child.prNumber,
 				failureTail,
 				blockReason,
 				needsRebase: child.needsRebase,
+				failedChecks: child.failedChecks,
+				behind: child.behind,
 				category,
 			});
 		}
@@ -334,7 +338,7 @@ export const getReport = createServerFn({method: 'GET'}).handler(async (): Promi
 export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {project, projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
 		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -363,7 +367,7 @@ export const pushChild = createServerFn({method: 'POST'})
 export const createPr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {project, projectDir, upstreamRemote, branch, title, body, draft} = data;
 
 		const {execa} = await import('execa');
@@ -410,7 +414,7 @@ export interface TestJobStatus {
 export const testChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {enqueueTest} = await import('./test-queue.js');
 		const job = enqueueTest(data.project, data.projectDir, data.sha, data.shortSha);
 		return {id: job.id, status: job.status, message: job.message};
@@ -418,7 +422,7 @@ export const testChild = createServerFn({method: 'POST'})
 
 
 export const testAllChildren = createServerFn({method: 'POST'}).handler(async (): Promise<TestJobStatus[]> => {
-	reportCache = null;
+	reportCache = null; refreshPromise = null;
 	const {enqueueTest} = await import('./test-queue.js');
 	const projectsDir = getProjectsDir();
 	const projects = await discoverProjects(projectsDir);
@@ -530,7 +534,7 @@ export const getTestLog = createServerFn({method: 'GET'})
 export const snoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		snoozeItem(data.sha, data.project, data.shortSha, data.subject, data.until);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
 	});
@@ -538,7 +542,7 @@ export const snoozeChildFn = createServerFn({method: 'POST'})
 export const unsnoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		unsnoozeItem(data.sha, data.project);
 		return {ok: true, message: 'Unsnoozed'};
 	});
@@ -582,7 +586,7 @@ export const cancelTestFn = createServerFn({method: 'POST'})
 		const {cancelTest} = await import('./test-queue.js');
 		const result = cancelTest(data.id);
 		if (result.ok) {
-			reportCache = null;
+			reportCache = null; refreshPromise = null;
 		}
 		return {ok: result.ok, message: result.message};
 	});
@@ -593,14 +597,14 @@ export const refreshChild = createServerFn({method: 'POST'})
 		// Invalidate the PR cache for this project so the next report fetches fresh data
 		invalidatePrCache(data.project);
 		// Invalidate the report cache to force a full rebuild
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		return {ok: true, message: `Refreshed ${data.project}`};
 	});
 
 export const rebasePr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RebasePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {project, projectDir, upstreamRemote, prUrl} = data;
 
 		// Extract owner/repo/pr_number from prUrl like https://github.com/owner/repo/pull/123
@@ -641,7 +645,7 @@ export const getChildBySha = createServerFn({method: 'GET'})
 export const createBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {projectDir, sha, branchName} = data;
 
 		const {execa} = await import('execa');
@@ -657,7 +661,7 @@ export const createBranch = createServerFn({method: 'POST'})
 export const deleteBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {projectDir, branch, project} = data;
 
 		const {execa} = await import('execa');
@@ -676,7 +680,7 @@ export const deleteBranch = createServerFn({method: 'POST'})
 export const forcePush = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => ForcePushInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {projectDir, project, upstreamRemote, branch, shortSha} = data;
 
 		const {execa} = await import('execa');
@@ -694,7 +698,7 @@ export const forcePush = createServerFn({method: 'POST'})
 export const renameBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RenameBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null;
+		reportCache = null; refreshPromise = null;
 		const {projectDir, project, oldBranch, newBranch} = data;
 
 		const {execa} = await import('execa');
@@ -709,6 +713,79 @@ export const renameBranch = createServerFn({method: 'POST'})
 		return {ok: false, message: `Failed to rename branch: ${result.stderr}`};
 	});
 
+export const applyFixes = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => ApplyFixesInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null; refreshPromise = null;
+		const {projectDir, project, branch, prNumber, upstreamRemote} = data;
+
+		const {execa} = await import('execa');
+		const env = await getMiseEnv(projectDir);
+
+		// Fetch latest from the fork remote (origin) to get fix branches
+		await execa('git', ['-C', projectDir, 'fetch', 'origin'], {reject: false, env});
+
+		// Find fix branches for this PR: fix-{prNumber}-*
+		const branchListResult = await execa('git', ['-C', projectDir, 'branch', '-r', '--list', `origin/fix-${prNumber}-*`], {reject: false, env});
+		if (branchListResult.exitCode !== 0 || !branchListResult.stdout.trim()) {
+			return {ok: false, message: `No fix branches found for PR #${prNumber}`};
+		}
+
+		const fixBranches = branchListResult.stdout
+			.split('\n')
+			.map((b) => b.trim())
+			.filter(Boolean);
+
+		if (fixBranches.length === 0) {
+			return {ok: false, message: `No fix branches found for PR #${prNumber}`};
+		}
+
+		// Checkout the PR branch
+		const checkout = await execa('git', ['-C', projectDir, 'checkout', branch], {reject: false, env});
+		if (checkout.exitCode !== 0) {
+			return {ok: false, message: `Failed to checkout ${branch}: ${checkout.stderr}`};
+		}
+
+		// Cherry-pick each fix branch's tip commit
+		const appliedFixes: string[] = [];
+		for (const fixBranch of fixBranches) {
+			const cp = await execa('git', ['-C', projectDir, 'cherry-pick', '--no-commit', fixBranch], {reject: false, env});
+			if (cp.exitCode !== 0) {
+				// Try to abort and continue with other fixes
+				await execa('git', ['-C', projectDir, 'cherry-pick', '--abort'], {reject: false, env});
+				// Try reset to clean state
+				await execa('git', ['-C', projectDir, 'reset', '--hard', 'HEAD'], {reject: false, env});
+				continue;
+			}
+			appliedFixes.push(fixBranch.replace('origin/', ''));
+		}
+
+		if (appliedFixes.length === 0) {
+			return {ok: false, message: 'All fix cherry-picks had conflicts — manual resolution needed'};
+		}
+
+		// Check if there are staged changes to squash
+		const diffIndex = await execa('git', ['-C', projectDir, 'diff', '--cached', '--quiet'], {reject: false, env});
+		if (diffIndex.exitCode === 0) {
+			return {ok: false, message: 'Fix branches had no changes to apply'};
+		}
+
+		// Amend the current commit with the cherry-picked changes
+		const amend = await execa('git', ['-C', projectDir, 'commit', '--amend', '--no-edit'], {reject: false, env});
+		if (amend.exitCode !== 0) {
+			return {ok: false, message: `Failed to amend commit: ${amend.stderr}`};
+		}
+
+		// Force push to the PR branch
+		const push = await execa('git', ['-C', projectDir, 'push', 'origin', `${branch}:${branch}`, '--force-with-lease'], {reject: false, env});
+		if (push.exitCode !== 0) {
+			return {ok: false, message: `Amended commit but failed to push: ${push.stderr}`};
+		}
+
+		invalidatePrCache(project);
+		return {ok: true, message: `Applied fixes from ${appliedFixes.join(', ')} and force-pushed to ${branch}`};
+	});
+
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
 	// Invalidate all caches
 	invalidateIssuesCache();
@@ -720,6 +797,6 @@ export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Pro
 		invalidatePrCache(p.name);
 	}
 	// Invalidate the report cache
-	reportCache = null;
+	reportCache = null; refreshPromise = null;
 	return {ok: true, message: 'All caches invalidated'};
 });

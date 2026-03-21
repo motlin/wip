@@ -34,6 +34,11 @@ typecheck:
 test: build
     pnpm -r run test
 
+# Run all pre-commit checks
+[group('build')]
+precommit: typecheck build test
+    @echo "All pre-commit checks passed!"
+
 # Start web dashboard dev server
 [group('web')]
 dev: build-shared

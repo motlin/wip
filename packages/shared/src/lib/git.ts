@@ -103,22 +103,31 @@ function parseBranch(decoration: string): string | undefined {
 	return undefined;
 }
 
-interface PrStatusCheckRun {
+interface CheckRunContext {
+	__typename: 'CheckRun';
 	name: string;
-	status: string;
 	conclusion: string | null;
 	detailsUrl?: string;
 }
 
-interface PrInfo {
+interface StatusContextItem {
+	__typename: 'StatusContext';
+	context: string;
+	state: string;
+	targetUrl?: string;
+}
+
+type StatusCheckContext = CheckRunContext | StatusContextItem;
+
+interface GraphQLPrNode {
 	headRefName: string;
 	url: string;
-	reviewDecision: string;
-	reviews: {nodes: Array<{state: string}>};
-	statusCheckRollup: PrStatusCheckRun[];
-	author: {login: string};
-	mergeStateStatus: string;
 	number: number;
+	author: {login: string};
+	reviewDecision: string;
+	mergeStateStatus: string;
+	reviews: {nodes: Array<{state: string}>};
+	commits: {nodes: Array<{commit: {statusCheckRollup: {state: string | null; contexts: {nodes: StatusCheckContext[]}} | null}}>};
 }
 
 export interface PrStatuses {
@@ -130,16 +139,64 @@ export interface PrStatuses {
 	prNumbers: Map<string, number>;
 }
 
-function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
-	if (checks.length === 0) return 'none';
-	const hasRunning = checks.some((c) => c.status === 'IN_PROGRESS' || c.status === 'QUEUED' || c.status === 'PENDING');
-	if (hasRunning) return 'running';
-	const hasFailed = checks.some((c) => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED' || c.conclusion === 'TIMED_OUT');
-	if (hasFailed) return 'failed';
-	const allPassed = checks.every((c) => c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED');
-	if (allPassed) return 'passed';
-	return 'pending';
+const AGGREGATE_STATE_TO_CHECK_STATUS: Record<string, CheckStatus> = {
+	SUCCESS: 'passed',
+	EXPECTED: 'passed',
+	FAILURE: 'failed',
+	ERROR: 'failed',
+	PENDING: 'running',
+};
+
+function mapAggregateState(state: string | null): CheckStatus {
+	if (!state) return 'none';
+	const mapped = AGGREGATE_STATE_TO_CHECK_STATUS[state];
+	if (!mapped) throw new Error(`Unexpected statusCheckRollup state: ${state}`);
+	return mapped;
 }
+
+function extractFailedChecks(contexts: StatusCheckContext[]): Array<{name: string; url?: string}> {
+	const failedRuns = contexts
+		.filter((c): c is CheckRunContext => c.__typename === 'CheckRun' && (c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED' || c.conclusion === 'TIMED_OUT'))
+		.map((c) => ({name: c.name, url: c.detailsUrl}));
+	const failedStatuses = contexts
+		.filter((c): c is StatusContextItem => c.__typename === 'StatusContext' && (c.state === 'FAILURE' || c.state === 'ERROR'))
+		.map((c) => ({name: c.context, url: c.targetUrl}));
+	return [...failedRuns, ...failedStatuses];
+}
+
+const PR_GRAPHQL_QUERY = `
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 100, states: OPEN) {
+      nodes {
+        headRefName
+        url
+        number
+        author { login }
+        reviewDecision
+        mergeStateStatus
+        reviews(first: 10) { nodes { state } }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun { name conclusion detailsUrl }
+                    ... on StatusContext { context state targetUrl }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
 
 async function getGhLogin(): Promise<string> {
 	const cached = getCachedGhLogin();
@@ -180,13 +237,13 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 
 	const start = performance.now();
 	const result = await execa('gh', [
-		'pr', 'list',
-		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup,author,mergeStateStatus,number',
-		'--state', 'open',
-		'--limit', '100',
+		'api', 'graphql',
+		'-F', 'owner={owner}',
+		'-F', 'name={repo}',
+		'-f', `query=${PR_GRAPHQL_QUERY}`,
 	], {cwd: dir, reject: false});
 	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug({cmd: 'gh', args: ['pr', 'list', '--json', '...', '--state', 'open'], duration}, `gh pr list (${duration}ms)`);
+	log.subprocess.debug({cmd: 'gh', args: ['api', 'graphql', 'pullRequests'], duration}, `gh api graphql pullRequests (${duration}ms)`);
 
 	if (result.exitCode !== 0 || !result.stdout) {
 		// API call failed (rate limit, network error, etc.) — fall back to stale cache
@@ -195,7 +252,6 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 			if (stale) {
 				for (const s of stale) {
 					review.set(s.branch, s.reviewStatus);
-					// Mark check status as unknown since we can't verify current state
 					checks.set(s.branch, 'unknown');
 					if (s.prUrl) urls.set(s.branch, s.prUrl);
 				}
@@ -205,8 +261,8 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		return {review, checks, urls, failedChecks, behind, prNumbers};
 	}
 
-	const allPrs = JSON.parse(result.stdout) as PrInfo[];
-	// Filter to PRs authored by the authenticated user (--author @me doesn't work for fork-based PRs)
+	const response = JSON.parse(result.stdout) as {data?: {repository: {pullRequests: {nodes: GraphQLPrNode[]}}}};
+	const allPrs = response.data?.repository.pullRequests.nodes ?? [];
 	const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
 	const toCache: CachedPrStatus[] = [];
 
@@ -226,13 +282,14 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		}
 		review.set(branch, reviewStatus);
 
-		// Check status
-		const rollup = pr.statusCheckRollup ?? [];
-		const checkStatus = deriveCheckStatus(rollup);
+		// Check status from aggregate state
+		const rollup = pr.commits.nodes[0]?.commit.statusCheckRollup;
+		const checkStatus = mapAggregateState(rollup?.state ?? null);
 		checks.set(branch, checkStatus);
-		const failed = rollup
-			.filter((c) => c.conclusion === 'FAILURE' || c.conclusion === 'CANCELLED' || c.conclusion === 'TIMED_OUT')
-			.map((c) => ({name: c.name, url: c.detailsUrl}));
+
+		// Failed checks from typed contexts
+		const contexts = rollup?.contexts.nodes ?? [];
+		const failed = extractFailedChecks(contexts);
 		if (failed.length > 0) failedChecks.set(branch, failed);
 
 		// PR URL

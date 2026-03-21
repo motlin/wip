@@ -18,7 +18,7 @@ Run: git -C ${req.dir} show --stat ${req.sha}
 Then output a single descriptive kebab-case branch name (3-6 words) that captures WHAT changed specifically. Be concrete — "deprecate-commons-lang2-dependency" not "deprecate". No prefixes, no explanation, just the branch name.`;
 
 	const start = performance.now();
-	const result = await execa('claude', ['-p', prompt], {reject: false, timeout: 60_000, input: ''});
+	const result = await execa('claude', ['-p', '--no-session-persistence', prompt], {reject: false, timeout: 60_000, input: ''});
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug({cmd: 'claude', args: ['-p', '...'], duration}, `claude -p branch naming for ${req.sha.slice(0, 7)} (${duration}ms)`);
 

@@ -1,5 +1,5 @@
 import {useRouter} from '@tanstack/react-router';
-import {Loader2, Clock, Diff, AlertTriangle, CircleDot, LayoutGrid, X} from 'lucide-react';
+import {Loader2, Clock, Diff, AlertTriangle, CircleDot, LayoutGrid, X, GitBranch, AlertCircle} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {cancelTestFn} from '../lib/server-fns';
@@ -87,6 +87,17 @@ export function KanbanCard({child}: KanbanCardProps) {
 							</span>
 						)}
 					</div>
+					{child.branch && !isIssue && (
+						<div className="mt-1 flex items-center gap-1">
+							<GitBranch className="h-3 w-3 shrink-0 text-text-400" />
+							<span className="truncate font-mono text-xs text-text-300" title={child.branch}>{child.branch}</span>
+							{child.needsRebase && (
+								<span title="Local and remote have diverged" className="shrink-0">
+									<AlertCircle className="h-3 w-3 text-amber-500" />
+								</span>
+							)}
+						</div>
+					)}
 					<p className="mt-1.5 text-sm leading-snug text-text-100">{child.subject}</p>
 					{child.issueLabels && child.issueLabels.length > 0 && (
 						<div className="mt-1.5 flex flex-wrap gap-1">
@@ -153,6 +164,18 @@ export function KanbanCard({child}: KanbanCardProps) {
 				>
 					<div className="flex h-full flex-col">
 						<p className="mb-2 text-xs font-medium text-text-100 truncate">{child.subject}</p>
+						{child.branch && !isIssue && (
+							<p className="mb-1.5 flex items-center gap-1 font-mono text-[11px] text-text-400 truncate">
+								<GitBranch className="h-3 w-3 shrink-0" />
+								{child.branch}
+								{child.needsRebase && (
+									<span className="ml-1 inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+										<AlertCircle className="h-2.5 w-2.5" />
+										diverged
+									</span>
+								)}
+							</p>
+						)}
 
 						{/* Stop click-to-flip from firing when clicking action buttons/links */}
 						<div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>

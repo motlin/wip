@@ -16,6 +16,7 @@ import {
 	RefreshChildInputSchema,
 	RebasePrInputSchema,
 	CreateBranchInputSchema,
+	DeleteBranchInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -137,6 +138,7 @@ async function buildReport(): Promise<ReportData> {
 				prUrl: child.prUrl,
 				failureTail,
 				blockReason,
+				needsRebase: child.needsRebase,
 				category,
 			});
 		}
@@ -648,6 +650,25 @@ export const createBranch = createServerFn({method: 'POST'})
 		}
 
 		return {ok: false, message: `Failed to create branch: ${result.stderr}`};
+	});
+
+export const deleteBranch = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		reportCache = null;
+		const {projectDir, branch, project} = data;
+
+		const {execa} = await import('execa');
+
+		// Delete local branch
+		const result = await execa('git', ['-C', projectDir, 'branch', '-D', branch], {reject: false});
+
+		if (result.exitCode === 0) {
+			invalidatePrCache(project);
+			return {ok: true, message: `Deleted branch ${branch}`};
+		}
+
+		return {ok: false, message: `Failed to delete branch: ${result.stderr}`};
 	});
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {

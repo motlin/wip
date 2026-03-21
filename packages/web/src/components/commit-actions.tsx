@@ -1,7 +1,8 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, getCommitDiff} from '../lib/server-fns';
+import type {FileDiff} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
@@ -43,7 +44,28 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const branchButtonRef = useRef<HTMLButtonElement>(null);
 	const branchFormRef = useRef<HTMLDivElement>(null);
 	const [branchPos, setBranchPos] = useState<{top: number; left: number} | null>(null);
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+	const [deleteLoading, setDeleteLoading] = useState(false);
+	const [deleteDiffLoading, setDeleteDiffLoading] = useState(false);
+	const [deleteDiffFiles, setDeleteDiffFiles] = useState<FileDiff[] | null>(null);
+	const [deleteDiffStat, setDeleteDiffStat] = useState<string>('');
+	const [deleteResult, setDeleteResult] = useState<{message: string} | null>(null);
+	const deleteButtonRef = useRef<HTMLButtonElement>(null);
+	const deleteFormRef = useRef<HTMLDivElement>(null);
+	const [deletePos, setDeletePos] = useState<{top: number; left: number} | null>(null);
 	const testJob = useTestJob(child.sha, child.project);
+
+	useEffect(() => {
+		if (!deleteConfirmOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (deleteFormRef.current && !deleteFormRef.current.contains(e.target as Node) &&
+				deleteButtonRef.current && !deleteButtonRef.current.contains(e.target as Node)) {
+				setDeleteConfirmOpen(false);
+			}
+		}
+		document.addEventListener('mousedown', handleClick);
+		return () => document.removeEventListener('mousedown', handleClick);
+	}, [deleteConfirmOpen]);
 
 	useEffect(() => {
 		if (!snoozeOpen) return;
@@ -206,6 +228,51 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			setError(result.message);
 		}
 	};
+
+	const handleDeleteBranchClick = async () => {
+		if (!deleteConfirmOpen && deleteButtonRef.current) {
+			const rect = deleteButtonRef.current.getBoundingClientRect();
+			setDeletePos({top: rect.bottom + 4, left: rect.left});
+		}
+		if (!deleteConfirmOpen) {
+			setDeleteConfirmOpen(true);
+			setDeleteDiffLoading(true);
+			try {
+				const diff = await getCommitDiff({data: {projectDir: child.projectDir, sha: child.sha}});
+				setDeleteDiffFiles(diff.files);
+				setDeleteDiffStat(diff.stat);
+			} catch {
+				setDeleteDiffFiles([]);
+				setDeleteDiffStat('Failed to load diff');
+			}
+			setDeleteDiffLoading(false);
+		} else {
+			setDeleteConfirmOpen(false);
+		}
+	};
+
+	const handleDeleteBranch = async () => {
+		if (!child.branch) return;
+		setDeleteLoading(true);
+		setError(null);
+		const result = await deleteBranch({data: {
+			projectDir: child.projectDir,
+			branch: child.branch,
+			project: child.project,
+		}});
+		setDeleteLoading(false);
+		if (result.ok) {
+			setDeleteResult({message: result.message});
+			setDeleteConfirmOpen(false);
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
+	// Show delete button for branches that are local-only (not pushed, no PR)
+	const localOnlyCategories = new Set(['ready_to_test', 'test_failed', 'ready_to_push', 'no_test', 'skippable', 'local_changes', 'snoozed']);
+	const showDeleteBranch = child.branch && !child.issueUrl && localOnlyCategories.has(child.category);
 
 	const isRow = layout === 'row';
 
@@ -457,9 +524,69 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
 					{refreshing ? 'Refreshing...' : 'Refresh'}
 				</button>
+
+				{/* Delete Branch */}
+				{showDeleteBranch && (
+					<div className="relative">
+						<button
+							ref={deleteButtonRef}
+							type="button"
+							onClick={handleDeleteBranchClick}
+							disabled={deleteLoading}
+							className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+						>
+							<Trash2 className="h-3.5 w-3.5" />
+							Delete Branch
+						</button>
+						{deleteConfirmOpen && deletePos && (
+							<div
+								ref={deleteFormRef}
+								className="fixed z-50 w-72 max-h-64 overflow-y-auto rounded-lg border border-border-300/50 bg-bg-000 p-3 shadow-lg"
+								style={{top: deletePos.top, left: deletePos.left}}
+							>
+								<div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
+									<AlertCircle className="h-3.5 w-3.5" />
+									Delete branch &ldquo;{child.branch}&rdquo;?
+								</div>
+								{deleteDiffLoading && (
+									<div className="flex items-center gap-1.5 py-2 text-xs text-text-400">
+										<Loader2 className="h-3 w-3 animate-spin" />
+										Loading diff...
+									</div>
+								)}
+								{!deleteDiffLoading && deleteDiffStat && (
+									<pre className="mb-2 max-h-32 overflow-y-auto rounded bg-bg-100 p-2 font-mono text-[10px] leading-tight text-text-300">{deleteDiffStat}</pre>
+								)}
+								<div className="flex gap-1.5">
+									<button
+										type="button"
+										onClick={handleDeleteBranch}
+										disabled={deleteLoading}
+										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+											deleteLoading ? 'cursor-not-allowed opacity-60' : 'bg-red-600 hover:bg-red-700 text-white'
+										}`}
+									>
+										{deleteLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+										{deleteLoading ? 'Deleting...' : 'Confirm Delete'}
+									</button>
+									<button
+										type="button"
+										onClick={() => setDeleteConfirmOpen(false)}
+										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
+									>
+										Cancel
+									</button>
+								</div>
+							</div>
+						)}
+					</div>
+				)}
 			</div>
 
 			{/* Status messages */}
+			{deleteResult && (
+				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{deleteResult.message}</p>
+			)}
 			{branchResult && (
 				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{branchResult.message}</p>
 			)}

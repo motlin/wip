@@ -257,14 +257,17 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 
 	if (logResult.exitCode !== 0) return [];
 
-	// Build a set of remote branch names (strip the remote prefix, e.g. "origin/foo" -> "foo")
+	// Build a map of remote branch names to their full ref (e.g. "foo" -> "origin/foo")
 	const remoteBranches = new Set<string>();
+	const remoteBranchRefs = new Map<string, string>();
 	for (const line of remoteBranchOutput.split('\n')) {
 		const trimmed = line.trim();
 		if (!trimmed || trimmed.includes(' -> ')) continue;
 		const slashIdx = trimmed.indexOf('/');
 		if (slashIdx >= 0) {
-			remoteBranches.add(trimmed.slice(slashIdx + 1));
+			const branchName = trimmed.slice(slashIdx + 1);
+			remoteBranches.add(branchName);
+			remoteBranchRefs.set(branchName, trimmed);
 		}
 	}
 
@@ -292,8 +295,17 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const checkStatus: CheckStatus = branch && prStatuses ? (prStatuses.checks.get(branch) ?? 'none') : 'none';
 		const prUrl = branch && prStatuses ? prStatuses.urls.get(branch) : undefined;
 		const pushedToRemote = branch ? remoteBranches.has(branch) : false;
+		// Detect if local branch diverges from remote (needs rebase)
+		let needsRebase: boolean | undefined;
+		if (branch && pushedToRemote) {
+			const remoteRef = remoteBranchRefs.get(branch);
+			if (remoteRef) {
+				const remoteSha = await git(dir, 'rev-parse', remoteRef);
+				needsRebase = remoteSha !== '' && remoteSha !== sha;
+			}
+		}
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, reviewStatus, prUrl});
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, needsRebase, reviewStatus, prUrl});
 	}
 
 	return children;

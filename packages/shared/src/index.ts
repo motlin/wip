@@ -24,6 +24,7 @@ export {
 	RefreshChildInputSchema, type RefreshChildInput,
 	RebasePrInputSchema, type RebasePrInput,
 	CreateBranchInputSchema, type CreateBranchInput,
+	DeleteBranchInputSchema, type DeleteBranchInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
 export {log} from './services/logger.js';

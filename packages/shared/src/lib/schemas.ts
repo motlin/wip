@@ -55,10 +55,18 @@ export const ChildCommitSchema = z.object({
 	checkStatus: CheckStatusSchema,
 	skippable: z.boolean(),
 	pushedToRemote: z.boolean(),
+	needsRebase: z.boolean().optional(),
 	reviewStatus: ReviewStatusSchema,
 	prUrl: z.string().optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
+
+export const DeleteBranchInputSchema = z.object({
+	projectDir: z.string(),
+	branch: z.string(),
+	project: z.string(),
+});
+export type DeleteBranchInput = z.infer<typeof DeleteBranchInputSchema>;
 
 export const ClassifiedChildSchema = z.object({
 	project: z.string(),
@@ -74,6 +82,7 @@ export const ClassifiedChildSchema = z.object({
 	prUrl: z.string().optional(),
 	failureTail: z.string().optional(),
 	blockReason: z.string().optional(),
+	needsRebase: z.boolean().optional(),
 	category: CategorySchema,
 	// GitHub Issue fields (present when this item represents an issue, not a commit)
 	issueUrl: z.string().optional(),

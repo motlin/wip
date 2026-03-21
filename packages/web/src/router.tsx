@@ -1,4 +1,6 @@
 import {QueryClient} from '@tanstack/react-query';
+import {persistQueryClient} from '@tanstack/react-query-persist-client';
+import {createSyncStoragePersister} from '@tanstack/query-sync-storage-persister';
 import {createRouter as createTanStackRouter} from '@tanstack/react-router';
 import {routerWithQueryClient} from '@tanstack/react-router-with-query';
 import {routeTree} from './routeTree.gen';
@@ -14,6 +16,12 @@ export function getRouter() {
 			},
 		},
 	});
+
+	// Persist query cache to localStorage (client-side only)
+	if (typeof window !== 'undefined') {
+		const persister = createSyncStoragePersister({storage: window.localStorage});
+		persistQueryClient({queryClient, persister});
+	}
 
 	return routerWithQueryClient(
 		createTanStackRouter({

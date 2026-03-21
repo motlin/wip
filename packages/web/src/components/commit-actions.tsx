@@ -1,7 +1,7 @@
 import {useRouter} from '@tanstack/react-router';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, getCommitDiff} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, createPr, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, getCommitDiff} from '../lib/server-fns';
 import type {FileDiff} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
@@ -53,6 +53,13 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const deleteButtonRef = useRef<HTMLButtonElement>(null);
 	const deleteFormRef = useRef<HTMLDivElement>(null);
 	const [deletePos, setDeletePos] = useState<{top: number; left: number} | null>(null);
+	const [forcePushing, setForcePushing] = useState(false);
+	const [renameOpen, setRenameOpen] = useState(false);
+	const [newBranchName, setNewBranchName] = useState(child.branch ?? '');
+	const renameButtonRef = useRef<HTMLButtonElement>(null);
+	const renameFormRef = useRef<HTMLDivElement>(null);
+	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
+	const [renaming, setRenaming] = useState(false);
 	const testJob = useTestJob(child.sha, child.project);
 
 	useEffect(() => {
@@ -78,6 +85,18 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		document.addEventListener('mousedown', handleClick);
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [snoozeOpen]);
+
+	useEffect(() => {
+		if (!renameOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (renameFormRef.current && !renameFormRef.current.contains(e.target as Node) &&
+				renameButtonRef.current && !renameButtonRef.current.contains(e.target as Node)) {
+				setRenameOpen(false);
+			}
+		}
+		document.addEventListener('mousedown', handleClick);
+		return () => document.removeEventListener('mousedown', handleClick);
+	}, [renameOpen]);
 
 	useEffect(() => {
 		if (!branchFormOpen) return;
@@ -229,6 +248,44 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}
 	};
 
+	const handleForcePush = async () => {
+		if (!child.branch) return;
+		setForcePushing(true);
+		setError(null);
+		const result = await forcePush({data: {
+			projectDir: child.projectDir,
+			project: child.project,
+			upstreamRemote: child.upstreamRemote,
+			branch: child.branch,
+			shortSha: child.shortSha,
+		}});
+		setForcePushing(false);
+		if (result.ok) {
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
+	const handleRenameBranch = async () => {
+		if (!child.branch || !newBranchName.trim() || newBranchName === child.branch) return;
+		setRenaming(true);
+		setError(null);
+		const result = await renameBranch({data: {
+			projectDir: child.projectDir,
+			project: child.project,
+			oldBranch: child.branch,
+			newBranch: newBranchName.trim(),
+		}});
+		setRenaming(false);
+		if (result.ok) {
+			setRenameOpen(false);
+			router.invalidate();
+		} else {
+			setError(result.message);
+		}
+	};
+
 	const handleDeleteBranchClick = async () => {
 		if (!deleteConfirmOpen && deleteButtonRef.current) {
 			const rect = deleteButtonRef.current.getBoundingClientRect();
@@ -305,6 +362,77 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 						{rebasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
 						{rebasing ? 'Rebasing...' : 'Rebase'}
 					</button>
+				)}
+
+				{/* Force Push (diverged) */}
+				{child.needsRebase && child.branch && (
+					<button
+						type="button"
+						onClick={handleForcePush}
+						disabled={forcePushing}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							forcePushing ? 'cursor-not-allowed opacity-60 text-text-300' : 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+						}`}
+					>
+						{forcePushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+						{forcePushing ? 'Pushing...' : 'Force Push'}
+					</button>
+				)}
+
+				{/* Rename Branch */}
+				{child.branch && !child.prUrl && (
+					<div className="relative">
+						<button
+							ref={renameButtonRef}
+							type="button"
+							onClick={() => {
+								if (!renameOpen && renameButtonRef.current) {
+									const rect = renameButtonRef.current.getBoundingClientRect();
+									setRenamePos({top: rect.bottom + 4, left: rect.left});
+								}
+								setRenameOpen(!renameOpen);
+							}}
+							className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+						>
+							<Pencil className="h-3.5 w-3.5" />
+							Rename
+						</button>
+						{renameOpen && renamePos && (
+							<div
+								ref={renameFormRef}
+								className="fixed z-50 w-56 rounded-lg border border-border-300/50 bg-bg-000 p-2 shadow-lg"
+								style={{top: renamePos.top, left: renamePos.left}}
+							>
+								<input
+									type="text"
+									value={newBranchName}
+									onChange={(e) => setNewBranchName(e.target.value)}
+									placeholder="New branch name"
+									className="w-full rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-blue-500"
+								/>
+								<div className="mt-1.5 flex gap-1.5">
+									<button
+										type="button"
+										onClick={handleRenameBranch}
+										disabled={renaming || !newBranchName.trim() || newBranchName === child.branch}
+										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+											renaming || !newBranchName.trim() || newBranchName === child.branch ? 'cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 text-white'
+										}`}
+									>
+										{renaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+										{renaming ? 'Renaming...' : 'Rename'}
+									</button>
+									<button
+										type="button"
+										onClick={() => setRenameOpen(false)}
+										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
+									>
+										Cancel
+									</button>
+								</div>
+							</div>
+						)}
+					</div>
 				)}
 
 				{/* Create PR */}

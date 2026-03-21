@@ -68,6 +68,23 @@ export const DeleteBranchInputSchema = z.object({
 });
 export type DeleteBranchInput = z.infer<typeof DeleteBranchInputSchema>;
 
+export const ForcePushInputSchema = z.object({
+	projectDir: z.string(),
+	project: z.string(),
+	upstreamRemote: z.string(),
+	branch: z.string(),
+	shortSha: z.string(),
+});
+export type ForcePushInput = z.infer<typeof ForcePushInputSchema>;
+
+export const RenameBranchInputSchema = z.object({
+	projectDir: z.string(),
+	project: z.string(),
+	oldBranch: z.string(),
+	newBranch: z.string(),
+});
+export type RenameBranchInput = z.infer<typeof RenameBranchInputSchema>;
+
 export const ClassifiedChildSchema = z.object({
 	project: z.string(),
 	projectDir: z.string(),

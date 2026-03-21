@@ -50,6 +50,51 @@ export const prStatusCache = sqliteTable(
 	}),
 );
 
+export const reportCache = sqliteTable(
+	'report_cache',
+	{
+		id: integer('id').notNull().default(1).primaryKey(),
+		data: text('data').notNull(),
+		cachedAt: text('cached_at').notNull(),
+	},
+);
+
+export const miseEnvCache = sqliteTable(
+	'mise_env_cache',
+	{
+		dir: text('dir').notNull().primaryKey(),
+		env: text('env').notNull(),
+		cachedAt: text('cached_at').notNull(),
+	},
+);
+
+export const ghLoginCache = sqliteTable(
+	'gh_login_cache',
+	{
+		id: integer('id').notNull().default(1).primaryKey(),
+		login: text('login').notNull(),
+		cachedAt: text('cached_at').notNull(),
+	},
+);
+
+export const githubIssuesCache = sqliteTable(
+	'github_issues_cache',
+	{
+		id: integer('id').notNull().default(1).primaryKey(),
+		data: text('data').notNull(),
+		cachedAt: text('cached_at').notNull(),
+	},
+);
+
+export const githubProjectItemsCache = sqliteTable(
+	'github_project_items_cache',
+	{
+		id: integer('id').notNull().default(1).primaryKey(),
+		data: text('data').notNull(),
+		cachedAt: text('cached_at').notNull(),
+	},
+);
+
 export const snoozed = sqliteTable(
 	'snoozed',
 	{

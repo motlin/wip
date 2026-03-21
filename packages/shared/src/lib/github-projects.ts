@@ -2,6 +2,7 @@ import {execa} from 'execa';
 
 import type {Category} from './schemas.js';
 import {log} from '../services/logger.js';
+import {getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb} from './db.js';
 
 export interface GitHubProjectItem {
 	id: string;
@@ -136,10 +137,9 @@ export function mapProjectStatusToCategory(status: string): Category {
 }
 
 const PROJECT_ITEMS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-let projectItemsCache: {data: GitHubProjectItem[]; expiresAt: number} | null = null;
 
 export function invalidateProjectItemsCache(): void {
-	projectItemsCache = null;
+	invalidateProjectItemsCacheDb();
 }
 
 /**
@@ -148,9 +148,8 @@ export function invalidateProjectItemsCache(): void {
  * Results are cached for 10 minutes to reduce GitHub API calls.
  */
 export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
-	if (projectItemsCache && Date.now() < projectItemsCache.expiresAt) {
-		return projectItemsCache.data;
-	}
+	const cached = getCachedProjectItems(PROJECT_ITEMS_CACHE_TTL_MS);
+	if (cached) return JSON.parse(cached) as GitHubProjectItem[];
 
 	const projects = await fetchProjects();
 	if (projects.length === 0) return [];
@@ -160,6 +159,6 @@ export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
 	);
 
 	const result = allItems.flat();
-	projectItemsCache = {data: result, expiresAt: Date.now() + PROJECT_ITEMS_CACHE_TTL_MS};
+	cacheProjectItems(JSON.stringify(result));
 	return result;
 }

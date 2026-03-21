@@ -3,16 +3,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
-import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject} from './db.js';
+import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin} from './db.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 
-const miseEnvCache = new Map<string, Record<string, string>>();
-
 export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
-	const cached = miseEnvCache.get(dir);
-	if (cached) return cached;
+	const cached = getCachedMiseEnv(dir);
+	if (cached) return JSON.parse(cached) as Record<string, string>;
 
 	const start = performance.now();
 	const result = await execa('mise', ['env', '-C', dir, '--json'], {reject: false});
@@ -22,7 +20,7 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 	if (result.exitCode !== 0) return {};
 
 	const env = JSON.parse(result.stdout) as Record<string, string>;
-	miseEnvCache.set(dir, env);
+	cacheMiseEnv(dir, result.stdout);
 	return env;
 }
 
@@ -143,14 +141,14 @@ function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
 	return 'pending';
 }
 
-let ghLoginCache: string | null = null;
-
 async function getGhLogin(): Promise<string> {
-	if (ghLoginCache) return ghLoginCache;
+	const cached = getCachedGhLogin();
+	if (cached) return cached;
 	const result = await execa('gh', ['api', 'user', '--jq', '.login'], {reject: false});
 	if (result.exitCode === 0 && result.stdout.trim()) {
-		ghLoginCache = result.stdout.trim();
-		return ghLoginCache;
+		const login = result.stdout.trim();
+		cacheGhLogin(login);
+		return login;
 	}
 	return '';
 }

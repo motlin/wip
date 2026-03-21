@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, mapProjectStatusToCategory, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, mapProjectStatusToCategory, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedReport, cacheReport, invalidateReportCache as invalidateReportCacheDb} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask} from '@wip/shared';
 import {
 	type ActionResult,
@@ -26,13 +26,10 @@ import {z} from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-let reportCache: {data: ReportData; expiresAt: number} | null = null;
-let refreshPromise: Promise<ReportData> | null = null;
 const CACHE_TTL_MS = 180_000; // 3 minutes
+let buildingReport: Promise<ReportData> | null = null; // dedup guard only, not cache
 
-export function invalidateReportCache(): void {
-	reportCache = null; refreshPromise = null;
-}
+export {invalidateReportCacheDb as invalidateReportCache};
 
 export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
 
@@ -300,45 +297,28 @@ async function buildReport(): Promise<ReportData> {
 		snoozedCount,
 		grouped,
 	};
-	reportCache = {data: result, expiresAt: Date.now() + CACHE_TTL_MS};
+	cacheReport(JSON.stringify(result));
 	return result;
 }
 
-function triggerBackgroundRefresh(): void {
-	if (refreshPromise) return; // Already refreshing
-	refreshPromise = buildReport().finally(() => {
-		refreshPromise = null;
-	});
-}
-
 export const getReport = createServerFn({method: 'GET'}).handler(async (): Promise<ReportData> => {
-	// Cache hit: fresh data
-	if (reportCache && Date.now() < reportCache.expiresAt) {
-		return reportCache.data;
-	}
+	// Check SQLite cache
+	const cached = getCachedReport(CACHE_TTL_MS);
+	if (cached) return JSON.parse(cached) as ReportData;
 
-	// Stale cache: return stale data immediately, refresh in background
-	if (reportCache) {
-		triggerBackgroundRefresh();
-		return reportCache.data;
-	}
+	// Dedup guard: if a build is already in progress, wait for it
+	if (buildingReport) return buildingReport;
 
-	// Cold start: no cache at all, must block
-	if (refreshPromise) {
-		// Another request already triggered a cold-start refresh; wait for it
-		return refreshPromise;
-	}
-
-	refreshPromise = buildReport().finally(() => {
-		refreshPromise = null;
+	buildingReport = buildReport().finally(() => {
+		buildingReport = null;
 	});
-	return refreshPromise;
+	return buildingReport;
 });
 
 export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {project, projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
 		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -367,7 +347,7 @@ export const pushChild = createServerFn({method: 'POST'})
 export const createPr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {project, projectDir, upstreamRemote, branch, title, body, draft} = data;
 
 		const {execa} = await import('execa');
@@ -414,7 +394,7 @@ export interface TestJobStatus {
 export const testChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {enqueueTest} = await import('./test-queue.js');
 		const job = enqueueTest(data.project, data.projectDir, data.sha, data.shortSha);
 		return {id: job.id, status: job.status, message: job.message};
@@ -422,7 +402,7 @@ export const testChild = createServerFn({method: 'POST'})
 
 
 export const testAllChildren = createServerFn({method: 'POST'}).handler(async (): Promise<TestJobStatus[]> => {
-	reportCache = null; refreshPromise = null;
+	invalidateReportCacheDb();
 	const {enqueueTest} = await import('./test-queue.js');
 	const projectsDir = getProjectsDir();
 	const projects = await discoverProjects(projectsDir);
@@ -534,7 +514,7 @@ export const getTestLog = createServerFn({method: 'GET'})
 export const snoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		snoozeItem(data.sha, data.project, data.shortSha, data.subject, data.until);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
 	});
@@ -542,7 +522,7 @@ export const snoozeChildFn = createServerFn({method: 'POST'})
 export const unsnoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		unsnoozeItem(data.sha, data.project);
 		return {ok: true, message: 'Unsnoozed'};
 	});
@@ -586,7 +566,7 @@ export const cancelTestFn = createServerFn({method: 'POST'})
 		const {cancelTest} = await import('./test-queue.js');
 		const result = cancelTest(data.id);
 		if (result.ok) {
-			reportCache = null; refreshPromise = null;
+			invalidateReportCacheDb();
 		}
 		return {ok: result.ok, message: result.message};
 	});
@@ -594,17 +574,17 @@ export const cancelTestFn = createServerFn({method: 'POST'})
 export const refreshChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RefreshChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		// Invalidate the PR cache for this project so the next report fetches fresh data
+		// Invalidate caches and rebuild synchronously so the next getReport() finds fresh data
 		invalidatePrCache(data.project);
-		// Invalidate the report cache to force a full rebuild
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
+		await buildReport();
 		return {ok: true, message: `Refreshed ${data.project}`};
 	});
 
 export const rebasePr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RebasePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {project, projectDir, upstreamRemote, prUrl} = data;
 
 		// Extract owner/repo/pr_number from prUrl like https://github.com/owner/repo/pull/123
@@ -645,7 +625,7 @@ export const getChildBySha = createServerFn({method: 'GET'})
 export const createBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {projectDir, sha, branchName} = data;
 
 		const {execa} = await import('execa');
@@ -661,7 +641,7 @@ export const createBranch = createServerFn({method: 'POST'})
 export const deleteBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {projectDir, branch, project} = data;
 
 		const {execa} = await import('execa');
@@ -680,7 +660,7 @@ export const deleteBranch = createServerFn({method: 'POST'})
 export const forcePush = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => ForcePushInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {projectDir, project, upstreamRemote, branch, shortSha} = data;
 
 		const {execa} = await import('execa');
@@ -698,7 +678,7 @@ export const forcePush = createServerFn({method: 'POST'})
 export const renameBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RenameBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {projectDir, project, oldBranch, newBranch} = data;
 
 		const {execa} = await import('execa');
@@ -716,7 +696,7 @@ export const renameBranch = createServerFn({method: 'POST'})
 export const applyFixes = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => ApplyFixesInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		reportCache = null; refreshPromise = null;
+		invalidateReportCacheDb();
 		const {projectDir, project, branch, prNumber, upstreamRemote} = data;
 
 		const {execa} = await import('execa');
@@ -796,7 +776,8 @@ export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Pro
 	for (const p of projects) {
 		invalidatePrCache(p.name);
 	}
-	// Invalidate the report cache
-	reportCache = null; refreshPromise = null;
-	return {ok: true, message: 'All caches invalidated'};
+	// Invalidate and rebuild
+	invalidateReportCacheDb();
+	await buildReport();
+	return {ok: true, message: 'All caches invalidated and report rebuilt'};
 });

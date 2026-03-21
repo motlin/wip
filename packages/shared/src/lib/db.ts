@@ -6,7 +6,7 @@ import * as path from 'node:path';
 
 import type {CheckStatus, ReviewStatus} from './schemas.js';
 import * as schema from './schema.js';
-import {branchNames, prStatusCache, snoozed, testResults} from './schema.js';
+import {branchNames, ghLoginCache, githubIssuesCache, githubProjectItemsCache, miseEnvCache, prStatusCache, reportCache, snoozed, testResults} from './schema.js';
 
 const APP_NAME = 'wip';
 const FAR_FUTURE = '9999-12-31 23:59:59';
@@ -98,6 +98,46 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	if (!columns.some((c) => c.name === 'behind')) {
 		sqlite.exec('ALTER TABLE pr_status_cache ADD COLUMN behind INTEGER');
 	}
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS report_cache (
+			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			data TEXT NOT NULL,
+			cached_at TEXT NOT NULL
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS mise_env_cache (
+			dir TEXT NOT NULL PRIMARY KEY,
+			env TEXT NOT NULL,
+			cached_at TEXT NOT NULL
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS gh_login_cache (
+			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			login TEXT NOT NULL,
+			cached_at TEXT NOT NULL
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS github_issues_cache (
+			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			data TEXT NOT NULL,
+			cached_at TEXT NOT NULL
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS github_project_items_cache (
+			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			data TEXT NOT NULL,
+			cached_at TEXT NOT NULL
+		)
+	`);
 
 	db = drizzle(sqlite, {schema});
 	return db;
@@ -343,4 +383,92 @@ export function invalidatePrCache(project: string): void {
 	d.delete(prStatusCache)
 		.where(eq(prStatusCache.project, project))
 		.run();
+}
+
+// --- Report cache ---
+
+export function getCachedReport(ttlMs: number): string | null {
+	const d = getDb();
+	const cutoff = new Date(Date.now() - ttlMs).toISOString().replace('T', ' ').replace('Z', '');
+	const row = d.select().from(reportCache).where(sql`${reportCache.cachedAt} > ${cutoff}`).get();
+	return row?.data ?? null;
+}
+
+export function cacheReport(data: string): void {
+	const d = getDb();
+	d.delete(reportCache).run();
+	d.insert(reportCache).values({data, cachedAt: now()}).run();
+}
+
+export function invalidateReportCache(): void {
+	const d = getDb();
+	d.delete(reportCache).run();
+}
+
+// --- Mise env cache ---
+
+export function getCachedMiseEnv(dir: string): string | null {
+	const d = getDb();
+	const row = d.select().from(miseEnvCache).where(eq(miseEnvCache.dir, dir)).get();
+	return row?.env ?? null;
+}
+
+export function cacheMiseEnv(dir: string, env: string): void {
+	const d = getDb();
+	d.delete(miseEnvCache).where(eq(miseEnvCache.dir, dir)).run();
+	d.insert(miseEnvCache).values({dir, env, cachedAt: now()}).run();
+}
+
+// --- GitHub login cache ---
+
+export function getCachedGhLogin(): string | null {
+	const d = getDb();
+	const row = d.select().from(ghLoginCache).get();
+	return row?.login ?? null;
+}
+
+export function cacheGhLogin(login: string): void {
+	const d = getDb();
+	d.delete(ghLoginCache).run();
+	d.insert(ghLoginCache).values({login, cachedAt: now()}).run();
+}
+
+// --- GitHub issues cache ---
+
+export function getCachedIssues(ttlMs: number): string | null {
+	const d = getDb();
+	const cutoff = new Date(Date.now() - ttlMs).toISOString().replace('T', ' ').replace('Z', '');
+	const row = d.select().from(githubIssuesCache).where(sql`${githubIssuesCache.cachedAt} > ${cutoff}`).get();
+	return row?.data ?? null;
+}
+
+export function cacheIssues(data: string): void {
+	const d = getDb();
+	d.delete(githubIssuesCache).run();
+	d.insert(githubIssuesCache).values({data, cachedAt: now()}).run();
+}
+
+export function invalidateIssuesCacheDb(): void {
+	const d = getDb();
+	d.delete(githubIssuesCache).run();
+}
+
+// --- GitHub project items cache ---
+
+export function getCachedProjectItems(ttlMs: number): string | null {
+	const d = getDb();
+	const cutoff = new Date(Date.now() - ttlMs).toISOString().replace('T', ' ').replace('Z', '');
+	const row = d.select().from(githubProjectItemsCache).where(sql`${githubProjectItemsCache.cachedAt} > ${cutoff}`).get();
+	return row?.data ?? null;
+}
+
+export function cacheProjectItems(data: string): void {
+	const d = getDb();
+	d.delete(githubProjectItemsCache).run();
+	d.insert(githubProjectItemsCache).values({data, cachedAt: now()}).run();
+}
+
+export function invalidateProjectItemsCacheDb(): void {
+	const d = getDb();
+	d.delete(githubProjectItemsCache).run();
 }

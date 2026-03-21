@@ -1,6 +1,7 @@
 import {execa} from 'execa';
 
 import {log} from '../services/logger.js';
+import {getCachedIssues, cacheIssues, invalidateIssuesCacheDb} from './db.js';
 
 export interface GitHubIssue {
 	number: number;
@@ -11,16 +12,14 @@ export interface GitHubIssue {
 }
 
 const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-let issuesCache: {data: GitHubIssue[]; expiresAt: number} | null = null;
 
 export function invalidateIssuesCache(): void {
-	issuesCache = null;
+	invalidateIssuesCacheDb();
 }
 
 export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
-	if (issuesCache && Date.now() < issuesCache.expiresAt) {
-		return issuesCache.data;
-	}
+	const cached = getCachedIssues(ISSUES_CACHE_TTL_MS);
+	if (cached) return JSON.parse(cached) as GitHubIssue[];
 
 	const start = performance.now();
 	const result = await execa('gh', [
@@ -42,6 +41,6 @@ export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
 	}
 
 	const issues = JSON.parse(result.stdout) as GitHubIssue[];
-	issuesCache = {data: issues, expiresAt: Date.now() + ISSUES_CACHE_TTL_MS};
+	cacheIssues(result.stdout);
 	return issues;
 }

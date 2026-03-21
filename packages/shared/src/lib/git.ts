@@ -116,6 +116,7 @@ interface PrInfo {
 	reviewDecision: string;
 	reviews: {nodes: Array<{state: string}>};
 	statusCheckRollup: PrStatusCheckRun[];
+	author: {login: string};
 }
 
 export interface PrStatuses {
@@ -133,6 +134,18 @@ function deriveCheckStatus(checks: PrStatusCheckRun[]): CheckStatus {
 	const allPassed = checks.every((c) => c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED');
 	if (allPassed) return 'passed';
 	return 'pending';
+}
+
+let ghLoginCache: string | null = null;
+
+async function getGhLogin(): Promise<string> {
+	if (ghLoginCache) return ghLoginCache;
+	const result = await execa('gh', ['api', 'user', '--jq', '.login'], {reject: false});
+	if (result.exitCode === 0 && result.stdout.trim()) {
+		ghLoginCache = result.stdout.trim();
+		return ghLoginCache;
+	}
+	return '';
 }
 
 export async function getPrStatuses(dir: string, projectName?: string): Promise<PrStatuses> {
@@ -153,11 +166,12 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		}
 	}
 
+	const ghLogin = await getGhLogin();
+
 	const start = performance.now();
 	const result = await execa('gh', [
 		'pr', 'list',
-		'--author', '@me',
-		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup',
+		'--json', 'headRefName,url,reviewDecision,reviews,statusCheckRollup,author',
 		'--state', 'open',
 		'--limit', '100',
 	], {cwd: dir, reject: false});
@@ -181,7 +195,9 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		return {review, checks, urls};
 	}
 
-	const prs = JSON.parse(result.stdout) as PrInfo[];
+	const allPrs = JSON.parse(result.stdout) as PrInfo[];
+	// Filter to PRs authored by the authenticated user (--author @me doesn't work for fork-based PRs)
+	const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
 	const toCache: CachedPrStatus[] = [];
 
 	for (const pr of prs) {

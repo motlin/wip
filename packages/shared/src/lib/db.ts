@@ -78,6 +78,18 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS test_results_active_idx ON test_results (project, system_to)`);
 
+	// Migrate cache tables to temporal schema (drop and recreate — cache data is ephemeral)
+	const prCols = sqlite.prepare('PRAGMA table_info(pr_status_cache)').all() as Array<{name: string}>;
+	if (prCols.some((c) => c.name === 'cached_at')) {
+		sqlite.exec('DROP TABLE pr_status_cache');
+	}
+	for (const table of ['report_cache', 'mise_env_cache', 'gh_login_cache', 'github_issues_cache', 'github_project_items_cache']) {
+		const cols = sqlite.prepare(`PRAGMA table_info('${table}')`).all() as Array<{name: string}>;
+		if (cols.length > 0 && cols.some((c) => c.name === 'cached_at')) {
+			sqlite.exec(`DROP TABLE ${table}`);
+		}
+	}
+
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS pr_status_cache (
 			project TEXT NOT NULL,
@@ -85,57 +97,61 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			review_status TEXT NOT NULL,
 			check_status TEXT NOT NULL,
 			pr_url TEXT,
-			cached_at TEXT NOT NULL,
-			PRIMARY KEY (project, branch)
+			failed_checks TEXT,
+			behind INTEGER,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, branch, system_from)
 		)
 	`);
 
-	// Migrations
-	const columns = sqlite.prepare('PRAGMA table_info(pr_status_cache)').all() as Array<{name: string}>;
-	if (!columns.some((c) => c.name === 'failed_checks')) {
-		sqlite.exec('ALTER TABLE pr_status_cache ADD COLUMN failed_checks TEXT');
-	}
-	if (!columns.some((c) => c.name === 'behind')) {
-		sqlite.exec('ALTER TABLE pr_status_cache ADD COLUMN behind INTEGER');
-	}
-
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS report_cache (
-			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			id INTEGER NOT NULL DEFAULT 1,
 			data TEXT NOT NULL,
-			cached_at TEXT NOT NULL
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (id, system_from)
 		)
 	`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS mise_env_cache (
-			dir TEXT NOT NULL PRIMARY KEY,
+			dir TEXT NOT NULL,
 			env TEXT NOT NULL,
-			cached_at TEXT NOT NULL
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (dir, system_from)
 		)
 	`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS gh_login_cache (
-			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			id INTEGER NOT NULL DEFAULT 1,
 			login TEXT NOT NULL,
-			cached_at TEXT NOT NULL
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (id, system_from)
 		)
 	`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS github_issues_cache (
-			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			id INTEGER NOT NULL DEFAULT 1,
 			data TEXT NOT NULL,
-			cached_at TEXT NOT NULL
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (id, system_from)
 		)
 	`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS github_project_items_cache (
-			id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+			id INTEGER NOT NULL DEFAULT 1,
 			data TEXT NOT NULL,
-			cached_at TEXT NOT NULL
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (id, system_from)
 		)
 	`);
 
@@ -320,7 +336,7 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
 
 	const rows = d.select()
 		.from(prStatusCache)
-		.where(and(eq(prStatusCache.project, project), sql`${prStatusCache.cachedAt} > ${cutoff}`))
+		.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE), sql`${prStatusCache.systemFrom} > ${cutoff}`))
 		.all();
 
 	if (rows.length === 0) return null;
@@ -338,7 +354,7 @@ export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
 	const d = getDb();
 	const rows = d.select()
 		.from(prStatusCache)
-		.where(eq(prStatusCache.project, project))
+		.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
 		.all();
 
 	if (rows.length === 0) return null;
@@ -356,12 +372,12 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 	const d = getDb();
 	const timestamp = now();
 
-	// Delete old cache for this project
-	d.delete(prStatusCache)
-		.where(eq(prStatusCache.project, project))
+	// Close old rows
+	d.update(prStatusCache)
+		.set({systemTo: timestamp})
+		.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
 		.run();
 
-	// Insert new cache
 	for (const s of statuses) {
 		d.insert(prStatusCache)
 			.values({
@@ -372,7 +388,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				prUrl: s.prUrl,
 				failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
 				behind: s.behind ? 1 : 0,
-				cachedAt: timestamp,
+				systemFrom: timestamp,
 			})
 			.run();
 	}
@@ -380,8 +396,9 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 
 export function invalidatePrCache(project: string): void {
 	const d = getDb();
-	d.delete(prStatusCache)
-		.where(eq(prStatusCache.project, project))
+	d.update(prStatusCache)
+		.set({systemTo: now()})
+		.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
 		.run();
 }
 
@@ -390,47 +407,50 @@ export function invalidatePrCache(project: string): void {
 export function getCachedReport(ttlMs: number): string | null {
 	const d = getDb();
 	const cutoff = new Date(Date.now() - ttlMs).toISOString().replace('T', ' ').replace('Z', '');
-	const row = d.select().from(reportCache).where(sql`${reportCache.cachedAt} > ${cutoff}`).get();
+	const row = d.select().from(reportCache).where(and(eq(reportCache.systemTo, FAR_FUTURE), sql`${reportCache.systemFrom} > ${cutoff}`)).get();
 	return row?.data ?? null;
 }
 
 export function cacheReport(data: string): void {
 	const d = getDb();
-	d.delete(reportCache).run();
-	d.insert(reportCache).values({data, cachedAt: now()}).run();
+	const timestamp = now();
+	d.update(reportCache).set({systemTo: timestamp}).where(eq(reportCache.systemTo, FAR_FUTURE)).run();
+	d.insert(reportCache).values({data, systemFrom: timestamp}).run();
 }
 
 export function invalidateReportCache(): void {
 	const d = getDb();
-	d.delete(reportCache).run();
+	d.update(reportCache).set({systemTo: now()}).where(eq(reportCache.systemTo, FAR_FUTURE)).run();
 }
 
 // --- Mise env cache ---
 
 export function getCachedMiseEnv(dir: string): string | null {
 	const d = getDb();
-	const row = d.select().from(miseEnvCache).where(eq(miseEnvCache.dir, dir)).get();
+	const row = d.select().from(miseEnvCache).where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE))).get();
 	return row?.env ?? null;
 }
 
 export function cacheMiseEnv(dir: string, env: string): void {
 	const d = getDb();
-	d.delete(miseEnvCache).where(eq(miseEnvCache.dir, dir)).run();
-	d.insert(miseEnvCache).values({dir, env, cachedAt: now()}).run();
+	const timestamp = now();
+	d.update(miseEnvCache).set({systemTo: timestamp}).where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE))).run();
+	d.insert(miseEnvCache).values({dir, env, systemFrom: timestamp}).run();
 }
 
 // --- GitHub login cache ---
 
 export function getCachedGhLogin(): string | null {
 	const d = getDb();
-	const row = d.select().from(ghLoginCache).get();
+	const row = d.select().from(ghLoginCache).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).get();
 	return row?.login ?? null;
 }
 
 export function cacheGhLogin(login: string): void {
 	const d = getDb();
-	d.delete(ghLoginCache).run();
-	d.insert(ghLoginCache).values({login, cachedAt: now()}).run();
+	const timestamp = now();
+	d.update(ghLoginCache).set({systemTo: timestamp}).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).run();
+	d.insert(ghLoginCache).values({login, systemFrom: timestamp}).run();
 }
 
 // --- GitHub issues cache ---
@@ -438,19 +458,20 @@ export function cacheGhLogin(login: string): void {
 export function getCachedIssues(ttlMs: number): string | null {
 	const d = getDb();
 	const cutoff = new Date(Date.now() - ttlMs).toISOString().replace('T', ' ').replace('Z', '');
-	const row = d.select().from(githubIssuesCache).where(sql`${githubIssuesCache.cachedAt} > ${cutoff}`).get();
+	const row = d.select().from(githubIssuesCache).where(and(eq(githubIssuesCache.systemTo, FAR_FUTURE), sql`${githubIssuesCache.systemFrom} > ${cutoff}`)).get();
 	return row?.data ?? null;
 }
 
 export function cacheIssues(data: string): void {
 	const d = getDb();
-	d.delete(githubIssuesCache).run();
-	d.insert(githubIssuesCache).values({data, cachedAt: now()}).run();
+	const timestamp = now();
+	d.update(githubIssuesCache).set({systemTo: timestamp}).where(eq(githubIssuesCache.systemTo, FAR_FUTURE)).run();
+	d.insert(githubIssuesCache).values({data, systemFrom: timestamp}).run();
 }
 
 export function invalidateIssuesCacheDb(): void {
 	const d = getDb();
-	d.delete(githubIssuesCache).run();
+	d.update(githubIssuesCache).set({systemTo: now()}).where(eq(githubIssuesCache.systemTo, FAR_FUTURE)).run();
 }
 
 // --- GitHub project items cache ---
@@ -458,17 +479,18 @@ export function invalidateIssuesCacheDb(): void {
 export function getCachedProjectItems(ttlMs: number): string | null {
 	const d = getDb();
 	const cutoff = new Date(Date.now() - ttlMs).toISOString().replace('T', ' ').replace('Z', '');
-	const row = d.select().from(githubProjectItemsCache).where(sql`${githubProjectItemsCache.cachedAt} > ${cutoff}`).get();
+	const row = d.select().from(githubProjectItemsCache).where(and(eq(githubProjectItemsCache.systemTo, FAR_FUTURE), sql`${githubProjectItemsCache.systemFrom} > ${cutoff}`)).get();
 	return row?.data ?? null;
 }
 
 export function cacheProjectItems(data: string): void {
 	const d = getDb();
-	d.delete(githubProjectItemsCache).run();
-	d.insert(githubProjectItemsCache).values({data, cachedAt: now()}).run();
+	const timestamp = now();
+	d.update(githubProjectItemsCache).set({systemTo: timestamp}).where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE)).run();
+	d.insert(githubProjectItemsCache).values({data, systemFrom: timestamp}).run();
 }
 
 export function invalidateProjectItemsCacheDb(): void {
 	const d = getDb();
-	d.delete(githubProjectItemsCache).run();
+	d.update(githubProjectItemsCache).set({systemTo: now()}).where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE)).run();
 }

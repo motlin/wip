@@ -20,6 +20,7 @@ import {
 	ForcePushInputSchema,
 	RenameBranchInputSchema,
 	ApplyFixesInputSchema,
+	RebaseLocalInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -602,6 +603,36 @@ export const applyFixes = createServerFn({method: 'POST'})
 
 		invalidatePrCache(project);
 		return {ok: true, message: `Applied fixes from ${appliedFixes.join(', ')} and force-pushed to ${branch}`};
+	});
+
+export const rebaseLocal = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		const {projectDir, project, branch, upstreamRef, sha} = data;
+
+		const {execa} = await import('execa');
+		const env = await getMiseEnv(projectDir);
+
+		const checkout = await execa('git', ['-C', projectDir, 'checkout', branch], {reject: false, env});
+		if (checkout.exitCode !== 0) {
+			return {ok: false, message: `Failed to checkout ${branch}: ${checkout.stderr}`};
+		}
+
+		const rebase = await execa('git', ['-C', projectDir, 'rebase', upstreamRef], {reject: false, env});
+		if (rebase.exitCode !== 0) {
+			await execa('git', ['-C', projectDir, 'rebase', '--abort'], {reject: false, env});
+			return {ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}`};
+		}
+
+		// Force push if the branch was pushed to remote
+		const push = await execa('git', ['-C', projectDir, 'push', 'origin', `${branch}:${branch}`, '--force-with-lease'], {reject: false, env});
+		if (push.exitCode !== 0 && !push.stderr.includes('Everything up-to-date')) {
+			return {ok: false, message: `Rebased but failed to push: ${push.stderr}`};
+		}
+
+		invalidatePrCache(project);
+		invalidateMergeStatus(project);
+		return {ok: true, message: `Rebased ${branch} onto ${upstreamRef}`};
 	});
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {

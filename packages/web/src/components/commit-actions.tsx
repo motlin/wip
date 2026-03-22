@@ -1,7 +1,8 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, getCommitDiff} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff} from '../lib/server-fns';
+import {useMergeStatus} from '../lib/merge-events-context';
 import type {FileDiff} from '../lib/server-fns';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
@@ -75,7 +76,11 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
 	const [renaming, setRenaming] = useState(false);
 	const [applyingFixes, setApplyingFixes] = useState(false);
+	const [rebasingLocal, setRebasingLocal] = useState(false);
 	const testJob = useTestJob(child.sha, child.project);
+	const mergeStatus = useMergeStatus(child.sha, child.project);
+	const commitsBehind = mergeStatus?.commitsBehind ?? child.commitsBehind;
+	const rebaseable = mergeStatus?.rebaseable ?? child.rebaseable;
 
 	useEffect(() => {
 		if (!deleteConfirmOpen) return;
@@ -299,6 +304,28 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		}
 	};
 
+	const handleRebaseLocal = async () => {
+		if (!child.branch) return;
+		setRebasingLocal(true);
+		setError(null);
+		optimistic.updateChild(child.sha, {commitsBehind: 0, rebaseable: undefined});
+		const result = await rebaseLocal({data: {
+			projectDir: child.projectDir,
+			project: child.project,
+			branch: child.branch,
+			upstreamRemote: child.upstreamRemote,
+			upstreamRef: `${child.upstreamRemote}/main`,
+			sha: child.sha,
+		}});
+		setRebasingLocal(false);
+		if (result.ok) {
+			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+		} else {
+			setError(result.message);
+			optimistic.rollback();
+		}
+	};
+
 	const handleDeleteBranchClick = async () => {
 		if (!deleteConfirmOpen && deleteButtonRef.current) {
 			const rect = deleteButtonRef.current.getBoundingClientRect();
@@ -391,6 +418,22 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					>
 						{forcePushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
 						{forcePushing ? 'Pushing...' : 'Force Push'}
+					</button>
+				)}
+
+				{/* Local Rebase — shown when behind upstream and rebase is clean */}
+				{child.branch && commitsBehind != null && commitsBehind > 0 && rebaseable === true && (
+					<button
+						type="button"
+						onClick={handleRebaseLocal}
+						disabled={rebasingLocal}
+						title={`Rebase ${child.branch} onto upstream (${commitsBehind} commit${commitsBehind > 1 ? 's' : ''} behind)`}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							rebasingLocal ? 'cursor-not-allowed opacity-60 text-text-300' : 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30'
+						}`}
+					>
+						{rebasingLocal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+						{rebasingLocal ? 'Rebasing...' : `Rebase (↓${commitsBehind})`}
 					</button>
 				)}
 

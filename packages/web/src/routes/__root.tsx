@@ -4,6 +4,7 @@ import type {ReactNode} from 'react';
 import type {QueryClient} from '@tanstack/react-query';
 import appCss from '../styles/globals.css?url';
 import {TestEventsProvider} from '../lib/test-events-context';
+import {MergeEventsProvider} from '../lib/merge-events-context';
 
 export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
 	head: () => ({
@@ -28,6 +29,7 @@ function RootComponent() {
 	return (
 		<RootDocument>
 			<TestEventsProvider>
+			<MergeEventsProvider>
 				<div className="min-h-screen bg-bg-000">
 					<nav className="flex items-center gap-4 border-b border-border-300/50 px-6 py-2 text-sm">
 						<Link to="/" className="font-semibold text-text-100 hover:text-text-000">WIP</Link>
@@ -38,6 +40,7 @@ function RootComponent() {
 					</nav>
 					<Outlet />
 				</div>
+			</MergeEventsProvider>
 			</TestEventsProvider>
 		</RootDocument>
 	);

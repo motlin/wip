@@ -100,6 +100,16 @@ export const ApplyFixesInputSchema = z.object({
 });
 export type ApplyFixesInput = z.infer<typeof ApplyFixesInputSchema>;
 
+export const RebaseLocalInputSchema = z.object({
+	projectDir: z.string(),
+	project: z.string(),
+	branch: z.string(),
+	upstreamRemote: z.string(),
+	upstreamRef: z.string(),
+	sha: z.string(),
+});
+export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
+
 export const ClassifiedChildSchema = z.object({
 	project: z.string(),
 	projectDir: z.string(),

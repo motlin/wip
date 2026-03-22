@@ -4,6 +4,7 @@ import {useRef, useEffect} from 'react';
 import type {ClassifiedChild} from '../lib/server-fns';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
+import {useMergeStatus} from '../lib/merge-events-context';
 import {AnsiText} from './ansi-text';
 import {CommitActions} from './commit-actions';
 
@@ -44,6 +45,11 @@ export function KanbanCard({child}: KanbanCardProps) {
 		}
 		prevTestStatus.current = testJob?.status;
 	}, [testJob?.status, queryClient, child.project]);
+
+	const mergeStatus = useMergeStatus(child.sha, child.project);
+	const commitsBehind = mergeStatus?.commitsBehind ?? child.commitsBehind;
+	const commitsAhead = mergeStatus?.commitsAhead ?? child.commitsAhead;
+	const rebaseable = mergeStatus?.rebaseable ?? child.rebaseable;
 
 	const isIssue = Boolean(child.issueUrl);
 	const isProjectItem = Boolean(child.projectItemStatus);
@@ -125,6 +131,23 @@ export function KanbanCard({child}: KanbanCardProps) {
 						<span title="Local and remote have diverged" className="shrink-0 inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
 							<AlertCircle className="h-2.5 w-2.5" />
 							diverged
+						</span>
+					)}
+					{commitsBehind != null && commitsBehind > 0 && (
+						<span
+							title={`${commitsBehind} commit${commitsBehind > 1 ? 's' : ''} behind upstream${rebaseable === true ? ' (clean rebase available)' : rebaseable === false ? ' (conflicts detected)' : ''}`}
+							className={`shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium ${
+								rebaseable === true ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300'
+								: rebaseable === false ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+								: 'bg-bg-200 text-text-400'
+							}`}
+						>
+							↓{commitsBehind}
+						</span>
+					)}
+					{commitsAhead != null && commitsAhead > 1 && (
+						<span title={`${commitsAhead} commits ahead of upstream`} className="shrink-0 text-[10px] text-text-500">
+							↑{commitsAhead}
 						</span>
 					)}
 				</div>

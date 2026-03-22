@@ -1,5 +1,5 @@
 export {getProjectsDir, getCacheDir, getTestLogDir, readConfig, writeConfig, getConfigValue, setConfigValue, unsetConfigValue} from './lib/config.js';
-export {type PrStatuses, discoverProjects, getChildren, getChildCommits, getPrStatuses, isDirty, isDetachedHead, hasUpstreamRef, hasTestConfigured, getMiseEnv, subjectToSlug, createBranchForChild, testBranch, testFix, hasLocalModifications} from './lib/git.js';
+export {type PrStatuses, discoverProjects, getChildren, getChildCommits, getPrStatuses, isDirty, isDetachedHead, hasUpstreamRef, hasTestConfigured, getMiseEnv, subjectToSlug, createBranchForChild, testBranch, testFix, hasLocalModifications, fetchUpstreamRef, computeMergeStatus} from './lib/git.js';
 export {type SnoozedItem, type BranchNameItem, type TestResultItem, type CachedPrStatus, type CachedMergeStatus, getDb, snoozeItem, unsnoozeItem, getActiveSnoozed, getSnoozedSet, getAllSnoozed, clearExpiredSnoozes, getSnoozeHistory, getBranchName, getBranchNames, setBranchName, getTestResultsForProject, recordTestResult, getCachedPrStatuses, getStalePrStatuses, cachePrStatuses, invalidatePrCache, getCachedReport, cacheReport, invalidateReportCache, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin, getCachedIssues, cacheIssues, invalidateIssuesCacheDb, getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb, getCachedUpstreamSha, cacheUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus} from './lib/db.js';
 export {suggestBranchNames} from './lib/branch-namer.js';
 export {type GitHubIssue, fetchAssignedIssues, invalidateIssuesCache} from './lib/github-issues.js';
@@ -28,6 +28,7 @@ export {
 	ForcePushInputSchema, type ForcePushInput,
 	RenameBranchInputSchema, type RenameBranchInput,
 	ApplyFixesInputSchema, type ApplyFixesInput,
+	RebaseLocalInputSchema, type RebaseLocalInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
 export {log} from './services/logger.js';

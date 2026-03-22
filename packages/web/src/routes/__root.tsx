@@ -9,7 +9,7 @@ export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
 	head: () => ({
 		meta: [{charSet: 'utf-8'}, {name: 'viewport', content: 'width=device-width, initial-scale=1'}],
 		links: [
-			{rel: 'icon', type: 'image/svg+xml', href: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="none" stroke="%23f59e0b" stroke-width="4" stroke-dasharray="56.5 18.8" stroke-linecap="round"/></svg>'},
+			{rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'},
 			{rel: 'stylesheet', href: appCss},
 			{rel: 'preconnect', href: 'https://fonts.googleapis.com'},
 			{rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous'},

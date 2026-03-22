@@ -6,7 +6,6 @@ import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {AnsiText} from './ansi-text';
 import {CommitActions} from './commit-actions';
-import {GitHubIcon} from './github-icon';
 
 interface KanbanCardProps {
 	child: ClassifiedChild;
@@ -48,8 +47,6 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 	const isIssue = Boolean(child.issueUrl);
 	const isProjectItem = Boolean(child.projectItemStatus);
-	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_unknown', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
-
 	const handleCancelTest = async () => {
 		if (!testJob) return;
 		await cancelTestFn({data: {id: testJob.id}});
@@ -59,9 +56,18 @@ export function KanbanCard({child}: KanbanCardProps) {
 
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
-			{/* Header: date + links */}
+			{/* Header: repo name + date + links */}
 			<div className="flex items-start justify-between gap-2">
 				<div className="flex items-center gap-1.5 min-w-0">
+					<a
+						href={`https://github.com/${child.remote}`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="truncate text-[11px] font-medium text-text-500 hover:text-text-300 transition-colors"
+						title={child.remote}
+					>
+						{child.remote}
+					</a>
 					{isIssue && (
 						<a
 							href={child.issueUrl}
@@ -72,18 +78,6 @@ export function KanbanCard({child}: KanbanCardProps) {
 						>
 							<CircleDot className="h-3 w-3" />
 							#{child.issueNumber}
-						</a>
-					)}
-					{showPrLink && (
-						<a
-							href={child.prUrl}
-							target="_blank"
-							rel="noopener noreferrer"
-							title="Open pull request on GitHub"
-							className="inline-flex shrink-0 items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-700 hover:bg-green-200 dark:bg-green-950/40 dark:text-green-300 dark:hover:bg-green-900/50 transition-colors"
-						>
-							<GitHubIcon className="h-3 w-3" />
-							PR
 						</a>
 					)}
 				</div>
@@ -203,17 +197,8 @@ export function KanbanCard({child}: KanbanCardProps) {
 				</div>
 			)}
 
-			{/* Footer: project + test status */}
-			<div className="mt-2 flex items-center justify-between">
-				<a
-					href={`https://github.com/${child.remote}`}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="text-xs font-medium text-text-300 hover:text-text-100 transition-colors"
-					title={child.projectDir || child.remote}
-				>
-					{child.project}
-				</a>
+			{/* Footer: test status */}
+			<div className="mt-2 flex items-center justify-end">
 				<div className="flex items-center gap-1">
 					{testJob?.status === 'running' && (
 						<span className="flex items-center gap-1" title="Test running">

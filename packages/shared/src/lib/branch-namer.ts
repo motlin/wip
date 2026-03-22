@@ -10,7 +10,7 @@ interface NamingRequest {
 	dir: string;
 }
 
-async function nameBranch(req: NamingRequest): Promise<string | null> {
+export async function nameBranch(req: NamingRequest): Promise<string | null> {
 	const prompt = `You are naming a git branch for a single commit.
 
 Run: git -C ${req.dir} show --stat ${req.sha}

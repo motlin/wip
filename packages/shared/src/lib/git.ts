@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
-import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin, getCachedUpstreamSha, cacheUpstreamSha, getCachedMergeStatuses, cacheMergeStatus} from './db.js';
+import {nameBranch} from './branch-namer.js';
+import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getBranchName, setBranchName, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin, getCachedUpstreamSha, cacheUpstreamSha, getCachedMergeStatuses, cacheMergeStatus} from './db.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
@@ -442,15 +443,22 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 	return children;
 }
 
-export function subjectToSlug(subject: string): string {
-	return subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
+export async function createBranchForChild(dir: string, child: ChildCommit, project: string): Promise<string> {
+	if (child.branch) return child.branch;
 
-export async function createBranchForChild(dir: string, child: ChildCommit): Promise<string> {
-	const branchName = child.branch ?? subjectToSlug(child.subject);
-	if (!child.branch) {
-		await execa('git', ['-C', dir, 'branch', branchName, child.sha], {reject: false});
+	const cached = getBranchName(child.sha, project);
+	if (cached) {
+		await execa('git', ['-C', dir, 'branch', cached, child.sha], {reject: false});
+		return cached;
 	}
+
+	const branchName = await nameBranch({sha: child.sha, project, subject: child.subject, dir});
+	if (!branchName) {
+		throw new Error(`Failed to generate branch name for ${child.shortSha} (${child.subject})`);
+	}
+
+	setBranchName(child.sha, project, branchName);
+	await execa('git', ['-C', dir, 'branch', branchName, child.sha], {reject: false});
 	return branchName;
 }
 

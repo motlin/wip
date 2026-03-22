@@ -4,7 +4,7 @@ import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import {createBranchForChild, discoverProjects, getChildCommits, getChildren, getMiseEnv, getProjectsDir, getTestLogDir, hasLocalModifications, isDirty, log, recordTestResult, testBranch, testFix} from '@wip/shared';
+import {createBranchForChild, discoverProjects, getBranchName, getChildCommits, getChildren, getMiseEnv, getProjectsDir, getTestLogDir, hasLocalModifications, isDirty, log, recordTestResult, suggestBranchNames, testBranch, testFix} from '@wip/shared';
 
 interface TestResult {
 	project: string;
@@ -103,9 +103,15 @@ export default class Test extends Command {
 
 			this.log(chalk.bold(`\nTesting ${p.name}`) + chalk.dim(` (${testable.length} children, branch-based)`));
 
+			// Pre-generate LLM branch names for branchless commits
+			const branchless = testable.filter((c) => !c.branch);
+			if (branchless.length > 0) {
+				await suggestBranchNames(branchless.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir})));
+			}
+
 			if (flags['dry-run']) {
 				for (const child of testable) {
-					const branchName = child.branch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+					const branchName = child.branch ?? getBranchName(child.sha, p.name) ?? '(pending)';
 					const action = child.branch ? 'test' : 'create branch + test';
 					this.log(`  would ${action} ${child.shortSha} → ${branchName}`);
 					testResults.push({project: p.name, sha: child.sha, shortSha: child.shortSha, branch: branchName, status: 'planned', exitCode: 0});
@@ -119,7 +125,7 @@ export default class Test extends Command {
 
 			for (const child of testable) {
 				// Ensure branch exists
-				const branchName = await createBranchForChild(p.dir, child);
+				const branchName = await createBranchForChild(p.dir, child, p.name);
 
 				// Show what's currently running
 				process.stdout.write(chalk.dim(`  ${child.shortSha} ${branchName} `));

@@ -61,6 +61,9 @@ export const ChildCommitSchema = z.object({
 	prNumber: z.number().optional(),
 	failedChecks: z.array(z.object({name: z.string(), url: z.string().optional()})).optional(),
 	behind: z.boolean().optional(),
+	commitsBehind: z.number().optional(),
+	commitsAhead: z.number().optional(),
+	rebaseable: z.boolean().optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
@@ -115,6 +118,9 @@ export const ClassifiedChildSchema = z.object({
 	needsRebase: z.boolean().optional(),
 	failedChecks: z.array(z.object({name: z.string(), url: z.string().optional()})).optional(),
 	behind: z.boolean().optional(),
+	commitsBehind: z.number().optional(),
+	commitsAhead: z.number().optional(),
+	rebaseable: z.boolean().optional(),
 	category: CategorySchema,
 	// GitHub Issue fields (present when this item represents an issue, not a commit)
 	issueUrl: z.string().optional(),

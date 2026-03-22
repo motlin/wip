@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask} from '@wip/shared';
 import {
 	type ActionResult,
@@ -80,7 +80,17 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 		const snoozedSet = getSnoozedSet();
 
 		const prStatuses = await getPrStatuses(p.dir, p.name);
-		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
+
+		// Load cached merge status keyed by SHA
+		const upstreamSha = getCachedUpstreamSha(p.name);
+		const mergeStatusMap = new Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>();
+		if (upstreamSha) {
+			for (const ms of getCachedMergeStatuses(p.name, upstreamSha)) {
+				mergeStatusMap.set(ms.sha, ms);
+			}
+		}
+
+		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap);
 
 		const result: ClassifiedChild[] = [];
 		for (const child of children) {
@@ -114,6 +124,9 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 				needsRebase: child.needsRebase,
 				failedChecks: child.failedChecks,
 				behind: child.behind,
+				commitsBehind: child.commitsBehind,
+				commitsAhead: child.commitsAhead,
+				rebaseable: child.rebaseable,
 				category,
 			});
 		}

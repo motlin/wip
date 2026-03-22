@@ -118,6 +118,37 @@ export const githubProjectItemsCache = sqliteTable(
 	}),
 );
 
+export const upstreamRefs = sqliteTable(
+	'upstream_refs',
+	{
+		project: text('project').notNull(),
+		ref: text('ref').notNull(),
+		sha: text('sha').notNull(),
+		systemFrom: text('system_from').notNull(),
+		systemTo: text('system_to').notNull().default(FAR_FUTURE),
+	},
+	(table) => ({
+		pk: primaryKey({columns: [table.project, table.systemFrom]}),
+	}),
+);
+
+export const mergeStatus = sqliteTable(
+	'merge_status',
+	{
+		project: text('project').notNull(),
+		sha: text('sha').notNull(),
+		upstreamSha: text('upstream_sha').notNull(),
+		commitsAhead: integer('commits_ahead').notNull(),
+		commitsBehind: integer('commits_behind').notNull(),
+		rebaseable: integer('rebaseable'),
+		systemFrom: text('system_from').notNull(),
+		systemTo: text('system_to').notNull().default(FAR_FUTURE),
+	},
+	(table) => ({
+		pk: primaryKey({columns: [table.project, table.sha, table.systemFrom]}),
+	}),
+);
+
 export const snoozed = sqliteTable(
 	'snoozed',
 	{

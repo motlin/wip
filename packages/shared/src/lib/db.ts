@@ -6,7 +6,7 @@ import * as path from 'node:path';
 
 import type {CheckStatus, ReviewStatus} from './schemas.js';
 import * as schema from './schema.js';
-import {branchNames, ghLoginCache, githubIssuesCache, githubProjectItemsCache, miseEnvCache, prStatusCache, reportCache, snoozed, testResults} from './schema.js';
+import {branchNames, ghLoginCache, githubIssuesCache, githubProjectItemsCache, mergeStatus, miseEnvCache, prStatusCache, reportCache, snoozed, testResults, upstreamRefs} from './schema.js';
 
 const APP_NAME = 'wip';
 const FAR_FUTURE = '9999-12-31 23:59:59';
@@ -152,6 +152,31 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (id, system_from)
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS upstream_refs (
+			project TEXT NOT NULL,
+			ref TEXT NOT NULL,
+			sha TEXT NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, system_from)
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS merge_status (
+			project TEXT NOT NULL,
+			sha TEXT NOT NULL,
+			upstream_sha TEXT NOT NULL,
+			commits_ahead INTEGER NOT NULL,
+			commits_behind INTEGER NOT NULL,
+			rebaseable INTEGER,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, sha, system_from)
 		)
 	`);
 
@@ -493,4 +518,60 @@ export function cacheProjectItems(data: string): void {
 export function invalidateProjectItemsCacheDb(): void {
 	const d = getDb();
 	d.update(githubProjectItemsCache).set({systemTo: now()}).where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE)).run();
+}
+
+// --- Upstream refs ---
+
+export function getCachedUpstreamSha(project: string): string | null {
+	const d = getDb();
+	const row = d.select().from(upstreamRefs).where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE))).get();
+	return row?.sha ?? null;
+}
+
+export function cacheUpstreamSha(project: string, ref: string, sha: string): void {
+	const d = getDb();
+	const timestamp = now();
+	d.update(upstreamRefs).set({systemTo: timestamp}).where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE))).run();
+	d.insert(upstreamRefs).values({project, ref, sha, systemFrom: timestamp}).run();
+}
+
+// --- Merge status ---
+
+export interface CachedMergeStatus {
+	sha: string;
+	upstreamSha: string;
+	commitsAhead: number;
+	commitsBehind: number;
+	rebaseable: boolean | null;
+}
+
+export function getCachedMergeStatuses(project: string, upstreamSha: string): CachedMergeStatus[] {
+	const d = getDb();
+	const rows = d.select()
+		.from(mergeStatus)
+		.where(and(eq(mergeStatus.project, project), eq(mergeStatus.upstreamSha, upstreamSha), eq(mergeStatus.systemTo, FAR_FUTURE)))
+		.all();
+	return rows.map((r) => ({
+		sha: r.sha,
+		upstreamSha: r.upstreamSha,
+		commitsAhead: r.commitsAhead,
+		commitsBehind: r.commitsBehind,
+		rebaseable: r.rebaseable === null ? null : r.rebaseable === 1,
+	}));
+}
+
+export function cacheMergeStatus(project: string, sha: string, upstreamSha: string, commitsAhead: number, commitsBehind: number, rebaseable: boolean | null): void {
+	const d = getDb();
+	const timestamp = now();
+	d.update(mergeStatus).set({systemTo: timestamp}).where(and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha), eq(mergeStatus.systemTo, FAR_FUTURE))).run();
+	d.insert(mergeStatus).values({
+		project, sha, upstreamSha, commitsAhead, commitsBehind,
+		rebaseable: rebaseable === null ? null : rebaseable ? 1 : 0,
+		systemFrom: timestamp,
+	}).run();
+}
+
+export function invalidateMergeStatus(project: string): void {
+	const d = getDb();
+	d.update(mergeStatus).set({systemTo: now()}).where(and(eq(mergeStatus.project, project), eq(mergeStatus.systemTo, FAR_FUTURE))).run();
 }

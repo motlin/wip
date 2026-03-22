@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import {log} from '../services/logger.js';
-import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin} from './db.js';
+import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin, getCachedUpstreamSha, cacheUpstreamSha, getCachedMergeStatuses, cacheMergeStatus} from './db.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
@@ -313,7 +313,41 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 	return {review, checks, urls, failedChecks, behind, prNumbers};
 }
 
-export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses, projectName?: string): Promise<ChildCommit[]> {
+export async function fetchUpstreamRef(dir: string, upstreamRef: string, projectName: string): Promise<{changed: boolean; sha: string}> {
+	const parts = upstreamRef.split('/');
+	const remote = parts[0];
+	const branch = parts.slice(1).join('/');
+	const env = await getMiseEnv(dir);
+
+	await execa('git', ['-C', dir, 'fetch', remote, branch], {reject: false, env});
+
+	const result = await git(dir, 'rev-parse', upstreamRef);
+	const newSha = result.trim();
+	if (!newSha) return {changed: false, sha: ''};
+
+	const cachedSha = getCachedUpstreamSha(projectName);
+	if (cachedSha === newSha) return {changed: false, sha: newSha};
+
+	cacheUpstreamSha(projectName, upstreamRef, newSha);
+	return {changed: true, sha: newSha};
+}
+
+export async function computeMergeStatus(dir: string, sha: string, upstreamSha: string): Promise<{commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}> {
+	const behindResult = await git(dir, 'rev-list', '--count', `${sha}..${upstreamSha}`);
+	const aheadResult = await git(dir, 'rev-list', '--count', `${upstreamSha}..${sha}`);
+	const commitsBehind = parseInt(behindResult.trim(), 10) || 0;
+	const commitsAhead = parseInt(aheadResult.trim(), 10) || 0;
+
+	let rebaseable: boolean | null = null;
+	if (commitsBehind > 0) {
+		const mergeTree = await execa('git', ['-C', dir, 'merge-tree', '--quiet', '--write-tree', upstreamSha, sha], {reject: false});
+		rebaseable = mergeTree.exitCode === 0;
+	}
+
+	return {commitsAhead, commitsBehind, rebaseable};
+}
+
+export async function getChildCommits(dir: string, upstreamRef: string, hasTest: boolean, prStatuses?: PrStatuses, projectName?: string, mergeStatusMap?: Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>): Promise<ChildCommit[]> {
 	const childrenOutput = await git(dir, 'children', upstreamRef);
 	if (!childrenOutput) return [];
 
@@ -395,7 +429,14 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const failedChecks = branch && prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
 		const behind = branch && prStatuses ? prStatuses.behind.get(branch) : undefined;
 		const prNumber = branch && prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, needsRebase, reviewStatus, prUrl, prNumber, failedChecks, behind});
+
+		// Merge status from cache (computed asynchronously by merge-queue)
+		const ms = mergeStatusMap?.get(sha);
+		const commitsBehind = ms?.commitsBehind;
+		const commitsAhead = ms?.commitsAhead;
+		const rebaseable = ms?.rebaseable ?? undefined;
+
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, needsRebase, reviewStatus, prUrl, prNumber, failedChecks, behind, commitsBehind, commitsAhead, rebaseable});
 	}
 
 	return children;

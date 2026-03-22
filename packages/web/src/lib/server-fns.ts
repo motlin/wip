@@ -168,7 +168,7 @@ export const pushChild = createServerFn({method: 'POST'})
 			invalidatePrCache(project);
 			// Get the GitHub remote URL to build a "Create PR" link
 			const remoteResult = await execa('git', ['-C', projectDir, 'remote', 'get-url', upstreamRemote], {reject: false});
-			const ghRemote = remoteResult.stdout?.replace(/.*github\.com[:/]/, '').replace(/\.git$/, '');
+			const ghRemote = remoteResult.stdout?.replace(/^.*[:/]([^/]+\/[^/]+?)(?:\.git)?$/, '$1');
 			const compareUrl = ghRemote ? `https://github.com/${ghRemote}/compare/${branchName}?expand=1` : undefined;
 			return {ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl};
 		}

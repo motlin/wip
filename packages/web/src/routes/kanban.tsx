@@ -1,15 +1,21 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {RefreshCw} from 'lucide-react';
-import {useState} from 'react';
+import {useState, useMemo} from 'react';
 import {KanbanColumn} from '../components/kanban-column';
+import type {ColumnItems} from '../components/kanban-column';
 import {refreshAll} from '../lib/server-fns';
-import type {Category} from '../lib/server-fns';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
-import {useGroupedChildren} from '../lib/use-grouped-children';
-import type {ProjectInfo} from '@wip/shared';
+import {useWorkItems} from '../lib/use-work-items';
+import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
+import type {Category, ProjectInfo} from '@wip/shared';
 
 const CATEGORY_ORDER: Category[] = ['not_started', 'skippable', 'snoozed', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
+
+function bucketCount(items: ColumnItems): number {
+	return (items.commits?.length ?? 0) + (items.branches?.length ?? 0) + (items.pullRequests?.length ?? 0)
+		+ (items.issues?.length ?? 0) + (items.projectItems?.length ?? 0) + (items.todos?.length ?? 0);
+}
 
 export const Route = createFileRoute('/kanban')({
 	loader: async ({context: {queryClient}}) => {
@@ -31,9 +37,47 @@ export const Route = createFileRoute('/kanban')({
 
 function Kanban() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
-	const {grouped, totalChildren, projectCount} = useGroupedChildren(projects);
+	const workItems = useWorkItems(projects);
 	const queryClient = useQueryClient();
 	const [refreshingAll, setRefreshingAll] = useState(false);
+
+	const {grouped, totalCount} = useMemo(() => {
+		const g: Record<Category, ColumnItems> = {
+			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
+			local_changes: {}, ready_to_test: {}, test_failed: {}, ready_to_push: {},
+			pushed_no_pr: {}, checks_unknown: {}, checks_running: {}, checks_failed: {},
+			checks_passed: {}, review_comments: {}, changes_requested: {}, approved: {},
+		};
+
+		const projectMap = new Map(projects.map((p) => [p.name, p]));
+
+		for (const commit of workItems.commits) {
+			const p = projectMap.get(commit.project);
+			if (!p) continue;
+			const cat = classifyCommit(commit, p);
+			g[cat].commits = g[cat].commits ?? [];
+			g[cat].commits.push(commit);
+		}
+		for (const branch of workItems.branches) {
+			const p = projectMap.get(branch.project);
+			if (!p) continue;
+			const cat = classifyBranch(branch, p);
+			g[cat].branches = g[cat].branches ?? [];
+			g[cat].branches.push(branch);
+		}
+		for (const pr of workItems.pullRequests) {
+			const cat = classifyPullRequest(pr);
+			g[cat].pullRequests = g[cat].pullRequests ?? [];
+			g[cat].pullRequests.push(pr);
+		}
+		g.not_started.issues = workItems.issues;
+		g.not_started.projectItems = workItems.projectItems;
+		g.not_started.todos = workItems.todos;
+
+		let total = 0;
+		for (const cat of CATEGORY_ORDER) total += bucketCount(g[cat]);
+		return {grouped: g, totalCount: total};
+	}, [workItems, projects]);
 
 	const handleRefreshAll = async () => {
 		setRefreshingAll(true);
@@ -57,15 +101,16 @@ function Kanban() {
 						{refreshingAll ? 'Refreshing...' : 'Refresh All'}
 					</button>
 					<span className="text-sm text-text-500">
-						{projectCount} projects, {totalChildren} children
+						{workItems.projectCount} projects, {totalCount} items
 					</span>
 				</div>
 			</div>
 			<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
 				{CATEGORY_ORDER.map((category) => {
 					const items = grouped[category];
-					if (items.length === 0) return null;
-					return <KanbanColumn key={category} category={category} children={items} />;
+					const count = bucketCount(items);
+					if (count === 0) return null;
+					return <KanbanColumn key={category} category={category} items={items} count={count} />;
 				})}
 			</div>
 		</div>

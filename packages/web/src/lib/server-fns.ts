@@ -1,11 +1,9 @@
 import {createServerFn} from '@tanstack/react-start';
 import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus} from '@wip/shared';
-import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask} from '@wip/shared';
+import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem} from '@wip/shared';
 import {
 	type ActionResult,
 	type Category,
-	type ClassifiedChild,
-	type ReportData,
 	type SnoozedChild,
 	PushChildInputSchema,
 	TestChildInputSchema,
@@ -27,41 +25,12 @@ import {z} from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export type {ActionResult, Category, ClassifiedChild, ReportData, SnoozedChild};
+export type {ActionResult, Category, SnoozedChild, CommitItem, BranchItem, PullRequestItem};
 
-interface Classification {
-	category: Category;
-	blockReason?: string;
-}
-
-function classifyChild(child: ChildCommit, project: ProjectInfo): Classification {
-	if (child.skippable) return {category: 'skippable'};
-
-	// Detached HEAD — only for children without a branch (need to create one before pushing)
-	if (project.detachedHead && !child.branch) return {category: 'detached_head'};
-
-	// Has a PR on GitHub — classify by check/review status
-	if (child.branch && child.reviewStatus !== 'no_pr') {
-		if (child.reviewStatus === 'approved') return {category: 'approved'};
-		if (child.reviewStatus === 'changes_requested') return {category: 'changes_requested'};
-		if (child.reviewStatus === 'commented') return {category: 'review_comments'};
-		// No review yet — classify by CI check status
-		if (child.checkStatus === 'running') return {category: 'checks_running'};
-		if (child.checkStatus === 'failed') return {category: 'checks_failed'};
-		if (child.checkStatus === 'passed') return {category: 'checks_passed'};
-		if (child.checkStatus === 'unknown' || child.checkStatus === 'none') return {category: 'checks_unknown'};
-		return {category: 'checks_running'}; // pending treated as running
-	}
-
-	// Branch pushed to remote but no PR yet (skip default branch — can't PR into itself)
-	if (child.branch && child.branch !== project.upstreamBranch && child.pushedToRemote && child.reviewStatus === 'no_pr') return {category: 'pushed_no_pr'};
-
-	// No PR — classify by local test status
-	if (child.testStatus === 'passed') return {category: 'ready_to_push'};
-	if (child.testStatus === 'failed') return {category: 'test_failed'};
-	if (project.dirty) return {category: 'local_changes', blockReason: `Working tree is dirty — commit or stash changes in ${project.name} before testing`};
-	if (!project.hasTestConfigured) return {category: 'no_test'};
-	return {category: 'ready_to_test'};
+export interface ProjectChildrenResult {
+	commits: CommitItem[];
+	branches: BranchItem[];
+	pullRequests: PullRequestItem[];
 }
 
 export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
@@ -71,18 +40,14 @@ export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
 
 export const getProjectChildren = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
-	.handler(async ({data}): Promise<ClassifiedChild[]> => {
+	.handler(async ({data}): Promise<ProjectChildrenResult> => {
 		const projectsDir = getProjectsDir();
 		const projects = await discoverProjects(projectsDir);
 		const p = projects.find((proj) => proj.name === data.project);
-		if (!p) return [];
-
-		clearExpiredSnoozes();
-		const snoozedSet = getSnoozedSet();
+		if (!p) return {commits: [], branches: [], pullRequests: []};
 
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 
-		// Load cached merge status keyed by SHA
 		const upstreamSha = getCachedUpstreamSha(p.name);
 		const mergeStatusMap = new Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>();
 		if (upstreamSha) {
@@ -93,22 +58,12 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap);
 
-		const result: ClassifiedChild[] = [];
-		for (const child of children) {
-			const isSnoozed = snoozedSet.has(`${p.name}:${child.sha}`);
-			const classification = isSnoozed ? {category: 'snoozed' as Category} : classifyChild(child, p);
-			const {category, blockReason} = classification;
-			let failureTail: string | undefined;
-			if (category === 'test_failed') {
-				const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
-				if (fs.existsSync(logPath)) {
-					const content = fs.readFileSync(logPath, 'utf-8').trimEnd();
-					const lines = content.split('\n');
-					failureTail = lines.slice(-5).join('\n');
-				}
-			}
+		const commits: CommitItem[] = [];
+		const branches: BranchItem[] = [];
+		const pullRequests: PullRequestItem[] = [];
 
-			result.push({
+		for (const child of children) {
+			const base = {
 				project: p.name,
 				projectDir: p.dir,
 				remote: p.remote,
@@ -117,54 +72,79 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 				shortSha: child.shortSha,
 				subject: child.subject,
 				date: child.date,
-				branch: child.branch,
-				prUrl: child.prUrl,
-				prNumber: child.prNumber,
-				failureTail,
-				blockReason,
-				needsRebase: child.needsRebase,
-				failedChecks: child.failedChecks,
-				behind: child.behind,
-				commitsBehind: child.commitsBehind,
-				commitsAhead: child.commitsAhead,
-				rebaseable: child.rebaseable,
-				category,
-			});
-		}
+				skippable: child.skippable,
+			};
 
-		// Apply cached branch names
-		const branchless = result
-			.filter((item) => !item.branch && !item.issueUrl)
-			.map((item) => ({sha: item.sha, project: item.project, subject: item.subject, dir: item.projectDir}));
-		if (branchless.length > 0) {
-			const {getBranchNames} = await import('@wip/shared');
-			const cached = getBranchNames(branchless);
-			for (const item of result) {
-				if (!item.branch && !item.issueUrl) {
-					item.suggestedBranch = cached.get(`${item.project}:${item.sha}`);
+			// Read failure tail for failed tests
+			let failureTail: string | undefined;
+			if (child.testStatus === 'failed') {
+				const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
+				if (fs.existsSync(logPath)) {
+					const content = fs.readFileSync(logPath, 'utf-8').trimEnd();
+					const lines = content.split('\n');
+					failureTail = lines.slice(-5).join('\n');
 				}
 			}
-			const uncachedCount = branchless.filter((r) => !cached.has(`${r.project}:${r.sha}`)).length;
-			if (uncachedCount > 0) {
-				suggestBranchNames(branchless).catch(() => {});
+
+			const ms = mergeStatusMap.get(child.sha);
+
+			if (child.branch && child.prUrl && child.prNumber != null && child.reviewStatus !== 'no_pr') {
+				// Pull request
+				pullRequests.push({
+					...base,
+					branch: child.branch,
+					pushedToRemote: true as const,
+					needsRebase: child.needsRebase,
+					testStatus: child.testStatus,
+					failureTail,
+					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
+					commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
+					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+					prUrl: child.prUrl,
+					prNumber: child.prNumber,
+					reviewStatus: child.reviewStatus,
+					checkStatus: child.checkStatus,
+					failedChecks: child.failedChecks,
+					behind: child.behind,
+				});
+			} else if (child.branch) {
+				// Branch (with or without remote)
+				branches.push({
+					...base,
+					branch: child.branch,
+					pushedToRemote: child.pushedToRemote,
+					needsRebase: child.needsRebase,
+					testStatus: child.testStatus,
+					failureTail,
+					blockReason: p.dirty ? `Working tree is dirty — commit or stash changes in ${p.name} before testing` : undefined,
+					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
+					commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
+					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+				});
+			} else {
+				// Bare commit (no branch)
+				commits.push(base);
 			}
 		}
 
-		return result;
-	});
+		// Apply cached branch names to bare commits (suggest branches for them)
+		if (commits.length > 0) {
+			const {getBranchNames} = await import('@wip/shared');
+			const keys = commits.map((c) => ({sha: c.sha, project: c.project, subject: c.subject, dir: c.projectDir}));
+			const cached = getBranchNames(keys);
+			// suggestedBranch is on BranchItem, not CommitItem — we'll handle this in the UI
+			const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
+			if (uncachedCount > 0) {
+				suggestBranchNames(keys).catch(() => {});
+			}
+		}
 
-export interface TodoItem {
-	project: string;
-	projectDir: string;
-	remote: string;
-	upstreamRemote: string;
-	text: string;
-	sourceLabel: string;
-}
+		return {commits, branches, pullRequests};
+	});
 
 export const getProjectTodos = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
-	.handler(async ({data}): Promise<TodoItem[]> => {
+	.handler(async ({data}): Promise<SharedTodoItem[]> => {
 		const projectsDir = getProjectsDir();
 		const projects = await discoverProjects(projectsDir);
 		const p = projects.find((proj) => proj.name === data.project);
@@ -173,10 +153,8 @@ export const getProjectTodos = createServerFn({method: 'GET'})
 		const tasks = findIncompleteTodoTasks(p.dir);
 		return tasks.map((task) => ({
 			project: p.name,
-			projectDir: p.dir,
-			remote: p.remote,
-			upstreamRemote: p.upstreamRemote,
-			text: task.text,
+			title: task.text,
+			sourceFile: task.sourceFile,
 			sourceLabel: path.relative(p.dir, task.sourceFile),
 		}));
 	});
@@ -284,7 +262,6 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	clearExpiredSnoozes();
 	const snoozedSet = getSnoozedSet();
 
-	// Gather children per project in parallel (matches getReport pattern)
 	const testableProjects = projects.filter((p) => p.hasTestConfigured && !p.dirty);
 	const projectResults = await Promise.all(testableProjects.map(async (p) => {
 		const prStatuses = await getPrStatuses(p.dir, p.name);
@@ -295,10 +272,11 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	const queued: TestJobStatus[] = [];
 	for (const {project: p, children} of projectResults) {
 		for (const child of children) {
-			const isSnoozed = snoozedSet.has(`${p.name}:${child.sha}`);
-			if (isSnoozed) continue;
-			const {category} = classifyChild(child, p);
-			if (category !== 'ready_to_test') continue;
+			if (child.skippable) continue;
+			if (!child.branch) continue;
+			if (snoozedSet.has(`${p.name}:${child.sha}`)) continue;
+			if (child.reviewStatus !== 'no_pr') continue;
+			if (child.testStatus !== 'unknown') continue;
 			const job = enqueueTest(p.name, p.dir, child.sha, child.shortSha);
 			queued.push({id: job.id, status: job.status, message: job.message});
 		}
@@ -482,11 +460,14 @@ export const rebasePr = createServerFn({method: 'POST'})
 		return {ok: false, message: `Failed to rebase PR: ${result.stderr}`};
 	});
 
+export type GitItemResult = CommitItem | BranchItem | PullRequestItem;
+
 export const getChildBySha = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
-	.handler(async ({data}): Promise<ClassifiedChild | null> => {
-		const children = await getProjectChildren({data: {project: data.project}});
-		return children.find((c) => c.sha === data.sha) ?? null;
+	.handler(async ({data}): Promise<GitItemResult | null> => {
+		const result = await getProjectChildren({data: {project: data.project}});
+		const all = [...result.commits, ...result.branches, ...result.pullRequests];
+		return all.find((c) => c.sha === data.sha) ?? null;
 	});
 
 export const createBranch = createServerFn({method: 'POST'})

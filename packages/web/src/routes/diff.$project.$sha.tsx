@@ -5,7 +5,7 @@ import {DiffView, DiffModeEnum} from '@git-diff-view/react';
 import {DiffFile} from '@git-diff-view/core';
 import '@git-diff-view/react/styles/diff-view.css';
 import type {FileDiff} from '../lib/server-fns';
-import {CommitActions} from '../components/commit-actions';
+import {BranchActions, PullRequestActions} from '../components/commit-actions';
 import {diffQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/diff/$project/$sha')({
@@ -110,9 +110,14 @@ function DiffViewer() {
 					</div>
 				</div>
 			</div>
-			{child && (
+			{child && 'prUrl' in child && child.prUrl && (
 				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
-					<CommitActions child={child} layout="row" />
+					<PullRequestActions item={child} layout="row" />
+				</div>
+			)}
+			{child && 'branch' in child && !('prUrl' in child && child.prUrl) && (
+				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
+					<BranchActions item={child} layout="row" />
 				</div>
 			)}
 			{stat && (

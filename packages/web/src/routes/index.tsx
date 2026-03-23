@@ -1,7 +1,7 @@
 import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
-import {useGroupedChildren} from '../lib/use-grouped-children';
+import {useWorkItems} from '../lib/use-work-items';
 import type {ProjectInfo} from '@wip/shared';
 
 export const Route = createFileRoute('/')({
@@ -24,24 +24,18 @@ export const Route = createFileRoute('/')({
 
 function Home() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
-	const {grouped, totalChildren, projectCount} = useGroupedChildren(projects);
+	const workItems = useWorkItems(projects);
 	const {data: snoozed} = useSuspenseQuery(snoozedQueryOptions());
 
-	const actionable = grouped.changes_requested.length
-		+ grouped.test_failed.length
-		+ grouped.review_comments.length;
-	const ready = grouped.approved.length + grouped.ready_to_push.length + grouped.pushed_no_pr.length;
-	const waiting = grouped.ready_to_test.length
-		+ grouped.local_changes.length
-		+ grouped.no_test.length
-		+ grouped.skippable.length;
+	const totalItems = workItems.commits.length + workItems.branches.length + workItems.pullRequests.length
+		+ workItems.issues.length + workItems.projectItems.length + workItems.todos.length;
 
 	return (
 		<div className="mx-auto max-w-2xl p-6">
 			<div className="mb-8">
 				<h1 className="text-xl font-semibold">WIP Dashboard</h1>
 				<p className="mt-1 text-sm text-text-500">
-					{totalChildren} children across {projectCount} projects
+					{totalItems} items across {workItems.projectCount} projects
 				</p>
 			</div>
 			<div className="grid grid-cols-2 gap-4">
@@ -54,14 +48,14 @@ function Home() {
 						Linear priority list. Most actionable item at the top.
 					</p>
 					<div className="mt-3 flex gap-3 text-xs">
-						{actionable > 0 && (
-							<span className="text-red-600 dark:text-red-400">{actionable} need action</span>
+						{workItems.pullRequests.length > 0 && (
+							<span className="text-blue-600 dark:text-blue-400">{workItems.pullRequests.length} PRs</span>
 						)}
-						{ready > 0 && (
-							<span className="text-green-600 dark:text-green-400">{ready} ready</span>
+						{workItems.branches.length > 0 && (
+							<span className="text-green-600 dark:text-green-400">{workItems.branches.length} branches</span>
 						)}
-						{waiting > 0 && (
-							<span className="text-text-500">{waiting} waiting</span>
+						{workItems.todos.length > 0 && (
+							<span className="text-text-500">{workItems.todos.length} todos</span>
 						)}
 					</div>
 				</Link>
@@ -74,7 +68,7 @@ function Home() {
 						Board view grouped by status. See everything at a glance.
 					</p>
 					<div className="mt-3 flex gap-3 text-xs">
-						<span className="text-text-500">{totalChildren} cards</span>
+						<span className="text-text-500">{totalItems} cards</span>
 					</div>
 				</Link>
 				{snoozed.length > 0 && (

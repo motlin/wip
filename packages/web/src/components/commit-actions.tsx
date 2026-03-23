@@ -3,7 +3,6 @@ import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranc
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff} from '../lib/server-fns';
 import {useMergeStatus} from '../lib/merge-events-context';
-import type {FileDiff, ProjectChildrenResult} from '../lib/server-fns';
 import type {BranchItem, PullRequestItem} from '@wip/shared';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
@@ -118,13 +117,8 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setError(null);
 		const result = await pushChild({data: {
 			project: item.project,
-			projectDir: item.projectDir,
-			upstreamRemote: item.upstreamRemote,
 			sha: item.sha,
-			shortSha: item.shortSha,
-			subject: item.subject,
 			branch: item.branch,
-			suggestedBranch: 'suggestedBranch' in item ? item.suggestedBranch : undefined,
 		}});
 		setLoading(false);
 		if (result.ok) {
@@ -141,9 +135,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setError(null);
 		await testChild({data: {
 			project: item.project,
-			projectDir: item.projectDir,
 			sha: item.sha,
-			shortSha: item.shortSha,
 		}});
 	};
 
@@ -157,7 +149,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setSnoozeOpen(false);
 		setError(null);
 		const until = hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
-		const result = await snoozeChildFn({data: {sha: item.sha, project: item.project, shortSha: item.shortSha, subject: item.subject, until}});
+		const result = await snoozeChildFn({data: {project: item.project, sha: item.sha, until}});
 		if (result.ok) {
 			queryClient.invalidateQueries({queryKey: ['snoozed']});
 			optimistic.invalidate();
@@ -190,8 +182,6 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRebaseResult(null);
 		const result = await rebasePr({data: {
 			project: item.project,
-			projectDir: item.projectDir,
-			upstreamRemote: item.upstreamRemote,
 			prUrl: pr.prUrl,
 		}});
 		setRebasing(false);
@@ -207,11 +197,8 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setForcePushing(true);
 		setError(null);
 		const result = await forcePush({data: {
-			projectDir: item.projectDir,
 			project: item.project,
-			upstreamRemote: item.upstreamRemote,
 			branch: item.branch,
-			shortSha: item.shortSha,
 		}});
 		setForcePushing(false);
 		if (result.ok) {
@@ -226,7 +213,6 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRenaming(true);
 		setError(null);
 		const result = await renameBranch({data: {
-			projectDir: item.projectDir,
 			project: item.project,
 			oldBranch: item.branch,
 			newBranch: newBranchName.trim(),
@@ -245,11 +231,9 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setApplyingFixes(true);
 		setError(null);
 		const result = await applyFixes({data: {
-			projectDir: item.projectDir,
 			project: item.project,
 			branch: item.branch,
 			prNumber: pr.prNumber,
-			upstreamRemote: item.upstreamRemote,
 		}});
 		setApplyingFixes(false);
 		if (result.ok) {
@@ -263,12 +247,8 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRebasingLocal(true);
 		setError(null);
 		const result = await rebaseLocal({data: {
-			projectDir: item.projectDir,
 			project: item.project,
 			branch: item.branch,
-			upstreamRemote: item.upstreamRemote,
-			upstreamRef: `${item.upstreamRemote}/main`,
-			sha: item.sha,
 		}});
 		setRebasingLocal(false);
 		if (result.ok) {
@@ -287,7 +267,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 			setDeleteConfirmOpen(true);
 			setDeleteDiffLoading(true);
 			try {
-				const diff = await getCommitDiff({data: {projectDir: item.projectDir, sha: item.sha}});
+				const diff = await getCommitDiff({data: {project: item.project, sha: item.sha}});
 				setDeleteDiffStat(diff.stat);
 			} catch {
 				setDeleteDiffStat('Failed to load diff');
@@ -302,9 +282,8 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setDeleteLoading(true);
 		setError(null);
 		const result = await deleteBranch({data: {
-			projectDir: item.projectDir,
-			branch: item.branch,
 			project: item.project,
+			branch: item.branch,
 		}});
 		setDeleteLoading(false);
 		if (result.ok) {
@@ -344,15 +323,15 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 						type="button"
 						onClick={handleRebase}
 						disabled={rebasing}
-						title={pr.behind ? 'PR is behind base branch — rebase recommended' : 'PR is up to date with base branch'}
+						title={commitsBehind != null && commitsBehind > 0 ? 'PR is behind base branch — rebase recommended' : 'PR is up to date with base branch'}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							rebasing ? 'cursor-not-allowed opacity-60 text-text-300'
-							: pr.behind ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+							: commitsBehind != null && commitsBehind > 0 ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
 							: 'text-text-500 hover:bg-bg-200 hover:text-text-300'
 						}`}
 					>
 						{rebasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-						{rebasing ? 'Rebasing...' : pr.behind ? 'Rebase (behind)' : 'Rebase'}
+						{rebasing ? 'Rebasing...' : commitsBehind != null && commitsBehind > 0 ? 'Rebase (behind)' : 'Rebase'}
 					</button>
 				)}
 

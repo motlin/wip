@@ -68,23 +68,18 @@ export const ChildCommitSchema = z.object({
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
 export const DeleteBranchInputSchema = z.object({
-	projectDir: z.string(),
-	branch: z.string(),
 	project: z.string(),
+	branch: z.string(),
 });
 export type DeleteBranchInput = z.infer<typeof DeleteBranchInputSchema>;
 
 export const ForcePushInputSchema = z.object({
-	projectDir: z.string(),
 	project: z.string(),
-	upstreamRemote: z.string(),
 	branch: z.string(),
-	shortSha: z.string(),
 });
 export type ForcePushInput = z.infer<typeof ForcePushInputSchema>;
 
 export const RenameBranchInputSchema = z.object({
-	projectDir: z.string(),
 	project: z.string(),
 	oldBranch: z.string(),
 	newBranch: z.string(),
@@ -92,21 +87,15 @@ export const RenameBranchInputSchema = z.object({
 export type RenameBranchInput = z.infer<typeof RenameBranchInputSchema>;
 
 export const ApplyFixesInputSchema = z.object({
-	projectDir: z.string(),
 	project: z.string(),
 	branch: z.string(),
 	prNumber: z.number(),
-	upstreamRemote: z.string(),
 });
 export type ApplyFixesInput = z.infer<typeof ApplyFixesInputSchema>;
 
 export const RebaseLocalInputSchema = z.object({
-	projectDir: z.string(),
 	project: z.string(),
 	branch: z.string(),
-	upstreamRemote: z.string(),
-	upstreamRef: z.string(),
-	sha: z.string(),
 });
 export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 
@@ -117,9 +106,7 @@ const FailedCheckSchema = z.object({name: z.string(), url: z.string().optional()
 // A bare commit with no branch (detached HEAD situations)
 export const CommitItemSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
 	remote: z.string(),
-	upstreamRemote: z.string(),
 	sha: z.string(),
 	shortSha: z.string(),
 	subject: z.string(),
@@ -131,9 +118,7 @@ export type CommitItem = z.infer<typeof CommitItemSchema>;
 // A named branch pointing at a commit (may be local-only or pushed to remote)
 export const BranchItemSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
 	remote: z.string(),
-	upstreamRemote: z.string(),
 	sha: z.string(),
 	shortSha: z.string(),
 	subject: z.string(),
@@ -155,9 +140,7 @@ export type BranchItem = z.infer<typeof BranchItemSchema>;
 // A branch with an open pull request on GitHub
 export const PullRequestItemSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
 	remote: z.string(),
-	upstreamRemote: z.string(),
 	sha: z.string(),
 	shortSha: z.string(),
 	subject: z.string(),
@@ -176,7 +159,6 @@ export const PullRequestItemSchema = z.object({
 	reviewStatus: ReviewStatusSchema,
 	checkStatus: CheckStatusSchema,
 	failedChecks: z.array(FailedCheckSchema).optional(),
-	behind: z.boolean().optional(),
 });
 export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
 
@@ -231,37 +213,26 @@ export const SnoozedChildSchema = z.object({
 	shortSha: z.string(),
 	subject: z.string(),
 	until: z.string().nullable(),
-	systemFrom: z.string(),
-	systemTo: z.string(),
 });
 export type SnoozedChild = z.infer<typeof SnoozedChildSchema>;
 
 // Server function input schemas
 export const PushChildInputSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
-	upstreamRemote: z.string(),
 	sha: z.string(),
-	shortSha: z.string(),
-	subject: z.string(),
 	branch: z.string().optional(),
-	suggestedBranch: z.string().optional(),
 });
 export type PushChildInput = z.infer<typeof PushChildInputSchema>;
 
 export const TestChildInputSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
 	sha: z.string(),
-	shortSha: z.string(),
 });
 export type TestChildInput = z.infer<typeof TestChildInputSchema>;
 
 export const SnoozeChildInputSchema = z.object({
-	sha: z.string(),
 	project: z.string(),
-	shortSha: z.string(),
-	subject: z.string(),
+	sha: z.string(),
 	until: z.string().nullable(),
 });
 export type SnoozeChildInput = z.infer<typeof SnoozeChildInputSchema>;
@@ -279,8 +250,6 @@ export type CancelTestInput = z.infer<typeof CancelTestInputSchema>;
 
 export const CreatePrInputSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
-	upstreamRemote: z.string(),
 	branch: z.string(),
 	title: z.string(),
 	body: z.string().optional(),
@@ -296,14 +265,12 @@ export type RefreshChildInput = z.infer<typeof RefreshChildInputSchema>;
 
 export const RebasePrInputSchema = z.object({
 	project: z.string(),
-	projectDir: z.string(),
-	upstreamRemote: z.string(),
 	prUrl: z.string(),
 });
 export type RebasePrInput = z.infer<typeof RebasePrInputSchema>;
 
 export const CreateBranchInputSchema = z.object({
-	projectDir: z.string(),
+	project: z.string(),
 	sha: z.string(),
 	branchName: z.string(),
 });

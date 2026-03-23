@@ -111,8 +111,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [renameOpen]);
 
-	const effectiveBranch = item.branch ?? ('suggestedBranch' in item ? item.suggestedBranch : undefined);
-	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
+	const pushLabel = 'Push';
 
 	const handlePush = async () => {
 		setLoading(true);

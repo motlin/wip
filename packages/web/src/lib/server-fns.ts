@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus} from '@wip/shared';
+import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask} from '@wip/shared';
 import {
 	type ActionResult,
@@ -151,6 +151,34 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 		}
 
 		return result;
+	});
+
+export interface TodoItem {
+	project: string;
+	projectDir: string;
+	remote: string;
+	upstreamRemote: string;
+	text: string;
+	sourceLabel: string;
+}
+
+export const getProjectTodos = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<TodoItem[]> => {
+		const projectsDir = getProjectsDir();
+		const projects = await discoverProjects(projectsDir);
+		const p = projects.find((proj) => proj.name === data.project);
+		if (!p) return [];
+
+		const tasks = findIncompleteTodoTasks(p.dir);
+		return tasks.map((task) => ({
+			project: p.name,
+			projectDir: p.dir,
+			remote: p.remote,
+			upstreamRemote: p.upstreamRemote,
+			text: task.text,
+			sourceLabel: path.relative(p.dir, task.sourceFile),
+		}));
 	});
 
 export const getIssues = createServerFn({method: 'GET'}).handler(async () => {

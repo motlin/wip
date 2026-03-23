@@ -1,6 +1,6 @@
 import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
-import {projectsQueryOptions, projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {useGroupedChildren} from '../lib/use-grouped-children';
 
 export const Route = createFileRoute('/')({
@@ -8,6 +8,7 @@ export const Route = createFileRoute('/')({
 		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
 		await Promise.all([
 			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
+			...projects.map((p) => queryClient.ensureQueryData(projectTodosQueryOptions(p.name))),
 			queryClient.ensureQueryData(issuesQueryOptions()),
 			queryClient.ensureQueryData(projectItemsQueryOptions()),
 			queryClient.ensureQueryData(snoozedQueryOptions()),

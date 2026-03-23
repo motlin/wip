@@ -1,5 +1,5 @@
 import {queryOptions} from '@tanstack/react-query';
-import {getProjects, getProjectChildren, getIssues, getProjectItemsFn, getSnoozedList, getTestQueue, getCommitDiff, getTestLog, getProjectDir, getChildBySha} from './server-fns';
+import {getProjects, getProjectChildren, getProjectTodos, getIssues, getProjectItemsFn, getSnoozedList, getTestQueue, getCommitDiff, getTestLog, getProjectDir, getChildBySha} from './server-fns';
 
 export const projectsQueryOptions = () => queryOptions({
 	queryKey: ['projects'],
@@ -11,6 +11,12 @@ export const projectChildrenQueryOptions = (project: string) => queryOptions({
 	queryKey: ['children', project],
 	queryFn: () => getProjectChildren({data: {project}}),
 	staleTime: 2 * 60_000,
+});
+
+export const projectTodosQueryOptions = (project: string) => queryOptions({
+	queryKey: ['todos', project],
+	queryFn: () => getProjectTodos({data: {project}}),
+	staleTime: 5 * 60_000,
 });
 
 export const issuesQueryOptions = () => queryOptions({

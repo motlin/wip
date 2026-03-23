@@ -6,7 +6,7 @@ import {testAllChildren} from '../lib/server-fns';
 import type {Category, ClassifiedChild} from '../lib/server-fns';
 import {KanbanCard} from '../components/kanban-card';
 import {useHasActiveTests} from '../lib/test-events-context';
-import {projectsQueryOptions, projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {useGroupedChildren} from '../lib/use-grouped-children';
 
 const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
@@ -56,6 +56,7 @@ export const Route = createFileRoute('/queue')({
 		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
 		await Promise.all([
 			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
+			...projects.map((p) => queryClient.ensureQueryData(projectTodosQueryOptions(p.name))),
 			queryClient.ensureQueryData(issuesQueryOptions()),
 			queryClient.ensureQueryData(projectItemsQueryOptions()),
 			queryClient.ensureQueryData(snoozedQueryOptions()),

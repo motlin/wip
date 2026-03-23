@@ -110,7 +110,12 @@ export const RebaseLocalInputSchema = z.object({
 });
 export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 
-export const ClassifiedChildSchema = z.object({
+// --- Work item types (each represents a distinct kind of work) ---
+
+const FailedCheckSchema = z.object({name: z.string(), url: z.string().optional()});
+
+// A bare commit with no branch (detached HEAD situations)
+export const CommitItemSchema = z.object({
 	project: z.string(),
 	projectDir: z.string(),
 	remote: z.string(),
@@ -119,37 +124,99 @@ export const ClassifiedChildSchema = z.object({
 	shortSha: z.string(),
 	subject: z.string(),
 	date: z.string(),
-	branch: z.string().optional(),
+	skippable: z.boolean(),
+});
+export type CommitItem = z.infer<typeof CommitItemSchema>;
+
+// A named branch pointing at a commit (may be local-only or pushed to remote)
+export const BranchItemSchema = z.object({
+	project: z.string(),
+	projectDir: z.string(),
+	remote: z.string(),
+	upstreamRemote: z.string(),
+	sha: z.string(),
+	shortSha: z.string(),
+	subject: z.string(),
+	date: z.string(),
+	branch: z.string(),
 	suggestedBranch: z.string().optional(),
-	prUrl: z.string().optional(),
-	prNumber: z.number().optional(),
+	skippable: z.boolean(),
+	pushedToRemote: z.boolean(),
+	needsRebase: z.boolean().optional(),
+	testStatus: TestStatusSchema,
 	failureTail: z.string().optional(),
 	blockReason: z.string().optional(),
-	needsRebase: z.boolean().optional(),
-	failedChecks: z.array(z.object({name: z.string(), url: z.string().optional()})).optional(),
-	behind: z.boolean().optional(),
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
 	rebaseable: z.boolean().optional(),
-	category: CategorySchema,
-	// GitHub Issue fields (present when this item represents an issue, not a commit)
-	issueUrl: z.string().optional(),
-	issueNumber: z.number().optional(),
-	issueLabels: z.array(z.object({name: z.string(), color: z.string()})).optional(),
-	// GitHub Project fields (present when this item comes from a GitHub Project)
-	projectItemUrl: z.string().optional(),
-	projectItemStatus: z.string().optional(),
-	projectItemType: z.enum(['ISSUE', 'PULL_REQUEST', 'DRAFT_ISSUE']).optional(),
 });
-export type ClassifiedChild = z.infer<typeof ClassifiedChildSchema>;
+export type BranchItem = z.infer<typeof BranchItemSchema>;
 
-export const ReportDataSchema = z.object({
-	projects: z.number(),
-	children: z.number(),
-	snoozedCount: z.number(),
-	grouped: z.record(CategorySchema, z.array(ClassifiedChildSchema)),
+// A branch with an open pull request on GitHub
+export const PullRequestItemSchema = z.object({
+	project: z.string(),
+	projectDir: z.string(),
+	remote: z.string(),
+	upstreamRemote: z.string(),
+	sha: z.string(),
+	shortSha: z.string(),
+	subject: z.string(),
+	date: z.string(),
+	branch: z.string(),
+	skippable: z.boolean(),
+	pushedToRemote: z.literal(true),
+	needsRebase: z.boolean().optional(),
+	testStatus: TestStatusSchema,
+	failureTail: z.string().optional(),
+	commitsBehind: z.number().optional(),
+	commitsAhead: z.number().optional(),
+	rebaseable: z.boolean().optional(),
+	prUrl: z.string(),
+	prNumber: z.number(),
+	reviewStatus: ReviewStatusSchema,
+	checkStatus: CheckStatusSchema,
+	failedChecks: z.array(FailedCheckSchema).optional(),
+	behind: z.boolean().optional(),
 });
-export type ReportData = z.infer<typeof ReportDataSchema>;
+export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
+
+const LabelSchema = z.object({name: z.string(), color: z.string()});
+
+// A GitHub issue assigned to me
+export const IssueItemSchema = z.object({
+	project: z.string(),
+	remote: z.string(),
+	url: z.string(),
+	number: z.number(),
+	title: z.string(),
+	labels: z.array(LabelSchema),
+});
+export type IssueItem = z.infer<typeof IssueItemSchema>;
+
+// An item from a GitHub Project board
+export const ProjectBoardItemSchema = z.object({
+	project: z.string(),
+	remote: z.string(),
+	url: z.string().optional(),
+	number: z.number().optional(),
+	title: z.string(),
+	status: z.string(),
+	type: z.enum(['ISSUE', 'PULL_REQUEST', 'DRAFT_ISSUE']),
+	labels: z.array(LabelSchema),
+});
+export type ProjectBoardItem = z.infer<typeof ProjectBoardItemSchema>;
+
+// A task from a todo.md file
+export const TodoItemSchema = z.object({
+	project: z.string(),
+	title: z.string(),
+	sourceFile: z.string(),
+	sourceLabel: z.string(),
+});
+export type TodoItem = z.infer<typeof TodoItemSchema>;
+
+// Git item union (commit, branch, or PR — used for classification)
+export type GitItem = CommitItem | BranchItem | PullRequestItem;
 
 export const ActionResultSchema = z.object({
 	ok: z.boolean(),

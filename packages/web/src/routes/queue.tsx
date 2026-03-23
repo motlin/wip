@@ -1,14 +1,20 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {Play, Loader2} from 'lucide-react';
-import {useState} from 'react';
+import {useState, useMemo} from 'react';
 import {testAllChildren} from '../lib/server-fns';
-import type {Category, ClassifiedChild} from '../lib/server-fns';
-import {KanbanCard} from '../components/kanban-card';
 import {useHasActiveTests} from '../lib/test-events-context';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
-import {useGroupedChildren} from '../lib/use-grouped-children';
-import type {ProjectInfo} from '@wip/shared';
+import {useWorkItems} from '../lib/use-work-items';
+import type {ColumnItems} from '../components/kanban-column';
+import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
+import {CommitCard} from '../components/commit-card';
+import {BranchCard} from '../components/branch-card';
+import {PullRequestCard} from '../components/pull-request-card';
+import {IssueCard} from '../components/issue-card';
+import {ProjectBoardItemCard} from '../components/project-board-item-card';
+import {TodoCard} from '../components/todo-card';
+import type {Category, ProjectInfo} from '@wip/shared';
 
 const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
 
@@ -52,6 +58,11 @@ const CATEGORY_COLORS: Record<Category, string> = {
 	skippable: 'text-text-500',
 };
 
+function bucketCount(items: ColumnItems): number {
+	return (items.commits?.length ?? 0) + (items.branches?.length ?? 0) + (items.pullRequests?.length ?? 0)
+		+ (items.issues?.length ?? 0) + (items.projectItems?.length ?? 0) + (items.todos?.length ?? 0);
+}
+
 export const Route = createFileRoute('/queue')({
 	loader: async ({context: {queryClient}}) => {
 		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
@@ -72,19 +83,56 @@ export const Route = createFileRoute('/queue')({
 
 function Queue() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
-	const {grouped, totalChildren, projectCount} = useGroupedChildren(projects);
+	const workItems = useWorkItems(projects);
 	const [testingAll, setTestingAll] = useState(false);
 	const hasActiveTests = useHasActiveTests();
 
-	const sorted: {category: Category; items: ClassifiedChild[]}[] = [];
-	for (const category of CATEGORY_PRIORITY) {
-		const items = grouped[category];
-		if (items.length > 0) {
-			sorted.push({category, items});
-		}
-	}
+	const {grouped, totalCount, readyToTestCount} = useMemo(() => {
+		const g: Record<Category, ColumnItems> = {
+			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
+			local_changes: {}, ready_to_test: {}, test_failed: {}, ready_to_push: {},
+			pushed_no_pr: {}, checks_unknown: {}, checks_running: {}, checks_failed: {},
+			checks_passed: {}, review_comments: {}, changes_requested: {}, approved: {},
+		};
 
-	const readyToTestCount = grouped.ready_to_test.length;
+		const projectMap = new Map(projects.map((p) => [p.name, p]));
+
+		for (const commit of workItems.commits) {
+			const p = projectMap.get(commit.project);
+			if (!p) continue;
+			const cat = classifyCommit(commit, p);
+			g[cat].commits = g[cat].commits ?? [];
+			g[cat].commits.push(commit);
+		}
+
+		for (const branch of workItems.branches) {
+			const p = projectMap.get(branch.project);
+			if (!p) continue;
+			const cat = classifyBranch(branch, p);
+			g[cat].branches = g[cat].branches ?? [];
+			g[cat].branches.push(branch);
+		}
+
+		for (const pr of workItems.pullRequests) {
+			const cat = classifyPullRequest(pr);
+			g[cat].pullRequests = g[cat].pullRequests ?? [];
+			g[cat].pullRequests.push(pr);
+		}
+
+		// Non-git items go in not_started
+		g.not_started.issues = workItems.issues;
+		g.not_started.projectItems = workItems.projectItems;
+		g.not_started.todos = workItems.todos;
+
+		let total = 0;
+		for (const cat of CATEGORY_PRIORITY) {
+			total += bucketCount(g[cat]);
+		}
+
+		const rtCount = (g.ready_to_test.commits?.length ?? 0) + (g.ready_to_test.branches?.length ?? 0);
+
+		return {grouped: g, totalCount: total, readyToTestCount: rtCount};
+	}, [workItems, projects]);
 
 	const handleTestAll = async () => {
 		setTestingAll(true);
@@ -98,7 +146,7 @@ function Queue() {
 				<div>
 					<h1 className="text-xl font-semibold">Queue</h1>
 					<span className="text-sm text-text-500">
-						{totalChildren} items across {projectCount} projects
+						{totalCount} items across {workItems.projectCount} projects
 					</span>
 				</div>
 				{readyToTestCount > 0 && (
@@ -118,19 +166,27 @@ function Queue() {
 				)}
 			</div>
 			<div className="flex flex-col gap-6">
-				{sorted.map(({category, items}) => (
-					<section key={category}>
-						<h2 className={`mb-2 text-sm font-semibold ${CATEGORY_COLORS[category]}`}>
-							{CATEGORY_LABELS[category]}
-							<span className="ml-2 font-normal text-text-500">{items.length}</span>
-						</h2>
-						<div className="flex flex-col gap-2">
-							{items.map((child) => (
-								<KanbanCard key={child.sha} child={child} />
-							))}
-						</div>
-					</section>
-				))}
+				{CATEGORY_PRIORITY.map((category) => {
+					const items = grouped[category];
+					const count = bucketCount(items);
+					if (count === 0) return null;
+					return (
+						<section key={category}>
+							<h2 className={`mb-2 text-sm font-semibold ${CATEGORY_COLORS[category]}`}>
+								{CATEGORY_LABELS[category]}
+								<span className="ml-2 font-normal text-text-500">{count}</span>
+							</h2>
+							<div className="flex flex-col gap-2">
+								{items.pullRequests?.map((pr) => <PullRequestCard key={pr.sha} pr={pr} />)}
+								{items.branches?.map((b) => <BranchCard key={b.sha} branch={b} />)}
+								{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} />)}
+								{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />)}
+								{items.projectItems?.map((p) => <ProjectBoardItemCard key={`project-${p.title}`} item={p} />)}
+								{items.todos?.map((t) => <TodoCard key={`todo-${t.project}-${t.title}`} todo={t} />)}
+							</div>
+						</section>
+					);
+				})}
 			</div>
 		</div>
 	);

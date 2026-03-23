@@ -1,5 +1,10 @@
-import type {Category, ClassifiedChild} from '../lib/server-fns';
-import {KanbanCard} from './kanban-card';
+import type {Category, CommitItem, BranchItem, PullRequestItem, IssueItem, ProjectBoardItem, TodoItem} from '@wip/shared';
+import {CommitCard} from './commit-card';
+import {BranchCard} from './branch-card';
+import {PullRequestCard} from './pull-request-card';
+import {IssueCard} from './issue-card';
+import {ProjectBoardItemCard} from './project-board-item-card';
+import {TodoCard} from './todo-card';
 
 const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; headerClass: string}> = {
 	not_started: {label: 'Not Started', colorClass: 'bg-purple-column', headerClass: 'text-purple-700 dark:text-purple-400'},
@@ -21,12 +26,22 @@ const COLUMN_CONFIG: Record<Category, {label: string; colorClass: string; header
 	approved: {label: 'Approved', colorClass: 'bg-green-column', headerClass: 'text-green-700 dark:text-green-400'},
 };
 
-interface KanbanColumnProps {
-	category: Category;
-	children: ClassifiedChild[];
+export interface ColumnItems {
+	commits?: CommitItem[];
+	branches?: BranchItem[];
+	pullRequests?: PullRequestItem[];
+	issues?: IssueItem[];
+	projectItems?: ProjectBoardItem[];
+	todos?: TodoItem[];
 }
 
-export function KanbanColumn({category, children}: KanbanColumnProps) {
+interface KanbanColumnProps {
+	category: Category;
+	items: ColumnItems;
+	count: number;
+}
+
+export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 	const config = COLUMN_CONFIG[category];
 
 	return (
@@ -34,13 +49,16 @@ export function KanbanColumn({category, children}: KanbanColumnProps) {
 			<div className="mb-3 flex items-center justify-between">
 				<h2 className={`text-sm font-semibold ${config.headerClass}`}>{config.label}</h2>
 				<span className={`rounded-full bg-bg-000/60 px-2 py-0.5 text-xs font-medium ${config.headerClass}`}>
-					{children.length}
+					{count}
 				</span>
 			</div>
 			<div className="flex flex-col gap-2 overflow-y-auto">
-				{children.map((child) => (
-					<KanbanCard key={child.sha} child={child} />
-				))}
+				{items.pullRequests?.map((pr) => <PullRequestCard key={pr.sha} pr={pr} />)}
+				{items.branches?.map((b) => <BranchCard key={b.sha} branch={b} />)}
+				{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} />)}
+				{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />)}
+				{items.projectItems?.map((p) => <ProjectBoardItemCard key={`project-${p.title}`} item={p} />)}
+				{items.todos?.map((t) => <TodoCard key={`todo-${t.project}-${t.title}`} todo={t} />)}
 			</div>
 		</div>
 	);

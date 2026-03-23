@@ -3,8 +3,8 @@ import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranc
 import {useState, useRef, useEffect} from 'react';
 import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff} from '../lib/server-fns';
 import {useMergeStatus} from '../lib/merge-events-context';
-import type {FileDiff} from '../lib/server-fns';
-import type {ClassifiedChild} from '../lib/server-fns';
+import type {FileDiff, ProjectChildrenResult} from '../lib/server-fns';
+import type {BranchItem, PullRequestItem} from '@wip/shared';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
 
@@ -16,10 +16,15 @@ const SNOOZE_PRESETS = [
 	{label: 'On Hold', hours: null},
 ] as const;
 
-interface CommitActionsProps {
-	child: ClassifiedChild;
-	/** Layout direction: 'row' for horizontal bar, 'column' for vertical stack (default) */
+type ActionableItem = BranchItem | PullRequestItem;
+
+interface ItemActionsProps {
+	item: ActionableItem;
 	layout?: 'row' | 'column';
+}
+
+function isPullRequest(item: ActionableItem): item is PullRequestItem {
+	return 'prUrl' in item && item.prUrl !== undefined;
 }
 
 function useOptimisticChildren(project: string) {
@@ -28,21 +33,15 @@ function useOptimisticChildren(project: string) {
 
 	return {
 		queryClient,
-		removeChild(sha: string) {
-			queryClient.setQueryData<ClassifiedChild[]>(queryKey, (old) => old?.filter((c) => c.sha !== sha));
-		},
-		updateChild(sha: string, updates: Partial<ClassifiedChild>) {
-			queryClient.setQueryData<ClassifiedChild[]>(queryKey, (old) => old?.map((c) => c.sha === sha ? {...c, ...updates} : c));
-		},
-		rollback() {
+		invalidate() {
 			queryClient.invalidateQueries({queryKey});
 		},
 	};
 }
 
-export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
+function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 	const queryClient = useQueryClient();
-	const optimistic = useOptimisticChildren(child.project);
+	const optimistic = useOptimisticChildren(item.project);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
@@ -50,37 +49,31 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const [refreshing, setRefreshing] = useState(false);
 	const [rebasing, setRebasing] = useState(false);
 	const [rebaseResult, setRebaseResult] = useState<{message: string} | null>(null);
-	const [branchFormOpen, setBranchFormOpen] = useState(false);
-	const [branchName, setBranchName] = useState(child.suggestedBranch ?? child.subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
-	const [branchResult, setBranchResult] = useState<{message: string} | null>(null);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
-	const branchButtonRef = useRef<HTMLButtonElement>(null);
-	const branchFormRef = useRef<HTMLDivElement>(null);
-	const [branchPos, setBranchPos] = useState<{top: number; left: number} | null>(null);
 	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 	const [deleteLoading, setDeleteLoading] = useState(false);
 	const [deleteDiffLoading, setDeleteDiffLoading] = useState(false);
-	const [deleteDiffFiles, setDeleteDiffFiles] = useState<FileDiff[] | null>(null);
 	const [deleteDiffStat, setDeleteDiffStat] = useState<string>('');
-	const [deleteResult, setDeleteResult] = useState<{message: string} | null>(null);
 	const deleteButtonRef = useRef<HTMLButtonElement>(null);
 	const deleteFormRef = useRef<HTMLDivElement>(null);
 	const [deletePos, setDeletePos] = useState<{top: number; left: number} | null>(null);
 	const [forcePushing, setForcePushing] = useState(false);
 	const [renameOpen, setRenameOpen] = useState(false);
-	const [newBranchName, setNewBranchName] = useState(child.branch ?? '');
+	const [newBranchName, setNewBranchName] = useState(item.branch);
 	const renameButtonRef = useRef<HTMLButtonElement>(null);
 	const renameFormRef = useRef<HTMLDivElement>(null);
 	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
 	const [renaming, setRenaming] = useState(false);
 	const [applyingFixes, setApplyingFixes] = useState(false);
 	const [rebasingLocal, setRebasingLocal] = useState(false);
-	const testJob = useTestJob(child.sha, child.project);
-	const mergeStatus = useMergeStatus(child.sha, child.project);
-	const commitsBehind = mergeStatus?.commitsBehind ?? child.commitsBehind;
-	const rebaseable = mergeStatus?.rebaseable ?? child.rebaseable;
+	const testJob = useTestJob(item.sha, item.project);
+	const mergeStatus = useMergeStatus(item.sha, item.project);
+	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
+	const rebaseable = mergeStatus?.rebaseable ?? item.rebaseable;
+
+	const pr = isPullRequest(item) ? item : null;
 
 	useEffect(() => {
 		if (!deleteConfirmOpen) return;
@@ -118,34 +111,21 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [renameOpen]);
 
-	useEffect(() => {
-		if (!branchFormOpen) return;
-		function handleClick(e: MouseEvent) {
-			if (branchFormRef.current && !branchFormRef.current.contains(e.target as Node) &&
-				branchButtonRef.current && !branchButtonRef.current.contains(e.target as Node)) {
-				setBranchFormOpen(false);
-			}
-		}
-		document.addEventListener('mousedown', handleClick);
-		return () => document.removeEventListener('mousedown', handleClick);
-	}, [branchFormOpen]);
-
-	const effectiveBranch = child.branch ?? child.suggestedBranch;
+	const effectiveBranch = item.branch ?? ('suggestedBranch' in item ? item.suggestedBranch : undefined);
 	const pushLabel = effectiveBranch ? `Push → ${effectiveBranch}` : 'Push';
-	const showPrLink = child.prUrl && ['changes_requested', 'review_comments', 'checks_unknown', 'checks_failed', 'checks_running', 'checks_passed', 'approved'].includes(child.category);
 
 	const handlePush = async () => {
 		setLoading(true);
 		setError(null);
 		const result = await pushChild({data: {
-			project: child.project,
-			projectDir: child.projectDir,
-			upstreamRemote: child.upstreamRemote,
-			sha: child.sha,
-			shortSha: child.shortSha,
-			subject: child.subject,
-			branch: child.branch,
-			suggestedBranch: child.suggestedBranch,
+			project: item.project,
+			projectDir: item.projectDir,
+			upstreamRemote: item.upstreamRemote,
+			sha: item.sha,
+			shortSha: item.shortSha,
+			subject: item.subject,
+			branch: item.branch,
+			suggestedBranch: 'suggestedBranch' in item ? item.suggestedBranch : undefined,
 		}});
 		setLoading(false);
 		if (result.ok) {
@@ -161,10 +141,10 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const handleTest = async () => {
 		setError(null);
 		await testChild({data: {
-			project: child.project,
-			projectDir: child.projectDir,
-			sha: child.sha,
-			shortSha: child.shortSha,
+			project: item.project,
+			projectDir: item.projectDir,
+			sha: item.sha,
+			shortSha: item.shortSha,
 		}});
 	};
 
@@ -177,152 +157,125 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	const handleSnooze = async (hours: number | null) => {
 		setSnoozeOpen(false);
 		setError(null);
-		optimistic.removeChild(child.sha);
 		const until = hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
-		const result = await snoozeChildFn({data: {sha: child.sha, project: child.project, shortSha: child.shortSha, subject: child.subject, until}});
+		const result = await snoozeChildFn({data: {sha: item.sha, project: item.project, shortSha: item.shortSha, subject: item.subject, until}});
 		if (result.ok) {
 			queryClient.invalidateQueries({queryKey: ['snoozed']});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
-			optimistic.rollback();
 		}
 	};
 
 	const handleCreatePr = () => {
-		if (!child.branch) return;
-		const compareUrl = `https://github.com/${child.remote}/compare/${child.branch}?expand=1`;
+		const compareUrl = `https://github.com/${item.remote}/compare/${item.branch}?expand=1`;
 		window.open(compareUrl, '_blank');
-	};
-
-	const handleCreateBranch = async () => {
-		setLoading(true);
-		setError(null);
-		const result = await createBranch({data: {
-			projectDir: child.projectDir,
-			sha: child.sha,
-			branchName,
-		}});
-		setLoading(false);
-		if (result.ok) {
-			setBranchFormOpen(false);
-			optimistic.updateChild(child.sha, {branch: branchName, category: 'ready_to_test'});
-		} else {
-			setError(result.message);
-		}
 	};
 
 	const handleRefresh = async () => {
 		setRefreshing(true);
 		setError(null);
-		const result = await refreshChild({data: {project: child.project, sha: child.sha}});
+		const result = await refreshChild({data: {project: item.project, sha: item.sha}});
 		setRefreshing(false);
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
 		}
 	};
 
 	const handleRebase = async () => {
-		if (!child.prUrl) return;
+		if (!pr) return;
 		setRebasing(true);
 		setError(null);
 		setRebaseResult(null);
-		optimistic.updateChild(child.sha, {behind: false});
 		const result = await rebasePr({data: {
-			project: child.project,
-			projectDir: child.projectDir,
-			upstreamRemote: child.upstreamRemote,
-			prUrl: child.prUrl,
+			project: item.project,
+			projectDir: item.projectDir,
+			upstreamRemote: item.upstreamRemote,
+			prUrl: pr.prUrl,
 		}});
 		setRebasing(false);
 		if (result.ok) {
 			setRebaseResult({message: result.message});
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
-			optimistic.rollback();
 		}
 	};
 
 	const handleForcePush = async () => {
-		if (!child.branch) return;
 		setForcePushing(true);
 		setError(null);
-		optimistic.updateChild(child.sha, {needsRebase: false});
 		const result = await forcePush({data: {
-			projectDir: child.projectDir,
-			project: child.project,
-			upstreamRemote: child.upstreamRemote,
-			branch: child.branch,
-			shortSha: child.shortSha,
+			projectDir: item.projectDir,
+			project: item.project,
+			upstreamRemote: item.upstreamRemote,
+			branch: item.branch,
+			shortSha: item.shortSha,
 		}});
 		setForcePushing(false);
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
-			optimistic.rollback();
 		}
 	};
 
 	const handleRenameBranch = async () => {
-		if (!child.branch || !newBranchName.trim() || newBranchName === child.branch) return;
+		if (!newBranchName.trim() || newBranchName === item.branch) return;
 		setRenaming(true);
 		setError(null);
 		const result = await renameBranch({data: {
-			projectDir: child.projectDir,
-			project: child.project,
-			oldBranch: child.branch,
+			projectDir: item.projectDir,
+			project: item.project,
+			oldBranch: item.branch,
 			newBranch: newBranchName.trim(),
 		}});
 		setRenaming(false);
 		if (result.ok) {
 			setRenameOpen(false);
-			optimistic.updateChild(child.sha, {branch: newBranchName.trim()});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
 		}
 	};
 
 	const handleApplyFixes = async () => {
-		if (!child.branch || !child.prNumber) return;
+		if (!pr) return;
 		setApplyingFixes(true);
 		setError(null);
 		const result = await applyFixes({data: {
-			projectDir: child.projectDir,
-			project: child.project,
-			branch: child.branch,
-			prNumber: child.prNumber,
-			upstreamRemote: child.upstreamRemote,
+			projectDir: item.projectDir,
+			project: item.project,
+			branch: item.branch,
+			prNumber: pr.prNumber,
+			upstreamRemote: item.upstreamRemote,
 		}});
 		setApplyingFixes(false);
 		if (result.ok) {
-			optimistic.updateChild(child.sha, {failedChecks: [], category: 'checks_running'});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
 		}
 	};
 
 	const handleRebaseLocal = async () => {
-		if (!child.branch) return;
 		setRebasingLocal(true);
 		setError(null);
-		optimistic.updateChild(child.sha, {commitsBehind: 0, rebaseable: undefined});
 		const result = await rebaseLocal({data: {
-			projectDir: child.projectDir,
-			project: child.project,
-			branch: child.branch,
-			upstreamRemote: child.upstreamRemote,
-			upstreamRef: `${child.upstreamRemote}/main`,
-			sha: child.sha,
+			projectDir: item.projectDir,
+			project: item.project,
+			branch: item.branch,
+			upstreamRemote: item.upstreamRemote,
+			upstreamRef: `${item.upstreamRemote}/main`,
+			sha: item.sha,
 		}});
 		setRebasingLocal(false);
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', child.project]});
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
-			optimistic.rollback();
 		}
 	};
 
@@ -335,11 +288,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			setDeleteConfirmOpen(true);
 			setDeleteDiffLoading(true);
 			try {
-				const diff = await getCommitDiff({data: {projectDir: child.projectDir, sha: child.sha}});
-				setDeleteDiffFiles(diff.files);
+				const diff = await getCommitDiff({data: {projectDir: item.projectDir, sha: item.sha}});
 				setDeleteDiffStat(diff.stat);
 			} catch {
-				setDeleteDiffFiles([]);
 				setDeleteDiffStat('Failed to load diff');
 			}
 			setDeleteDiffLoading(false);
@@ -349,26 +300,26 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 	};
 
 	const handleDeleteBranch = async () => {
-		if (!child.branch) return;
 		setDeleteLoading(true);
 		setError(null);
 		const result = await deleteBranch({data: {
-			projectDir: child.projectDir,
-			branch: child.branch,
-			project: child.project,
+			projectDir: item.projectDir,
+			branch: item.branch,
+			project: item.project,
 		}});
 		setDeleteLoading(false);
 		if (result.ok) {
 			setDeleteConfirmOpen(false);
-			optimistic.removeChild(child.sha);
+			optimistic.invalidate();
 		} else {
 			setError(result.message);
 		}
 	};
 
-	// Show delete button for branches that are local-only (not pushed, no PR)
-	const localOnlyCategories = new Set(['ready_to_test', 'test_failed', 'ready_to_push', 'no_test', 'skippable', 'local_changes', 'snoozed']);
-	const showDeleteBranch = child.branch && !child.issueUrl && localOnlyCategories.has(child.category);
+	const showDeleteBranch = !pr && !item.pushedToRemote;
+	const showTestButton = !pr && item.testStatus !== 'passed';
+	const showPushButton = !pr && item.testStatus === 'passed' && !item.pushedToRemote;
+	const showCreatePr = !pr && item.pushedToRemote;
 
 	const isRow = layout === 'row';
 
@@ -376,9 +327,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 		<div>
 			<div className={`flex ${isRow ? 'flex-wrap items-center gap-2' : 'flex-col gap-1.5'}`}>
 				{/* PR link */}
-				{showPrLink && (
+				{pr && (
 					<a
-						href={child.prUrl}
+						href={pr.prUrl}
 						target="_blank"
 						rel="noopener noreferrer"
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
@@ -389,25 +340,25 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				)}
 
 				{/* Rebase PR */}
-				{showPrLink && (
+				{pr && (
 					<button
 						type="button"
 						onClick={handleRebase}
 						disabled={rebasing}
-						title={child.behind ? 'PR is behind base branch — rebase recommended' : 'PR is up to date with base branch'}
+						title={pr.behind ? 'PR is behind base branch — rebase recommended' : 'PR is up to date with base branch'}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							rebasing ? 'cursor-not-allowed opacity-60 text-text-300'
-							: child.behind ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
+							: pr.behind ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
 							: 'text-text-500 hover:bg-bg-200 hover:text-text-300'
 						}`}
 					>
 						{rebasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-						{rebasing ? 'Rebasing...' : child.behind ? 'Rebase (behind)' : 'Rebase'}
+						{rebasing ? 'Rebasing...' : pr.behind ? 'Rebase (behind)' : 'Rebase'}
 					</button>
 				)}
 
 				{/* Force Push (diverged) */}
-				{child.needsRebase && child.branch && (
+				{item.needsRebase && (
 					<button
 						type="button"
 						onClick={handleForcePush}
@@ -421,13 +372,13 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					</button>
 				)}
 
-				{/* Local Rebase — shown when behind upstream and rebase is clean */}
-				{child.branch && commitsBehind != null && commitsBehind > 0 && rebaseable === true && (
+				{/* Local Rebase */}
+				{commitsBehind != null && commitsBehind > 0 && rebaseable === true && (
 					<button
 						type="button"
 						onClick={handleRebaseLocal}
 						disabled={rebasingLocal}
-						title={`Rebase ${child.branch} onto upstream (${commitsBehind} commit${commitsBehind > 1 ? 's' : ''} behind)`}
+						title={`Rebase ${item.branch} onto upstream (${commitsBehind} commit${commitsBehind > 1 ? 's' : ''} behind)`}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							rebasingLocal ? 'cursor-not-allowed opacity-60 text-text-300' : 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30'
 						}`}
@@ -437,8 +388,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					</button>
 				)}
 
-				{/* Apply Fixes — shown when checks_failed and there are -fix check names */}
-				{child.category === 'checks_failed' && child.branch && child.prNumber && child.failedChecks?.some((c) => c.name.endsWith('-fix')) && (
+				{/* Apply Fixes */}
+				{pr && pr.checkStatus === 'failed' && pr.failedChecks?.some((c) => c.name.endsWith('-fix')) && (
 					<button
 						type="button"
 						onClick={handleApplyFixes}
@@ -453,8 +404,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					</button>
 				)}
 
-				{/* Rename Branch */}
-				{child.branch && !child.prUrl && (
+				{/* Rename Branch (only for non-PR branches) */}
+				{!pr && (
 					<div className="relative">
 						<button
 							ref={renameButtonRef}
@@ -488,9 +439,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 									<button
 										type="button"
 										onClick={handleRenameBranch}
-										disabled={renaming || !newBranchName.trim() || newBranchName === child.branch}
+										disabled={renaming || !newBranchName.trim() || newBranchName === item.branch}
 										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-											renaming || !newBranchName.trim() || newBranchName === child.branch ? 'cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 text-white'
+											renaming || !newBranchName.trim() || newBranchName === item.branch ? 'cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 text-white'
 										}`}
 									>
 										{renaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
@@ -510,7 +461,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				)}
 
 				{/* Create PR */}
-				{child.category === 'pushed_no_pr' && child.branch && (
+				{showCreatePr && (
 					<button
 						type="button"
 						onClick={handleCreatePr}
@@ -521,65 +472,8 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 					</button>
 				)}
 
-				{/* Create Branch (detached HEAD) */}
-				{child.category === 'detached_head' && (
-					<div className="relative">
-						<button
-							ref={branchButtonRef}
-							type="button"
-							onClick={() => {
-								if (!branchFormOpen && branchButtonRef.current) {
-									const rect = branchButtonRef.current.getBoundingClientRect();
-									setBranchPos({top: rect.bottom + 4, left: rect.left});
-								}
-								setBranchFormOpen(!branchFormOpen);
-							}}
-							disabled={loading}
-							className="inline-flex items-center gap-1.5 rounded bg-yellow-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-yellow-700"
-						>
-							<GitBranch className="h-3.5 w-3.5" />
-							Create Branch
-						</button>
-						{branchFormOpen && branchPos && (
-							<div
-								ref={branchFormRef}
-								className="fixed z-50 w-56 rounded-lg border border-border-300/50 bg-bg-000 p-2 shadow-lg"
-								style={{top: branchPos.top, left: branchPos.left}}
-							>
-								<input
-									type="text"
-									value={branchName}
-									onChange={(e) => setBranchName(e.target.value)}
-									placeholder="Branch name"
-									className="w-full rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-yellow-500"
-								/>
-								<div className="mt-1.5 flex gap-1.5">
-									<button
-										type="button"
-										onClick={handleCreateBranch}
-										disabled={loading || !branchName.trim()}
-										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-											loading || !branchName.trim() ? 'cursor-not-allowed opacity-60' : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-										}`}
-									>
-										{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-										{loading ? 'Creating...' : 'Create'}
-									</button>
-									<button
-										type="button"
-										onClick={() => setBranchFormOpen(false)}
-										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
-									>
-										Cancel
-									</button>
-								</div>
-							</div>
-						)}
-					</div>
-				)}
-
 				{/* Push */}
-				{child.category === 'ready_to_push' && (
+				{showPushButton && (
 					<button
 						type="button"
 						onClick={handlePush}
@@ -594,7 +488,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				)}
 
 				{/* Test */}
-				{(child.category === 'ready_to_test' || child.category === 'test_failed') && (
+				{showTestButton && (
 					<button
 						type="button"
 						onClick={handleTest}
@@ -618,9 +512,9 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 				)}
 
 				{/* Test failure log */}
-				{child.category === 'test_failed' && (
+				{item.testStatus === 'failed' && (
 					<a
-						href={`/log/${child.project}/${child.sha}`}
+						href={`/log/${item.project}/${item.sha}`}
 						target="_blank"
 						rel="noopener noreferrer"
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
@@ -700,7 +594,7 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 							>
 								<div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
 									<AlertCircle className="h-3.5 w-3.5" />
-									Delete branch &ldquo;{child.branch}&rdquo;?
+									Delete branch &ldquo;{item.branch}&rdquo;?
 								</div>
 								{deleteDiffLoading && (
 									<div className="flex items-center gap-1.5 py-2 text-xs text-text-400">
@@ -738,12 +632,6 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			</div>
 
 			{/* Status messages */}
-			{deleteResult && (
-				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{deleteResult.message}</p>
-			)}
-			{branchResult && (
-				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{branchResult.message}</p>
-			)}
 			{pushResult && (
 				<div className="mt-2">
 					<p className="text-xs text-green-600 dark:text-green-400">{pushResult.message}</p>
@@ -777,4 +665,12 @@ export function CommitActions({child, layout = 'column'}: CommitActionsProps) {
 			)}
 		</div>
 	);
+}
+
+export function BranchActions({item, layout}: {item: BranchItem; layout?: 'row' | 'column'}) {
+	return <ItemActions item={item} layout={layout} />;
+}
+
+export function PullRequestActions({item, layout}: {item: PullRequestItem; layout?: 'row' | 'column'}) {
+	return <ItemActions item={item} layout={layout} />;
 }

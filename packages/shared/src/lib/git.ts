@@ -227,6 +227,7 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 				review.set(s.branch, s.reviewStatus);
 				checks.set(s.branch, s.checkStatus);
 				if (s.prUrl) urls.set(s.branch, s.prUrl);
+				if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
 				if (s.failedChecks) failedChecks.set(s.branch, s.failedChecks);
 				if (s.behind) behind.set(s.branch, true);
 			}
@@ -255,6 +256,7 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 					review.set(s.branch, s.reviewStatus);
 					checks.set(s.branch, 'unknown');
 					if (s.prUrl) urls.set(s.branch, s.prUrl);
+					if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
 				}
 				return {review, checks, urls, failedChecks, behind, prNumbers};
 			}
@@ -303,7 +305,7 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 		// PR number
 		prNumbers.set(branch, pr.number);
 
-		toCache.push({branch, reviewStatus, checkStatus, prUrl: pr.url, failedChecks: failed.length > 0 ? failed : undefined, behind: isBehind});
+		toCache.push({branch, reviewStatus, checkStatus, prUrl: pr.url, prNumber: pr.number, failedChecks: failed.length > 0 ? failed : undefined, behind: isBehind});
 	}
 
 	// Cache the results

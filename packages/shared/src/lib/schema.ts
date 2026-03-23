@@ -43,6 +43,7 @@ export const prStatusCache = sqliteTable(
 		reviewStatus: text('review_status').notNull(),
 		checkStatus: text('check_status').notNull(),
 		prUrl: text('pr_url'),
+		prNumber: integer('pr_number'),
 		failedChecks: text('failed_checks'),
 		behind: integer('behind'),
 		systemFrom: text('system_from').notNull(),

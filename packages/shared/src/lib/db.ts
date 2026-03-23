@@ -97,6 +97,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			review_status TEXT NOT NULL,
 			check_status TEXT NOT NULL,
 			pr_url TEXT,
+			pr_number INTEGER,
 			failed_checks TEXT,
 			behind INTEGER,
 			system_from TEXT NOT NULL,
@@ -181,6 +182,10 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 
 	db = drizzle(sqlite, {schema});
+
+	// Migrate: add pr_number column if missing on existing databases
+	try { db.run(sql`ALTER TABLE pr_status_cache ADD COLUMN pr_number INTEGER`); } catch {}
+
 	return db;
 }
 
@@ -351,6 +356,7 @@ export interface CachedPrStatus {
 	reviewStatus: ReviewStatus;
 	checkStatus: CheckStatus;
 	prUrl: string | null;
+	prNumber?: number;
 	failedChecks?: Array<{name: string; url?: string}>;
 	behind?: boolean;
 }
@@ -370,6 +376,7 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
 		reviewStatus: r.reviewStatus as ReviewStatus,
 		checkStatus: r.checkStatus as CheckStatus,
 		prUrl: r.prUrl,
+		prNumber: r.prNumber ?? undefined,
 		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
 		behind: r.behind === 1 ? true : undefined,
 	}));
@@ -388,6 +395,7 @@ export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
 		reviewStatus: r.reviewStatus as ReviewStatus,
 		checkStatus: r.checkStatus as CheckStatus,
 		prUrl: r.prUrl,
+		prNumber: r.prNumber ?? undefined,
 		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
 		behind: r.behind === 1 ? true : undefined,
 	}));
@@ -411,6 +419,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				reviewStatus: s.reviewStatus,
 				checkStatus: s.checkStatus,
 				prUrl: s.prUrl,
+				prNumber: s.prNumber ?? null,
 				failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
 				behind: s.behind ? 1 : 0,
 				systemFrom: timestamp,

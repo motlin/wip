@@ -8,6 +8,7 @@ import {KanbanCard} from '../components/kanban-card';
 import {useHasActiveTests} from '../lib/test-events-context';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {useGroupedChildren} from '../lib/use-grouped-children';
+import type {ProjectInfo} from '@wip/shared';
 
 const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
 
@@ -53,14 +54,15 @@ const CATEGORY_COLORS: Record<Category, string> = {
 
 export const Route = createFileRoute('/queue')({
 	loader: async ({context: {queryClient}}) => {
-		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
-		await Promise.all([
-			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
-			...projects.map((p) => queryClient.ensureQueryData(projectTodosQueryOptions(p.name))),
-			queryClient.ensureQueryData(issuesQueryOptions()),
-			queryClient.ensureQueryData(projectItemsQueryOptions()),
-			queryClient.ensureQueryData(snoozedQueryOptions()),
-		]);
+		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
+		queryClient.prefetchQuery(projectsQueryOptions());
+		for (const p of projects) {
+			queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
+			queryClient.prefetchQuery(projectTodosQueryOptions(p.name));
+		}
+		queryClient.prefetchQuery(issuesQueryOptions());
+		queryClient.prefetchQuery(projectItemsQueryOptions());
+		queryClient.prefetchQuery(snoozedQueryOptions());
 	},
 	head: () => ({
 		meta: [{title: 'WIP Queue'}],

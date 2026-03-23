@@ -4,31 +4,26 @@ import {getProjects, getProjectChildren, getProjectTodos, getIssues, getProjectI
 export const projectsQueryOptions = () => queryOptions({
 	queryKey: ['projects'],
 	queryFn: () => getProjects(),
-	staleTime: 5 * 60_000,
 });
 
 export const projectChildrenQueryOptions = (project: string) => queryOptions({
 	queryKey: ['children', project],
 	queryFn: () => getProjectChildren({data: {project}}),
-	staleTime: 2 * 60_000,
 });
 
 export const projectTodosQueryOptions = (project: string) => queryOptions({
 	queryKey: ['todos', project],
 	queryFn: () => getProjectTodos({data: {project}}),
-	staleTime: 5 * 60_000,
 });
 
 export const issuesQueryOptions = () => queryOptions({
 	queryKey: ['issues'],
 	queryFn: () => getIssues(),
-	staleTime: 5 * 60_000,
 });
 
 export const projectItemsQueryOptions = () => queryOptions({
 	queryKey: ['projectItems'],
 	queryFn: () => getProjectItemsFn(),
-	staleTime: 5 * 60_000,
 });
 
 export const snoozedQueryOptions = () => queryOptions({

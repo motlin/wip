@@ -36,7 +36,7 @@ test: build
 
 # Run all pre-commit checks
 [group('build')]
-precommit: typecheck build test
+precommit: build typecheck test
     @echo "All pre-commit checks passed!"
 
 # Start web dashboard dev server

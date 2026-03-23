@@ -1,13 +1,16 @@
 import {useSuspenseQuery, useSuspenseQueries} from '@tanstack/react-query';
 import {useMemo} from 'react';
 import type {Category, ClassifiedChild} from './server-fns';
-import {projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions} from './queries';
+import {projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions} from './queries';
 import type {ProjectInfo} from '@wip/shared';
 import {mapProjectStatusToCategory} from '@wip/shared';
 
 export function useGroupedChildren(projects: ProjectInfo[]) {
 	const childQueries = useSuspenseQueries({
 		queries: projects.map((p) => projectChildrenQueryOptions(p.name)),
+	});
+	const todoQueries = useSuspenseQueries({
+		queries: projects.map((p) => projectTodosQueryOptions(p.name)),
 	});
 	const {data: issues} = useSuspenseQuery(issuesQueryOptions());
 	const {data: projectItems} = useSuspenseQuery(projectItemsQueryOptions());
@@ -81,7 +84,25 @@ export function useGroupedChildren(projects: ProjectInfo[]) {
 			});
 		}
 
+		for (const q of todoQueries) {
+			for (const todo of q.data) {
+				if (allSubjects.has(todo.text.toLowerCase())) continue;
+				allSubjects.add(todo.text.toLowerCase());
+				grouped.not_started.push({
+					project: todo.project,
+					projectDir: todo.projectDir,
+					remote: todo.remote,
+					upstreamRemote: todo.upstreamRemote,
+					sha: `todo-${todo.project}-${todo.text}`,
+					shortSha: todo.sourceLabel,
+					subject: todo.text,
+					date: '',
+					category: 'not_started',
+				});
+			}
+		}
+
 		const totalChildren = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
 		return {grouped, totalChildren, projectCount: projects.length};
-	}, [childQueries, issues, projectItems, projects]);
+	}, [childQueries, todoQueries, issues, projectItems, projects]);
 }

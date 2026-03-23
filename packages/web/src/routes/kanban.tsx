@@ -5,7 +5,7 @@ import {useState} from 'react';
 import {KanbanColumn} from '../components/kanban-column';
 import {refreshAll} from '../lib/server-fns';
 import type {Category} from '../lib/server-fns';
-import {projectsQueryOptions, projectChildrenQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {useGroupedChildren} from '../lib/use-grouped-children';
 
 const CATEGORY_ORDER: Category[] = ['not_started', 'skippable', 'snoozed', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/kanban')({
 		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
 		await Promise.all([
 			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
+			...projects.map((p) => queryClient.ensureQueryData(projectTodosQueryOptions(p.name))),
 			queryClient.ensureQueryData(issuesQueryOptions()),
 			queryClient.ensureQueryData(projectItemsQueryOptions()),
 			queryClient.ensureQueryData(snoozedQueryOptions()),

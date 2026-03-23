@@ -33,6 +33,14 @@ export interface ProjectChildrenResult {
 	pullRequests: PullRequestItem[];
 }
 
+async function resolveProject(project: string): Promise<ProjectInfo> {
+	const projectsDir = getProjectsDir();
+	const projects = await discoverProjects(projectsDir);
+	const p = projects.find((proj) => proj.name === project);
+	if (!p) throw new Error(`Project not found: ${project}`);
+	return p;
+}
+
 export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
 	const projectsDir = getProjectsDir();
 	return discoverProjects(projectsDir);
@@ -41,10 +49,8 @@ export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
 export const getProjectChildren = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(async ({data}): Promise<ProjectChildrenResult> => {
-		const projectsDir = getProjectsDir();
-		const projects = await discoverProjects(projectsDir);
-		const p = projects.find((proj) => proj.name === data.project);
-		if (!p) return {commits: [], branches: [], pullRequests: []};
+		let p: ProjectInfo;
+		try { p = await resolveProject(data.project); } catch { return {commits: [], branches: [], pullRequests: []}; }
 
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 
@@ -65,9 +71,7 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 		for (const child of children) {
 			const base = {
 				project: p.name,
-				projectDir: p.dir,
 				remote: p.remote,
-				upstreamRemote: p.upstreamRemote,
 				sha: child.sha,
 				shortSha: child.shortSha,
 				subject: child.subject,
@@ -105,7 +109,6 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 					reviewStatus: child.reviewStatus,
 					checkStatus: child.checkStatus,
 					failedChecks: child.failedChecks,
-					behind: child.behind,
 				});
 			} else if (child.branch) {
 				// Branch (with or without remote)
@@ -130,7 +133,7 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 		// Apply cached branch names to bare commits (suggest branches for them)
 		if (commits.length > 0) {
 			const {getBranchNames} = await import('@wip/shared');
-			const keys = commits.map((c) => ({sha: c.sha, project: c.project, subject: c.subject, dir: c.projectDir}));
+			const keys = commits.map((c) => ({sha: c.sha, project: c.project, subject: c.subject, dir: p.dir}));
 			const cached = getBranchNames(keys);
 			// suggestedBranch is on BranchItem, not CommitItem — we'll handle this in the UI
 			const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
@@ -145,10 +148,8 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 export const getProjectTodos = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(async ({data}): Promise<SharedTodoItem[]> => {
-		const projectsDir = getProjectsDir();
-		const projects = await discoverProjects(projectsDir);
-		const p = projects.find((proj) => proj.name === data.project);
-		if (!p) return [];
+		let p: ProjectInfo;
+		try { p = await resolveProject(data.project); } catch { return []; }
 
 		const tasks = findIncompleteTodoTasks(p.dir);
 		return tasks.map((task) => ({
@@ -171,25 +172,28 @@ export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {project, projectDir, upstreamRemote, sha, shortSha, subject, branch, suggestedBranch} = data;
-		const branchName = branch ?? suggestedBranch ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-		if (!branch) {
-			const branchResult = await execa('git', ['-C', projectDir, 'branch', branchName, sha], {reject: false});
+
+		// Resolve shortSha and subject from git
+		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h%x00%s', data.sha], {reject: false});
+		const [shortSha, subject] = logResult.stdout.split('\0');
+
+		const {getBranchName} = await import('@wip/shared');
+		const branchName = data.branch ?? getBranchName(data.sha, p.name) ?? subject.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+		if (!data.branch) {
+			const branchResult = await execa('git', ['-C', p.dir, 'branch', branchName, data.sha], {reject: false});
 			if (branchResult.exitCode !== 0) {
 				return {ok: false, message: `Failed to create branch: ${branchResult.stderr}`};
 			}
 		}
 
-		const pushResult = await execa('git', ['-C', projectDir, 'push', '-u', upstreamRemote, `${branchName}:refs/heads/${branchName}`], {reject: false});
+		const pushResult = await execa('git', ['-C', p.dir, 'push', '-u', p.upstreamRemote, `${branchName}:refs/heads/${branchName}`], {reject: false});
 
 		if (pushResult.exitCode === 0) {
-			invalidatePrCache(project);
-			// Get the GitHub remote URL to build a "Create PR" link
-			const remoteResult = await execa('git', ['-C', projectDir, 'remote', 'get-url', upstreamRemote], {reject: false});
-			const ghRemote = remoteResult.stdout?.replace(/^.*[:/]([^/]+\/[^/]+?)(?:\.git)?$/, '$1');
-			const compareUrl = ghRemote ? `https://github.com/${ghRemote}/compare/${branchName}?expand=1` : undefined;
+			invalidatePrCache(data.project);
+			const compareUrl = `https://github.com/${p.remote}/compare/${branchName}?expand=1`;
 			return {ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl};
 		}
 
@@ -200,36 +204,27 @@ export const createPr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {project, projectDir, upstreamRemote, branch, title, body, draft} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
 
-		// For fork workflows, --head needs the fork owner prefix (e.g. "motlin:branch-name")
-		// Detect by checking if origin differs from upstreamRemote
-		let headRef = branch;
-		if (upstreamRemote !== 'origin') {
-			const originUrl = await execa('git', ['-C', projectDir, 'remote', 'get-url', 'origin'], {reject: false});
+		let headRef = data.branch;
+		if (p.upstreamRemote !== 'origin') {
+			const originUrl = await execa('git', ['-C', p.dir, 'remote', 'get-url', 'origin'], {reject: false});
 			if (originUrl.exitCode === 0) {
 				const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
 				if (match) {
-					headRef = `${match[1]}:${branch}`;
+					headRef = `${match[1]}:${data.branch}`;
 				}
 			}
 		}
 
-		const args = ['pr', 'create',
-			'--head', headRef,
-			'--title', title,
-			'--body', body ?? '',
-		];
-		if (draft !== false) {
-			args.push('--draft');
-		}
+		const args = ['pr', 'create', '--head', headRef, '--title', data.title, '--body', data.body ?? ''];
+		if (data.draft !== false) args.push('--draft');
 
-		const result = await execa('gh', args, {cwd: projectDir, reject: false});
+		const result = await execa('gh', args, {cwd: p.dir, reject: false});
 
 		if (result.exitCode === 0) {
-			invalidatePrCache(project);
+			invalidatePrCache(data.project);
 			const prUrl = result.stdout.trim();
 			return {ok: true, message: `Created PR: ${prUrl}`, compareUrl: prUrl};
 		}
@@ -247,8 +242,13 @@ export const testChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => {
 
+		const p = await resolveProject(data.project);
+		const {execa} = await import('execa');
+		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h', data.sha], {reject: false});
+		const shortSha = logResult.stdout.trim() || data.sha.slice(0, 7);
+
 		const {enqueueTest} = await import('./test-queue.js');
-		const job = enqueueTest(data.project, data.projectDir, data.sha, data.shortSha);
+		const job = enqueueTest(data.project, p.dir, data.sha, shortSha);
 		return {id: job.id, status: job.status, message: job.message};
 	});
 
@@ -287,10 +287,7 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 export const getProjectDir = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(async ({data}): Promise<string | null> => {
-		const projectsDir = getProjectsDir();
-		const projects = await discoverProjects(projectsDir);
-		const p = projects.find((proj) => proj.name === data.project);
-		return p?.dir ?? null;
+		try { return (await resolveProject(data.project)).dir; } catch { return null; }
 	});
 
 export interface FileDiff {
@@ -302,13 +299,14 @@ export interface FileDiff {
 }
 
 export const getCommitDiff = createServerFn({method: 'GET'})
-	.inputValidator((input: unknown) => z.object({projectDir: z.string(), sha: z.string()}).parse(input))
+	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
 	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> => {
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
 		const [diffResult, statResult, subjectResult] = await Promise.all([
-			execa('git', ['-C', data.projectDir, 'show', '--format=', data.sha], {reject: false}),
-			execa('git', ['-C', data.projectDir, 'show', '--stat', '--format=', data.sha], {reject: false}),
-			execa('git', ['-C', data.projectDir, 'log', '-1', '--format=%s', data.sha], {reject: false}),
+			execa('git', ['-C', p.dir, 'show', '--format=', data.sha], {reject: false}),
+			execa('git', ['-C', p.dir, 'show', '--stat', '--format=', data.sha], {reject: false}),
+			execa('git', ['-C', p.dir, 'log', '-1', '--format=%s', data.sha], {reject: false}),
 		]);
 
 		if (diffResult.exitCode !== 0) {
@@ -331,8 +329,8 @@ export const getCommitDiff = createServerFn({method: 'GET'})
 
 			// Get old and new file content for syntax highlighting
 			const [oldResult, newResult] = await Promise.all([
-				execa('git', ['-C', data.projectDir, 'show', `${data.sha}^:${oldFileName}`], {reject: false}),
-				execa('git', ['-C', data.projectDir, 'show', `${data.sha}:${newFileName}`], {reject: false}),
+				execa('git', ['-C', p.dir, 'show', `${data.sha}^:${oldFileName}`], {reject: false}),
+				execa('git', ['-C', p.dir, 'show', `${data.sha}:${newFileName}`], {reject: false}),
 			]);
 
 			files.push({
@@ -367,7 +365,12 @@ export const snoozeChildFn = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		snoozeItem(data.sha, data.project, data.shortSha, data.subject, data.until);
+		const p = await resolveProject(data.project);
+		const {execa} = await import('execa');
+		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h%x00%s', data.sha], {reject: false});
+		const [shortSha, subject] = logResult.exitCode === 0 ? logResult.stdout.split('\0') : [data.sha.slice(0, 7), ''];
+
+		snoozeItem(data.sha, data.project, shortSha, subject, data.until);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
 	});
 
@@ -381,7 +384,8 @@ export const unsnoozeChildFn = createServerFn({method: 'POST'})
 
 export const getSnoozedList = createServerFn({method: 'GET'}).handler(async (): Promise<SnoozedChild[]> => {
 	clearExpiredSnoozes();
-	return getAllSnoozed() as SnoozedChild[];
+	const all = getAllSnoozed();
+	return all.map(({sha, project, shortSha, subject, until}) => ({sha, project, shortSha, subject, until}));
 });
 
 export interface TestQueueJob {
@@ -434,26 +438,22 @@ export const rebasePr = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RebasePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {project, projectDir, upstreamRemote, prUrl} = data;
+		const p = await resolveProject(data.project);
 
-		// Extract owner/repo/pr_number from prUrl like https://github.com/owner/repo/pull/123
-		const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+		const match = data.prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
 		if (!match) {
-			return {ok: false, message: `Could not parse PR URL: ${prUrl}`};
+			return {ok: false, message: `Could not parse PR URL: ${data.prUrl}`};
 		}
 		const [, owner, repo, prNumber] = match;
 
 		const {execa} = await import('execa');
-
-		// Use gh api to call the update-branch endpoint (rebases PR branch against base)
 		const result = await execa('gh', [
-			'api',
-			'--method', 'PUT',
+			'api', '--method', 'PUT',
 			`/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
-		], {cwd: projectDir, reject: false});
+		], {cwd: p.dir, reject: false});
 
 		if (result.exitCode === 0) {
-			invalidatePrCache(project);
+			invalidatePrCache(data.project);
 			return {ok: true, message: `Rebased PR #${prNumber} against target branch`};
 		}
 
@@ -474,13 +474,12 @@ export const createBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {projectDir, sha, branchName} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-		const result = await execa('git', ['-C', projectDir, 'checkout', '-b', branchName, sha], {reject: false});
+		const result = await execa('git', ['-C', p.dir, 'checkout', '-b', data.branchName, data.sha], {reject: false});
 
 		if (result.exitCode === 0) {
-			return {ok: true, message: `Created branch ${branchName}`};
+			return {ok: true, message: `Created branch ${data.branchName}`};
 		}
 
 		return {ok: false, message: `Failed to create branch: ${result.stderr}`};
@@ -490,16 +489,13 @@ export const deleteBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {projectDir, branch, project} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-
-		// Delete local branch
-		const result = await execa('git', ['-C', projectDir, 'branch', '-D', branch], {reject: false});
+		const result = await execa('git', ['-C', p.dir, 'branch', '-D', data.branch], {reject: false});
 
 		if (result.exitCode === 0) {
-			invalidatePrCache(project);
-			return {ok: true, message: `Deleted branch ${branch}`};
+			invalidatePrCache(data.project);
+			return {ok: true, message: `Deleted branch ${data.branch}`};
 		}
 
 		return {ok: false, message: `Failed to delete branch: ${result.stderr}`};
@@ -509,15 +505,13 @@ export const forcePush = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => ForcePushInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {projectDir, project, upstreamRemote, branch, shortSha} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-
-		const result = await execa('git', ['-C', projectDir, 'push', '--force-with-lease', upstreamRemote, `${branch}:refs/heads/${branch}`], {reject: false});
+		const result = await execa('git', ['-C', p.dir, 'push', '--force-with-lease', p.upstreamRemote, `${data.branch}:refs/heads/${data.branch}`], {reject: false});
 
 		if (result.exitCode === 0) {
-			invalidatePrCache(project);
-			return {ok: true, message: `Force-pushed ${shortSha} to ${branch}`};
+			invalidatePrCache(data.project);
+			return {ok: true, message: `Force-pushed to ${data.branch}`};
 		}
 
 		return {ok: false, message: `Failed to force-push: ${result.stderr}`};
@@ -527,15 +521,13 @@ export const renameBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RenameBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {projectDir, project, oldBranch, newBranch} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-
-		const result = await execa('git', ['-C', projectDir, 'branch', '-m', oldBranch, newBranch], {reject: false});
+		const result = await execa('git', ['-C', p.dir, 'branch', '-m', data.oldBranch, data.newBranch], {reject: false});
 
 		if (result.exitCode === 0) {
-			invalidatePrCache(project);
-			return {ok: true, message: `Renamed ${oldBranch} → ${newBranch}`};
+			invalidatePrCache(data.project);
+			return {ok: true, message: `Renamed ${data.oldBranch} → ${data.newBranch}`};
 		}
 
 		return {ok: false, message: `Failed to rename branch: ${result.stderr}`};
@@ -545,44 +537,33 @@ export const applyFixes = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => ApplyFixesInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
 
-		const {projectDir, project, branch, prNumber, upstreamRemote} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-		const env = await getMiseEnv(projectDir);
+		const env = await getMiseEnv(p.dir);
 
-		// Fetch latest from the fork remote (origin) to get fix branches
-		await execa('git', ['-C', projectDir, 'fetch', 'origin'], {reject: false, env});
+		await execa('git', ['-C', p.dir, 'fetch', 'origin'], {reject: false, env});
 
-		// Find fix branches for this PR: fix-{prNumber}-*
-		const branchListResult = await execa('git', ['-C', projectDir, 'branch', '-r', '--list', `origin/fix-${prNumber}-*`], {reject: false, env});
+		const branchListResult = await execa('git', ['-C', p.dir, 'branch', '-r', '--list', `origin/fix-${data.prNumber}-*`], {reject: false, env});
 		if (branchListResult.exitCode !== 0 || !branchListResult.stdout.trim()) {
-			return {ok: false, message: `No fix branches found for PR #${prNumber}`};
+			return {ok: false, message: `No fix branches found for PR #${data.prNumber}`};
 		}
 
-		const fixBranches = branchListResult.stdout
-			.split('\n')
-			.map((b) => b.trim())
-			.filter(Boolean);
-
+		const fixBranches = branchListResult.stdout.split('\n').map((b) => b.trim()).filter(Boolean);
 		if (fixBranches.length === 0) {
-			return {ok: false, message: `No fix branches found for PR #${prNumber}`};
+			return {ok: false, message: `No fix branches found for PR #${data.prNumber}`};
 		}
 
-		// Checkout the PR branch
-		const checkout = await execa('git', ['-C', projectDir, 'checkout', branch], {reject: false, env});
+		const checkout = await execa('git', ['-C', p.dir, 'checkout', data.branch], {reject: false, env});
 		if (checkout.exitCode !== 0) {
-			return {ok: false, message: `Failed to checkout ${branch}: ${checkout.stderr}`};
+			return {ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}`};
 		}
 
-		// Cherry-pick each fix branch's tip commit
 		const appliedFixes: string[] = [];
 		for (const fixBranch of fixBranches) {
-			const cp = await execa('git', ['-C', projectDir, 'cherry-pick', '--no-commit', fixBranch], {reject: false, env});
+			const cp = await execa('git', ['-C', p.dir, 'cherry-pick', '--no-commit', fixBranch], {reject: false, env});
 			if (cp.exitCode !== 0) {
-				// Try to abort and continue with other fixes
-				await execa('git', ['-C', projectDir, 'cherry-pick', '--abort'], {reject: false, env});
-				// Try reset to clean state
-				await execa('git', ['-C', projectDir, 'reset', '--hard', 'HEAD'], {reject: false, env});
+				await execa('git', ['-C', p.dir, 'cherry-pick', '--abort'], {reject: false, env});
+				await execa('git', ['-C', p.dir, 'reset', '--hard', 'HEAD'], {reject: false, env});
 				continue;
 			}
 			appliedFixes.push(fixBranch.replace('origin/', ''));
@@ -592,56 +573,51 @@ export const applyFixes = createServerFn({method: 'POST'})
 			return {ok: false, message: 'All fix cherry-picks had conflicts — manual resolution needed'};
 		}
 
-		// Check if there are staged changes to squash
-		const diffIndex = await execa('git', ['-C', projectDir, 'diff', '--cached', '--quiet'], {reject: false, env});
+		const diffIndex = await execa('git', ['-C', p.dir, 'diff', '--cached', '--quiet'], {reject: false, env});
 		if (diffIndex.exitCode === 0) {
 			return {ok: false, message: 'Fix branches had no changes to apply'};
 		}
 
-		// Amend the current commit with the cherry-picked changes
-		const amend = await execa('git', ['-C', projectDir, 'commit', '--amend', '--no-edit'], {reject: false, env});
+		const amend = await execa('git', ['-C', p.dir, 'commit', '--amend', '--no-edit'], {reject: false, env});
 		if (amend.exitCode !== 0) {
 			return {ok: false, message: `Failed to amend commit: ${amend.stderr}`};
 		}
 
-		// Force push to the PR branch
-		const push = await execa('git', ['-C', projectDir, 'push', 'origin', `${branch}:${branch}`, '--force-with-lease'], {reject: false, env});
+		const push = await execa('git', ['-C', p.dir, 'push', 'origin', `${data.branch}:${data.branch}`, '--force-with-lease'], {reject: false, env});
 		if (push.exitCode !== 0) {
 			return {ok: false, message: `Amended commit but failed to push: ${push.stderr}`};
 		}
 
-		invalidatePrCache(project);
-		return {ok: true, message: `Applied fixes from ${appliedFixes.join(', ')} and force-pushed to ${branch}`};
+		invalidatePrCache(data.project);
+		return {ok: true, message: `Applied fixes from ${appliedFixes.join(', ')} and force-pushed to ${data.branch}`};
 	});
 
 export const rebaseLocal = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
-		const {projectDir, project, branch, upstreamRef, sha} = data;
-
+		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-		const env = await getMiseEnv(projectDir);
+		const env = await getMiseEnv(p.dir);
 
-		const checkout = await execa('git', ['-C', projectDir, 'checkout', branch], {reject: false, env});
+		const checkout = await execa('git', ['-C', p.dir, 'checkout', data.branch], {reject: false, env});
 		if (checkout.exitCode !== 0) {
-			return {ok: false, message: `Failed to checkout ${branch}: ${checkout.stderr}`};
+			return {ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}`};
 		}
 
-		const rebase = await execa('git', ['-C', projectDir, 'rebase', upstreamRef], {reject: false, env});
+		const rebase = await execa('git', ['-C', p.dir, 'rebase', p.upstreamRef], {reject: false, env});
 		if (rebase.exitCode !== 0) {
-			await execa('git', ['-C', projectDir, 'rebase', '--abort'], {reject: false, env});
+			await execa('git', ['-C', p.dir, 'rebase', '--abort'], {reject: false, env});
 			return {ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}`};
 		}
 
-		// Force push if the branch was pushed to remote
-		const push = await execa('git', ['-C', projectDir, 'push', 'origin', `${branch}:${branch}`, '--force-with-lease'], {reject: false, env});
+		const push = await execa('git', ['-C', p.dir, 'push', 'origin', `${data.branch}:${data.branch}`, '--force-with-lease'], {reject: false, env});
 		if (push.exitCode !== 0 && !push.stderr.includes('Everything up-to-date')) {
 			return {ok: false, message: `Rebased but failed to push: ${push.stderr}`};
 		}
 
-		invalidatePrCache(project);
-		invalidateMergeStatus(project);
-		return {ok: true, message: `Rebased ${branch} onto ${upstreamRef}`};
+		invalidatePrCache(data.project);
+		invalidateMergeStatus(data.project);
+		return {ok: true, message: `Rebased ${data.branch} onto ${p.upstreamRef}`};
 	});
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {

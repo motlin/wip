@@ -1,5 +1,5 @@
 import {queryOptions} from '@tanstack/react-query';
-import {getProjects, getProjectChildren, getProjectTodos, getIssues, getProjectItemsFn, getSnoozedList, getTestQueue, getCommitDiff, getTestLog, getProjectDir, getChildBySha} from './server-fns';
+import {getProjects, getProjectChildren, getProjectTodos, getIssues, getProjectItemsFn, getSnoozedList, getTestQueue, getCommitDiff, getTestLog, getChildBySha} from './server-fns';
 
 export const projectsQueryOptions = () => queryOptions({
 	queryKey: ['projects'],
@@ -41,10 +41,8 @@ export const testQueueQueryOptions = () => queryOptions({
 export const diffQueryOptions = (project: string, sha: string) => queryOptions({
 	queryKey: ['diff', project, sha],
 	queryFn: async () => {
-		const projectDir = await getProjectDir({data: {project}});
-		if (!projectDir) throw new Error(`Project ${project} not found`);
 		const [diff, child] = await Promise.all([
-			getCommitDiff({data: {projectDir, sha}}),
+			getCommitDiff({data: {project, sha}}),
 			getChildBySha({data: {project, sha}}),
 		]);
 		return {...diff, child};

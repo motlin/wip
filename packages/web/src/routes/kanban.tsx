@@ -7,19 +7,21 @@ import {refreshAll} from '../lib/server-fns';
 import type {Category} from '../lib/server-fns';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {useGroupedChildren} from '../lib/use-grouped-children';
+import type {ProjectInfo} from '@wip/shared';
 
 const CATEGORY_ORDER: Category[] = ['not_started', 'skippable', 'snoozed', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
 
 export const Route = createFileRoute('/kanban')({
 	loader: async ({context: {queryClient}}) => {
-		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
-		await Promise.all([
-			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
-			...projects.map((p) => queryClient.ensureQueryData(projectTodosQueryOptions(p.name))),
-			queryClient.ensureQueryData(issuesQueryOptions()),
-			queryClient.ensureQueryData(projectItemsQueryOptions()),
-			queryClient.ensureQueryData(snoozedQueryOptions()),
-		]);
+		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
+		queryClient.prefetchQuery(projectsQueryOptions());
+		for (const p of projects) {
+			queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
+			queryClient.prefetchQuery(projectTodosQueryOptions(p.name));
+		}
+		queryClient.prefetchQuery(issuesQueryOptions());
+		queryClient.prefetchQuery(projectItemsQueryOptions());
+		queryClient.prefetchQuery(snoozedQueryOptions());
 	},
 	head: () => ({
 		meta: [{title: 'WIP Kanban'}],

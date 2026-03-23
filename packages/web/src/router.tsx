@@ -9,10 +9,11 @@ export function getRouter() {
 	const queryClient = new QueryClient({
 		defaultOptions: {
 			queries: {
-				gcTime: 24 * 60 * 60 * 1000,
-				refetchOnMount: true,
-				refetchOnWindowFocus: true,
-				refetchOnReconnect: true,
+				gcTime: 7 * 24 * 60 * 60 * 1000,
+				staleTime: 10 * 60 * 1000,
+				refetchOnMount: 'always',
+				refetchOnWindowFocus: 'always',
+				refetchOnReconnect: 'always',
 			},
 		},
 	});

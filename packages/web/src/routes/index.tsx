@@ -2,17 +2,19 @@ import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {useGroupedChildren} from '../lib/use-grouped-children';
+import type {ProjectInfo} from '@wip/shared';
 
 export const Route = createFileRoute('/')({
 	loader: async ({context: {queryClient}}) => {
-		const projects = await queryClient.ensureQueryData(projectsQueryOptions());
-		await Promise.all([
-			...projects.map((p) => queryClient.ensureQueryData(projectChildrenQueryOptions(p.name))),
-			...projects.map((p) => queryClient.ensureQueryData(projectTodosQueryOptions(p.name))),
-			queryClient.ensureQueryData(issuesQueryOptions()),
-			queryClient.ensureQueryData(projectItemsQueryOptions()),
-			queryClient.ensureQueryData(snoozedQueryOptions()),
-		]);
+		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
+		queryClient.prefetchQuery(projectsQueryOptions());
+		for (const p of projects) {
+			queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
+			queryClient.prefetchQuery(projectTodosQueryOptions(p.name));
+		}
+		queryClient.prefetchQuery(issuesQueryOptions());
+		queryClient.prefetchQuery(projectItemsQueryOptions());
+		queryClient.prefetchQuery(snoozedQueryOptions());
 	},
 	head: () => ({
 		meta: [{title: 'WIP Dashboard'}],

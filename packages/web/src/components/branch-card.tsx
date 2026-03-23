@@ -54,7 +54,7 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 					href={`https://github.com/${branch.remote}`}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="truncate text-[11px] font-medium text-text-500 hover:text-text-300 transition-colors"
+					className="truncate text-xs font-medium text-text-300 hover:text-text-100 transition-colors"
 				>
 					{branch.remote}
 				</a>

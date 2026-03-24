@@ -44,9 +44,9 @@ build-shared-ci: install-ci
 typecheck: install
     pnpm run typecheck
 
-# Typecheck all packages (CI)
+# Typecheck all packages (CI, builds first to generate routeTree.gen.ts)
 [group('build')]
-typecheck-ci: build-shared-ci
+typecheck-ci: build-ci
     pnpm run typecheck
 
 # Run tests

@@ -3,6 +3,8 @@ import type {Category, CommitItem, BranchItem, PullRequestItem, ProjectInfo} fro
 export function classifyCommit(commit: CommitItem, project: ProjectInfo): Category {
 	if (commit.skippable) return 'skippable';
 	if (project.detachedHead) return 'detached_head';
+	if (project.dirty) return 'local_changes';
+	if (!project.hasTestConfigured) return 'no_test';
 	return 'ready_to_test';
 }
 

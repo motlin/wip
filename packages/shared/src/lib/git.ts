@@ -95,6 +95,55 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 	return output.split('\n').filter(Boolean);
 }
 
+export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, descendantShas: Set<string>): Promise<ChildCommit[]> {
+	// Get all local branches
+	const branchList = await git(dir, 'branch', '--list');
+	if (!branchList) return [];
+
+	const branches = branchList.split('\n').filter(Boolean).map((b) => b.replace(/^\*?\s+/, ''));
+
+	// Filter to only branches that are not main/master
+	const nonMainBranches = branches.filter((b) => !b.match(/^(main|master)$/));
+	if (nonMainBranches.length === 0) return [];
+
+	// Get commit info for each branch
+	const needsRebase: ChildCommit[] = [];
+	const format = '%H%x00%h%x00%s%x00%ai';
+
+	for (const branch of nonMainBranches) {
+		const logResult = await execa('git', ['-C', dir, 'log', '-1', `--format=${format}`, `refs/heads/${branch}`], {
+			reject: false,
+		});
+
+		if (logResult.exitCode !== 0) continue;
+
+		const fields = logResult.stdout.trim().split('\0');
+		if (fields.length < 4) continue;
+
+		const [sha, shortSha, subject, rawDate] = fields;
+		const date = rawDate.trim().split(' ')[0];
+
+		// Only include branches that are NOT descendants of upstream
+		if (!descendantShas.has(sha)) {
+			needsRebase.push({
+				sha,
+				shortSha,
+				subject,
+				date,
+				branch,
+				testStatus: 'unknown',
+				checkStatus: 'none',
+				skippable: false,
+				pushedToRemote: false,
+				needsRebase: true,
+				reviewStatus: 'no_pr',
+			});
+		}
+	}
+
+	return needsRebase;
+}
+
 function parseBranch(decoration: string): string | undefined {
 	const refs = decoration.split(',').map((r) => r.trim()).filter(Boolean);
 	for (const ref of refs) {

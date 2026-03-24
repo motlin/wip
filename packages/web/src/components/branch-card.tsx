@@ -1,8 +1,8 @@
 import {useQueryClient} from '@tanstack/react-query';
-import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Archive} from 'lucide-react';
+import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Copy, Check} from 'lucide-react';
 import {useRef, useEffect, useState} from 'react';
 import type {BranchItem} from '@wip/shared';
-import {cancelTestFn, stashChanges} from '../lib/server-fns';
+import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
 import {AnsiText} from './ansi-text';
@@ -25,8 +25,7 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 	const queryClient = useQueryClient();
 	const testJob = useTestJob(branch.sha, branch.project);
 	const prevTestStatus = useRef(testJob?.status);
-	const [stashing, setStashing] = useState(false);
-	const [stashError, setStashError] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
 		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
@@ -129,30 +128,23 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 						<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
 						<p className="flex-1 text-[11px] leading-snug text-amber-700 dark:text-amber-300">{branch.blockReason}</p>
 					</div>
-					<div className="mt-1.5 flex items-center gap-1.5">
-						<button
-							type="button"
-							onClick={async () => {
-								setStashing(true);
-								setStashError(null);
-								const result = await stashChanges({data: {project: branch.project}});
-								setStashing(false);
-								if (result.ok) {
-									queryClient.invalidateQueries({queryKey: ['children', branch.project]});
-								} else {
-									setStashError(result.message);
-								}
-							}}
-							disabled={stashing}
-							className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-								stashing ? 'cursor-not-allowed opacity-60 text-amber-600 dark:text-amber-400' : 'bg-amber-600 hover:bg-amber-700 text-white'
-							}`}
-						>
-							{stashing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
-							{stashing ? 'Stashing...' : 'Stash Changes'}
-						</button>
-					</div>
-					{stashError && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{stashError}</p>}
+					{branch.blockCommand && (
+						<div className="mt-1.5 flex items-center gap-1">
+							<code className="flex-1 truncate rounded bg-bg-200/80 px-1.5 py-0.5 font-mono text-[10px] text-text-300 dark:bg-bg-300/50">{branch.blockCommand}</code>
+							<button
+								type="button"
+								onClick={() => {
+									navigator.clipboard.writeText(branch.blockCommand!);
+									setCopied(true);
+									setTimeout(() => setCopied(false), 2000);
+								}}
+								className="shrink-0 rounded p-0.5 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-200"
+								title="Copy command"
+							>
+								{copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+							</button>
+						</div>
+					)}
 				</div>
 			)}
 

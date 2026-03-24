@@ -8,9 +8,9 @@ export function classifyCommit(commit: CommitItem, project: ProjectInfo): Catego
 
 export function classifyBranch(branch: BranchItem, project: ProjectInfo): Category {
 	if (branch.skippable) return 'skippable';
+	if (branch.testStatus === 'failed') return 'test_failed';
 	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	if (branch.testStatus === 'passed') return 'ready_to_push';
-	if (branch.testStatus === 'failed') return 'test_failed';
 	if (project.dirty) return 'local_changes';
 	if (!project.hasTestConfigured) return 'no_test';
 	return 'ready_to_test';

@@ -194,16 +194,16 @@ export function snoozeItem(sha: string, project: string, shortSha: string, subje
 	const d = getDb();
 	const timestamp = now();
 
-	// Close any existing active snooze for this sha+project
-	d.update(snoozed)
-		.set({systemTo: timestamp})
-		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
-		.run();
+	d.transaction((tx) => {
+		tx.update(snoozed)
+			.set({systemTo: timestamp})
+			.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
+			.run();
 
-	// Insert new active record
-	d.insert(snoozed)
-		.values({sha, project, shortSha, subject, until, systemFrom: timestamp, systemTo: FAR_FUTURE})
-		.run();
+		tx.insert(snoozed)
+			.values({sha, project, shortSha, subject, until, systemFrom: timestamp, systemTo: FAR_FUTURE})
+			.run();
+	});
 }
 
 export function unsnoozeItem(sha: string, project: string): void {
@@ -276,14 +276,16 @@ export function getBranchName(sha: string, project: string): string | undefined 
 }
 
 export function getBranchNames(keys: Array<{sha: string; project: string}>): Map<string, string> {
+	if (keys.length === 0) return new Map();
 	const d = getDb();
-	const all = d.select()
+	const shas = [...new Set(keys.map((k) => k.sha))];
+	const rows = d.select()
 		.from(branchNames)
-		.where(eq(branchNames.systemTo, FAR_FUTURE))
+		.where(and(eq(branchNames.systemTo, FAR_FUTURE), inArray(branchNames.sha, shas)))
 		.all();
 
 	const result = new Map<string, string>();
-	for (const row of all) {
+	for (const row of rows) {
 		result.set(`${row.project}:${row.sha}`, row.name);
 	}
 	return result;
@@ -293,14 +295,16 @@ export function setBranchName(sha: string, project: string, name: string): void 
 	const d = getDb();
 	const timestamp = now();
 
-	d.update(branchNames)
-		.set({systemTo: timestamp})
-		.where(and(eq(branchNames.sha, sha), eq(branchNames.project, project), eq(branchNames.systemTo, FAR_FUTURE)))
-		.run();
+	d.transaction((tx) => {
+		tx.update(branchNames)
+			.set({systemTo: timestamp})
+			.where(and(eq(branchNames.sha, sha), eq(branchNames.project, project), eq(branchNames.systemTo, FAR_FUTURE)))
+			.run();
 
-	d.insert(branchNames)
-		.values({sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE})
-		.run();
+		tx.insert(branchNames)
+			.values({sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE})
+			.run();
+	});
 }
 
 // Test result functions
@@ -316,7 +320,7 @@ export function getTestResultsForProject(project: string): Map<string, 'passed' 
 
 	const result = new Map<string, 'passed' | 'failed'>();
 	for (const row of rows) {
-		result.set(row.sha, row.status as 'passed' | 'failed');
+		result.set(row.sha, row.status);
 	}
 	return result;
 }
@@ -325,19 +329,21 @@ export function recordTestResult(sha: string, project: string, status: 'passed' 
 	const d = getDb();
 	const timestamp = now();
 
-	d.update(testResults)
-		.set({systemTo: timestamp})
-		.where(and(
-			eq(testResults.sha, sha),
-			eq(testResults.project, project),
-			eq(testResults.testName, testName),
-			eq(testResults.systemTo, FAR_FUTURE),
-		))
-		.run();
+	d.transaction((tx) => {
+		tx.update(testResults)
+			.set({systemTo: timestamp})
+			.where(and(
+				eq(testResults.sha, sha),
+				eq(testResults.project, project),
+				eq(testResults.testName, testName),
+				eq(testResults.systemTo, FAR_FUTURE),
+			))
+			.run();
 
-	d.insert(testResults)
-		.values({sha, project, testName, status, exitCode, durationMs, systemFrom: timestamp, systemTo: FAR_FUTURE})
-		.run();
+		tx.insert(testResults)
+			.values({sha, project, testName, status, exitCode, durationMs, systemFrom: timestamp, systemTo: FAR_FUTURE})
+			.run();
+	});
 }
 
 // PR status cache functions
@@ -372,8 +378,8 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
 	if (rows.length === 0) return null;
 	return rows.map((r) => ({
 		branch: r.branch,
-		reviewStatus: r.reviewStatus as ReviewStatus,
-		checkStatus: r.checkStatus as CheckStatus,
+		reviewStatus: r.reviewStatus,
+		checkStatus: r.checkStatus,
 		prUrl: r.prUrl,
 		prNumber: r.prNumber ?? undefined,
 		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
@@ -391,8 +397,8 @@ export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
 	if (rows.length === 0) return null;
 	return rows.map((r) => ({
 		branch: r.branch,
-		reviewStatus: r.reviewStatus as ReviewStatus,
-		checkStatus: r.checkStatus as CheckStatus,
+		reviewStatus: r.reviewStatus,
+		checkStatus: r.checkStatus,
 		prUrl: r.prUrl,
 		prNumber: r.prNumber ?? undefined,
 		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
@@ -404,27 +410,28 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 	const d = getDb();
 	const timestamp = now();
 
-	// Close old rows
-	d.update(prStatusCache)
-		.set({systemTo: timestamp})
-		.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
-		.run();
-
-	for (const s of statuses) {
-		d.insert(prStatusCache)
-			.values({
-				project,
-				branch: s.branch,
-				reviewStatus: s.reviewStatus,
-				checkStatus: s.checkStatus,
-				prUrl: s.prUrl,
-				prNumber: s.prNumber ?? null,
-				failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
-				behind: s.behind ? 1 : 0,
-				systemFrom: timestamp,
-			})
+	d.transaction((tx) => {
+		tx.update(prStatusCache)
+			.set({systemTo: timestamp})
+			.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
 			.run();
-	}
+
+		if (statuses.length > 0) {
+			tx.insert(prStatusCache)
+				.values(statuses.map((s) => ({
+					project,
+					branch: s.branch,
+					reviewStatus: s.reviewStatus,
+					checkStatus: s.checkStatus,
+					prUrl: s.prUrl,
+					prNumber: s.prNumber ?? null,
+					failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
+					behind: s.behind ? 1 : 0,
+					systemFrom: timestamp,
+				})))
+				.run();
+		}
+	});
 }
 
 export function invalidatePrCache(project: string): void {
@@ -447,8 +454,10 @@ export function getCachedReport(ttlMs: number): string | null {
 export function cacheReport(data: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(reportCache).set({systemTo: timestamp}).where(eq(reportCache.systemTo, FAR_FUTURE)).run();
-	d.insert(reportCache).values({data, systemFrom: timestamp}).run();
+	d.transaction((tx) => {
+		tx.update(reportCache).set({systemTo: timestamp}).where(eq(reportCache.systemTo, FAR_FUTURE)).run();
+		tx.insert(reportCache).values({data, systemFrom: timestamp}).run();
+	});
 }
 
 export function invalidateReportCache(): void {
@@ -467,8 +476,10 @@ export function getCachedMiseEnv(dir: string): string | null {
 export function cacheMiseEnv(dir: string, env: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(miseEnvCache).set({systemTo: timestamp}).where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE))).run();
-	d.insert(miseEnvCache).values({dir, env, systemFrom: timestamp}).run();
+	d.transaction((tx) => {
+		tx.update(miseEnvCache).set({systemTo: timestamp}).where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE))).run();
+		tx.insert(miseEnvCache).values({dir, env, systemFrom: timestamp}).run();
+	});
 }
 
 // --- GitHub login cache ---
@@ -482,8 +493,10 @@ export function getCachedGhLogin(): string | null {
 export function cacheGhLogin(login: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(ghLoginCache).set({systemTo: timestamp}).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).run();
-	d.insert(ghLoginCache).values({login, systemFrom: timestamp}).run();
+	d.transaction((tx) => {
+		tx.update(ghLoginCache).set({systemTo: timestamp}).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).run();
+		tx.insert(ghLoginCache).values({login, systemFrom: timestamp}).run();
+	});
 }
 
 // --- GitHub issues cache ---
@@ -498,8 +511,10 @@ export function getCachedIssues(ttlMs: number): string | null {
 export function cacheIssues(data: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(githubIssuesCache).set({systemTo: timestamp}).where(eq(githubIssuesCache.systemTo, FAR_FUTURE)).run();
-	d.insert(githubIssuesCache).values({data, systemFrom: timestamp}).run();
+	d.transaction((tx) => {
+		tx.update(githubIssuesCache).set({systemTo: timestamp}).where(eq(githubIssuesCache.systemTo, FAR_FUTURE)).run();
+		tx.insert(githubIssuesCache).values({data, systemFrom: timestamp}).run();
+	});
 }
 
 export function invalidateIssuesCacheDb(): void {
@@ -519,8 +534,10 @@ export function getCachedProjectItems(ttlMs: number): string | null {
 export function cacheProjectItems(data: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(githubProjectItemsCache).set({systemTo: timestamp}).where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE)).run();
-	d.insert(githubProjectItemsCache).values({data, systemFrom: timestamp}).run();
+	d.transaction((tx) => {
+		tx.update(githubProjectItemsCache).set({systemTo: timestamp}).where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE)).run();
+		tx.insert(githubProjectItemsCache).values({data, systemFrom: timestamp}).run();
+	});
 }
 
 export function invalidateProjectItemsCacheDb(): void {
@@ -539,8 +556,10 @@ export function getCachedUpstreamSha(project: string): string | null {
 export function cacheUpstreamSha(project: string, ref: string, sha: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(upstreamRefs).set({systemTo: timestamp}).where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE))).run();
-	d.insert(upstreamRefs).values({project, ref, sha, systemFrom: timestamp}).run();
+	d.transaction((tx) => {
+		tx.update(upstreamRefs).set({systemTo: timestamp}).where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE))).run();
+		tx.insert(upstreamRefs).values({project, ref, sha, systemFrom: timestamp}).run();
+	});
 }
 
 // --- Merge status ---
@@ -571,12 +590,14 @@ export function getCachedMergeStatuses(project: string, upstreamSha: string): Ca
 export function cacheMergeStatus(project: string, sha: string, upstreamSha: string, commitsAhead: number, commitsBehind: number, rebaseable: boolean | null): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(mergeStatus).set({systemTo: timestamp}).where(and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha), eq(mergeStatus.systemTo, FAR_FUTURE))).run();
-	d.insert(mergeStatus).values({
-		project, sha, upstreamSha, commitsAhead, commitsBehind,
-		rebaseable: rebaseable === null ? null : rebaseable ? 1 : 0,
-		systemFrom: timestamp,
-	}).run();
+	d.transaction((tx) => {
+		tx.update(mergeStatus).set({systemTo: timestamp}).where(and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha), eq(mergeStatus.systemTo, FAR_FUTURE))).run();
+		tx.insert(mergeStatus).values({
+			project, sha, upstreamSha, commitsAhead, commitsBehind,
+			rebaseable: rebaseable === null ? null : rebaseable ? 1 : 0,
+			systemFrom: timestamp,
+		}).run();
+	});
 }
 
 export function invalidateMergeStatus(project: string): void {

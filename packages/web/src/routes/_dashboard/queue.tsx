@@ -2,19 +2,19 @@ import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {Play, Loader2} from 'lucide-react';
 import {useState, useMemo} from 'react';
-import {testAllChildren} from '../lib/server-fns';
-import {useHasActiveTests} from '../lib/test-events-context';
-import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
-import {useWorkItems} from '../lib/use-work-items';
-import type {ColumnItems} from '../components/kanban-column';
-import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
-import {CommitCard} from '../components/commit-card';
-import {BranchCard} from '../components/branch-card';
-import {PullRequestCard} from '../components/pull-request-card';
-import {IssueCard} from '../components/issue-card';
-import {ProjectBoardItemCard} from '../components/project-board-item-card';
-import {TodoCard} from '../components/todo-card';
-import type {Category, ProjectInfo} from '@wip/shared';
+import {testAllChildren} from '../../lib/server-fns';
+import {useHasActiveTests} from '../../lib/test-events-context';
+import {projectsQueryOptions} from '../../lib/queries';
+import {useWorkItems} from '../../lib/use-work-items';
+import type {ColumnItems} from '../../components/kanban-column';
+import {classifyCommit, classifyBranch, classifyPullRequest} from '../../lib/classify';
+import {CommitCard} from '../../components/commit-card';
+import {BranchCard} from '../../components/branch-card';
+import {PullRequestCard} from '../../components/pull-request-card';
+import {IssueCard} from '../../components/issue-card';
+import {ProjectBoardItemCard} from '../../components/project-board-item-card';
+import {TodoCard} from '../../components/todo-card';
+import type {Category} from '@wip/shared';
 
 const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
 
@@ -63,18 +63,7 @@ function bucketCount(items: ColumnItems): number {
 		+ (items.issues?.length ?? 0) + (items.projectItems?.length ?? 0) + (items.todos?.length ?? 0);
 }
 
-export const Route = createFileRoute('/queue')({
-	loader: async ({context: {queryClient}}) => {
-		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
-		queryClient.prefetchQuery(projectsQueryOptions());
-		for (const p of projects) {
-			queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
-			queryClient.prefetchQuery(projectTodosQueryOptions(p.name));
-		}
-		queryClient.prefetchQuery(issuesQueryOptions());
-		queryClient.prefetchQuery(projectItemsQueryOptions());
-		queryClient.prefetchQuery(snoozedQueryOptions());
-	},
+export const Route = createFileRoute('/_dashboard/queue')({
 	head: () => ({
 		meta: [{title: 'WIP Queue'}],
 	}),
@@ -119,7 +108,6 @@ function Queue() {
 			g[cat].pullRequests.push(pr);
 		}
 
-		// Non-git items go in not_started
 		g.not_started.issues = workItems.issues;
 		g.not_started.projectItems = workItems.projectItems;
 		g.not_started.todos = workItems.todos;

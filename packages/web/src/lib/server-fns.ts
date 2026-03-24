@@ -33,17 +33,30 @@ export interface ProjectChildrenResult {
 	pullRequests: PullRequestItem[];
 }
 
+let cachedProjects: ProjectInfo[] | null = null;
+let cachedProjectsTime = 0;
+const PROJECT_CACHE_TTL = 30_000;
+
 async function resolveProject(project: string): Promise<ProjectInfo> {
-	const projectsDir = getProjectsDir();
-	const projects = await discoverProjects(projectsDir);
-	const p = projects.find((proj) => proj.name === project);
+	const now = Date.now();
+	if (!cachedProjects || now - cachedProjectsTime > PROJECT_CACHE_TTL) {
+		const projectsDir = getProjectsDir();
+		cachedProjects = await discoverProjects(projectsDir);
+		cachedProjectsTime = now;
+	}
+	const p = cachedProjects.find((proj) => proj.name === project);
 	if (!p) throw new Error(`Project not found: ${project}`);
 	return p;
 }
 
 export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
-	const projectsDir = getProjectsDir();
-	return discoverProjects(projectsDir);
+	const now = Date.now();
+	if (!cachedProjects || now - cachedProjectsTime > PROJECT_CACHE_TTL) {
+		const projectsDir = getProjectsDir();
+		cachedProjects = await discoverProjects(projectsDir);
+		cachedProjectsTime = now;
+	}
+	return cachedProjects;
 });
 
 export const getProjectChildren = createServerFn({method: 'GET'})
@@ -465,9 +478,58 @@ export type GitItemResult = CommitItem | BranchItem | PullRequestItem;
 export const getChildBySha = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
 	.handler(async ({data}): Promise<GitItemResult | null> => {
-		const result = await getProjectChildren({data: {project: data.project}});
-		const all = [...result.commits, ...result.branches, ...result.pullRequests];
-		return all.find((c) => c.sha === data.sha) ?? null;
+		let p: ProjectInfo;
+		try { p = await resolveProject(data.project); } catch { return null; }
+
+		const {execa} = await import('execa');
+		const logResult = await execa('git', [
+			'-C', p.dir, 'log', '-1',
+			'--format=%H%x00%h%x00%s%x00%ai%x00%D',
+			data.sha,
+		], {reject: false});
+		if (logResult.exitCode !== 0) return null;
+
+		const [sha, shortSha, subject, date, decorations] = logResult.stdout.split('\0');
+		const base = {project: p.name, remote: p.remote, sha, shortSha, subject, date, skippable: false};
+
+		const branchMatch = decorations?.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
+		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
+
+		if (!branch) return base;
+
+		const prStatuses = await getPrStatuses(p.dir, p.name);
+		const prUrl = prStatuses.urls.get(branch);
+		const prNumber = prStatuses.prNumbers.get(branch);
+
+		if (prUrl && prNumber != null) {
+			return {
+				...base,
+				branch,
+				pushedToRemote: true as const,
+				needsRebase: false,
+				testStatus: 'unknown' as const,
+				commitsBehind: 0,
+				commitsAhead: 1,
+				rebaseable: undefined,
+				prUrl,
+				prNumber,
+				reviewStatus: prStatuses.review.get(branch) ?? ('no_pr' as const),
+				checkStatus: prStatuses.checks.get(branch) ?? ('unknown' as const),
+				failedChecks: prStatuses.failedChecks.get(branch),
+			};
+		}
+
+		const remoteCheck = await execa('git', ['-C', p.dir, 'rev-parse', '--verify', `${p.upstreamRemote}/${branch}`], {reject: false});
+		return {
+			...base,
+			branch,
+			pushedToRemote: remoteCheck.exitCode === 0,
+			needsRebase: false,
+			testStatus: 'unknown' as const,
+			commitsBehind: 0,
+			commitsAhead: 1,
+			rebaseable: undefined,
+		};
 	});
 
 export const createBranch = createServerFn({method: 'POST'})
@@ -621,7 +683,7 @@ export const rebaseLocal = createServerFn({method: 'POST'})
 	});
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
-	// Invalidate all caches
+	cachedProjects = null;
 	invalidateIssuesCache();
 	invalidateProjectItemsCache();
 	// Invalidate PR caches for all projects

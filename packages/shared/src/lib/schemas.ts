@@ -112,6 +112,7 @@ export const CommitItemSchema = z.object({
 	subject: z.string(),
 	date: z.string(),
 	skippable: z.boolean(),
+	suggestedBranch: z.string().optional(),
 });
 export type CommitItem = z.infer<typeof CommitItemSchema>;
 

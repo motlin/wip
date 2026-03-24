@@ -434,9 +434,6 @@ export const cancelTestFn = createServerFn({method: 'POST'})
 	.handler(async ({data}): Promise<ActionResult> => {
 		const {cancelTest} = await import('./test-queue.js');
 		const result = cancelTest(data.id);
-		if (result.ok) {
-	
-		}
 		return {ok: result.ok, message: result.message};
 	});
 

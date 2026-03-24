@@ -13,6 +13,32 @@ export interface WorkItems {
 	todos: TodoItem[];
 }
 
+export interface WorkItemCounts {
+	commits: number;
+	branches: number;
+	pullRequests: number;
+	issues: number;
+	projectItems: number;
+	todos: number;
+	total: number;
+	projectCount: number;
+}
+
+export function useWorkItemCounts(projects: ProjectInfo[]): WorkItemCounts {
+	const workItems = useWorkItems(projects);
+	return useMemo(() => ({
+		commits: workItems.commits.length,
+		branches: workItems.branches.length,
+		pullRequests: workItems.pullRequests.length,
+		issues: workItems.issues.length,
+		projectItems: workItems.projectItems.length,
+		todos: workItems.todos.length,
+		total: workItems.commits.length + workItems.branches.length + workItems.pullRequests.length
+			+ workItems.issues.length + workItems.projectItems.length + workItems.todos.length,
+		projectCount: workItems.projectCount,
+	}), [workItems]);
+}
+
 export function useWorkItems(projects: ProjectInfo[]): WorkItems & {projectCount: number} {
 	const childQueries = useSuspenseQueries({
 		queries: projects.map((p) => projectChildrenQueryOptions(p.name)),

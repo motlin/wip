@@ -2,13 +2,13 @@ import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {RefreshCw} from 'lucide-react';
 import {useState, useMemo} from 'react';
-import {KanbanColumn} from '../components/kanban-column';
-import type {ColumnItems} from '../components/kanban-column';
-import {refreshAll} from '../lib/server-fns';
-import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
-import {useWorkItems} from '../lib/use-work-items';
-import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
-import type {Category, ProjectInfo} from '@wip/shared';
+import {KanbanColumn} from '../../components/kanban-column';
+import type {ColumnItems} from '../../components/kanban-column';
+import {refreshAll} from '../../lib/server-fns';
+import {projectsQueryOptions} from '../../lib/queries';
+import {useWorkItems} from '../../lib/use-work-items';
+import {classifyCommit, classifyBranch, classifyPullRequest} from '../../lib/classify';
+import type {Category} from '@wip/shared';
 
 const CATEGORY_ORDER: Category[] = ['not_started', 'skippable', 'snoozed', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
 
@@ -17,18 +17,7 @@ function bucketCount(items: ColumnItems): number {
 		+ (items.issues?.length ?? 0) + (items.projectItems?.length ?? 0) + (items.todos?.length ?? 0);
 }
 
-export const Route = createFileRoute('/kanban')({
-	loader: async ({context: {queryClient}}) => {
-		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
-		queryClient.prefetchQuery(projectsQueryOptions());
-		for (const p of projects) {
-			queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
-			queryClient.prefetchQuery(projectTodosQueryOptions(p.name));
-		}
-		queryClient.prefetchQuery(issuesQueryOptions());
-		queryClient.prefetchQuery(projectItemsQueryOptions());
-		queryClient.prefetchQuery(snoozedQueryOptions());
-	},
+export const Route = createFileRoute('/_dashboard/kanban')({
 	head: () => ({
 		meta: [{title: 'WIP Kanban'}],
 	}),

@@ -293,14 +293,15 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	const projectResults = await Promise.all(testableProjects.map(async (p) => {
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
-		return {project: p, children};
+		const descendantShas = new Set(children.map((c) => c.sha));
+		const needsRebaseBranches = await getNeedsRebaseBranches(p.dir, p.upstreamRef, descendantShas);
+		return {project: p, children: [...children, ...needsRebaseBranches]};
 	}));
 
 	const queued: TestJobStatus[] = [];
 	for (const {project: p, children} of projectResults) {
 		for (const child of children) {
 			if (child.skippable) continue;
-			if (!child.branch) continue;
 			if (snoozedSet.has(`${p.name}:${child.sha}`)) continue;
 			if (child.reviewStatus !== 'no_pr') continue;
 			if (child.testStatus !== 'unknown') continue;

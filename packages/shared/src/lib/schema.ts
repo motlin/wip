@@ -1,6 +1,6 @@
 import {index, integer, primaryKey, sqliteTable, text} from 'drizzle-orm/sqlite-core';
 
-const FAR_FUTURE = '9999-12-31 23:59:59';
+export const FAR_FUTURE = '9999-12-31 23:59:59';
 
 export const branchNames = sqliteTable(
 	'branch_names',

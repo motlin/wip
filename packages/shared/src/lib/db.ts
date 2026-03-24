@@ -1,15 +1,14 @@
 import DatabaseConstructor from 'better-sqlite3';
-import {and, desc, eq, isNotNull, isNull, lte, or, sql} from 'drizzle-orm';
+import {and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql} from 'drizzle-orm';
 import {drizzle, type BetterSQLite3Database} from 'drizzle-orm/better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import type {CheckStatus, ReviewStatus} from './schemas.js';
 import * as schema from './schema.js';
-import {branchNames, ghLoginCache, githubIssuesCache, githubProjectItemsCache, mergeStatus, miseEnvCache, prStatusCache, reportCache, snoozed, testResults, upstreamRefs} from './schema.js';
+import {branchNames, FAR_FUTURE, ghLoginCache, githubIssuesCache, githubProjectItemsCache, mergeStatus, miseEnvCache, prStatusCache, reportCache, snoozed, testResults, upstreamRefs} from './schema.js';
 
 const APP_NAME = 'wip';
-const FAR_FUTURE = '9999-12-31 23:59:59';
 
 function getDbPath(): string {
 	const xdgData = process.env.XDG_DATA_HOME ?? path.join(process.env.HOME ?? '', '.local', 'share');
@@ -222,7 +221,7 @@ export function getActiveSnoozed(): SnoozedItem[] {
 		.from(snoozed)
 		.where(and(
 			eq(snoozed.systemTo, FAR_FUTURE),
-			or(isNull(snoozed.until), lte(sql`datetime('now')`, snoozed.until)),
+			or(isNull(snoozed.until), gte(snoozed.until, nowStr)),
 		))
 		.all();
 }

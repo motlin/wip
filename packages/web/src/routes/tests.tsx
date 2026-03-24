@@ -90,6 +90,17 @@ function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, {id: string
 		const existing = merged.get(key);
 		if (existing) {
 			merged.set(key, {...existing, status: liveJob.status, message: liveJob.message});
+		} else {
+			// New job from SSE not yet in server data
+			merged.set(key, {
+				id: liveJob.id,
+				project: liveJob.project,
+				sha: liveJob.sha,
+				shortSha: liveJob.shortSha,
+				status: liveJob.status,
+				message: liveJob.message,
+				queuedAt: Date.now(),
+			});
 		}
 	}
 

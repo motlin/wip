@@ -9,9 +9,15 @@ export const Route = createFileRoute('/api/merge-events')({
 				const stream = new ReadableStream({
 					start(controller) {
 						const encoder = new TextEncoder();
+						let closed = false;
 
 						function send(data: unknown) {
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+							if (closed) return;
+							try {
+								controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+							} catch {
+								cleanup();
+							}
 						}
 
 						function onStatus(event: unknown) {
@@ -24,6 +30,7 @@ export const Route = createFileRoute('/api/merge-events')({
 						checkAllProjects().catch(() => {});
 
 						const keepalive = setInterval(() => {
+							if (closed) return;
 							try {
 								controller.enqueue(encoder.encode(': keepalive\n\n'));
 							} catch {
@@ -32,6 +39,8 @@ export const Route = createFileRoute('/api/merge-events')({
 						}, 15000);
 
 						function cleanup() {
+							if (closed) return;
+							closed = true;
 							emitter.off('mergeStatus', onStatus);
 							clearInterval(keepalive);
 							try { controller.close(); } catch {}

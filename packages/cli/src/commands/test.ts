@@ -4,7 +4,7 @@ import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import {createBranchForChild, discoverProjects, getBranchName, getChildCommits, getChildren, getMiseEnv, getProjectsDir, getTestLogDir, hasLocalModifications, isDirty, log, recordTestResult, suggestBranchNames, testBranch, testFix} from '@wip/shared';
+import {createBranchForChild, discoverAllProjects, getBranchName, getChildCommits, getChildren, getMiseEnv, getProjectsDirs, getTestLogDir, hasLocalModifications, isDirty, log, recordTestResult, suggestBranchNames, testBranch, testFix} from '@wip/shared';
 
 interface TestResult {
 	project: string;
@@ -79,8 +79,8 @@ export default class Test extends Command {
 		args: {project?: string},
 		flags: {'dry-run': boolean; force: boolean; 'projects-dir'?: string},
 	): Promise<TestJson> {
-		const projectsDir = getProjectsDir(flags['projects-dir']);
-		const projects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs(flags['projects-dir']);
+		const projects = await discoverAllProjects(projectsDirs);
 
 		const testResults: TestResult[] = [];
 		const skippedProjects: string[] = [];
@@ -201,8 +201,8 @@ export default class Test extends Command {
 		args: {project?: string},
 		flags: {'dry-run': boolean; force: boolean; 'projects-dir'?: string},
 	): Promise<TestJson> {
-		const projectsDir = getProjectsDir(flags['projects-dir']);
-		const projects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs(flags['projects-dir']);
+		const projects = await discoverAllProjects(projectsDirs);
 
 		const testResults: TestResult[] = [];
 		const skippedProjects: string[] = [];

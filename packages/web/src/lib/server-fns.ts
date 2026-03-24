@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDir, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem} from '@wip/shared';
 import {
 	type ActionResult,
@@ -40,8 +40,8 @@ const PROJECT_CACHE_TTL = 30_000;
 async function resolveProject(project: string): Promise<ProjectInfo> {
 	const now = Date.now();
 	if (!cachedProjects || now - cachedProjectsTime > PROJECT_CACHE_TTL) {
-		const projectsDir = getProjectsDir();
-		cachedProjects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs();
+		cachedProjects = await discoverAllProjects(projectsDirs);
 		cachedProjectsTime = now;
 	}
 	const p = cachedProjects.find((proj) => proj.name === project);
@@ -52,8 +52,8 @@ async function resolveProject(project: string): Promise<ProjectInfo> {
 export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
 	const now = Date.now();
 	if (!cachedProjects || now - cachedProjectsTime > PROJECT_CACHE_TTL) {
-		const projectsDir = getProjectsDir();
-		cachedProjects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs();
+		cachedProjects = await discoverAllProjects(projectsDirs);
 		cachedProjectsTime = now;
 	}
 	return cachedProjects;
@@ -269,8 +269,8 @@ export const testChild = createServerFn({method: 'POST'})
 export const testAllChildren = createServerFn({method: 'POST'}).handler(async (): Promise<TestJobStatus[]> => {
 
 	const {enqueueTest} = await import('./test-queue.js');
-	const projectsDir = getProjectsDir();
-	const projects = await discoverProjects(projectsDir);
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
 
 	clearExpiredSnoozes();
 	const snoozedSet = getSnoozedSet();
@@ -687,8 +687,8 @@ export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Pro
 	invalidateIssuesCache();
 	invalidateProjectItemsCache();
 	// Invalidate PR caches for all projects
-	const projectsDir = getProjectsDir();
-	const projects = await discoverProjects(projectsDir);
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
 	for (const p of projects) {
 		invalidatePrCache(p.name);
 	}

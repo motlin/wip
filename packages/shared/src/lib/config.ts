@@ -23,24 +23,26 @@ function getConfigPath(): string {
 	return path.join(getConfigDir(), 'config.json5');
 }
 
-export function readConfig(): Record<string, string> {
+export type ConfigValue = string | string[];
+
+export function readConfig(): Record<string, ConfigValue> {
 	const configPath = getConfigPath();
 	if (!fs.existsSync(configPath)) return {};
 	const content = fs.readFileSync(configPath, 'utf-8');
 	return JSON5.parse(content);
 }
 
-export function writeConfig(config: Record<string, string>): void {
+export function writeConfig(config: Record<string, ConfigValue>): void {
 	const configDir = getConfigDir();
 	fs.mkdirSync(configDir, {recursive: true});
 	fs.writeFileSync(getConfigPath(), JSON5.stringify(config, null, '\t') + '\n');
 }
 
-export function getConfigValue(key: string): string | undefined {
+export function getConfigValue(key: string): ConfigValue | undefined {
 	return readConfig()[key];
 }
 
-export function setConfigValue(key: string, value: string): void {
+export function setConfigValue(key: string, value: ConfigValue): void {
 	const config = readConfig();
 	config[key] = value;
 	writeConfig(config);
@@ -56,5 +58,16 @@ export function unsetConfigValue(key: string): boolean {
 
 export function getProjectsDir(flagValue?: string): string {
 	if (flagValue) return flagValue;
-	return getConfigValue('projectsDir') ?? `${process.env.HOME}/projects`;
+	const value = getConfigValue('projectsDir');
+	if (Array.isArray(value)) return value[0];
+	return value ?? `${process.env.HOME}/projects`;
+}
+
+export function getProjectsDirs(flagValue?: string): string[] {
+	if (flagValue) return [flagValue];
+	const value = getConfigValue('projectsDirs');
+	if (Array.isArray(value)) return value;
+	if (typeof value === 'string') return [value];
+	// Fall back to singular projectsDir for backward compatibility
+	return [getProjectsDir()];
 }

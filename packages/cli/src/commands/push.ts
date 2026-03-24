@@ -2,7 +2,7 @@ import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 import {execa} from 'execa';
 
-import {discoverProjects, getChildCommits, getProjectsDir, isDirty, log} from '@wip/shared';
+import {discoverAllProjects, getChildCommits, getProjectsDirs, isDirty, log} from '@wip/shared';
 
 interface PushResult {
 	sha: string;
@@ -52,8 +52,8 @@ export default class Push extends Command {
 
 	async run(): Promise<PushJson> {
 		const {args, flags} = await this.parse(Push);
-		const projectsDir = getProjectsDir(flags['projects-dir']);
-		const projects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs(flags['projects-dir']);
+		const projects = await discoverAllProjects(projectsDirs);
 
 		const pushResults: PushResult[] = [];
 		const skippedProjects: string[] = [];

@@ -1,5 +1,5 @@
 import {EventEmitter} from 'node:events';
-import {discoverProjects, getProjectsDir, fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses, getCachedUpstreamSha} from '@wip/shared';
+import {discoverAllProjects, getProjectsDirs, fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from '@wip/shared';
 
 export interface MergeStatusEvent {
 	project: string;
@@ -17,8 +17,8 @@ function emit(event: MergeStatusEvent): void {
 }
 
 export async function checkProject(projectName: string): Promise<void> {
-	const projectsDir = getProjectsDir();
-	const projects = await discoverProjects(projectsDir);
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
 	const p = projects.find((proj) => proj.name === projectName);
 	if (!p) return;
 
@@ -42,8 +42,8 @@ export async function checkProject(projectName: string): Promise<void> {
 }
 
 export async function checkAllProjects(): Promise<void> {
-	const projectsDir = getProjectsDir();
-	const projects = await discoverProjects(projectsDir);
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
 
 	for (const p of projects) {
 		try {
@@ -55,7 +55,6 @@ export async function checkAllProjects(): Promise<void> {
 }
 
 export function getAllCachedStatuses(): MergeStatusEvent[] {
-	const projectsDir = getProjectsDir();
 	// Synchronous read — return all cached statuses across all projects
 	// We need discover to be sync for this, so we just return empty on cold start
 	// The SSE endpoint will stream results as they come in

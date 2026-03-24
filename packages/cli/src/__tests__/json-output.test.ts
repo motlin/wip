@@ -4,8 +4,8 @@ import type {ChildCommit, ProjectInfo} from '@wip/shared';
 
 // Mock @wip/shared before importing commands
 vi.mock('@wip/shared', () => ({
-	getProjectsDir: vi.fn((flag?: string) => flag ?? '/tmp/fake-projects'),
-	discoverProjects: vi.fn(),
+	getProjectsDirs: vi.fn((flag?: string) => [flag ?? '/tmp/fake-projects']),
+	discoverAllProjects: vi.fn(),
 	getChildCommits: vi.fn(),
 	getChildren: vi.fn(),
 	getPrStatuses: vi.fn(async () => ({review: new Map(), checks: new Map()})),
@@ -47,7 +47,7 @@ vi.mock('node:fs', async () => {
 	};
 });
 
-import {discoverProjects, getChildCommits, getChildren, isDirty, readConfig, getConfigValue} from '@wip/shared';
+import {discoverAllProjects, getChildCommits, getChildren, isDirty, readConfig, getConfigValue} from '@wip/shared';
 
 const fakeProject: ProjectInfo = {
 	name: 'test-project',
@@ -123,7 +123,7 @@ describe('JSON output mode', () => {
 	let capture: ReturnType<typeof captureConsoleLog>;
 
 	beforeEach(() => {
-		vi.mocked(discoverProjects).mockResolvedValue([fakeProject]);
+		vi.mocked(discoverAllProjects).mockResolvedValue([fakeProject]);
 		vi.mocked(getChildCommits).mockResolvedValue([fakeChild, fakeChildFailed]);
 		vi.mocked(getChildren).mockResolvedValue([fakeChild.sha, fakeChildFailed.sha]);
 		vi.mocked(isDirty).mockResolvedValue(false);

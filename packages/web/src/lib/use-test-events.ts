@@ -5,6 +5,8 @@ export interface JobEvent {
 	sha: string;
 	project: string;
 	shortSha: string;
+	subject: string;
+	branch?: string;
 	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 	message?: string;
 }

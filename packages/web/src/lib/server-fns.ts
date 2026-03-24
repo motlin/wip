@@ -257,11 +257,16 @@ export const testChild = createServerFn({method: 'POST'})
 
 		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
-		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h', data.sha], {reject: false});
-		const shortSha = logResult.stdout.trim() || data.sha.slice(0, 7);
+		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h%x00%s%x00%D', data.sha], {reject: false});
+		const parts = logResult.stdout.split('\0');
+		const shortSha = parts[0]?.trim() || data.sha.slice(0, 7);
+		const subject = parts[1]?.trim() || '';
+		const decoration = parts[2]?.trim() || '';
+		const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
+		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
 
 		const {enqueueTest} = await import('./test-queue.js');
-		const job = enqueueTest(data.project, p.dir, data.sha, shortSha);
+		const job = enqueueTest(data.project, p.dir, data.sha, shortSha, subject, branch);
 		return {id: job.id, status: job.status, message: job.message};
 	});
 
@@ -290,7 +295,7 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 			if (snoozedSet.has(`${p.name}:${child.sha}`)) continue;
 			if (child.reviewStatus !== 'no_pr') continue;
 			if (child.testStatus !== 'unknown') continue;
-			const job = enqueueTest(p.name, p.dir, child.sha, child.shortSha);
+			const job = enqueueTest(p.name, p.dir, child.sha, child.shortSha, child.subject, child.branch);
 			queued.push({id: job.id, status: job.status, message: job.message});
 		}
 	}
@@ -406,6 +411,8 @@ export interface TestQueueJob {
 	project: string;
 	sha: string;
 	shortSha: string;
+	subject: string;
+	branch?: string;
 	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 	message?: string;
 	queuedAt: number;
@@ -421,6 +428,8 @@ export const getTestQueue = createServerFn({method: 'GET'}).handler(async (): Pr
 		project: j.project,
 		sha: j.sha,
 		shortSha: j.shortSha,
+		subject: j.subject,
+		branch: j.branch,
 		status: j.status,
 		message: j.message,
 		queuedAt: j.queuedAt,

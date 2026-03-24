@@ -12,6 +12,8 @@ export interface TestJob {
 	projectDir: string;
 	sha: string;
 	shortSha: string;
+	subject: string;
+	branch?: string;
 	status: JobStatus;
 	message?: string;
 	queuedAt: number;
@@ -24,6 +26,8 @@ export interface JobEvent {
 	sha: string;
 	project: string;
 	shortSha: string;
+	subject: string;
+	branch?: string;
 	status: JobStatus;
 	message?: string;
 }
@@ -38,7 +42,7 @@ export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
 
 function emit(job: TestJob): void {
-	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, status: job.status, message: job.message};
+	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, message: job.message};
 	emitter.emit('job', event);
 }
 
@@ -101,14 +105,14 @@ async function runTest(job: TestJob): Promise<void> {
 	emit(job);
 }
 
-export function enqueueTest(project: string, projectDir: string, sha: string, shortSha: string): TestJob {
+export function enqueueTest(project: string, projectDir: string, sha: string, shortSha: string, subject?: string, branch?: string): TestJob {
 	const existing = findJob(sha, project);
 	if (existing && (existing.status === 'queued' || existing.status === 'running')) {
 		return existing;
 	}
 
 	const id = String(nextId++);
-	const job: TestJob = {id, project, projectDir, sha, shortSha, status: 'queued', queuedAt: Date.now()};
+	const job: TestJob = {id, project, projectDir, sha, shortSha, subject: subject ?? shortSha, branch, status: 'queued', queuedAt: Date.now()};
 
 	jobs.set(id, job);
 	if (!projectQueues.has(project)) {

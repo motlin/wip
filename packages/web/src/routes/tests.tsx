@@ -1,11 +1,11 @@
-import {createFileRoute} from '@tanstack/react-router';
+import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {useState} from 'react';
-import {testAllChildren, cancelTestFn} from '../lib/server-fns';
+import {testAllChildren, cancelTestFn, pushChild} from '../lib/server-fns';
 import type {TestQueueJob} from '../lib/server-fns';
-import {useTestEvents} from '../lib/use-test-events';
+import {useTestEvents, type JobEvent} from '../lib/use-test-events';
 import {useHasActiveTests} from '../lib/test-events-context';
-import {Clock, Play, CheckCircle, XCircle, Loader2, Ban, X} from 'lucide-react';
+import {Clock, Play, CheckCircle, XCircle, Loader2, Ban, X, FileText, ArrowUpRight, GitBranch} from 'lucide-react';
 import {testQueueQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/tests')({
@@ -23,45 +23,30 @@ const STATUS_ORDER: JobStatus[] = ['running', 'queued', 'failed', 'cancelled', '
 function statusIcon(status: JobStatus) {
 	switch (status) {
 		case 'queued':
-			return <Clock className="h-4 w-4 text-text-500" />;
+			return <Clock className="h-4 w-4 text-text-400" />;
 		case 'running':
-			return <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />;
+			return <Loader2 className="h-4 w-4 animate-spin text-yellow-400" />;
 		case 'passed':
-			return <CheckCircle className="h-4 w-4 text-green-500" />;
+			return <CheckCircle className="h-4 w-4 text-green-400" />;
 		case 'failed':
-			return <XCircle className="h-4 w-4 text-red-500" />;
+			return <XCircle className="h-4 w-4 text-red-400" />;
 		case 'cancelled':
 			return <Ban className="h-4 w-4 text-text-500" />;
 	}
 }
 
-function statusLabel(status: JobStatus): string {
+function cardStyle(status: JobStatus): string {
 	switch (status) {
 		case 'queued':
-			return 'Queued';
+			return 'border-border-300/50 bg-bg-100';
 		case 'running':
-			return 'Running';
+			return 'border-yellow-600/40 bg-yellow-950/40';
 		case 'passed':
-			return 'Passed';
+			return 'border-green-600/40 bg-green-950/30';
 		case 'failed':
-			return 'Failed';
+			return 'border-red-600/40 bg-red-950/30';
 		case 'cancelled':
-			return 'Cancelled';
-	}
-}
-
-function statusColor(status: JobStatus): string {
-	switch (status) {
-		case 'queued':
-			return 'bg-bg-200 text-text-300';
-		case 'running':
-			return 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/50';
-		case 'passed':
-			return 'bg-green-900/30 text-green-400';
-		case 'failed':
-			return 'bg-red-900/30 text-red-400';
-		case 'cancelled':
-			return 'bg-bg-200 text-text-500';
+			return 'border-border-300/30 bg-bg-100/50';
 	}
 }
 
@@ -74,29 +59,25 @@ function formatDuration(ms: number): string {
 	return `${minutes}m ${remaining}s`;
 }
 
-function formatTime(timestamp: number): string {
-	return new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
-}
-
-function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, {id: string; sha: string; project: string; shortSha: string; status: JobStatus; message?: string}>): TestQueueJob[] {
+function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, JobEvent>): TestQueueJob[] {
 	const merged = new Map<string, TestQueueJob>();
 
 	for (const job of serverJobs) {
 		merged.set(`${job.project}:${job.sha}`, job);
 	}
 
-	// Overlay live SSE updates on top of server data
 	for (const [key, liveJob] of liveJobs) {
 		const existing = merged.get(key);
 		if (existing) {
 			merged.set(key, {...existing, status: liveJob.status, message: liveJob.message});
 		} else {
-			// New job from SSE not yet in server data
 			merged.set(key, {
 				id: liveJob.id,
 				project: liveJob.project,
 				sha: liveJob.sha,
 				shortSha: liveJob.shortSha,
+				subject: liveJob.subject,
+				branch: liveJob.branch,
 				status: liveJob.status,
 				message: liveJob.message,
 				queuedAt: Date.now(),
@@ -107,6 +88,94 @@ function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, {id: string
 	return Array.from(merged.values());
 }
 
+function TestCard({job}: {job: TestQueueJob}) {
+	const [pushing, setPushing] = useState(false);
+
+	const handlePush = async () => {
+		if (!job.branch) return;
+		setPushing(true);
+		const result = await pushChild({data: {project: job.project, sha: job.sha, branch: job.branch}});
+		setPushing(false);
+		if (result.compareUrl) {
+			window.open(result.compareUrl, '_blank');
+		}
+	};
+
+	const duration = job.startedAt && job.finishedAt
+		? formatDuration(job.finishedAt - job.startedAt)
+		: undefined;
+
+	return (
+		<div className={`rounded-lg border px-3 py-2.5 ${cardStyle(job.status)}`}>
+			<div className="flex items-start gap-2.5">
+				<div className="mt-0.5">{statusIcon(job.status)}</div>
+				<div className="min-w-0 flex-1">
+					<div className="flex items-baseline gap-2">
+						<span className="truncate text-sm font-medium text-text-100">
+							{job.subject || job.shortSha}
+						</span>
+						{duration && (
+							<span className="shrink-0 text-xs text-text-500">{duration}</span>
+						)}
+					</div>
+					<div className="mt-0.5 flex items-center gap-2 text-xs text-text-500">
+						<span className="font-mono">{job.shortSha}</span>
+						{job.branch && (
+							<span className="flex items-center gap-0.5">
+								<GitBranch className="h-3 w-3" />
+								{job.branch}
+							</span>
+						)}
+					</div>
+				</div>
+				<div className="flex shrink-0 items-center gap-1">
+					{job.status === 'failed' && (
+						<Link
+							to="/log/$project/$sha"
+							params={{project: job.project, sha: job.sha}}
+							className="inline-flex items-center gap-1 rounded-md border border-red-700/50 bg-red-950/50 px-2 py-1 text-xs font-medium text-red-300 transition-colors hover:bg-red-900/50 hover:text-red-200"
+						>
+							<FileText className="h-3 w-3" />
+							Log
+						</Link>
+					)}
+					{job.status === 'passed' && job.branch && (
+						<button
+							type="button"
+							onClick={handlePush}
+							disabled={pushing}
+							className="inline-flex items-center gap-1 rounded-md border border-green-700/50 bg-green-950/50 px-2 py-1 text-xs font-medium text-green-300 transition-colors hover:bg-green-900/50 hover:text-green-200 disabled:opacity-50"
+						>
+							{pushing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpRight className="h-3 w-3" />}
+							Push
+						</button>
+					)}
+					{job.status === 'passed' && (
+						<Link
+							to="/log/$project/$sha"
+							params={{project: job.project, sha: job.sha}}
+							className="inline-flex items-center gap-1 rounded-md border border-border-300/50 px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-200"
+						>
+							<FileText className="h-3 w-3" />
+							Log
+						</Link>
+					)}
+					{(job.status === 'queued' || job.status === 'running') && (
+						<button
+							type="button"
+							onClick={async () => { await cancelTestFn({data: {id: job.id}}); }}
+							className="rounded-md border border-border-300/30 p-1 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-300"
+							title="Cancel test"
+						>
+							<X className="h-3.5 w-3.5" />
+						</button>
+					)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function Tests() {
 	const {data: serverJobs} = useSuspenseQuery(testQueueQueryOptions());
 	const {jobs: liveJobs} = useTestEvents();
@@ -115,7 +184,6 @@ function Tests() {
 
 	const allJobs = mergeJobs(serverJobs, liveJobs);
 
-	// Group by project
 	const byProject = new Map<string, TestQueueJob[]>();
 	for (const job of allJobs) {
 		const existing = byProject.get(job.project) ?? [];
@@ -123,7 +191,6 @@ function Tests() {
 		byProject.set(job.project, existing);
 	}
 
-	// Sort projects: those with active jobs first
 	const projectEntries = Array.from(byProject.entries()).sort(([, a], [, b]) => {
 		const aActive = a.some((j) => j.status === 'running' || j.status === 'queued');
 		const bActive = b.some((j) => j.status === 'running' || j.status === 'queued');
@@ -132,7 +199,6 @@ function Tests() {
 		return 0;
 	});
 
-	// Sort jobs within each project by status order then queue time
 	for (const [, jobs] of projectEntries) {
 		jobs.sort((a, b) => {
 			const aIdx = STATUS_ORDER.indexOf(a.status);
@@ -163,7 +229,7 @@ function Tests() {
 					<div className="mt-1 flex items-center gap-4 text-sm text-text-500">
 						{counts.running > 0 && (
 							<span className="flex items-center gap-1">
-								<Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />
+								<Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />
 								{counts.running} running
 							</span>
 						)}
@@ -175,13 +241,13 @@ function Tests() {
 						)}
 						{counts.passed > 0 && (
 							<span className="flex items-center gap-1">
-								<CheckCircle className="h-3.5 w-3.5 text-green-500" />
+								<CheckCircle className="h-3.5 w-3.5 text-green-400" />
 								{counts.passed} passed
 							</span>
 						)}
 						{counts.failed > 0 && (
 							<span className="flex items-center gap-1">
-								<XCircle className="h-3.5 w-3.5 text-red-500" />
+								<XCircle className="h-3.5 w-3.5 text-red-400" />
 								{counts.failed} failed
 							</span>
 						)}
@@ -217,39 +283,11 @@ function Tests() {
 							<section key={project}>
 								<h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
 									<span className="text-text-100">{project}</span>
-									{projectActive && <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-500" />}
+									{projectActive && <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />}
 									<span className="font-normal text-text-500">{jobs.length}</span>
 								</h2>
-								<div className="flex flex-col gap-1.5">
-									{jobs.map((job) => (
-										<div
-											key={job.id}
-											className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${statusColor(job.status)}`}
-										>
-											{statusIcon(job.status)}
-											<span className="font-mono text-xs">{job.shortSha}</span>
-											<span className="flex-1 truncate">{job.message ?? statusLabel(job.status)}</span>
-											<span className="text-xs opacity-70">
-												{job.startedAt && job.finishedAt
-													? formatDuration(job.finishedAt - job.startedAt)
-													: job.startedAt
-														? `started ${formatTime(job.startedAt)}`
-														: `queued ${formatTime(job.queuedAt)}`}
-											</span>
-											{(job.status === 'queued' || job.status === 'running') && (
-												<button
-													type="button"
-													onClick={async () => {
-														await cancelTestFn({data: {id: job.id}});
-													}}
-													className="rounded p-0.5 text-current opacity-60 transition-opacity hover:opacity-100"
-													title="Cancel test"
-												>
-													<X className="h-3.5 w-3.5" />
-												</button>
-											)}
-										</div>
-									))}
+								<div className="flex flex-col gap-2">
+									{jobs.map((job) => <TestCard key={job.id} job={job} />)}
 								</div>
 							</section>
 						);

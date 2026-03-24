@@ -23,7 +23,7 @@ export const Route = createFileRoute('/api/test-events')({
 
 						// Send current state on connect
 						for (const job of getAllActiveJobs()) {
-							send({id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, status: job.status, message: job.message});
+							send({id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, message: job.message});
 						}
 
 						function onJob(event: unknown) {

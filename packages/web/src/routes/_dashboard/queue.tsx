@@ -16,7 +16,7 @@ import {ProjectBoardItemCard} from '../../components/project-board-item-card';
 import {TodoCard} from '../../components/todo-card';
 import type {Category} from '@wip/shared';
 
-const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'snoozed', 'skippable', 'not_started'];
+const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'not_started', 'skippable', 'snoozed'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	not_started: 'Not Started',

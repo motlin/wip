@@ -147,9 +147,9 @@ Every work item is in exactly one state. States are strictly ordered from least 
 
 | # | State | Category | Description |
 |---|-------|----------|-------------|
-| 1 | Not Started | `not_started` | Issues, project items, or todos not yet worked on |
+| 1 | Snoozed | `snoozed` | User manually snoozed the item |
 | 2 | Skippable | `skippable` | Commit message contains `[skip]`, `[pass]`, `[stop]`, or `[fail]` |
-| 3 | Snoozed | `snoozed` | User manually snoozed the item |
+| 3 | Not Started | `not_started` | Issues, project items, or todos not yet worked on |
 | 4 | No Test | `no_test` | Project has no `git test` configured |
 | 5 | Detached HEAD | `detached_head` | Bare commit with no branch name |
 | 6 | Local Changes | `local_changes` | Worktree is dirty (uncommitted changes) |

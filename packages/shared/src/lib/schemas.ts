@@ -11,9 +11,9 @@ export type TestStatus = z.infer<typeof TestStatusSchema>;
 
 // Kanban left-to-right: full SDLC flow
 export const CategorySchema = z.enum([
-	'not_started',
-	'skippable',
 	'snoozed',
+	'skippable',
+	'not_started',
 	'no_test',
 	'detached_head',
 	'local_changes',

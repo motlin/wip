@@ -9,7 +9,7 @@
 	},
 	"dependencies": {
 		"@oclif/core": "^4.9.0",
-		"@oclif/plugin-help": "^6.2.38",
+		"@oclif/plugin-help": "^6.2.40",
 		"@wip/shared": "workspace:*",
 		"chalk": "^5.6.2",
 		"execa": "^9.6.1"

@@ -10,9 +10,15 @@ export const Route = createFileRoute('/api/test-events')({
 				const stream = new ReadableStream({
 					start(controller) {
 						const encoder = new TextEncoder();
+						let closed = false;
 
 						function send(data: unknown) {
-							controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+							if (closed) return;
+							try {
+								controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+							} catch {
+								cleanup();
+							}
 						}
 
 						// Send current state on connect
@@ -28,6 +34,7 @@ export const Route = createFileRoute('/api/test-events')({
 
 						// Clean up when client disconnects (detected when enqueue throws)
 						const keepalive = setInterval(() => {
+							if (closed) return;
 							try {
 								controller.enqueue(encoder.encode(': keepalive\n\n'));
 							} catch {
@@ -36,6 +43,8 @@ export const Route = createFileRoute('/api/test-events')({
 						}, 15000);
 
 						function cleanup() {
+							if (closed) return;
+							closed = true;
 							emitter.off('job', onJob);
 							clearInterval(keepalive);
 							try { controller.close(); } catch {}

@@ -175,6 +175,18 @@ These are discovered automatically and shown in the "Not Started" column. They t
 | **Changes Requested** | `changes_requested` | Reviewer requested changes |
 | **Approved** | `approved` | PR approved and ready to merge |
 
+## Card Ordering Within Categories
+
+Within each kanban column or queue category, cards are ordered by readiness — how close they are to being pushed to GitHub:
+
+1. **Pull requests** — already on GitHub, furthest along
+2. **Single-commit branches** (`commitsAhead = 1`) — just need `git push`
+3. **Bare commits** — need a branch name created, then push
+4. **Multi-commit branches** (`commitsAhead > 1`) — need splitting or squashing before landing
+5. **Issues, project items, todos** — not yet started
+
+This reflects a one-commit-at-a-time workflow where each branch should ideally contain a single atomic commit.
+
 ## Current Limitations
 
 ### Missing: Needs Rebase Stage

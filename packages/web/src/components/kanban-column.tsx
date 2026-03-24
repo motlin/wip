@@ -54,8 +54,9 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 			</div>
 			<div className="flex flex-col gap-2 overflow-y-auto">
 				{items.pullRequests?.map((pr) => <PullRequestCard key={pr.sha} pr={pr} />)}
-				{items.branches?.map((b) => <BranchCard key={b.sha} branch={b} />)}
+				{items.branches?.filter((b) => b.commitsAhead === 1).map((b) => <BranchCard key={b.sha} branch={b} />)}
 				{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} />)}
+				{items.branches?.filter((b) => b.commitsAhead !== 1).map((b) => <BranchCard key={b.sha} branch={b} />)}
 				{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />)}
 				{items.projectItems?.map((p) => <ProjectBoardItemCard key={`project-${p.title}`} item={p} />)}
 				{items.todos?.map((t) => <TodoCard key={`todo-${t.project}-${t.title}`} todo={t} />)}

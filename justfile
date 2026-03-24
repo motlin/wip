@@ -14,24 +14,44 @@ default:
 install:
     pnpm install
 
+# Install pnpm dependencies (CI, frozen lockfile)
+[group('setup')]
+install-ci:
+    pnpm install --frozen-lockfile
+
 # Build all packages
 [group('build')]
-build:
+build: install
+    pnpm run build
+
+# Build all packages (CI)
+[group('build')]
+build-ci: install-ci
     pnpm run build
 
 # Build the shared package only
 [group('build')]
-build-shared:
+build-shared: install
     pnpm --filter @wip/shared build
 
 # Typecheck all packages
 [group('build')]
-typecheck:
+typecheck: install
+    pnpm run typecheck
+
+# Typecheck all packages (CI)
+[group('build')]
+typecheck-ci: install-ci
     pnpm run typecheck
 
 # Run tests
 [group('test')]
 test: build
+    pnpm -r run test
+
+# Run tests (CI)
+[group('test')]
+test-ci: build-ci
     pnpm -r run test
 
 # Run all pre-commit checks

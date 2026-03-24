@@ -612,3 +612,8 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 
 	return results.filter((p): p is ProjectInfo => p !== null);
 }
+
+export async function discoverAllProjects(projectsDirs: string[]): Promise<ProjectInfo[]> {
+	const results = await Promise.all(projectsDirs.map((dir) => discoverProjects(dir)));
+	return results.flat();
+}

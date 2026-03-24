@@ -1,7 +1,7 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {type ChildCommit, discoverProjects, getChildCommits, getProjectsDir} from '@wip/shared';
+import {type ChildCommit, discoverAllProjects, getChildCommits, getProjectsDirs} from '@wip/shared';
 
 interface ResultEntry {
 	project: string;
@@ -48,8 +48,8 @@ export default class Results extends Command {
 
 	async run(): Promise<ResultsJson> {
 		const {args, flags} = await this.parse(Results);
-		const projectsDir = getProjectsDir(flags['projects-dir']);
-		const projects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs(flags['projects-dir']);
+		const projects = await discoverAllProjects(projectsDirs);
 
 		const allResults: ResultEntry[] = [];
 		let passedCount = 0;

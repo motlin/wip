@@ -1,7 +1,7 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {type ChildCommit, type ProjectInfo, discoverProjects, getChildCommits, getPrStatuses, getProjectsDir} from '@wip/shared';
+import {type ChildCommit, type ProjectInfo, discoverAllProjects, getChildCommits, getPrStatuses, getProjectsDirs} from '@wip/shared';
 
 type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'test_failed' | 'ready_to_test' | 'local_changes' | 'no_test' | 'skippable';
 
@@ -102,8 +102,8 @@ export default class Report extends Command {
 
 	async run(): Promise<ReportJson> {
 		const {args, flags} = await this.parse(Report);
-		const projectsDir = getProjectsDir(flags['projects-dir']);
-		const projects = await discoverProjects(projectsDir);
+		const projectsDirs = getProjectsDirs(flags['projects-dir']);
+		const projects = await discoverAllProjects(projectsDirs);
 
 		const grouped: Record<Category, ClassifiedChild[]> = {
 			approved: [],

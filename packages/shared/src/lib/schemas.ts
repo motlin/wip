@@ -132,6 +132,7 @@ export const BranchItemSchema = z.object({
 	testStatus: TestStatusSchema,
 	failureTail: z.string().optional(),
 	blockReason: z.string().optional(),
+	blockCommand: z.string().optional(),
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
 	rebaseable: z.boolean().optional(),

@@ -1,8 +1,8 @@
 import {useQueryClient} from '@tanstack/react-query';
-import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch} from 'lucide-react';
-import {useRef, useEffect} from 'react';
+import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Archive} from 'lucide-react';
+import {useRef, useEffect, useState} from 'react';
 import type {BranchItem} from '@wip/shared';
-import {cancelTestFn} from '../lib/server-fns';
+import {cancelTestFn, stashChanges} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
 import {AnsiText} from './ansi-text';
@@ -25,6 +25,8 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 	const queryClient = useQueryClient();
 	const testJob = useTestJob(branch.sha, branch.project);
 	const prevTestStatus = useRef(testJob?.status);
+	const [stashing, setStashing] = useState(false);
+	const [stashError, setStashError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
@@ -122,9 +124,35 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 			)}
 
 			{branch.blockReason && (
-				<div className="mt-2 flex items-start gap-1.5 rounded bg-amber-50 p-1.5 dark:bg-amber-950/30">
-					<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
-					<p className="text-[11px] leading-snug text-amber-700 dark:text-amber-300">{branch.blockReason}</p>
+				<div className="mt-2 rounded bg-amber-50 p-1.5 dark:bg-amber-950/30">
+					<div className="flex items-start gap-1.5">
+						<AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+						<p className="flex-1 text-[11px] leading-snug text-amber-700 dark:text-amber-300">{branch.blockReason}</p>
+					</div>
+					<div className="mt-1.5 flex items-center gap-1.5">
+						<button
+							type="button"
+							onClick={async () => {
+								setStashing(true);
+								setStashError(null);
+								const result = await stashChanges({data: {project: branch.project}});
+								setStashing(false);
+								if (result.ok) {
+									queryClient.invalidateQueries({queryKey: ['children', branch.project]});
+								} else {
+									setStashError(result.message);
+								}
+							}}
+							disabled={stashing}
+							className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
+								stashing ? 'cursor-not-allowed opacity-60 text-amber-600 dark:text-amber-400' : 'bg-amber-600 hover:bg-amber-700 text-white'
+							}`}
+						>
+							{stashing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+							{stashing ? 'Stashing...' : 'Stash Changes'}
+						</button>
+					</div>
+					{stashError && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{stashError}</p>}
 				</div>
 			)}
 

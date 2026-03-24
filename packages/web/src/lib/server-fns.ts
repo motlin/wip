@@ -561,6 +561,21 @@ export const createBranch = createServerFn({method: 'POST'})
 		return {ok: false, message: `Failed to create branch: ${result.stderr}`};
 	});
 
+export const stashChanges = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+
+		const p = await resolveProject(data.project);
+		const {execa} = await import('execa');
+		const result = await execa('git', ['-C', p.dir, 'stash', '--include-untracked'], {reject: false});
+
+		if (result.exitCode === 0) {
+			return {ok: true, message: result.stdout.trim() || 'Changes stashed'};
+		}
+
+		return {ok: false, message: `Failed to stash: ${result.stderr}`};
+	});
+
 export const deleteBranch = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {

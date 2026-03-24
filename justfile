@@ -34,6 +34,11 @@ build-ci: install-ci
 build-shared: install
     pnpm --filter @wip/shared build
 
+# Build the shared package only (CI)
+[group('build')]
+build-shared-ci: install-ci
+    pnpm --filter @wip/shared build
+
 # Typecheck all packages
 [group('build')]
 typecheck: install
@@ -41,7 +46,7 @@ typecheck: install
 
 # Typecheck all packages (CI)
 [group('build')]
-typecheck-ci: install-ci
+typecheck-ci: build-shared-ci
     pnpm run typecheck
 
 # Run tests

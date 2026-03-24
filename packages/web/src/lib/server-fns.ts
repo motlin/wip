@@ -153,7 +153,10 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 			const {getBranchNames} = await import('@wip/shared');
 			const keys = commits.map((c) => ({sha: c.sha, project: c.project, subject: c.subject, dir: p.dir}));
 			const cached = getBranchNames(keys);
-			// suggestedBranch is on BranchItem, not CommitItem — we'll handle this in the UI
+			for (const commit of commits) {
+				const suggestion = cached.get(`${commit.project}:${commit.sha}`);
+				if (suggestion) commit.suggestedBranch = suggestion;
+			}
 			const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
 			if (uncachedCount > 0) {
 				suggestBranchNames(keys).catch(() => {});

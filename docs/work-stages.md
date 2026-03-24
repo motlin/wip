@@ -68,10 +68,14 @@ flowchart TD
     REBASED --> NO_TEST
 
     READY_TEST -->|"run test"| TESTING
+    NO_TEST -->|"define git-test test"| READY_TEST
     NO_TEST -->|"push anyway"| READY_PUSH
     TESTING -->|pass| TEST_PASS
     TESTING -->|fail| TEST_FAIL
-    TEST_FAIL -->|"fix & retest"| TESTING
+    %% Fix-test cycle (j fix-test)
+    TEST_FAIL -->|"edit fix"| DIRTY
+    DIRTY -->|"git commit --fixup"| NEEDS_REBASE
+    NEEDS_REBASE -->|"git rebase --autosquash"| READY_TEST
 
     %% Diamond convergence: both rebase and test must pass
     TEST_PASS --> READY_PUSH
@@ -84,7 +88,7 @@ flowchart TD
     CHECKS_UNKNOWN --> CHECKS_RUNNING
     CHECKS_RUNNING -->|pass| CHECKS_PASSED
     CHECKS_RUNNING -->|fail| CHECKS_FAILED
-    CHECKS_FAILED -->|"fix & force-push"| CHECKS_RUNNING
+    CHECKS_FAILED -->|"fixup, rebase, force-push"| CHECKS_RUNNING
 
     CHECKS_PASSED --> REVIEW_COMMENTS
     CHECKS_PASSED --> APPROVED
@@ -137,43 +141,31 @@ Currently the UI treats these as a linear sequence (checks → review → approv
 - Checks can pass before review is requested
 - Both must be green to merge
 
-## Stage Details
+## State Ordering
 
-### Entry Points (Not Started)
+Every work item is in exactly one state. States are strictly ordered from least done (1) to most done (17). The queue view shows items in reverse order (most done first). Cycles exist in the diagram (e.g., checks failed → fix → push again), but the item's state always reflects its current position in this list.
 
-| Source | Description |
-|--------|-------------|
-| GitHub Issues | Assigned issues from repos you work on |
-| GitHub Project Items | Cards from GitHub Project boards |
-| Todo files | Tasks from `todo.md` files in repos |
+| # | State | Category | Description |
+|---|-------|----------|-------------|
+| 1 | Not Started | `not_started` | Issues, project items, or todos not yet worked on |
+| 2 | Skippable | `skippable` | Commit message contains `[skip]`, `[pass]`, `[stop]`, or `[fail]` |
+| 3 | Snoozed | `snoozed` | User manually snoozed the item |
+| 4 | No Test | `no_test` | Project has no `git test` configured |
+| 5 | Detached HEAD | `detached_head` | Bare commit with no branch name |
+| 6 | Local Changes | `local_changes` | Worktree is dirty (uncommitted changes) |
+| 7 | Ready to Test | `ready_to_test` | Branch exists, worktree clean, tests not yet run |
+| 8 | Test Failed | `test_failed` | `git test run` exited non-zero |
+| 9 | Ready to Push | `ready_to_push` | Tests passed, ready for `git push` |
+| 10 | Pushed, Needs PR | `pushed_no_pr` | Branch pushed to remote, no open PR |
+| 11 | Checks Unknown | `checks_unknown` | PR exists, no CI status yet |
+| 12 | Checks Running | `checks_running` | CI checks in progress |
+| 13 | Checks Failed | `checks_failed` | CI checks failed (fix locally, force-push) |
+| 14 | Checks Passed | `checks_passed` | CI checks passed, awaiting review |
+| 15 | Review Comments | `review_comments` | Reviewer left comments |
+| 16 | Changes Requested | `changes_requested` | Reviewer requested changes |
+| 17 | Approved | `approved` | PR approved and ready to merge |
 
-These are discovered automatically and shown in the "Not Started" column. They transition to active work when you create a commit or branch.
-
-### Local Development Stages
-
-| Stage | Category | Trigger |
-|-------|----------|---------|
-| **Detached HEAD** | `detached_head` | Bare commit with no branch name |
-| **Skippable** | `skippable` | Commit message contains `[skip]`, `[pass]`, `[stop]`, or `[fail]` |
-| **Snoozed** | `snoozed` | User manually snoozed the item |
-| **Local Changes** | `local_changes` | Worktree is dirty (uncommitted changes) |
-| **No Test** | `no_test` | Project has no `git test` configured |
-| **Ready to Test** | `ready_to_test` | Branch exists, worktree clean, tests not yet run |
-| **Test Failed** | `test_failed` | `git test run` exited non-zero |
-| **Ready to Push** | `ready_to_push` | Tests passed, ready for `git push` |
-
-### Remote Stages
-
-| Stage | Category | Trigger |
-|-------|----------|---------|
-| **Pushed, Needs PR** | `pushed_no_pr` | Branch pushed to remote, no open PR |
-| **Checks Unknown** | `checks_unknown` | PR exists, no CI status yet |
-| **Checks Running** | `checks_running` | CI checks in progress |
-| **Checks Failed** | `checks_failed` | CI checks failed |
-| **Checks Passed** | `checks_passed` | CI checks passed, awaiting review |
-| **Review Comments** | `review_comments` | Reviewer left comments |
-| **Changes Requested** | `changes_requested` | Reviewer requested changes |
-| **Approved** | `approved` | PR approved and ready to merge |
+When fixing failures (test failed, checks failed, changes requested), the work happens locally (edit, fixup, rebase, push) but the item's state stays at its current position — it doesn't regress to `local_changes`. A PR with failed checks that you're fixing locally is still at state 13, not state 6, because the PR infrastructure already exists.
 
 ## Card Ordering Within Categories
 

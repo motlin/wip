@@ -12,8 +12,7 @@
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
-		"declaration": true,
-		"sourceMap": true,
+		"noEmit": true,
 		"types": ["node", "vite/client"]
 	},
 	"include": ["src/**/*"],

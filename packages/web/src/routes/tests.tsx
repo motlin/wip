@@ -25,11 +25,11 @@ function statusIcon(status: JobStatus) {
 		case 'queued':
 			return <Clock className="h-4 w-4 text-text-400" />;
 		case 'running':
-			return <Loader2 className="h-4 w-4 animate-spin text-yellow-400" />;
+			return <Loader2 className="h-4 w-4 animate-spin text-status-yellow" />;
 		case 'passed':
-			return <CheckCircle className="h-4 w-4 text-green-400" />;
+			return <CheckCircle className="h-4 w-4 text-status-green" />;
 		case 'failed':
-			return <XCircle className="h-4 w-4 text-red-400" />;
+			return <XCircle className="h-4 w-4 text-status-red" />;
 		case 'cancelled':
 			return <Ban className="h-4 w-4 text-text-500" />;
 	}
@@ -40,11 +40,11 @@ function cardStyle(status: JobStatus): string {
 		case 'queued':
 			return 'border-border-300/50 bg-bg-100';
 		case 'running':
-			return 'border-yellow-600/40 bg-yellow-950/40';
+			return 'border-card-running-border bg-card-running-bg';
 		case 'passed':
-			return 'border-green-600/40 bg-green-950/30';
+			return 'border-card-passed-border bg-card-passed-bg';
 		case 'failed':
-			return 'border-red-600/40 bg-red-950/30';
+			return 'border-card-failed-border bg-card-failed-bg';
 		case 'cancelled':
 			return 'border-border-300/30 bg-bg-100/50';
 	}
@@ -133,7 +133,7 @@ function TestCard({job}: {job: TestQueueJob}) {
 						<Link
 							to="/log/$project/$sha"
 							params={{project: job.project, sha: job.sha}}
-							className="inline-flex items-center gap-1 rounded-md border border-red-700/50 bg-red-950/50 px-2 py-1 text-xs font-medium text-red-300 transition-colors hover:bg-red-900/50 hover:text-red-200"
+							className="inline-flex items-center gap-1 rounded-md border border-btn-danger-border bg-btn-danger-bg px-2 py-1 text-xs font-medium text-btn-danger-text transition-colors hover:opacity-80"
 						>
 							<FileText className="h-3 w-3" />
 							Log
@@ -144,7 +144,7 @@ function TestCard({job}: {job: TestQueueJob}) {
 							type="button"
 							onClick={handlePush}
 							disabled={pushing}
-							className="inline-flex items-center gap-1 rounded-md border border-green-700/50 bg-green-950/50 px-2 py-1 text-xs font-medium text-green-300 transition-colors hover:bg-green-900/50 hover:text-green-200 disabled:opacity-50"
+							className="inline-flex items-center gap-1 rounded-md border border-btn-success-border bg-btn-success-bg px-2 py-1 text-xs font-medium text-btn-success-text transition-colors hover:opacity-80 disabled:opacity-50"
 						>
 							{pushing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpRight className="h-3 w-3" />}
 							Push
@@ -229,7 +229,7 @@ function Tests() {
 					<div className="mt-1 flex items-center gap-4 text-sm text-text-500">
 						{counts.running > 0 && (
 							<span className="flex items-center gap-1">
-								<Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />
+								<Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />
 								{counts.running} running
 							</span>
 						)}
@@ -241,13 +241,13 @@ function Tests() {
 						)}
 						{counts.passed > 0 && (
 							<span className="flex items-center gap-1">
-								<CheckCircle className="h-3.5 w-3.5 text-green-400" />
+								<CheckCircle className="h-3.5 w-3.5 text-status-green" />
 								{counts.passed} passed
 							</span>
 						)}
 						{counts.failed > 0 && (
 							<span className="flex items-center gap-1">
-								<XCircle className="h-3.5 w-3.5 text-red-400" />
+								<XCircle className="h-3.5 w-3.5 text-status-red" />
 								{counts.failed} failed
 							</span>
 						)}
@@ -283,7 +283,7 @@ function Tests() {
 							<section key={project}>
 								<h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
 									<span className="text-text-100">{project}</span>
-									{projectActive && <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />}
+									{projectActive && <Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />}
 									<span className="font-normal text-text-500">{jobs.length}</span>
 								</h2>
 								<div className="flex flex-col gap-2">

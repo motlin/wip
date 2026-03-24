@@ -1,3 +1,5 @@
 [tools]
-just = "1.47.1"
+just = "1.48.0"
 node = "24.14.0"
+# pnpm installed via pnpm/action-setup in CI (mise npm backend has known timeout issues in CI)
+# For local dev, install pnpm separately: npm install -g pnpm@10.25.0

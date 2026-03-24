@@ -1,6 +1,7 @@
 import {createFileRoute, Outlet} from '@tanstack/react-router';
 import type {ProjectInfo} from '@wip/shared';
 import {projectsQueryOptions, projectChildrenQueryOptions, projectTodosQueryOptions, issuesQueryOptions, projectItemsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {usePreserveScroll} from '../lib/use-preserve-scroll';
 
 export const Route = createFileRoute('/_dashboard')({
 	loader: async ({context: {queryClient}}) => {
@@ -14,5 +15,10 @@ export const Route = createFileRoute('/_dashboard')({
 		queryClient.prefetchQuery(projectItemsQueryOptions());
 		queryClient.prefetchQuery(snoozedQueryOptions());
 	},
-	component: () => <Outlet />,
+	component: DashboardLayout,
 });
+
+function DashboardLayout() {
+	usePreserveScroll();
+	return <Outlet />;
+}

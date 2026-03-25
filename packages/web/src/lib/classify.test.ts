@@ -1,8 +1,8 @@
 import {describe, it, expect} from 'vitest';
 
-import type {PullRequestItem} from '@wip/shared';
+import type {BranchItem, ProjectInfo, PullRequestItem} from '@wip/shared';
 
-import {classifyPullRequest} from './classify';
+import {classifyBranch, classifyPullRequest} from './classify';
 
 function makePR(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
 	return {
@@ -23,6 +23,60 @@ function makePR(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
 		...overrides,
 	};
 }
+
+function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
+	return {
+		name: 'test',
+		dir: '/tmp/test',
+		remote: 'origin',
+		upstreamRemote: 'origin',
+		upstreamBranch: 'main',
+		upstreamRef: 'origin/main',
+		dirty: false,
+		detachedHead: false,
+		branchCount: 1,
+		hasTestConfigured: true,
+		...overrides,
+	};
+}
+
+function makeBranch(overrides: Partial<BranchItem> = {}): BranchItem {
+	return {
+		project: 'test',
+		remote: 'origin',
+		sha: 'abc123',
+		shortSha: 'abc',
+		subject: 'Test branch',
+		date: '2026-01-01',
+		branch: 'feature-branch',
+		skippable: false,
+		pushedToRemote: false,
+		testStatus: 'unknown',
+		...overrides,
+	};
+}
+
+describe('classifyBranch', () => {
+	it('returns ready_to_push for single-commit branch with tests passed', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'passed', commitsAhead: 1}), makeProject())).toBe('ready_to_push');
+	});
+
+	it('returns needs_split for multi-commit branch with tests passed', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'passed', commitsAhead: 3}), makeProject())).toBe('needs_split');
+	});
+
+	it('returns ready_to_push when commitsAhead is undefined (defaults to single)', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'passed'}), makeProject())).toBe('ready_to_push');
+	});
+
+	it('returns ready_to_push for commitsAhead=0', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'passed', commitsAhead: 0}), makeProject())).toBe('ready_to_push');
+	});
+
+	it('returns needs_split for commitsAhead=2', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'passed', commitsAhead: 2}), makeProject())).toBe('needs_split');
+	});
+});
 
 describe('classifyPullRequest', () => {
 	it('returns skippable for skippable PRs', () => {

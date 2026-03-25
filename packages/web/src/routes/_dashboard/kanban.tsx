@@ -10,7 +10,7 @@ import {useWorkItems} from '../../lib/use-work-items';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../../lib/classify';
 import type {Category} from '@wip/shared';
 
-const CATEGORY_ORDER: Category[] = ['snoozed', 'skippable', 'not_started', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'needs_rebase', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
+const CATEGORY_ORDER: Category[] = ['snoozed', 'skippable', 'not_started', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_failed', 'needs_rebase', 'needs_split', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
 
 function bucketCount(items: ColumnItems): number {
 	return (items.commits?.length ?? 0) + (items.branches?.length ?? 0) + (items.pullRequests?.length ?? 0)
@@ -34,7 +34,7 @@ function Kanban() {
 		const g: Record<Category, ColumnItems> = {
 			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
 			local_changes: {}, ready_to_test: {}, test_failed: {}, needs_rebase: {},
-			ready_to_push: {}, pushed_no_pr: {}, checks_unknown: {}, checks_running: {},
+			needs_split: {}, ready_to_push: {}, pushed_no_pr: {}, checks_unknown: {}, checks_running: {},
 			checks_failed: {},
 			checks_passed: {}, review_comments: {}, changes_requested: {}, approved: {},
 		};

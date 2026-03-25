@@ -311,12 +311,13 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | `branch.skippable` | `skippable` | 2 | Skippable | |
 | `testStatus === 'failed'` | `test_failed` | 18–20 | Branch, test failed | Not checking rebased or conflicts |
 | `pushedToRemote && branch !== upstream` | `pushed_no_pr` | 24 or 25 | Pushed, needs PR | Not checking sync state |
-| `testStatus === 'passed'` | `ready_to_push` | 21–23 | Branch, test passed | Not checking rebased or commit count |
+| `testStatus === 'passed' && commitsAhead > 1` | `needs_split` | 22 | Branch, test passed, multi-commit | Needs splitting before push |
+| `testStatus === 'passed'` | `ready_to_push` | 21, 23 | Branch, test passed, single-commit | Not checking rebased |
 | `project.dirty` | `local_changes` | 11 | Branch, dirty | |
 | `!project.hasTestConfigured` | `no_test` | 12–14 | Branch, no test | Not checking rebased or conflicts |
 | default | `ready_to_test` | 15–17 | Branch, untested | Not checking rebased or conflicts |
 
-**Missing**: `needsRebase` field exists on BranchItem but classify ignores it. `commitsAhead` exists but classify ignores it. `rebaseable` (conflict detection) exists but classify ignores it. Conflict states #12, #15, #18 collapsed with non-conflict counterparts. Rebase states #13, #16, #19, #21, #22 collapsed with rebased counterparts.
+**Missing**: `needsRebase` field exists on BranchItem but classify ignores it. `rebaseable` (conflict detection) exists but classify ignores it. Conflict states #12, #15, #18 collapsed with non-conflict counterparts. Rebase states #13, #16, #19, #21 collapsed with rebased counterparts.
 
 ### classifyPullRequest (PRs — PullRequestItem)
 
@@ -368,7 +369,7 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | 19 | Branch, not rebased, test failed | **collapsed** | shown as #20 (test_failed) |
 | 20 | Branch, rebased, test failed | yes | classifyBranch |
 | 21 | Branch, not rebased, test passed | **collapsed** | shown as #23 (ready_to_push) |
-| 22 | Branch, rebased, test passed, multi | **collapsed** | shown as #23 (ready_to_push) |
+| 22 | Branch, rebased, test passed, multi | yes | classifyBranch (shown as needs_split) |
 | 23 | Branch, rebased, test passed, single | yes | classifyBranch |
 | 24 | Pushed, in sync, needs PR | yes | classifyBranch |
 | 25 | Pushed, local ahead, needs PR | **collapsed** | shown as #24 |
@@ -386,10 +387,10 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | 37 | PR, checks running, approved | yes | classifyPullRequest (shown as checks_running) |
 | 38 | PR, approved | yes | classifyPullRequest |
 
-**21 of 38 states are reachable.** 17 are collapsed or unreachable:
+**22 of 38 states are reachable.** 16 are collapsed or unreachable:
 - 2 unreachable (bare commit test results — no field exists)
 - 4 collapsed (draft PRs — no draft detection in current code)
-- 11 collapsed (rebase/conflict status, commit count, and remote sync not checked)
+- 10 collapsed (rebase/conflict status and remote sync not checked)
 
 ## Current Limitations
 

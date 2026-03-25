@@ -15,6 +15,7 @@ export function classifyBranch(branch: BranchItem, project: ProjectInfo): Catego
 	if (branch.testStatus === 'failed') return 'test_failed';
 	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	if (branch.needsRebase) return 'needs_rebase';
+	if (branch.testStatus === 'passed' && (branch.commitsAhead ?? 1) > 1) return 'needs_split';
 	if (branch.testStatus === 'passed') return 'ready_to_push';
 	if (project.dirty) return 'local_changes';
 	if (!project.hasTestConfigured) return 'no_test';

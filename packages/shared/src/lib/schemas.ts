@@ -20,6 +20,7 @@ export const CategorySchema = z.enum([
 	'ready_to_test',
 	'test_failed',
 	'needs_rebase',
+	'needs_split',
 	'ready_to_push',
 	'pushed_no_pr',
 	'checks_unknown',

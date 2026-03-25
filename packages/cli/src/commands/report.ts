@@ -119,6 +119,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	ready_to_test: 'Ready to test',
 	test_failed: 'Test failed',
 	needs_rebase: 'Needs rebase',
+	needs_split: 'Needs split',
 	ready_to_push: 'Ready to push',
 	pushed_no_pr: 'Needs PR',
 	checks_unknown: 'Checks unknown',
@@ -149,6 +150,7 @@ function categoryStyle(category: Category, text: string): string {
 		case 'checks_running':
 		case 'detached_head':
 		case 'needs_rebase':
+		case 'needs_split':
 			return chalk.yellow(text);
 		case 'local_changes':
 		case 'no_test':
@@ -198,6 +200,7 @@ export default class Report extends Command {
 			ready_to_test: [],
 			test_failed: [],
 			needs_rebase: [],
+			needs_split: [],
 			ready_to_push: [],
 			pushed_no_pr: [],
 			checks_unknown: [],
@@ -347,6 +350,10 @@ export default class Report extends Command {
 
 		if (grouped.review_comments.length > 0) {
 			steps.push(`gh pr view                  # respond to ${grouped.review_comments.length} PRs with review comments`);
+		}
+
+		if (grouped.needs_split.length > 0) {
+			steps.push(`wip split                   # split ${grouped.needs_split.length} multi-commit branches`);
 		}
 
 		if (grouped.needs_rebase.length > 0) {

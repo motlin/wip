@@ -23,11 +23,11 @@ export function classifyBranch(branch: BranchItem, project: ProjectInfo): Catego
 
 export function classifyPullRequest(pr: PullRequestItem): Category {
 	if (pr.skippable) return 'skippable';
-	if (pr.reviewStatus === 'approved') return 'approved';
+	if (pr.checkStatus === 'failed') return 'checks_failed';
+	if (pr.checkStatus === 'running' || pr.checkStatus === 'pending') return 'checks_running';
+	if (pr.reviewStatus === 'approved' && pr.checkStatus === 'passed') return 'approved';
 	if (pr.reviewStatus === 'changes_requested') return 'changes_requested';
 	if (pr.reviewStatus === 'commented') return 'review_comments';
-	if (pr.checkStatus === 'running' || pr.checkStatus === 'pending') return 'checks_running';
-	if (pr.checkStatus === 'failed') return 'checks_failed';
 	if (pr.checkStatus === 'passed') return 'checks_passed';
 	if (pr.checkStatus === 'unknown' || pr.checkStatus === 'none') return 'checks_unknown';
 	return 'checks_running';

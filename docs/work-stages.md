@@ -323,16 +323,16 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | Code path | Old category | DFA # | DFA state | Notes |
 |-----------|-------------|-------|-----------|-------|
 | `pr.skippable` | `skippable` | 2 | Skippable | |
-| `reviewStatus === 'approved'` | `approved` | 38 | PR, approved | Doesn't check if checks also passed |
-| `reviewStatus === 'changes_requested'` | `changes_requested` | 36 | PR, changes requested | |
-| `reviewStatus === 'commented'` | `review_comments` | 35 | PR, review comments | |
-| `checkStatus === 'running'/'pending'` | `checks_running` | 31 | PR, checks running | |
-| `checkStatus === 'failed'` | `checks_failed` | 32 | PR, checks failed | |
+| `checkStatus === 'failed'` | `checks_failed` | 32 | PR, checks failed | Checked before review — blocks approved |
+| `checkStatus === 'running'/'pending'` | `checks_running` | 31, 37 | PR, checks running | Checked before review — blocks approved |
+| `reviewStatus === 'approved' && checkStatus === 'passed'` | `approved` | 38 | PR, approved | Both checks and review must pass |
+| `reviewStatus === 'changes_requested'` | `changes_requested` | 36 | PR, changes requested | After CI blocking checks |
+| `reviewStatus === 'commented'` | `review_comments` | 35 | PR, review comments | After CI blocking checks |
 | `checkStatus === 'passed'` | `checks_passed` | 34 | PR, checks passed | |
 | `checkStatus === 'unknown'/'none'` | `checks_unknown` | 30 | PR, checks unknown | |
 | default | `checks_running` | 31 | PR, checks running | Fallback |
 
-**Missing**: Draft PR states #26–29 not distinguished (no draft detection). #33 (checks failed + local ahead), #37 (checks running + approved — the diamond case). Review is checked before checks, so `approved` with failing checks shows as `approved` not `checks_failed`.
+**Missing**: Draft PR states #26–29 not distinguished (no draft detection). #33 (checks failed + local ahead) collapsed with #32.
 
 ### Idea items (not classified — added directly in useWorkItems)
 
@@ -383,13 +383,13 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | 34 | PR, checks passed, no review | yes | classifyPullRequest |
 | 35 | PR, review comments | yes | classifyPullRequest |
 | 36 | PR, changes requested | yes | classifyPullRequest |
-| 37 | PR, checks running, approved | **collapsed** | shown as #38 (approved) |
+| 37 | PR, checks running, approved | yes | classifyPullRequest (shown as checks_running) |
 | 38 | PR, approved | yes | classifyPullRequest |
 
-**20 of 38 states are reachable.** 18 are collapsed or unreachable:
+**21 of 38 states are reachable.** 17 are collapsed or unreachable:
 - 2 unreachable (bare commit test results — no field exists)
 - 4 collapsed (draft PRs — no draft detection in current code)
-- 12 collapsed (rebase/conflict status, commit count, and remote sync not checked)
+- 11 collapsed (rebase/conflict status, commit count, and remote sync not checked)
 
 ## Current Limitations
 

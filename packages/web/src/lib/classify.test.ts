@@ -76,6 +76,18 @@ describe('classifyBranch', () => {
 	it('returns needs_split for commitsAhead=2', () => {
 		expect(classifyBranch(makeBranch({testStatus: 'passed', commitsAhead: 2}), makeProject())).toBe('needs_split');
 	});
+
+	it('returns pushed_no_pr when pushed and in sync with remote', () => {
+		expect(classifyBranch(makeBranch({pushedToRemote: true, localAhead: false}), makeProject())).toBe('pushed_no_pr');
+	});
+
+	it('returns ready_to_push when pushed but local is ahead of remote', () => {
+		expect(classifyBranch(makeBranch({pushedToRemote: true, localAhead: true}), makeProject())).toBe('ready_to_push');
+	});
+
+	it('returns pushed_no_pr when pushed and localAhead is undefined (defaults to in-sync)', () => {
+		expect(classifyBranch(makeBranch({pushedToRemote: true}), makeProject())).toBe('pushed_no_pr');
+	});
 });
 
 describe('classifyPullRequest', () => {
@@ -133,5 +145,17 @@ describe('classifyPullRequest', () => {
 
 	it('returns checks_unknown when approved but checks unknown', () => {
 		expect(classifyPullRequest(makePR({checkStatus: 'unknown', reviewStatus: 'approved'}))).toBe('checks_unknown');
+	});
+
+	it('returns ready_to_push when checks failed and local is ahead of remote', () => {
+		expect(classifyPullRequest(makePR({checkStatus: 'failed', localAhead: true}))).toBe('ready_to_push');
+	});
+
+	it('returns checks_failed when checks failed and in sync with remote', () => {
+		expect(classifyPullRequest(makePR({checkStatus: 'failed', localAhead: false}))).toBe('checks_failed');
+	});
+
+	it('returns checks_failed when checks failed and localAhead is undefined', () => {
+		expect(classifyPullRequest(makePR({checkStatus: 'failed'}))).toBe('checks_failed');
 	});
 });

@@ -2,9 +2,11 @@ import {Outlet, createRootRouteWithContext, HeadContent, Scripts, Link} from '@t
 import {ReactQueryDevtools} from '@tanstack/react-query-devtools';
 import type {ReactNode} from 'react';
 import type {QueryClient} from '@tanstack/react-query';
+import {Sun, Moon} from 'lucide-react';
 import appCss from '../styles/globals.css?url';
 import {TestEventsProvider} from '../lib/test-events-context';
 import {MergeEventsProvider} from '../lib/merge-events-context';
+import {useTheme} from '../lib/use-theme';
 
 export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
 	head: () => ({
@@ -26,6 +28,8 @@ export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
 });
 
 function RootComponent() {
+	const {theme, toggle} = useTheme();
+
 	return (
 		<RootDocument>
 			<TestEventsProvider>
@@ -37,6 +41,14 @@ function RootComponent() {
 						<Link to="/kanban" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Kanban</Link>
 						<Link to="/snoozed" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Snoozed</Link>
 						<Link to="/tests" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Tests</Link>
+						<button
+							type="button"
+							onClick={toggle}
+							className="ml-auto rounded p-1.5 text-text-400 transition-colors hover:bg-bg-200 hover:text-text-100"
+							title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+						>
+							{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+						</button>
 					</nav>
 					<Outlet />
 				</div>

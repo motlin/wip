@@ -3,6 +3,7 @@ import {useState} from 'react';
 import type {CommitItem} from '@wip/shared';
 import {Diff, GitBranch, Loader2} from 'lucide-react';
 import {createBranch} from '../lib/server-fns';
+import {AnsiText} from './ansi-text';
 
 export function CommitCard({commit}: {commit: CommitItem}) {
 	const queryClient = useQueryClient();
@@ -53,6 +54,13 @@ export function CommitCard({commit}: {commit: CommitItem}) {
 				<span className="font-mono text-xs text-text-400 mr-1.5">{commit.shortSha}</span>
 				{commit.subject}
 			</p>
+
+			{commit.testStatus === 'failed' && commit.failureTail && (
+				<AnsiText
+					text={commit.failureTail}
+					className="mt-2 overflow-x-auto rounded bg-red-50 p-1.5 font-mono text-[10px] leading-tight text-red-700 dark:bg-red-950/30 dark:text-red-300"
+				/>
+			)}
 			<div className="mt-2 border-t border-border-300/20 pt-2">
 				<div className="flex items-center gap-1.5">
 					<GitBranch className="h-3.5 w-3.5 shrink-0 text-text-400" />

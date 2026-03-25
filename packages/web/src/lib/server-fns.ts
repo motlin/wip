@@ -145,7 +145,7 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 				});
 			} else {
 				// Bare commit (no branch)
-				commits.push(base);
+				commits.push({...base, testStatus: child.testStatus, failureTail});
 			}
 		}
 
@@ -511,7 +511,7 @@ export const getChildBySha = createServerFn({method: 'GET'})
 		const branchMatch = decorations?.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
 		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
 
-		if (!branch) return base;
+		if (!branch) return {...base, testStatus: 'unknown' as const};
 
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const prUrl = prStatuses.urls.get(branch);

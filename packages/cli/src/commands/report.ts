@@ -1,9 +1,7 @@
 import {Args, Command, Flags} from '@oclif/core';
 import chalk from 'chalk';
 
-import {type ChildCommit, type ProjectInfo, discoverAllProjects, getChildCommits, getPrStatuses, getProjectsDirs} from '@wip/shared';
-
-type Category = 'approved' | 'ready_to_push' | 'changes_requested' | 'review_comments' | 'test_failed' | 'ready_to_test' | 'local_changes' | 'no_test' | 'skippable';
+import {type Category, type ChildCommit, type ProjectInfo, discoverAllProjects, getChildCommits, getPrStatuses, getProjectsDirs} from '@wip/shared';
 
 interface ClassifiedChild {
 	project: string;
@@ -15,64 +13,149 @@ interface ClassifiedChild {
 }
 
 interface ReportJson {
-	summary: {projects: number; children: number; approved: number; readyToPush: number; changesRequested: number; reviewComments: number; testFailed: number; readyToTest: number; localChanges: number; noTest: number; skippable: number};
-	approved: ClassifiedChild[];
-	readyToPush: ClassifiedChild[];
-	changesRequested: ClassifiedChild[];
-	reviewComments: ClassifiedChild[];
-	testFailed: ClassifiedChild[];
-	readyToTest: ClassifiedChild[];
-	localChanges: ClassifiedChild[];
-	noTest: ClassifiedChild[];
+	summary: {
+		projects: number;
+		children: number;
+		snoozed: number;
+		skippable: number;
+		notStarted: number;
+		noTest: number;
+		detachedHead: number;
+		localChanges: number;
+		readyToTest: number;
+		testFailed: number;
+		needsRebase: number;
+		readyToPush: number;
+		pushedNoPr: number;
+		checksUnknown: number;
+		checksRunning: number;
+		checksFailed: number;
+		checksPassed: number;
+		reviewComments: number;
+		changesRequested: number;
+		approved: number;
+	};
+	snoozed: ClassifiedChild[];
 	skippable: ClassifiedChild[];
+	notStarted: ClassifiedChild[];
+	noTest: ClassifiedChild[];
+	detachedHead: ClassifiedChild[];
+	localChanges: ClassifiedChild[];
+	readyToTest: ClassifiedChild[];
+	testFailed: ClassifiedChild[];
+	needsRebase: ClassifiedChild[];
+	readyToPush: ClassifiedChild[];
+	pushedNoPr: ClassifiedChild[];
+	checksUnknown: ClassifiedChild[];
+	checksRunning: ClassifiedChild[];
+	checksFailed: ClassifiedChild[];
+	checksPassed: ClassifiedChild[];
+	reviewComments: ClassifiedChild[];
+	changesRequested: ClassifiedChild[];
+	approved: ClassifiedChild[];
 	nextSteps: string[];
 }
 
 function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 	if (child.skippable) return 'skippable';
-	if (child.testStatus === 'passed') {
-		if (child.reviewStatus === 'approved') return 'approved';
-		if (child.reviewStatus === 'changes_requested') return 'changes_requested';
-		if (child.reviewStatus === 'commented') return 'review_comments';
-		return 'ready_to_push';
-	}
-	if (child.testStatus === 'failed') return 'test_failed';
+
+	if (project.detachedHead) return 'detached_head';
 	if (project.dirty) return 'local_changes';
 	if (!project.hasTestConfigured) return 'no_test';
-	return 'ready_to_test';
+
+	if (child.needsRebase) return 'needs_rebase';
+	if (!child.pushedToRemote) {
+		if (child.testStatus === 'passed') return 'ready_to_push';
+		if (child.testStatus === 'failed') return 'test_failed';
+		if (child.testStatus === 'unknown') return 'ready_to_test';
+	}
+
+	if (child.pushedToRemote && !child.prUrl) return 'pushed_no_pr';
+
+	if (child.prUrl) {
+		if (child.checkStatus === 'passed') {
+			if (child.reviewStatus === 'approved') return 'approved';
+			if (child.reviewStatus === 'changes_requested') return 'changes_requested';
+			if (child.reviewStatus === 'commented') return 'review_comments';
+			return 'ready_to_push';
+		}
+		if (child.checkStatus === 'failed') return 'checks_failed';
+		if (child.checkStatus === 'running' || child.checkStatus === 'pending') return 'checks_running';
+		if (child.checkStatus === 'unknown') return 'checks_unknown';
+	}
+
+	return 'not_started';
 }
 
-const CATEGORY_ORDER: Category[] = ['approved', 'ready_to_push', 'changes_requested', 'review_comments', 'test_failed', 'ready_to_test', 'local_changes', 'no_test', 'skippable'];
+// Kanban left-to-right: full SDLC flow
+const CATEGORY_ORDER: Category[] = [
+	'snoozed',
+	'skippable',
+	'not_started',
+	'no_test',
+	'detached_head',
+	'local_changes',
+	'ready_to_test',
+	'test_failed',
+	'needs_rebase',
+	'ready_to_push',
+	'pushed_no_pr',
+	'checks_unknown',
+	'checks_running',
+	'checks_failed',
+	'checks_passed',
+	'review_comments',
+	'changes_requested',
+	'approved',
+];
 
 const CATEGORY_LABELS: Record<Category, string> = {
-	approved: 'Approved',
-	ready_to_push: 'Ready to push',
-	changes_requested: 'Changes requested',
-	review_comments: 'Review comments',
-	test_failed: 'Test failed',
-	ready_to_test: 'Ready to test',
-	local_changes: 'Local changes — dirty worktree',
-	no_test: 'No test configured',
+	snoozed: 'Snoozed',
 	skippable: 'Skippable',
+	not_started: 'Not started',
+	no_test: 'No test configured',
+	detached_head: 'Detached HEAD',
+	local_changes: 'Local changes — dirty worktree',
+	ready_to_test: 'Ready to test',
+	test_failed: 'Test failed',
+	needs_rebase: 'Needs rebase',
+	ready_to_push: 'Ready to push',
+	pushed_no_pr: 'Needs PR',
+	checks_unknown: 'Checks unknown',
+	checks_running: 'Checks running',
+	checks_failed: 'Checks failed',
+	checks_passed: 'Checks passed',
+	review_comments: 'Review comments',
+	changes_requested: 'Changes requested',
+	approved: 'Approved',
 };
 
 function categoryStyle(category: Category, text: string): string {
 	switch (category) {
 		case 'approved':
+		case 'checks_passed':
 			return chalk.green(text);
 		case 'ready_to_push':
-			return chalk.green(text);
+			return chalk.cyan(text);
 		case 'changes_requested':
 			return chalk.magenta(text);
 		case 'review_comments':
-			return chalk.cyan(text);
+		case 'pushed_no_pr':
+			return chalk.blue(text);
 		case 'test_failed':
+		case 'checks_failed':
 			return chalk.red(text);
 		case 'ready_to_test':
+		case 'checks_running':
+		case 'detached_head':
+		case 'needs_rebase':
 			return chalk.yellow(text);
 		case 'local_changes':
 		case 'no_test':
 		case 'skippable':
+		case 'snoozed':
+		case 'not_started':
+		case 'checks_unknown':
 			return chalk.dim(text);
 	}
 }
@@ -106,15 +189,24 @@ export default class Report extends Command {
 		const projects = await discoverAllProjects(projectsDirs);
 
 		const grouped: Record<Category, ClassifiedChild[]> = {
-			approved: [],
-			ready_to_push: [],
-			changes_requested: [],
-			review_comments: [],
-			test_failed: [],
-			ready_to_test: [],
-			local_changes: [],
-			no_test: [],
+			snoozed: [],
 			skippable: [],
+			not_started: [],
+			no_test: [],
+			detached_head: [],
+			local_changes: [],
+			ready_to_test: [],
+			test_failed: [],
+			needs_rebase: [],
+			ready_to_push: [],
+			pushed_no_pr: [],
+			checks_unknown: [],
+			checks_running: [],
+			checks_failed: [],
+			checks_passed: [],
+			review_comments: [],
+			changes_requested: [],
+			approved: [],
 		};
 
 		let projectCount = 0;
@@ -150,25 +242,43 @@ export default class Report extends Command {
 			summary: {
 				projects: projectCount,
 				children: totalChildren,
-				approved: grouped.approved.length,
-				readyToPush: grouped.ready_to_push.length,
-				changesRequested: grouped.changes_requested.length,
-				reviewComments: grouped.review_comments.length,
-				testFailed: grouped.test_failed.length,
-				readyToTest: grouped.ready_to_test.length,
-				localChanges: grouped.local_changes.length,
-				noTest: grouped.no_test.length,
+				snoozed: grouped.snoozed.length,
 				skippable: grouped.skippable.length,
+				notStarted: grouped.not_started.length,
+				noTest: grouped.no_test.length,
+				detachedHead: grouped.detached_head.length,
+				localChanges: grouped.local_changes.length,
+				readyToTest: grouped.ready_to_test.length,
+				testFailed: grouped.test_failed.length,
+				needsRebase: grouped.needs_rebase.length,
+				readyToPush: grouped.ready_to_push.length,
+				pushedNoPr: grouped.pushed_no_pr.length,
+				checksUnknown: grouped.checks_unknown.length,
+				checksRunning: grouped.checks_running.length,
+				checksFailed: grouped.checks_failed.length,
+				checksPassed: grouped.checks_passed.length,
+				reviewComments: grouped.review_comments.length,
+				changesRequested: grouped.changes_requested.length,
+				approved: grouped.approved.length,
 			},
-			approved: grouped.approved,
-			readyToPush: grouped.ready_to_push,
-			changesRequested: grouped.changes_requested,
-			reviewComments: grouped.review_comments,
-			testFailed: grouped.test_failed,
-			readyToTest: grouped.ready_to_test,
-			localChanges: grouped.local_changes,
-			noTest: grouped.no_test,
+			snoozed: grouped.snoozed,
 			skippable: grouped.skippable,
+			notStarted: grouped.not_started,
+			noTest: grouped.no_test,
+			detachedHead: grouped.detached_head,
+			localChanges: grouped.local_changes,
+			readyToTest: grouped.ready_to_test,
+			testFailed: grouped.test_failed,
+			needsRebase: grouped.needs_rebase,
+			readyToPush: grouped.ready_to_push,
+			pushedNoPr: grouped.pushed_no_pr,
+			checksUnknown: grouped.checks_unknown,
+			checksRunning: grouped.checks_running,
+			checksFailed: grouped.checks_failed,
+			checksPassed: grouped.checks_passed,
+			reviewComments: grouped.review_comments,
+			changesRequested: grouped.changes_requested,
+			approved: grouped.approved,
 			nextSteps,
 		};
 
@@ -219,8 +329,16 @@ export default class Report extends Command {
 			steps.push(`gh pr merge                 # merge ${grouped.approved.length} approved PRs`);
 		}
 
+		if (grouped.checks_passed.length > 0) {
+			steps.push(`gh pr view                  # merge ${grouped.checks_passed.length} passed checks (waiting on review)`);
+		}
+
 		if (grouped.ready_to_push.length > 0) {
 			steps.push(`wip push                    # push ${grouped.ready_to_push.length} green children`);
+		}
+
+		if (grouped.pushed_no_pr.length > 0) {
+			steps.push(`gh pr create                # create ${grouped.pushed_no_pr.length} PRs`);
 		}
 
 		if (grouped.changes_requested.length > 0) {
@@ -231,17 +349,45 @@ export default class Report extends Command {
 			steps.push(`gh pr view                  # respond to ${grouped.review_comments.length} PRs with review comments`);
 		}
 
+		if (grouped.needs_rebase.length > 0) {
+			steps.push(`git rebase upstream/main    # rebase ${grouped.needs_rebase.length} branches`);
+		}
+
+		if (grouped.detached_head.length > 0) {
+			steps.push(`wip branch                  # create branches for ${grouped.detached_head.length} detached HEADs`);
+		}
+
+		if (grouped.checks_failed.length > 0) {
+			steps.push(`wip results --status failed # investigate ${grouped.checks_failed.length} PR check failures`);
+		}
+
 		if (grouped.test_failed.length > 0) {
-			steps.push(`wip results --status failed # investigate ${grouped.test_failed.length} failures`);
+			steps.push(`wip results --status failed # investigate ${grouped.test_failed.length} local test failures`);
 		}
 
 		if (grouped.ready_to_test.length > 0) {
 			steps.push(`wip test                    # test ${grouped.ready_to_test.length} untested children`);
 		}
 
+		if (grouped.checks_running.length > 0) {
+			steps.push(`# Waiting for ${grouped.checks_running.length} check runs to complete...`);
+		}
+
+		if (grouped.checks_unknown.length > 0) {
+			steps.push(`# ${grouped.checks_unknown.length} check statuses unknown, may need refresh`);
+		}
+
 		if (dirtyProjects.size > 0) {
 			const first = [...dirtyProjects][0];
 			steps.push(`cd ~/projects/${first}  # clean worktree, unblock ${grouped.local_changes.length}`);
+		}
+
+		if (grouped.snoozed.length > 0) {
+			steps.push(`# ${grouped.snoozed.length} snoozed items`);
+		}
+
+		if (grouped.not_started.length > 0) {
+			steps.push(`# ${grouped.not_started.length} not started`);
 		}
 
 		return steps;

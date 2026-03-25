@@ -16,7 +16,7 @@ import {ProjectBoardItemCard} from '../../components/project-board-item-card';
 import {TodoCard} from '../../components/todo-card';
 import type {Category} from '@wip/shared';
 
-const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'not_started', 'skippable', 'snoozed'];
+const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'needs_rebase', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'not_started', 'skippable', 'snoozed'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	not_started: 'Not Started',
@@ -28,6 +28,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	checks_unknown: 'Checks Unknown',
 	checks_running: 'Checks Running',
 	ready_to_push: 'Ready to Push',
+	needs_rebase: 'Needs Rebase',
 	pushed_no_pr: 'Needs PR',
 	test_failed: 'Test Failed',
 	ready_to_test: 'Ready to Test',
@@ -48,6 +49,7 @@ const CATEGORY_COLORS: Record<Category, string> = {
 	checks_unknown: 'text-text-300',
 	checks_running: 'text-yellow-700 dark:text-yellow-400',
 	ready_to_push: 'text-green-700 dark:text-green-400',
+	needs_rebase: 'text-orange-700 dark:text-orange-400',
 	pushed_no_pr: 'text-blue-700 dark:text-blue-400',
 	test_failed: 'text-red-700 dark:text-red-400',
 	ready_to_test: 'text-yellow-700 dark:text-yellow-400',
@@ -79,9 +81,10 @@ function Queue() {
 	const {grouped, totalCount, readyToTestCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
 			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
-			local_changes: {}, ready_to_test: {}, test_failed: {}, ready_to_push: {},
-			pushed_no_pr: {}, checks_unknown: {}, checks_running: {}, checks_failed: {},
-			checks_passed: {}, review_comments: {}, changes_requested: {}, approved: {},
+			local_changes: {}, ready_to_test: {}, test_failed: {}, needs_rebase: {},
+			ready_to_push: {}, pushed_no_pr: {}, checks_unknown: {}, checks_running: {},
+			checks_failed: {}, checks_passed: {}, review_comments: {}, changes_requested: {},
+			approved: {},
 		};
 
 		const projectMap = new Map(projects.map((p) => [p.name, p]));

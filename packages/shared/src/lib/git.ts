@@ -468,13 +468,13 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const checkStatus: CheckStatus = branch && prStatuses ? (prStatuses.checks.get(branch) ?? 'none') : 'none';
 		const prUrl = branch && prStatuses ? prStatuses.urls.get(branch) : undefined;
 		const pushedToRemote = branch ? remoteBranches.has(branch) : false;
-		// Detect if local branch diverges from remote (needs rebase)
-		let needsRebase: boolean | undefined;
+		// Detect if local branch is ahead of remote tracking branch
+		let localAhead: boolean | undefined;
 		if (branch && pushedToRemote && branch !== defaultBranch) {
 			const remoteRef = remoteBranchRefs.get(branch);
 			if (remoteRef) {
 				const remoteSha = await git(dir, 'rev-parse', remoteRef);
-				needsRebase = remoteSha !== '' && remoteSha !== sha;
+				localAhead = remoteSha !== '' && remoteSha !== sha;
 			}
 		}
 
@@ -488,7 +488,7 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const commitsAhead = ms?.commitsAhead;
 		const rebaseable = ms?.rebaseable ?? undefined;
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, needsRebase, reviewStatus, prUrl, prNumber, failedChecks, behind, commitsBehind, commitsAhead, rebaseable});
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, localAhead, reviewStatus, prUrl, prNumber, failedChecks, behind, commitsBehind, commitsAhead, rebaseable});
 	}
 
 	return children;

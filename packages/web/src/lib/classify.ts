@@ -13,6 +13,7 @@ export function classifyCommit(commit: CommitItem, project: ProjectInfo): Catego
 export function classifyBranch(branch: BranchItem, project: ProjectInfo): Category {
 	if (branch.skippable) return 'skippable';
 	if (branch.testStatus === 'failed') return 'test_failed';
+	if (branch.pushedToRemote && branch.localAhead) return 'ready_to_push';
 	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	if (branch.needsRebase) return 'needs_rebase';
 	if (branch.testStatus === 'passed' && (branch.commitsAhead ?? 1) > 1) return 'needs_split';
@@ -24,6 +25,7 @@ export function classifyBranch(branch: BranchItem, project: ProjectInfo): Catego
 
 export function classifyPullRequest(pr: PullRequestItem): Category {
 	if (pr.skippable) return 'skippable';
+	if (pr.checkStatus === 'failed' && pr.localAhead) return 'ready_to_push';
 	if (pr.checkStatus === 'failed') return 'checks_failed';
 	if (pr.checkStatus === 'running' || pr.checkStatus === 'pending') return 'checks_running';
 	if (pr.reviewStatus === 'approved' && pr.checkStatus === 'passed') return 'approved';

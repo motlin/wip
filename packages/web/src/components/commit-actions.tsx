@@ -335,8 +335,8 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 					</button>
 				)}
 
-				{/* Force Push (diverged) */}
-				{item.needsRebase && (
+				{/* Force Push (local ahead of remote) */}
+				{item.localAhead && (
 					<button
 						type="button"
 						onClick={handleForcePush}

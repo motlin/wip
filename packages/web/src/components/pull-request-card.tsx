@@ -100,10 +100,10 @@ export function PullRequestCard({pr}: {pr: PullRequestItem}) {
 				>
 					{pr.branch}
 				</a>
-				{pr.needsRebase && (
-					<span title="Local and remote have diverged" className="shrink-0 inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+				{pr.localAhead && (
+					<span title="Local branch is ahead of remote (needs force-push)" className="shrink-0 inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
 						<AlertCircle className="h-2.5 w-2.5" />
-						diverged
+						local ahead
 					</span>
 				)}
 				{commitsBehind != null && commitsBehind > 0 && (

@@ -70,6 +70,7 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 		if (child.testStatus === 'unknown') return 'ready_to_test';
 	}
 
+	if (child.pushedToRemote && child.localAhead) return 'ready_to_push';
 	if (child.pushedToRemote && !child.prUrl) return 'pushed_no_pr';
 
 	if (child.prUrl) {

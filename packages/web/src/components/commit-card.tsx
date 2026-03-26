@@ -1,5 +1,6 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {useState} from 'react';
+import {Link} from '@tanstack/react-router';
 import type {CommitItem} from '@wip/shared';
 import {Diff, GitBranch, Loader2, Info} from 'lucide-react';
 import {createBranch} from '../lib/server-fns';
@@ -50,10 +51,10 @@ export function CommitCard({commit}: {commit: CommitItem}) {
 					)}
 				</div>
 			</div>
-			<p className="mt-1.5 text-sm leading-snug text-text-100">
+			<Link to="/item/$project/$sha" params={{project: commit.project, sha: commit.sha}} className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors">
 				<span className="font-mono text-xs text-text-400 mr-1.5">{commit.shortSha}</span>
 				{commit.subject}
-			</p>
+			</Link>
 
 			{commit.testStatus === 'failed' && commit.failureTail && (
 				<AnsiText

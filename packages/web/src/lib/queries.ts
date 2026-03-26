@@ -26,16 +26,6 @@ export const projectItemsQueryOptions = () => queryOptions({
 	queryFn: () => getProjectItemsFn(),
 });
 
-export const issueByNumberQueryOptions = (repo: string, number: number) => queryOptions({
-	queryKey: ['issue', repo, number],
-	queryFn: () => getIssueByNumber({data: {repo, number}}),
-});
-
-export const projectItemByNumberQueryOptions = (repo: string, number: number) => queryOptions({
-	queryKey: ['projectItem', repo, number],
-	queryFn: () => getProjectItemByNumber({data: {repo, number}}),
-});
-
 export const snoozedQueryOptions = () => queryOptions({
 	queryKey: ['snoozed'],
 	queryFn: () => getSnoozedList(),
@@ -67,4 +57,14 @@ export const testLogQueryOptions = (project: string, sha: string) => queryOption
 	queryFn: () => getTestLog({data: {project, sha}}),
 	staleTime: Infinity,
 	gcTime: Infinity,
+});
+
+export const issueByNumberQueryOptions = (project: string, number: number) => queryOptions({
+	queryKey: ['issue', project, number],
+	queryFn: () => getIssueByNumber({data: {project, number}}),
+});
+
+export const boardItemByNumberQueryOptions = (project: string, number: number) => queryOptions({
+	queryKey: ['boardItem', project, number],
+	queryFn: () => getProjectItemByNumber({data: {project, number}}),
 });

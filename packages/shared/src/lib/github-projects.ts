@@ -3,6 +3,7 @@ import {execa} from 'execa';
 import type {Category} from './schemas.js';
 import {log} from '../services/logger.js';
 import {getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb} from './db.js';
+import {isGitHubRateLimited, markGitHubRateLimited} from './rate-limit.js';
 
 export interface GitHubProjectItem {
 	id: string;
@@ -44,6 +45,9 @@ export async function fetchProjects(): Promise<GitHubProject[]> {
 
 	if (result.exitCode !== 0 || !result.stdout) {
 		log.subprocess.debug({stderr: result.stderr}, 'gh projects fetch failed (likely missing read:project scope)');
+		if (result.stderr?.includes('rate limit') || result.stderr?.includes('API rate limit')) {
+			markGitHubRateLimited();
+		}
 		return [];
 	}
 
@@ -137,6 +141,10 @@ export function mapProjectStatusToCategory(status: string): Category {
 }
 
 const PROJECT_ITEMS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+// Return stale cached data that is up to 1 hour old when rate limited
+const PROJECT_ITEMS_STALE_TTL_MS = 60 * 60 * 1000;
+
+let inflightProjectItemsRequest: Promise<GitHubProjectItem[]> | null = null;
 
 export function invalidateProjectItemsCache(): void {
 	invalidateProjectItemsCacheDb();
@@ -151,6 +159,26 @@ export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
 	const cached = getCachedProjectItems(PROJECT_ITEMS_CACHE_TTL_MS);
 	if (cached) return JSON.parse(cached) as GitHubProjectItem[];
 
+	// If rate limited, return stale cache rather than calling API
+	if (isGitHubRateLimited()) {
+		const stale = getCachedProjectItems(PROJECT_ITEMS_STALE_TTL_MS);
+		if (stale) return JSON.parse(stale) as GitHubProjectItem[];
+		return [];
+	}
+
+	// Deduplicate concurrent requests
+	if (inflightProjectItemsRequest) return inflightProjectItemsRequest;
+
+	const promise = fetchAllProjectItemsFromApi();
+	inflightProjectItemsRequest = promise;
+	try {
+		return await promise;
+	} finally {
+		inflightProjectItemsRequest = null;
+	}
+}
+
+async function fetchAllProjectItemsFromApi(): Promise<GitHubProjectItem[]> {
 	const projects = await fetchProjects();
 	if (projects.length === 0) return [];
 

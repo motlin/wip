@@ -5,7 +5,12 @@ import * as path from 'node:path';
 import {log} from '../services/logger.js';
 import {nameBranch} from './branch-namer.js';
 import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getBranchName, setBranchName, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin, getCachedUpstreamSha, cacheUpstreamSha, getCachedMergeStatuses, cacheMergeStatus} from './db.js';
+import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from './rate-limit.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
+
+// --- In-flight request deduplication ---
+// Prevents duplicate concurrent GraphQL calls for the same repository.
+const inflightPrRequests = new Map<string, Promise<PrStatuses>>();
 
 const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 
@@ -260,30 +265,85 @@ async function getGhLogin(): Promise<string> {
 	return '';
 }
 
-export async function getPrStatuses(dir: string, projectName?: string): Promise<PrStatuses> {
+function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
 	const urls = new Map<string, string>();
 	const failedChecks = new Map<string, Array<{name: string; url?: string}>>();
 	const behind = new Map<string, boolean>();
 	const prNumbers = new Map<string, number>();
+	for (const s of cached) {
+		review.set(s.branch, s.reviewStatus);
+		checks.set(s.branch, s.checkStatus);
+		if (s.prUrl) urls.set(s.branch, s.prUrl);
+		if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
+		if (s.failedChecks) failedChecks.set(s.branch, s.failedChecks);
+		if (s.behind) behind.set(s.branch, true);
+	}
+	return {review, checks, urls, failedChecks, behind, prNumbers};
+}
 
-	// Check cache first
+function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
+	const review = new Map<string, ReviewStatus>();
+	const checks = new Map<string, CheckStatus>();
+	const urls = new Map<string, string>();
+	const failedChecks = new Map<string, Array<{name: string; url?: string}>>();
+	const behind = new Map<string, boolean>();
+	const prNumbers = new Map<string, number>();
+	for (const s of stale) {
+		review.set(s.branch, s.reviewStatus);
+		checks.set(s.branch, 'unknown');
+		if (s.prUrl) urls.set(s.branch, s.prUrl);
+		if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
+	}
+	return {review, checks, urls, failedChecks, behind, prNumbers};
+}
+
+function emptyPrStatuses(): PrStatuses {
+	return {review: new Map(), checks: new Map(), urls: new Map(), failedChecks: new Map(), behind: new Map(), prNumbers: new Map()};
+}
+
+/**
+ * Fetch PR statuses from GitHub GraphQL API with caching, rate limit
+ * detection, and in-flight request deduplication.
+ *
+ * Multiple concurrent callers for the same repo will share a single
+ * API request rather than each firing their own GraphQL query.
+ */
+export async function getPrStatuses(dir: string, projectName?: string): Promise<PrStatuses> {
+	// Check cache first (fast path, no API call needed)
 	if (projectName) {
 		const cached = getCachedPrStatuses(projectName);
-		if (cached) {
-			for (const s of cached) {
-				review.set(s.branch, s.reviewStatus);
-				checks.set(s.branch, s.checkStatus);
-				if (s.prUrl) urls.set(s.branch, s.prUrl);
-				if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
-				if (s.failedChecks) failedChecks.set(s.branch, s.failedChecks);
-				if (s.behind) behind.set(s.branch, true);
-			}
-			return {review, checks, urls, failedChecks, behind, prNumbers};
-		}
+		if (cached) return buildPrStatusesFromCached(cached);
 	}
 
+	// If rate limited, return stale cache immediately without calling API
+	if (isGitHubRateLimited()) {
+		if (projectName) {
+			const stale = getStalePrStatuses(projectName);
+			if (stale) return buildStalePrStatuses(stale);
+		}
+		return emptyPrStatuses();
+	}
+
+	// Deduplicate in-flight requests by directory (same repo = same GraphQL result)
+	// Use the resolved real path as the dedup key so symlinks don't cause duplicates
+	const dedupeKey = dir;
+	const inflight = inflightPrRequests.get(dedupeKey);
+	if (inflight) {
+		return inflight;
+	}
+
+	const promise = fetchPrStatusesFromApi(dir, projectName);
+	inflightPrRequests.set(dedupeKey, promise);
+	try {
+		return await promise;
+	} finally {
+		inflightPrRequests.delete(dedupeKey);
+	}
+}
+
+async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promise<PrStatuses> {
 	const ghLogin = await getGhLogin();
 
 	const start = performance.now();
@@ -297,26 +357,29 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 	log.subprocess.debug({cmd: 'gh', args: ['api', 'graphql', 'pullRequests'], duration}, `gh api graphql pullRequests (${duration}ms)`);
 
 	if (result.exitCode !== 0 || !result.stdout) {
-		// API call failed (rate limit, network error, etc.) — fall back to stale cache
+		// Detect rate limiting and activate cooldown to prevent further calls
+		if (detectRateLimitError(result.stderr, result.stdout ?? '')) {
+			markGitHubRateLimited();
+		}
+		// API call failed — fall back to stale cache
 		if (projectName) {
 			const stale = getStalePrStatuses(projectName);
-			if (stale) {
-				for (const s of stale) {
-					review.set(s.branch, s.reviewStatus);
-					checks.set(s.branch, 'unknown');
-					if (s.prUrl) urls.set(s.branch, s.prUrl);
-					if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
-				}
-				return {review, checks, urls, failedChecks, behind, prNumbers};
-			}
+			if (stale) return buildStalePrStatuses(stale);
 		}
-		return {review, checks, urls, failedChecks, behind, prNumbers};
+		return emptyPrStatuses();
 	}
 
 	const response = JSON.parse(result.stdout) as {data?: {repository: {pullRequests: {nodes: GraphQLPrNode[]}}}};
 	const allPrs = response.data?.repository.pullRequests.nodes ?? [];
 	const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
 	const toCache: CachedPrStatus[] = [];
+
+	const review = new Map<string, ReviewStatus>();
+	const checks = new Map<string, CheckStatus>();
+	const urls = new Map<string, string>();
+	const failedChecks = new Map<string, Array<{name: string; url?: string}>>();
+	const behind = new Map<string, boolean>();
+	const prNumbers = new Map<string, number>();
 
 	for (const pr of prs) {
 		const branch = pr.headRefName;

@@ -290,42 +290,49 @@ This reflects a one-commit-at-a-time workflow where each branch should ideally c
 
 ## Classify Logic → DFA Mapping
 
-The current `classify.ts` maps items to the old `Category` enum. This section traces every code path and maps it to a DFA state, revealing which states are distinguished vs collapsed.
+The `classify.ts` module maps items to the `Category` enum. This section traces every code path and maps it to a DFA state, revealing which states are distinguished vs collapsed.
 
 ### classifyCommit (bare commits — CommitItem)
 
-| Code path | Old category | DFA # | DFA state | Notes |
-|-----------|-------------|-------|-----------|-------|
+| Code path | Category | DFA # | DFA state | Notes |
+|-----------|----------|-------|-----------|-------|
 | `commit.skippable` | `skippable` | 2 | Skippable | |
-| `project.detachedHead` | `detached_head` | 6–10 | Bare commit (any) | Collapses all bare commit substates |
+| `commit.testStatus === 'failed'` | `test_failed` | 9 | Bare commit, test failed | |
+| `commit.testStatus === 'passed'` | `ready_to_push` | 10 | Bare commit, test passed | |
+| `project.detachedHead` | `detached_head` | 6–8 | Bare commit (any untested) | Collapses dirty/no-test/untested substates |
 | `project.dirty` | `local_changes` | 6 | Bare commit, dirty | |
 | `!project.hasTestConfigured` | `no_test` | 7 | Bare commit, no test | |
 | default | `ready_to_test` | 8 | Bare commit, untested | |
 
-**Missing**: CommitItem has no `testStatus` field, so #9 (bare commit, test failed) and #10 (bare commit, test passed) are unreachable. Bare commits can't be tested in the current model.
+CommitItem now has `testStatus`, so states #9 and #10 are reachable. The `detachedHead` check still collapses the untested substates (#6–8) when reached before the dirty/no-test checks.
 
 ### classifyBranch (branches — BranchItem)
 
-| Code path | Old category | DFA # | DFA state | Notes |
-|-----------|-------------|-------|-----------|-------|
+| Code path | Category | DFA # | DFA state | Notes |
+|-----------|----------|-------|-----------|-------|
 | `branch.skippable` | `skippable` | 2 | Skippable | |
 | `testStatus === 'failed'` | `test_failed` | 18–20 | Branch, test failed | Not checking rebased or conflicts |
-| `pushedToRemote && branch !== upstream` | `pushed_no_pr` | 24 or 25 | Pushed, needs PR | Not checking sync state |
-| `testStatus === 'passed' && commitsAhead > 1` | `needs_split` | 22 | Branch, test passed, multi-commit | Needs splitting before push |
-| `testStatus === 'passed'` | `ready_to_push` | 21, 23 | Branch, test passed, single-commit | Not checking rebased |
+| `pushedToRemote && localAhead` | `ready_to_push` | 25 | Pushed, local ahead, needs PR | Local has unpushed commits |
+| `pushedToRemote && branch !== upstream` | `pushed_no_pr` | 24 | Pushed, in sync, needs PR | |
+| `branch.needsRebase` | `needs_rebase` | 13, 16 | Branch, not rebased | Distinguishes needs-rebase from rebased |
+| `testStatus === 'passed' && commitsAhead > 1` | `needs_split` | 22 | Branch, test passed, multi-commit | |
+| `testStatus === 'passed'` | `ready_to_push` | 23 | Branch, test passed, single-commit | Not checking rebased |
 | `project.dirty` | `local_changes` | 11 | Branch, dirty | |
 | `!project.hasTestConfigured` | `no_test` | 12–14 | Branch, no test | Not checking rebased or conflicts |
 | default | `ready_to_test` | 15–17 | Branch, untested | Not checking rebased or conflicts |
 
-**Missing**: `needsRebase` field exists on BranchItem but classify ignores it. `rebaseable` (conflict detection) exists but classify ignores it. Conflict states #12, #15, #18 collapsed with non-conflict counterparts. Rebase states #13, #16, #19, #21 collapsed with rebased counterparts.
+**Now distinguished**: `needsRebase` check separates not-rebased branches (#13, #16) from rebased ones. `localAhead` check separates pushed-but-ahead (#25) from in-sync (#24).
+
+**Still collapsed**: `rebaseable` (conflict detection) exists on BranchItem but classify ignores it, so conflict states #12, #15, #18 are collapsed with their non-conflict counterparts. State #19 (not rebased, test failed) is collapsed with #20 because `testStatus === 'failed'` is checked before `needsRebase`.
 
 ### classifyPullRequest (PRs — PullRequestItem)
 
-| Code path | Old category | DFA # | DFA state | Notes |
-|-----------|-------------|-------|-----------|-------|
+| Code path | Category | DFA # | DFA state | Notes |
+|-----------|----------|-------|-----------|-------|
 | `pr.skippable` | `skippable` | 2 | Skippable | |
+| `checkStatus === 'failed' && localAhead` | `ready_to_push` | 33 | PR, checks failed, local ahead | Fix already committed locally |
 | `checkStatus === 'failed'` | `checks_failed` | 32 | PR, checks failed | Checked before review — blocks approved |
-| `checkStatus === 'running'/'pending'` | `checks_running` | 31, 37 | PR, checks running | Checked before review — blocks approved |
+| `checkStatus === 'running'/'pending'` | `checks_running` | 31, 37 | PR, checks running | Checked before review — collapses #37 (approved + running) |
 | `reviewStatus === 'approved' && checkStatus === 'passed'` | `approved` | 38 | PR, approved | Both checks and review must pass |
 | `reviewStatus === 'changes_requested'` | `changes_requested` | 36 | PR, changes requested | After CI blocking checks |
 | `reviewStatus === 'commented'` | `review_comments` | 35 | PR, review comments | After CI blocking checks |
@@ -333,7 +340,9 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | `checkStatus === 'unknown'/'none'` | `checks_unknown` | 30 | PR, checks unknown | |
 | default | `checks_running` | 31 | PR, checks running | Fallback |
 
-**Missing**: Draft PR states #26–29 not distinguished (no draft detection). #33 (checks failed + local ahead) collapsed with #32.
+**Now distinguished**: `localAhead` check separates #33 (checks failed + local ahead, shown as `ready_to_push`) from #32 (checks failed, in sync).
+
+**Still collapsed**: Draft PR states #26–29 not distinguished (no draft field on PullRequestItem). State #37 (checks running + approved) collapsed with #31 (checks running).
 
 ### Idea items (not classified — added directly in useWorkItems)
 
@@ -356,23 +365,23 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | 6 | Bare commit, dirty | yes | classifyCommit |
 | 7 | Bare commit, no test | yes | classifyCommit |
 | 8 | Bare commit, untested | yes | classifyCommit |
-| 9 | Bare commit, test failed | **bug** | CommitItem drops testStatus from ChildCommit |
-| 10 | Bare commit, test passed | **bug** | CommitItem drops testStatus from ChildCommit |
+| 9 | Bare commit, test failed | yes | classifyCommit (`testStatus === 'failed'`) |
+| 10 | Bare commit, test passed | yes | classifyCommit (`testStatus === 'passed'`) |
 | 11 | Branch, dirty | yes | classifyBranch |
 | 12 | Branch, no test, conflicts | **collapsed** | shown as #14 (no_test) |
-| 13 | Branch, no test, not rebased | **collapsed** | shown as #14 (no_test) |
+| 13 | Branch, no test, not rebased | yes | classifyBranch (`needsRebase`) |
 | 14 | Branch, no test, rebased | yes | classifyBranch |
 | 15 | Branch, conflicts, untested | **collapsed** | shown as #17 (ready_to_test) |
-| 16 | Branch, not rebased, untested | **collapsed** | shown as #17 (ready_to_test) |
+| 16 | Branch, not rebased, untested | yes | classifyBranch (`needsRebase`) |
 | 17 | Branch, rebased, untested | yes | classifyBranch |
 | 18 | Branch, conflicts, test failed | **collapsed** | shown as #20 (test_failed) |
-| 19 | Branch, not rebased, test failed | **collapsed** | shown as #20 (test_failed) |
+| 19 | Branch, not rebased, test failed | **collapsed** | shown as #20 (test_failed); `testStatus === 'failed'` checked before `needsRebase` |
 | 20 | Branch, rebased, test failed | yes | classifyBranch |
-| 21 | Branch, not rebased, test passed | **collapsed** | shown as #23 (ready_to_push) |
+| 21 | Branch, not rebased, test passed | yes | classifyBranch (`needsRebase` checked before `testStatus === 'passed'`) |
 | 22 | Branch, rebased, test passed, multi | yes | classifyBranch (shown as needs_split) |
 | 23 | Branch, rebased, test passed, single | yes | classifyBranch |
-| 24 | Pushed, in sync, needs PR | yes | classifyBranch |
-| 25 | Pushed, local ahead, needs PR | **collapsed** | shown as #24 |
+| 24 | Pushed, in sync, needs PR | yes | classifyBranch (`pushedToRemote && !localAhead`) |
+| 25 | Pushed, local ahead, needs PR | yes | classifyBranch (`pushedToRemote && localAhead`) |
 | 26 | Draft PR, checks unknown | **collapsed** | shown as #30 (no draft detection) |
 | 27 | Draft PR, checks running | **collapsed** | shown as #31 (no draft detection) |
 | 28 | Draft PR, checks failed | **collapsed** | shown as #32 (no draft detection) |
@@ -380,38 +389,34 @@ The current `classify.ts` maps items to the old `Category` enum. This section tr
 | 30 | PR, checks unknown | yes | classifyPullRequest |
 | 31 | PR, checks running | yes | classifyPullRequest |
 | 32 | PR, checks failed | yes | classifyPullRequest |
-| 33 | PR, checks failed, local ahead | **collapsed** | shown as #32 |
+| 33 | PR, checks failed, local ahead | yes | classifyPullRequest (`localAhead`, shown as ready_to_push) |
 | 34 | PR, checks passed, no review | yes | classifyPullRequest |
 | 35 | PR, review comments | yes | classifyPullRequest |
 | 36 | PR, changes requested | yes | classifyPullRequest |
-| 37 | PR, checks running, approved | yes | classifyPullRequest (shown as checks_running) |
+| 37 | PR, checks running, approved | **collapsed** | shown as #31 (checks_running) |
 | 38 | PR, approved | yes | classifyPullRequest |
 
-**22 of 38 states are reachable.** 16 are collapsed or unreachable:
-- 2 unreachable (bare commit test results — no field exists)
-- 4 collapsed (draft PRs — no draft detection in current code)
-- 10 collapsed (rebase/conflict status and remote sync not checked)
+**29 of 38 states are reachable.** 9 are collapsed:
+- 4 collapsed (draft PRs — no draft field on PullRequestItem)
+- 3 collapsed (conflict states #12, #15, #18 — `rebaseable` field exists but classify ignores it)
+- 1 collapsed (needsRebase not checked when test failed: #19 — `testStatus === 'failed'` checked before `needsRebase`)
+- 1 collapsed (approved + checks running #37 — `checkStatus` checked before `reviewStatus`)
+
+### Changes since initial analysis
+
+The following states became reachable through code changes after the DFA model was first documented:
+
+| DFA # | State | Change |
+|-------|-------|--------|
+| 9 | Bare commit, test failed | `testStatus` added to CommitItem schema |
+| 10 | Bare commit, test passed | `testStatus` added to CommitItem schema |
+| 13 | Branch, no test, not rebased | `needsRebase` check added to classifyBranch |
+| 16 | Branch, not rebased, untested | `needsRebase` check added to classifyBranch |
+| 21 | Branch, not rebased, test passed | `needsRebase` checked before `testStatus === 'passed'` in classifyBranch |
+| 25 | Pushed, local ahead, needs PR | `localAhead` check added to classifyBranch |
+| 33 | PR, checks failed, local ahead | `localAhead` check added to classifyPullRequest |
 
 ## Current Limitations
-
-### Missing: Needs Rebase Stage
-
-**Currently, branches that are not descendants of `upstream/main` are invisible.** The `git children` command only returns commits that descend from the upstream ref. Branches that diverged before the latest upstream (i.e., need rebasing) simply don't appear in the UI.
-
-This should be fixed so that:
-1. All local branches are discovered (not just children of upstream)
-2. Branches not containing upstream are classified as `needs_rebase`
-3. The rebase+test diamond is properly modeled in the classify logic
-
-### Missing: Independent Rebase + Test Tracking
-
-The current classify logic treats rebase and test as sequential. A branch that's been tested but needs rebase is invisible (not a child of upstream). A branch that's been rebased but not tested shows as `ready_to_test`. The diamond relationship isn't tracked.
-
-Ideally, the UI would show:
-- "Needs rebase" — not a descendant of upstream
-- "Needs rebase + test" — neither done
-- "Needs test" — rebased but untested
-- "Ready to push" — both done
 
 ### Missing: Conflict Detection
 
@@ -421,12 +426,13 @@ The `rebaseable` field exists on BranchItem (computed via `git merge-tree`) but 
 
 Draft PRs are a real intermediate state between "pushed, needs PR" and "PR ready for review." They're used to get early CI feedback without requesting review. The current code doesn't distinguish draft from non-draft PRs. Inspired by GitHub's `MergeStateStatus.DRAFT`.
 
-### Missing: Remote Sync Tracking
+### Missing: Rebase Check After Test Failure
 
-The current model treats "pushed" as a binary state. It doesn't track whether the local branch is ahead of, behind, or in sync with the remote branch. This matters for:
-- Knowing when a force-push is needed after fixup+rebase
-- Detecting when remote has diverged (e.g., after pushing from another machine)
-- Distinguishing "needs push" from "needs PR creation"
+The `needsRebase` check in classifyBranch occurs after the `testStatus === 'failed'` check, so branches that have failed tests AND need rebase (#19) are classified as `test_failed` rather than showing both the rebase requirement and the test failure. For passed tests, `needsRebase` is checked first, so #21 (not rebased, test passed) correctly shows as `needs_rebase`.
+
+### Missing: Approved + Checks Running
+
+State #37 (approved but checks still running) is collapsed with #31 (checks running). The `checkStatus` is checked before `reviewStatus`, so an approved PR with running checks shows as `checks_running` rather than a distinct "approved, waiting for CI" state.
 
 ### Missing: Project-Level Properties
 

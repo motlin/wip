@@ -1,4 +1,5 @@
 import {CircleDot} from 'lucide-react';
+import {Link} from '@tanstack/react-router';
 import type {IssueItem} from '@wip/shared';
 
 export function IssueCard({issue}: {issue: IssueItem}) {
@@ -23,7 +24,9 @@ export function IssueCard({issue}: {issue: IssueItem}) {
 					#{issue.number}
 				</a>
 			</div>
-			<p className="mt-1.5 text-sm leading-snug text-text-100">{issue.title}</p>
+			<Link to="/issue/$project/$number" params={{project: issue.project, number: String(issue.number)}} className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors">
+				{issue.title}
+			</Link>
 			{issue.labels.length > 0 && (
 				<div className="mt-1.5 flex flex-wrap gap-1">
 					{issue.labels.map((label) => (

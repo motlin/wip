@@ -1,6 +1,7 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {Loader2, Clock, Diff, X, GitBranch, AlertCircle, XCircle} from 'lucide-react';
 import {useRef, useEffect} from 'react';
+import {Link} from '@tanstack/react-router';
 import type {PullRequestItem} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
@@ -125,7 +126,9 @@ export function PullRequestCard({pr}: {pr: PullRequestItem}) {
 				)}
 			</div>
 
-			<p className="mt-1.5 text-sm leading-snug text-text-100">{pr.subject}</p>
+			<Link to="/item/$project/$sha" params={{project: pr.project, sha: pr.sha}} className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors">
+				{pr.subject}
+			</Link>
 
 			{pr.checkStatus === 'failed' && pr.failedChecks && pr.failedChecks.length > 0 && (
 				<div className="mt-2 flex flex-wrap gap-1">

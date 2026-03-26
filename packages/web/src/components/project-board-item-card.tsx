@@ -1,4 +1,5 @@
 import {LayoutGrid} from 'lucide-react';
+import {Link} from '@tanstack/react-router';
 import type {ProjectBoardItem} from '@wip/shared';
 
 export function ProjectBoardItemCard({item}: {item: ProjectBoardItem}) {
@@ -24,7 +25,13 @@ export function ProjectBoardItemCard({item}: {item: ProjectBoardItem}) {
 					</a>
 				)}
 			</div>
-			<p className="mt-1.5 text-sm leading-snug text-text-100">{item.title}</p>
+			{item.number ? (
+				<Link to="/board-item/$project/$number" params={{project: item.project, number: String(item.number)}} className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors">
+					{item.title}
+				</Link>
+			) : (
+				<p className="mt-1.5 text-sm leading-snug text-text-100">{item.title}</p>
+			)}
 			<div className="mt-1.5">
 				<span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
 					<LayoutGrid className="h-2.5 w-2.5" />

@@ -1,6 +1,7 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Copy, Check} from 'lucide-react';
 import {useRef, useEffect, useState} from 'react';
+import {Link} from '@tanstack/react-router';
 import type {BranchItem} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
@@ -113,7 +114,9 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 				)}
 			</div>
 
-			<p className="mt-1.5 text-sm leading-snug text-text-100">{branch.subject}</p>
+			<Link to="/item/$project/$sha" params={{project: branch.project, sha: branch.sha}} className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors">
+				{branch.subject}
+			</Link>
 
 			{branch.testStatus === 'failed' && branch.failureTail && (
 				<AnsiText

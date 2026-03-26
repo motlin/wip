@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import path from 'node:path';
 
 import type {ChildCommit, ProjectInfo} from '@wip/shared';
 
@@ -106,18 +107,207 @@ function captureConsoleLog(): {getOutput: () => string; restore: () => void} {
 	};
 }
 
-/**
- * Assert that captured output is valid JSON with no extra non-JSON content.
- * The output may contain ANSI color codes from oclif's colorizeJson, so we strip those.
- */
-function assertValidJsonOutput(output: string): unknown {
-	expect(output.trim()).not.toBe('');
-	// Strip ANSI escape codes that oclif's colorizeJson may add
+function parseJsonOutput(output: string): unknown {
 	const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-	const parsed = JSON.parse(stripped);
-	expect(parsed).toBeDefined();
-	return parsed;
+	return JSON.parse(stripped);
 }
+
+const expectedChildrenJson = {
+	projects: [
+		{
+			name: 'test-project',
+			dir: '/tmp/fake-projects/test-project',
+			children: [
+				{
+					sha: 'abc123def456789012345678901234567890abcd',
+					shortSha: 'abc123d',
+					subject: 'Add feature X',
+					date: '2025-01-15',
+					branch: 'feature-x',
+					testStatus: 'passed',
+					checkStatus: 'none',
+					skippable: false,
+					pushedToRemote: false,
+					reviewStatus: 'no_pr',
+				},
+				{
+					sha: 'def456789012345678901234567890abcdef1234',
+					shortSha: 'def4567',
+					subject: 'Fix bug Y',
+					date: '2025-01-16',
+					testStatus: 'failed',
+					checkStatus: 'none',
+					skippable: false,
+					pushedToRemote: false,
+					reviewStatus: 'no_pr',
+				},
+			],
+		},
+	],
+	summary: {total: 2, passed: 1, failed: 1, unknown: 0},
+};
+
+const expectedChildrenRunResult = {
+	projects: [
+		{
+			name: 'test-project',
+			dir: '/tmp/fake-projects/test-project',
+			children: [
+				{
+					sha: 'abc123def456789012345678901234567890abcd',
+					shortSha: 'abc123d',
+					subject: 'Add feature X',
+					date: '2025-01-15',
+					branch: 'feature-x',
+					testStatus: 'passed',
+					checkStatus: 'none',
+					skippable: false,
+					pushedToRemote: false,
+					reviewStatus: 'no_pr',
+				},
+				{
+					sha: 'def456789012345678901234567890abcdef1234',
+					shortSha: 'def4567',
+					subject: 'Fix bug Y',
+					date: '2025-01-16',
+					branch: undefined,
+					testStatus: 'failed',
+					checkStatus: 'none',
+					skippable: false,
+					pushedToRemote: false,
+					reviewStatus: 'no_pr',
+				},
+			],
+		},
+	],
+	summary: {total: 2, passed: 1, failed: 1, unknown: 0},
+};
+
+const expectedReportJson = {
+	summary: {
+		projects: 1,
+		children: 2,
+		readyToPush: 1,
+		readyToTest: 0,
+		testFailed: 1,
+		needsRebase: 0,
+		localChanges: 0,
+		detachedHead: 0,
+		noTest: 0,
+		notStarted: 0,
+		pushedNoPr: 0,
+		checksUnknown: 0,
+		checksRunning: 0,
+		checksFailed: 0,
+		checksPassed: 0,
+		reviewComments: 0,
+		changesRequested: 0,
+		approved: 0,
+		skippable: 0,
+		snoozed: 0,
+	},
+	readyToPush: [
+		{
+			project: 'test-project',
+			sha: 'abc123def456789012345678901234567890abcd',
+			shortSha: 'abc123d',
+			subject: 'Add feature X',
+			date: '2025-01-15',
+			category: 'ready_to_push',
+		},
+	],
+	testFailed: [
+		{
+			project: 'test-project',
+			sha: 'def456789012345678901234567890abcdef1234',
+			shortSha: 'def4567',
+			subject: 'Fix bug Y',
+			date: '2025-01-16',
+			category: 'test_failed',
+		},
+	],
+	needsRebase: [],
+	readyToTest: [],
+	localChanges: [],
+	detachedHead: [],
+	noTest: [],
+	notStarted: [],
+	pushedNoPr: [],
+	checksUnknown: [],
+	checksRunning: [],
+	checksFailed: [],
+	checksPassed: [],
+	reviewComments: [],
+	changesRequested: [],
+	approved: [],
+	skippable: [],
+	snoozed: [],
+	nextSteps: [
+		'wip push                    # push 1 green children',
+		'wip results --status failed # investigate 1 local test failures',
+	],
+};
+
+const expectedPushJson = {
+	dryRun: true,
+	pushed: [
+		{
+			sha: 'abc123def456789012345678901234567890abcd',
+			shortSha: 'abc123d',
+			subject: 'Add feature X',
+			branch: 'feature-x',
+			status: 'planned',
+		},
+	],
+	skippedProjects: [],
+	summary: {pushed: 0, planned: 1, failed: 0, skipped: 0},
+};
+
+const expectedTestJson = {
+	dryRun: true,
+	results: [
+		{
+			sha: 'abc123def456789012345678901234567890abcd',
+			shortSha: 'abc123d',
+			project: 'test-project',
+			branch: 'feature-x',
+			exitCode: 0,
+			status: 'planned',
+		},
+		{
+			sha: 'def456789012345678901234567890abcdef1234',
+			shortSha: 'def4567',
+			project: 'test-project',
+			branch: 'mock-branch-name',
+			exitCode: 0,
+			status: 'planned',
+		},
+	],
+	skippedProjects: [],
+	summary: {tested: 0, passed: 0, failed: 0, fixed: 0, skipped: 0},
+};
+
+const expectedTestFastJson = {
+	dryRun: true,
+	results: [
+		{
+			sha: 'abc123def456789012345678901234567890abcd',
+			shortSha: 'abc123d',
+			project: 'test-project',
+			exitCode: 0,
+			status: 'planned',
+		},
+		{
+			sha: 'def456789012345678901234567890abcdef1234',
+			shortSha: 'def4567',
+			project: 'test-project',
+			exitCode: 0,
+			status: 'planned',
+		},
+	],
+	skippedProjects: [],
+	summary: {tested: 0, passed: 0, failed: 0, fixed: 0, skipped: 0},
+};
 
 describe('JSON output mode', () => {
 	let capture: ReturnType<typeof captureConsoleLog>;
@@ -138,203 +328,106 @@ describe('JSON output mode', () => {
 	});
 
 	describe('children --json', () => {
-		it('outputs only valid JSON to stdout', async () => {
+		it('outputs structured JSON with project children and summary', async () => {
 			const {default: Children} = await import('../commands/children.js');
 			await Children.run(['--json', '--projects-dir', '/tmp/fake-projects']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('projects');
-			expect(parsed).toHaveProperty('summary');
-			expect((parsed as any).summary).toEqual({total: 2, passed: 1, failed: 1, unknown: 0});
-			expect((parsed as any).projects).toHaveLength(1);
-			expect((parsed as any).projects[0].name).toBe('test-project');
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedChildrenJson);
 		});
 
 		it('returns structured data from run()', async () => {
 			const {default: Children} = await import('../commands/children.js');
 			const result = await Children.run(['--json', '--projects-dir', '/tmp/fake-projects']);
 
-			expect(result).toHaveProperty('projects');
-			expect(result).toHaveProperty('summary');
-			expect(result.summary.total).toBe(2);
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: Children} = await import('../commands/children.js');
-			await Children.run(['--json', '--projects-dir', '/tmp/fake-projects']);
-
-			const output = capture.getOutput();
-			// Strip ANSI codes
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			// Should not contain human-readable table fragments
-			expect(stripped).not.toContain('\u2713');
-			expect(stripped).not.toContain('\u2717');
-			expect(stripped).not.toContain('Total:');
+			expect(result).toStrictEqual(expectedChildrenRunResult);
 		});
 	});
 
 	describe('results --json', () => {
-		it('outputs only valid JSON to stdout', async () => {
+		it('outputs structured JSON with test results and summary', async () => {
 			const {default: Results} = await import('../commands/results.js');
 			await Results.run(['--json', '--projects-dir', '/tmp/fake-projects']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('results');
-			expect(parsed).toHaveProperty('summary');
-			expect((parsed as any).results).toHaveLength(2);
-			expect((parsed as any).summary).toEqual({total: 2, passed: 1, failed: 1, unknown: 0});
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: Results} = await import('../commands/results.js');
-			await Results.run(['--json', '--projects-dir', '/tmp/fake-projects']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			// Should not have the human summary line format
-			expect(stripped).not.toMatch(/\d+ results:/);
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
+				results: [
+					{
+						project: 'test-project',
+						sha: 'abc123def456789012345678901234567890abcd',
+						shortSha: 'abc123d',
+						subject: 'Add feature X',
+						testStatus: 'passed',
+					},
+					{
+						project: 'test-project',
+						sha: 'def456789012345678901234567890abcdef1234',
+						shortSha: 'def4567',
+						subject: 'Fix bug Y',
+						testStatus: 'failed',
+					},
+				],
+				summary: {total: 2, passed: 1, failed: 1, unknown: 0},
+			});
 		});
 	});
 
 	describe('report --json', () => {
-		it('outputs only valid JSON to stdout', async () => {
+		it('outputs structured JSON with report data', async () => {
 			const {default: Report} = await import('../commands/report.js');
 			await Report.run(['--json', '--projects-dir', '/tmp/fake-projects']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('summary');
-			expect(parsed).toHaveProperty('readyToPush');
-			expect(parsed).toHaveProperty('testFailed');
-			expect(parsed).toHaveProperty('nextSteps');
-			expect((parsed as any).summary.children).toBe(2);
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: Report} = await import('../commands/report.js');
-			await Report.run(['--json', '--projects-dir', '/tmp/fake-projects']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			expect(stripped).not.toContain('WIP Report');
-			expect(stripped).not.toContain('Next steps:');
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedReportJson);
 		});
 	});
 
 	describe('push --json', () => {
-		it('outputs only valid JSON to stdout', async () => {
+		it('outputs structured JSON with push results in dry-run mode', async () => {
 			const {default: Push} = await import('../commands/push.js');
 			await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('pushed');
-			expect(parsed).toHaveProperty('skippedProjects');
-			expect(parsed).toHaveProperty('summary');
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedPushJson);
 		});
 
-		it('includes dryRun flag in JSON output', async () => {
+		it('returns structured data from run()', async () => {
 			const {default: Push} = await import('../commands/push.js');
 			const result = await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
 
-			expect(result).toHaveProperty('dryRun', true);
-		});
-
-		it('uses planned status in dry-run mode', async () => {
-			const {default: Push} = await import('../commands/push.js');
-			const result = await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
-
-			for (const item of (result as any).pushed) {
-				expect(item.status).toBe('planned');
-			}
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: Push} = await import('../commands/push.js');
-			await Push.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			expect(stripped).not.toContain('would push');
-			expect(stripped).not.toContain('Pushed');
-			expect(stripped).not.toContain('Skipping');
+			expect(result).toStrictEqual(expectedPushJson);
 		});
 	});
 
 	describe('test --json', () => {
-		it('outputs only valid JSON to stdout with --dry-run', async () => {
+		it('outputs structured JSON with test results in dry-run mode', async () => {
 			const {default: Test} = await import('../commands/test.js');
 			await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('results');
-			expect(parsed).toHaveProperty('skippedProjects');
-			expect(parsed).toHaveProperty('summary');
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedTestJson);
 		});
 
-		it('includes dryRun flag in JSON output', async () => {
+		it('returns structured data from run()', async () => {
 			const {default: Test} = await import('../commands/test.js');
 			const result = await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
 
-			expect(result).toHaveProperty('dryRun', true);
+			expect(result).toStrictEqual(expectedTestJson);
 		});
 
-		it('uses planned status in dry-run mode', async () => {
-			const {default: Test} = await import('../commands/test.js');
-			const result = await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
-
-			for (const item of (result as any).results) {
-				expect(item.status).toBe('planned');
-			}
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: Test} = await import('../commands/test.js');
-			await Test.run(['--json', '--dry-run', '--projects-dir', '/tmp/fake-projects']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			expect(stripped).not.toContain('would test');
-			expect(stripped).not.toContain('Testing');
-			expect(stripped).not.toContain('Tested');
-		});
-
-		it('includes dryRun flag in fast mode JSON output', async () => {
+		it('returns structured data from run() in fast mode', async () => {
 			const {default: Test} = await import('../commands/test.js');
 			const result = await Test.run(['--json', '--dry-run', '--fast', '--projects-dir', '/tmp/fake-projects']);
 
-			expect(result).toHaveProperty('dryRun', true);
-		});
-
-		it('uses planned status in fast dry-run mode', async () => {
-			const {default: Test} = await import('../commands/test.js');
-			const result = await Test.run(['--json', '--dry-run', '--fast', '--projects-dir', '/tmp/fake-projects']);
-
-			for (const item of (result as any).results) {
-				expect(item.status).toBe('planned');
-			}
+			expect(result).toStrictEqual(expectedTestFastJson);
 		});
 	});
 
 	describe('config set --json --dry-run', () => {
-		it('outputs valid JSON showing what would be set', async () => {
+		it('outputs structured JSON showing what would be set', async () => {
 			const {default: ConfigSet} = await import('../commands/config/set.js');
 			await ConfigSet.run(['myKey', 'myValue', '--dry-run', '--json']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('key', 'myKey');
-			expect(parsed).toHaveProperty('value', 'myValue');
-			expect(parsed).toHaveProperty('dryRun', true);
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
+				key: 'myKey',
+				value: 'myValue',
+				dryRun: true,
+			});
 		});
 
 		it('does not mutate config in dry-run mode', async () => {
@@ -346,31 +439,21 @@ describe('JSON output mode', () => {
 
 			expect(setConfigValue).not.toHaveBeenCalled();
 		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: ConfigSet} = await import('../commands/config/set.js');
-			await ConfigSet.run(['myKey', 'myValue', '--dry-run', '--json']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			expect(stripped).not.toContain('Would set');
-		});
 	});
 
 	describe('config unset --json --dry-run', () => {
-		it('outputs valid JSON showing what would be unset', async () => {
+		it('outputs structured JSON showing what would be unset', async () => {
 			const {unsetConfigValue} = await import('@wip/shared');
 			vi.mocked(unsetConfigValue).mockReturnValue(true);
 
 			const {default: ConfigUnset} = await import('../commands/config/unset.js');
 			await ConfigUnset.run(['myKey', '--dry-run', '--json']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('key', 'myKey');
-			expect(parsed).toHaveProperty('dryRun', true);
-			expect(parsed).toHaveProperty('found', true);
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
+				key: 'myKey',
+				dryRun: true,
+				found: true,
+			});
 		});
 
 		it('does not mutate config in dry-run mode', async () => {
@@ -383,71 +466,37 @@ describe('JSON output mode', () => {
 
 			expect(unsetConfigValue).not.toHaveBeenCalled();
 		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: ConfigUnset} = await import('../commands/config/unset.js');
-			await ConfigUnset.run(['myKey', '--dry-run', '--json']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			expect(stripped).not.toContain('Would remove');
-		});
 	});
 
 	describe('serve --json', () => {
-		it('outputs only valid JSON to stdout with --dry-run', async () => {
+		it('outputs structured JSON with server info in dry-run mode', async () => {
 			const {default: Serve} = await import('../commands/serve.js');
 			await Serve.run(['--json', '--dry-run']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('port');
-			expect(parsed).toHaveProperty('webDir');
-			expect(parsed).toHaveProperty('dryRun', true);
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: Serve} = await import('../commands/serve.js');
-			await Serve.run(['--json', '--dry-run']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			expect(stripped).not.toContain('Would start');
-			expect(stripped).not.toContain('web directory');
+			const parsed = parseJsonOutput(capture.getOutput());
+			const {webDir, ...rest} = parsed as {webDir: string; port: number; dryRun: boolean};
+			expect(webDir).toBe(path.resolve(__dirname, '../../../web'));
+			expect(rest).toStrictEqual({port: 3456, dryRun: true});
 		});
 	});
 
 	describe('config get --json', () => {
-		it('outputs only valid JSON to stdout when listing all config', async () => {
+		it('outputs structured JSON when listing all config', async () => {
 			const {default: ConfigGet} = await import('../commands/config/get.js');
 			await ConfigGet.run(['--json']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('projectsDir');
-			expect((parsed as any).projectsDir).toBe('/tmp/fake-projects');
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
+				projectsDir: '/tmp/fake-projects',
+			});
 		});
 
-		it('outputs only valid JSON to stdout for a single key', async () => {
+		it('outputs structured JSON for a single key', async () => {
 			const {default: ConfigGet} = await import('../commands/config/get.js');
 			await ConfigGet.run(['projectsDir', '--json']);
 
-			const output = capture.getOutput();
-			const parsed = assertValidJsonOutput(output);
-
-			expect(parsed).toHaveProperty('projectsDir');
-		});
-
-		it('includes no human-readable output when --json is passed', async () => {
-			const {default: ConfigGet} = await import('../commands/config/get.js');
-			await ConfigGet.run(['--json']);
-
-			const output = capture.getOutput();
-			const stripped = output.replace(/\x1b\[[0-9;]*m/g, '');
-			// Should not contain key=value format
-			expect(stripped).not.toContain('projectsDir=');
+			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
+				projectsDir: '/tmp/fake-projects',
+			});
 		});
 	});
 });

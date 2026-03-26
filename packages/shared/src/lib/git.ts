@@ -133,7 +133,7 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 				branch,
 				testStatus: 'unknown',
 				checkStatus: 'none',
-				skippable: false,
+				skippable: isSkippable(subject),
 				pushedToRemote: false,
 				needsRebase: true,
 				reviewStatus: 'no_pr',

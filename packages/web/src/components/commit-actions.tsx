@@ -1,7 +1,7 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr} from '../lib/server-fns';
 import {useMergeStatus} from '../lib/merge-events-context';
 import type {BranchItem, PullRequestItem} from '@wip/shared';
 import {GitHubIcon} from './github-icon';
@@ -158,9 +158,22 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}
 	};
 
-	const handleCreatePr = () => {
-		const compareUrl = `https://github.com/${item.remote}/compare/${item.branch}?expand=1`;
-		window.open(compareUrl, '_blank');
+	const [creatingPr, setCreatingPr] = useState(false);
+	const handleCreatePr = async () => {
+		setCreatingPr(true);
+		setError(null);
+		const result = await createPr({data: {
+			project: item.project,
+			branch: item.branch,
+			title: item.subject,
+			draft: true,
+		}});
+		setCreatingPr(false);
+		if (result.ok) {
+			optimistic.invalidate();
+		} else {
+			setError(result.message);
+		}
 	};
 
 	const handleRefresh = async () => {
@@ -294,10 +307,11 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}
 	};
 
+	const isDefaultBranch = /^(main|master)$/.test(item.branch);
 	const showDeleteBranch = !pr && !item.pushedToRemote;
-	const showTestButton = !pr && item.testStatus !== 'passed';
-	const showPushButton = !pr && item.testStatus === 'passed' && !item.pushedToRemote;
-	const showCreatePr = !pr && item.pushedToRemote;
+	const showTestButton = !pr && !isDefaultBranch && item.testStatus !== 'passed';
+	const showPushButton = !pr && !isDefaultBranch && item.testStatus === 'passed' && !item.pushedToRemote;
+	const showCreatePr = !pr && !isDefaultBranch && item.pushedToRemote;
 
 	const isRow = layout === 'row';
 
@@ -378,8 +392,13 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 						}`}
 					>
 						{applyingFixes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
-						{applyingFixes ? 'Applying...' : 'Apply Fixes'}
+						{applyingFixes ? 'Cherry-Picking...' : 'Cherry-Pick Fixes'}
 					</button>
+				)}
+
+				{/* Rename required warning for main/master */}
+				{!pr && isDefaultBranch && (
+					<span className="text-xs text-yellow-600 dark:text-yellow-400">Rename branch first</span>
 				)}
 
 				{/* Rename Branch (only for non-PR branches) */}
@@ -443,10 +462,13 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 					<button
 						type="button"
 						onClick={handleCreatePr}
-						className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+						disabled={creatingPr}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							creatingPr ? 'cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 text-white'
+						}`}
 					>
-						<GitHubIcon className="h-3.5 w-3.5" />
-						Create PR
+						{creatingPr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitHubIcon className="h-3.5 w-3.5" />}
+						{creatingPr ? 'Creating...' : 'Create PR'}
 					</button>
 				)}
 

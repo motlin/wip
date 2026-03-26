@@ -147,7 +147,7 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 				});
 			} else {
 				// Bare commit (no branch)
-				commits.push({...base, testStatus: child.testStatus, failureTail});
+				commits.push({...base, testStatus: child.testStatus, failureTail, alreadyOnRemote: child.alreadyOnRemote});
 			}
 		}
 
@@ -713,6 +713,51 @@ export const rebaseLocal = createServerFn({method: 'POST'})
 		invalidateMergeStatus(data.project);
 		return {ok: true, message: `Rebased ${data.branch} onto ${p.upstreamRef}`};
 	});
+
+export const rebaseAllBranches = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
+	const {execa} = await import('execa');
+
+	const results: string[] = [];
+	const errors: string[] = [];
+
+	for (const p of projects) {
+		if (p.dirty || !p.hasTestConfigured) continue;
+		const env = await getMiseEnv(p.dir);
+
+		await execa('git', ['-C', p.dir, 'fetch', p.upstreamRemote], {reject: false, env});
+
+		const branchList = await execa('git', ['-C', p.dir, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/', '--sort=-committerdate', `--no-contains=${p.upstreamRef}`], {reject: false, env});
+		if (branchList.exitCode !== 0 || !branchList.stdout.trim()) continue;
+
+		const branches = branchList.stdout.split('\n').filter(Boolean).filter((b) => !/^(main|master)$/.test(b));
+
+		for (const branch of branches) {
+			const checkout = await execa('git', ['-C', p.dir, 'checkout', branch], {reject: false, env});
+			if (checkout.exitCode !== 0) continue;
+
+			const rebase = await execa('git', ['-C', p.dir, 'rebase', '--rebase-merges', '--update-refs', p.upstreamRef], {reject: false, env});
+			if (rebase.exitCode !== 0) {
+				await execa('git', ['-C', p.dir, 'rebase', '--abort'], {reject: false, env});
+				errors.push(`${p.name}/${branch}: conflicts`);
+				continue;
+			}
+			results.push(`${p.name}/${branch}`);
+		}
+
+		await execa('git', ['-C', p.dir, 'checkout', p.upstreamBranch ?? 'main'], {reject: false, env});
+		invalidatePrCache(p.name);
+		invalidateMergeStatus(p.name);
+	}
+
+	if (results.length === 0 && errors.length === 0) {
+		return {ok: true, message: 'All branches are up to date'};
+	}
+	const msg = results.length > 0 ? `Rebased ${results.length} branch${results.length > 1 ? 'es' : ''}` : '';
+	const errMsg = errors.length > 0 ? `${errors.length} failed: ${errors.join(', ')}` : '';
+	return {ok: errors.length === 0, message: [msg, errMsg].filter(Boolean).join('. ')};
+});
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
 	cachedProjects = null;

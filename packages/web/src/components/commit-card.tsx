@@ -1,7 +1,7 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {useState} from 'react';
 import type {CommitItem} from '@wip/shared';
-import {Diff, GitBranch, Loader2} from 'lucide-react';
+import {Diff, GitBranch, Loader2, Info} from 'lucide-react';
 import {createBranch} from '../lib/server-fns';
 import {AnsiText} from './ansi-text';
 
@@ -62,28 +62,35 @@ export function CommitCard({commit}: {commit: CommitItem}) {
 				/>
 			)}
 			<div className="mt-2 border-t border-border-300/20 pt-2">
-				<div className="flex items-center gap-1.5">
-					<GitBranch className="h-3.5 w-3.5 shrink-0 text-text-400" />
-					<input
-						type="text"
-						value={branchName}
-						onChange={(e) => setBranchName(e.target.value)}
-						onKeyDown={(e) => { if (e.key === 'Enter') handleCreateBranch(); }}
-						placeholder="branch-name"
-						className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"
-					/>
-					<button
-						type="button"
-						onClick={handleCreateBranch}
-						disabled={creating || !branchName.trim()}
-						className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							creating || !branchName.trim() ? 'cursor-not-allowed opacity-60 text-text-400' : 'bg-blue-600 hover:bg-blue-700 text-white'
-						}`}
-					>
-						{creating ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
-						Create Branch
-					</button>
-				</div>
+				{commit.alreadyOnRemote ? (
+					<div className="flex items-center gap-1.5 text-xs text-text-400">
+						<Info className="h-3.5 w-3.5 shrink-0" />
+						<span>This patch already exists on <span className="font-mono font-medium text-text-300">{commit.alreadyOnRemote.branch}</span></span>
+					</div>
+				) : (
+					<div className="flex items-center gap-1.5">
+						<GitBranch className="h-3.5 w-3.5 shrink-0 text-text-400" />
+						<input
+							type="text"
+							value={branchName}
+							onChange={(e) => setBranchName(e.target.value)}
+							onKeyDown={(e) => { if (e.key === 'Enter') handleCreateBranch(); }}
+							placeholder="branch-name"
+							className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"
+						/>
+						<button
+							type="button"
+							onClick={handleCreateBranch}
+							disabled={creating || !branchName.trim()}
+							className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
+								creating || !branchName.trim() ? 'cursor-not-allowed opacity-60 text-text-400' : 'bg-blue-600 hover:bg-blue-700 text-white'
+							}`}
+						>
+							{creating ? <Loader2 className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
+							Create Branch
+						</button>
+					</div>
+				)}
 				{error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
 			</div>
 		</div>

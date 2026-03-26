@@ -67,6 +67,7 @@ export const ChildCommitSchema = z.object({
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
 	rebaseable: z.boolean().optional(),
+	alreadyOnRemote: z.object({branch: z.string()}).optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
@@ -118,6 +119,7 @@ export const CommitItemSchema = z.object({
 	suggestedBranch: z.string().optional(),
 	testStatus: TestStatusSchema,
 	failureTail: z.string().optional(),
+	alreadyOnRemote: z.object({branch: z.string()}).optional(),
 });
 export type CommitItem = z.infer<typeof CommitItemSchema>;
 
@@ -154,6 +156,7 @@ export const PullRequestItemSchema = z.object({
 	subject: z.string(),
 	date: z.string(),
 	branch: z.string(),
+	suggestedBranch: z.string().optional(),
 	skippable: z.boolean(),
 	pushedToRemote: z.literal(true),
 	localAhead: z.boolean().optional(),

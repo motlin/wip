@@ -59,6 +59,49 @@ function isSkippable(message: string): boolean {
 	return SKIPPABLE_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
+async function getPatchId(dir: string, sha: string): Promise<string> {
+	const start = performance.now();
+	const formatPatch = await execa('git', ['-C', dir, 'diff-tree', '-p', sha], {reject: false});
+	if (formatPatch.exitCode !== 0 || !formatPatch.stdout) return '';
+	const patchId = await execa('git', ['-C', dir, 'patch-id', '--stable'], {input: formatPatch.stdout, reject: false});
+	const duration = Math.round(performance.now() - start);
+	log.subprocess.debug({cmd: 'git', args: ['patch-id', sha], duration}, `git patch-id for ${sha} (${duration}ms)`);
+	if (patchId.exitCode !== 0 || !patchId.stdout) return '';
+	return patchId.stdout.trim().split(/\s+/)[0] ?? '';
+}
+
+/**
+ * For a branchless commit, check if any remote branch tip has the same patch content.
+ * Returns the remote branch name if found, undefined otherwise.
+ */
+async function findRemoteBranchByPatchId(
+	dir: string,
+	sha: string,
+	remoteBranchRefs: Map<string, string>,
+): Promise<string | undefined> {
+	const commitPatchId = await getPatchId(dir, sha);
+	if (!commitPatchId) return undefined;
+
+	// Check remote branch tips in parallel (limited to avoid overwhelming git)
+	const entries = Array.from(remoteBranchRefs.entries());
+	const BATCH_SIZE = 10;
+	for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+		const batch = entries.slice(i, i + BATCH_SIZE);
+		const results = await Promise.all(
+			batch.map(async ([branchName, refName]) => {
+				const remoteSha = await git(dir, 'rev-parse', refName);
+				if (!remoteSha) return null;
+				const remotePatchId = await getPatchId(dir, remoteSha);
+				if (remotePatchId === commitPatchId) return branchName;
+				return null;
+			}),
+		);
+		const match = results.find((r) => r !== null);
+		if (match) return match;
+	}
+	return undefined;
+}
+
 export async function isDirty(dir: string): Promise<boolean> {
 	const diffStart = performance.now();
 	const diffResult = await execa('git', ['-C', dir, 'diff', '--quiet', 'HEAD'], {reject: false});
@@ -551,7 +594,22 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 		const commitsAhead = ms?.commitsAhead;
 		const rebaseable = ms?.rebaseable ?? undefined;
 
-		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, localAhead, reviewStatus, prUrl, prNumber, failedChecks, behind, commitsBehind, commitsAhead, rebaseable});
+		// For branchless commits, check if the same patch exists on a remote branch with a PR
+		let alreadyOnRemote: {branch: string} | undefined;
+		if (!branch && prStatuses && prStatuses.urls.size > 0) {
+			// Only check remote branches that have open PRs (much smaller set)
+			const prBranchRefs = new Map<string, string>();
+			for (const prBranch of prStatuses.urls.keys()) {
+				const ref = remoteBranchRefs.get(prBranch);
+				if (ref) prBranchRefs.set(prBranch, ref);
+			}
+			if (prBranchRefs.size > 0) {
+				const matchedBranch = await findRemoteBranchByPatchId(dir, sha, prBranchRefs);
+				if (matchedBranch) alreadyOnRemote = {branch: matchedBranch};
+			}
+		}
+
+		children.push({sha, shortSha, subject, date, branch, testStatus, checkStatus, skippable, pushedToRemote, localAhead, reviewStatus, prUrl, prNumber, failedChecks, behind, commitsBehind, commitsAhead, rebaseable, alreadyOnRemote});
 	}
 
 	return children;

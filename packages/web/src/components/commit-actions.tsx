@@ -60,7 +60,9 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 	const [deletePos, setDeletePos] = useState<{top: number; left: number} | null>(null);
 	const [forcePushing, setForcePushing] = useState(false);
 	const [renameOpen, setRenameOpen] = useState(false);
-	const [newBranchName, setNewBranchName] = useState(item.branch);
+	const [newBranchName, setNewBranchName] = useState(
+		/^(main|master)$/.test(item.branch) && item.suggestedBranch ? item.suggestedBranch : item.branch,
+	);
 	const renameButtonRef = useRef<HTMLButtonElement>(null);
 	const renameFormRef = useRef<HTMLDivElement>(null);
 	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
@@ -365,18 +367,18 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Local Rebase */}
-				{commitsBehind != null && commitsBehind > 0 && rebaseable === true && (
+				{(item.needsRebase || (commitsBehind != null && commitsBehind > 0 && rebaseable === true)) && (
 					<button
 						type="button"
 						onClick={handleRebaseLocal}
 						disabled={rebasingLocal}
-						title={`Rebase ${item.branch} onto upstream (${commitsBehind} commit${commitsBehind > 1 ? 's' : ''} behind)`}
+						title={`Rebase ${item.branch} onto upstream${commitsBehind ? ` (${commitsBehind} commit${commitsBehind > 1 ? 's' : ''} behind)` : ''}`}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							rebasingLocal ? 'cursor-not-allowed opacity-60 text-text-300' : 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30'
+							rebasingLocal ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-orange-600 hover:bg-orange-700 text-white'
 						}`}
 					>
 						{rebasingLocal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-						{rebasingLocal ? 'Rebasing...' : `Rebase (↓${commitsBehind})`}
+						{rebasingLocal ? 'Rebasing...' : commitsBehind ? `Rebase (↓${commitsBehind})` : 'Rebase'}
 					</button>
 				)}
 
@@ -396,13 +398,34 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 					</button>
 				)}
 
-				{/* Rename required warning for main/master */}
+				{/* Inline rename widget for main/master branches */}
 				{!pr && isDefaultBranch && (
-					<span className="text-xs text-yellow-600 dark:text-yellow-400">Rename branch first</span>
+					<div className="flex items-center gap-1.5">
+						<Pencil className="h-3.5 w-3.5 shrink-0 text-text-400" />
+						<input
+							type="text"
+							value={newBranchName}
+							onChange={(e) => setNewBranchName(e.target.value)}
+							onKeyDown={(e) => { if (e.key === 'Enter') handleRenameBranch(); }}
+							placeholder="branch-name"
+							className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"
+						/>
+						<button
+							type="button"
+							onClick={handleRenameBranch}
+							disabled={renaming || !newBranchName.trim() || newBranchName === item.branch}
+							className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
+								renaming || !newBranchName.trim() || newBranchName === item.branch ? 'cursor-not-allowed opacity-60 text-text-400' : 'bg-blue-600 hover:bg-blue-700 text-white'
+							}`}
+						>
+							{renaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}
+							Rename
+						</button>
+					</div>
 				)}
 
-				{/* Rename Branch (only for non-PR branches) */}
-				{!pr && (
+				{/* Rename Branch popup (for non-default, non-PR branches) */}
+				{!pr && !isDefaultBranch && (
 					<div className="relative">
 						<button
 							ref={renameButtonRef}

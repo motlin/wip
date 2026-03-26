@@ -1,8 +1,8 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
-import {Play, Loader2} from 'lucide-react';
+import {Play, Loader2, GitBranch} from 'lucide-react';
 import {useState, useMemo} from 'react';
-import {testAllChildren} from '../../lib/server-fns';
+import {testAllChildren, rebaseAllBranches} from '../../lib/server-fns';
 import {useHasActiveTests} from '../../lib/test-events-context';
 import {projectsQueryOptions} from '../../lib/queries';
 import {useWorkItems} from '../../lib/use-work-items';
@@ -78,9 +78,10 @@ function Queue() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
 	const [testingAll, setTestingAll] = useState(false);
+	const [rebasingAll, setRebasingAll] = useState(false);
 	const hasActiveTests = useHasActiveTests();
 
-	const {grouped, totalCount, readyToTestCount} = useMemo(() => {
+	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
 			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
 			local_changes: {}, ready_to_test: {}, test_failed: {}, needs_rebase: {},
@@ -123,14 +124,21 @@ function Queue() {
 		}
 
 		const rtCount = (g.ready_to_test.commits?.length ?? 0) + (g.ready_to_test.branches?.length ?? 0);
+		const nrCount = bucketCount(g.needs_rebase);
 
-		return {grouped: g, totalCount: total, readyToTestCount: rtCount};
+		return {grouped: g, totalCount: total, readyToTestCount: rtCount, needsRebaseCount: nrCount};
 	}, [workItems, projects]);
 
 	const handleTestAll = async () => {
 		setTestingAll(true);
 		await testAllChildren();
 		setTestingAll(false);
+	};
+
+	const handleRebaseAll = async () => {
+		setRebasingAll(true);
+		await rebaseAllBranches();
+		setRebasingAll(false);
 	};
 
 	return (
@@ -142,21 +150,38 @@ function Queue() {
 						{totalCount} items across {workItems.projectCount} projects
 					</span>
 				</div>
-				{readyToTestCount > 0 && (
-					<button
-						type="button"
-						onClick={handleTestAll}
-						disabled={testingAll || hasActiveTests}
-						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-							testingAll || hasActiveTests
-								? 'bg-yellow-600/80 text-white'
-								: 'bg-yellow-600 hover:bg-yellow-700 text-white'
-						}`}
-					>
-						{testingAll || hasActiveTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-						{hasActiveTests ? 'Tests Running...' : `Test All (${readyToTestCount})`}
-					</button>
-				)}
+				<div className="flex items-center gap-2">
+					{needsRebaseCount > 0 && (
+						<button
+							type="button"
+							onClick={handleRebaseAll}
+							disabled={rebasingAll}
+							className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+								rebasingAll
+									? 'bg-orange-600/80 text-white'
+									: 'bg-orange-600 hover:bg-orange-700 text-white'
+							}`}
+						>
+							{rebasingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitBranch className="h-4 w-4" />}
+							{rebasingAll ? 'Rebasing...' : `Rebase All (${needsRebaseCount})`}
+						</button>
+					)}
+					{readyToTestCount > 0 && (
+						<button
+							type="button"
+							onClick={handleTestAll}
+							disabled={testingAll || hasActiveTests}
+							className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+								testingAll || hasActiveTests
+									? 'bg-yellow-600/80 text-white'
+									: 'bg-yellow-600 hover:bg-yellow-700 text-white'
+							}`}
+						>
+							{testingAll || hasActiveTests ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+							{hasActiveTests ? 'Tests Running...' : `Test All (${readyToTestCount})`}
+						</button>
+					)}
+				</div>
 			</div>
 			<div className="flex flex-col gap-6">
 				{CATEGORY_PRIORITY.map((category) => {

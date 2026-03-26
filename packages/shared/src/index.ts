@@ -36,4 +36,5 @@ export {
 	RebaseLocalInputSchema, type RebaseLocalInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
+export {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from './lib/rate-limit.js';
 export {log} from './services/logger.js';

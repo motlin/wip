@@ -5,3 +5,4 @@ tsconfig.tsbuildinfo
 packages/web/src/routeTree.gen.ts
 .idea/
 .playwright-mcp/
+.claude/

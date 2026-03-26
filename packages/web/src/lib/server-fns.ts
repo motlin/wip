@@ -166,6 +166,26 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 			}
 		}
 
+		// Apply suggested branch names to branches with default names (main/master)
+		const defaultBranchPattern = /^(main|master)$/;
+		const itemsToSuggest = [
+			...branches.filter((b) => defaultBranchPattern.test(b.branch)),
+			...pullRequests.filter((pr) => defaultBranchPattern.test(pr.branch)),
+		];
+		if (itemsToSuggest.length > 0) {
+			const {getBranchNames} = await import('@wip/shared');
+			const keys = itemsToSuggest.map((item) => ({sha: item.sha, project: item.project, subject: item.subject, dir: p.dir}));
+			const cached = getBranchNames(keys);
+			for (const item of itemsToSuggest) {
+				const suggestion = cached.get(`${item.project}:${item.sha}`);
+				if (suggestion) item.suggestedBranch = suggestion;
+			}
+			const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
+			if (uncachedCount > 0) {
+				suggestBranchNames(keys).catch(() => {});
+			}
+		}
+
 		return {commits, branches, pullRequests};
 	});
 

@@ -33,6 +33,17 @@ export function useTheme() {
 		setTheme(theme === 'dark' ? 'light' : 'dark');
 	}, [theme, setTheme]);
 
+	// Sync React state with the actual theme after hydration.
+	// During SSR, useState initializes to 'light' (server default).
+	// React reuses that value during hydration, so we read localStorage
+	// in an effect to pick up the real persisted preference.
+	useEffect(() => {
+		const stored = getStoredTheme();
+		const resolved = stored ?? getSystemTheme();
+		applyTheme(resolved);
+		setThemeState(resolved);
+	}, []);
+
 	useEffect(() => {
 		const mq = window.matchMedia('(prefers-color-scheme: dark)');
 		const handler = () => {

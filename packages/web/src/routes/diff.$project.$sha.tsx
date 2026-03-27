@@ -6,11 +6,13 @@ import {DiffFile} from '@git-diff-view/core';
 import '@git-diff-view/react/styles/diff-view.css';
 import type {FileDiff} from '../lib/server-fns';
 import {BranchActions, PullRequestActions} from '../components/commit-actions';
-import {diffQueryOptions} from '../lib/queries';
+import {diffQueryOptions, childByShaQueryOptions} from '../lib/queries';
 
 export const Route = createFileRoute('/diff/$project/$sha')({
-	loader: ({context: {queryClient}, params}) =>
+	loader: ({context: {queryClient}, params}) => Promise.all([
 		queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
+		queryClient.ensureQueryData(childByShaQueryOptions(params.project, params.sha)),
+	]),
 	head: ({params}) => ({
 		meta: [{title: `Diff: ${params.sha.slice(0, 7)}`}],
 	}),
@@ -63,7 +65,8 @@ function FileDiffSection({file, theme, mode, wrap}: {file: FileDiff; theme: 'lig
 
 function DiffViewer() {
 	const {project, sha} = Route.useParams();
-	const {data: {files, stat, subject, child}} = useSuspenseQuery(diffQueryOptions(project, sha));
+	const {data: {files, stat, subject}} = useSuspenseQuery(diffQueryOptions(project, sha));
+	const {data: child} = useSuspenseQuery(childByShaQueryOptions(project, sha));
 	const [mode, setMode] = useState<'split' | 'unified'>('split');
 	const [wrap, setWrap] = useState(false);
 

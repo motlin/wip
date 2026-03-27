@@ -40,15 +40,15 @@ export const testQueueQueryOptions = () => queryOptions({
 
 export const diffQueryOptions = (project: string, sha: string) => queryOptions({
 	queryKey: ['diff', project, sha],
-	queryFn: async () => {
-		const [diff, child] = await Promise.all([
-			getCommitDiff({data: {project, sha}}),
-			getChildBySha({data: {project, sha}}),
-		]);
-		return {...diff, child};
-	},
+	queryFn: () => getCommitDiff({data: {project, sha}}),
 	staleTime: Infinity,
 	gcTime: Infinity,
+});
+
+export const childByShaQueryOptions = (project: string, sha: string) => queryOptions({
+	queryKey: ['child', project, sha],
+	queryFn: () => getChildBySha({data: {project, sha}}),
+	refetchInterval: 10_000,
 });
 
 export const testLogQueryOptions = (project: string, sha: string) => queryOptions({

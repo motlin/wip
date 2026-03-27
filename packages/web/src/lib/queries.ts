@@ -48,7 +48,8 @@ export const diffQueryOptions = (project: string, sha: string) => queryOptions({
 export const childByShaQueryOptions = (project: string, sha: string) => queryOptions({
 	queryKey: ['child', project, sha],
 	queryFn: () => getChildBySha({data: {project, sha}}),
-	refetchInterval: 10_000,
+	refetchInterval: 30_000,
+	refetchIntervalInBackground: false,
 });
 
 export const testLogQueryOptions = (project: string, sha: string) => queryOptions({

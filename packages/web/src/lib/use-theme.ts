@@ -2,11 +2,15 @@ import {useState, useEffect, useCallback} from 'react';
 
 type Theme = 'light' | 'dark';
 
+const isServer = typeof window === 'undefined';
+
 function getSystemTheme(): Theme {
+	if (isServer) return 'light';
 	return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 function getStoredTheme(): Theme | null {
+	if (isServer) return null;
 	const stored = localStorage.getItem('theme');
 	return stored === 'light' || stored === 'dark' ? stored : null;
 }

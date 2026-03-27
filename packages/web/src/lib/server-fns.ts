@@ -190,6 +190,20 @@ export const getProjectItemsFn = createServerFn({method: 'GET'}).handler(async (
 	return fetchAllProjectItems();
 });
 
+export const getIssueByNumber = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({repo: z.string(), number: z.number()}).parse(input))
+	.handler(async ({data}) => {
+		const {lookupIssueByNumber} = await import('./indexed-lookups');
+		return lookupIssueByNumber(data.repo, data.number);
+	});
+
+export const getProjectItemByNumber = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({repo: z.string(), number: z.number()}).parse(input))
+	.handler(async ({data}) => {
+		const {lookupProjectItemByNumber} = await import('./indexed-lookups');
+		return lookupProjectItemByNumber(data.repo, data.number);
+	});
+
 export const pushChild = createServerFn({method: 'POST'})
 	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => {
@@ -702,10 +716,12 @@ export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Pro
 	cachedProjects = null;
 	invalidateIssuesCache();
 	invalidateProjectItemsCache();
-	// Invalidate PR caches for all projects
+	// Re-populate the project cache and invalidate PR caches
+	const now = Date.now();
 	const projectsDirs = getProjectsDirs();
-	const projects = await discoverAllProjects(projectsDirs);
-	for (const p of projects) {
+	cachedProjects = await discoverAllProjects(projectsDirs);
+	cachedProjectsTime = now;
+	for (const p of cachedProjects) {
 		invalidatePrCache(p.name);
 	}
 	return {ok: true, message: 'All caches invalidated'};

@@ -216,17 +216,50 @@ export const getProjectItemsFn = createServerFn({method: 'GET'}).handler(async (
 });
 
 export const getIssueByNumber = createServerFn({method: 'GET'})
-	.inputValidator((input: unknown) => z.object({repo: z.string(), number: z.number()}).parse(input))
-	.handler(async ({data}) => {
-		const {lookupIssueByNumber} = await import('./indexed-lookups');
-		return lookupIssueByNumber(data.repo, data.number);
+	.inputValidator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
+	.handler(async ({data}): Promise<IssueItem | null> => {
+		const issues = await fetchAssignedIssues();
+		const p = cachedProjects?.find((proj) => proj.name === data.project);
+		for (const issue of issues) {
+			if (issue.number !== data.number) continue;
+			const repoKey = issue.repository.nameWithOwner.toLowerCase();
+			if (p && p.remote.toLowerCase() === repoKey || issue.repository.name === data.project) {
+				return {
+					project: p?.name ?? issue.repository.name,
+					remote: issue.repository.nameWithOwner,
+					url: issue.url,
+					number: issue.number,
+					title: issue.title,
+					labels: issue.labels.map((l) => ({name: l.name, color: l.color})),
+				};
+			}
+		}
+		return null;
 	});
 
 export const getProjectItemByNumber = createServerFn({method: 'GET'})
-	.inputValidator((input: unknown) => z.object({repo: z.string(), number: z.number()}).parse(input))
-	.handler(async ({data}) => {
-		const {lookupProjectItemByNumber} = await import('./indexed-lookups');
-		return lookupProjectItemByNumber(data.repo, data.number);
+	.inputValidator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
+	.handler(async ({data}): Promise<ProjectBoardItem | null> => {
+		const items = await fetchAllProjectItems();
+		for (const item of items) {
+			if (item.number !== data.number) continue;
+			const repoName = item.repository ?? 'unknown';
+			const p = cachedProjects?.find((proj) => proj.remote.toLowerCase() === repoName.toLowerCase());
+			const projectName = p?.name ?? repoName.split('/').pop() ?? repoName;
+			if (projectName === data.project) {
+				return {
+					project: projectName,
+					remote: repoName,
+					url: item.url,
+					number: item.number,
+					title: item.title,
+					status: item.status ?? '',
+					type: item.type,
+					labels: item.labels ?? [],
+				};
+			}
+		}
+		return null;
 	});
 
 export const pushChild = createServerFn({method: 'POST'})

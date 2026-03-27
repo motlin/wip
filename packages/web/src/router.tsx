@@ -11,8 +11,8 @@ export function getRouter() {
 			queries: {
 				gcTime: 7 * 24 * 60 * 60 * 1000,
 				staleTime: 10 * 60 * 1000,
-				refetchOnMount: 'always',
-				refetchOnWindowFocus: 'always',
+				refetchOnMount: true,
+				refetchOnWindowFocus: true,
 				refetchOnReconnect: 'always',
 			},
 		},

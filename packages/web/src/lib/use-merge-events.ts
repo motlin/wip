@@ -1,4 +1,5 @@
 import {useState, useEffect, useCallback} from 'react';
+import {useQueryClient} from '@tanstack/react-query';
 
 export interface MergeStatusEvent {
 	project: string;
@@ -10,6 +11,7 @@ export interface MergeStatusEvent {
 
 export function useMergeEvents() {
 	const [statuses, setStatuses] = useState<Map<string, MergeStatusEvent>>(new Map());
+	const queryClient = useQueryClient();
 
 	useEffect(() => {
 		const es = new EventSource('/api/merge-events');
@@ -21,10 +23,11 @@ export function useMergeEvents() {
 				next.set(`${data.project}:${data.sha}`, data);
 				return next;
 			});
+			queryClient.invalidateQueries({queryKey: ['children', data.project]});
 		};
 
 		return () => es.close();
-	}, []);
+	}, [queryClient]);
 
 	const getStatus = useCallback((sha: string, project: string): MergeStatusEvent | undefined => {
 		return statuses.get(`${project}:${sha}`);

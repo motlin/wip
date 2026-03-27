@@ -31,7 +31,7 @@ export default defineConfig({
 		port: 3456,
 		host: true,
 		allowedHosts: ['.halibut-wyrm.ts.net'],
-		watch: {ignored: ['**/routeTree.gen.ts']},
+		watch: {},
 	},
 	optimizeDeps: {
 		exclude: ['@wip/shared', 'execa'],

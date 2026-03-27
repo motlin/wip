@@ -35,7 +35,7 @@ export interface ProjectChildrenResult {
 
 let cachedProjects: ProjectInfo[] | null = null;
 let cachedProjectsTime = 0;
-const PROJECT_CACHE_TTL = 30_000;
+const PROJECT_CACHE_TTL = 5 * 60 * 1000;
 
 async function resolveProject(project: string): Promise<ProjectInfo> {
 	const now = Date.now();

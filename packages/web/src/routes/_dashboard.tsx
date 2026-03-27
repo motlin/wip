@@ -6,7 +6,6 @@ import {usePreserveScroll} from '../lib/use-preserve-scroll';
 export const Route = createFileRoute('/_dashboard')({
 	loader: async ({context: {queryClient}}) => {
 		const projects = queryClient.getQueryData<ProjectInfo[]>(['projects']) ?? await queryClient.ensureQueryData(projectsQueryOptions());
-		queryClient.prefetchQuery(projectsQueryOptions());
 		for (const p of projects) {
 			queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
 			queryClient.prefetchQuery(projectTodosQueryOptions(p.name));

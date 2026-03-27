@@ -6,6 +6,8 @@ vi.mock('./server-fns', () => ({
 	getProjectTodos: vi.fn(),
 	getIssues: vi.fn(),
 	getProjectItemsFn: vi.fn(),
+	getIssueByNumber: vi.fn(),
+	getProjectItemByNumber: vi.fn(),
 	getSnoozedList: vi.fn(),
 	getTestQueue: vi.fn(),
 	getCommitDiff: vi.fn(),

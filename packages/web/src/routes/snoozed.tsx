@@ -1,7 +1,7 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {AlarmClockOff} from 'lucide-react';
-import {unsnoozeChildFn} from '../lib/server-fns';
+import {unsnoozeChildFn, getProjectChildren} from '../lib/server-fns';
 import type {SnoozedChild} from '../lib/server-fns';
 import {snoozedQueryOptions} from '../lib/queries';
 
@@ -78,13 +78,11 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 	const queryClient = useQueryClient();
 
 	const handleUnsnooze = async () => {
-		// Optimistically remove from snoozed list
 		queryClient.setQueryData<SnoozedChild[]>(['snoozed'], (old) => old?.filter((s) => !(s.sha === item.sha && s.project === item.project)));
 		const result = await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', item.project]});
-		} else {
-			queryClient.invalidateQueries({queryKey: ['snoozed']});
+			const fresh = await getProjectChildren({data: {project: item.project}});
+			queryClient.setQueryData(['children', item.project], fresh);
 		}
 	};
 

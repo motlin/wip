@@ -31,11 +31,15 @@ export function PullRequestCard({pr}: {pr: PullRequestItem}) {
 	useEffect(() => {
 		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
 			if (testJob?.status === 'passed' || testJob?.status === 'failed') {
-				queryClient.invalidateQueries({queryKey: ['children', pr.project]});
+				const testStatus = testJob.status as 'passed' | 'failed';
+				queryClient.setQueryData<import('../lib/server-fns').ProjectChildrenResult>(['children', pr.project], (old) => {
+					if (!old) return old;
+					return {...old, pullRequests: old.pullRequests.map((p) => p.sha === pr.sha ? {...p, testStatus} : p)};
+				});
 			}
 		}
 		prevTestStatus.current = testJob?.status;
-	}, [testJob?.status, queryClient, pr.project]);
+	}, [testJob?.status, queryClient, pr.project, pr.sha]);
 
 	const mergeStatus = useMergeStatus(pr.sha, pr.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? pr.commitsBehind;

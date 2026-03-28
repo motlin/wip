@@ -7,7 +7,9 @@ import {BranchCard} from '../components/branch-card';
 import {PullRequestCard} from '../components/pull-request-card';
 import {DiffPanel} from '../components/diff-section';
 import {AnsiText} from '../components/ansi-text';
-import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions} from '../lib/queries';
+import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions, projectsQueryOptions} from '../lib/queries';
+import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
+import type {Category} from '@wip/shared';
 
 export const Route = createFileRoute('/item/$project/$sha')({
 	loader: ({context: {queryClient}, params}) =>
@@ -15,6 +17,7 @@ export const Route = createFileRoute('/item/$project/$sha')({
 			queryClient.ensureQueryData(childByShaQueryOptions(params.project, params.sha)),
 			queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
 			queryClient.ensureQueryData(testLogQueryOptions(params.project, params.sha)),
+			queryClient.ensureQueryData(projectsQueryOptions()),
 		]),
 	head: ({params}) => ({
 		meta: [{title: `${params.project} / ${params.sha.slice(0, 7)}`}],
@@ -22,11 +25,22 @@ export const Route = createFileRoute('/item/$project/$sha')({
 	component: ItemDetail,
 });
 
+const CATEGORY_LABELS: Record<Category, string> = {
+	not_started: 'Not Started', approved: 'Approved', changes_requested: 'Changes Requested',
+	review_comments: 'Review Comments', checks_passed: 'Checks Passed', checks_failed: 'Checks Failed',
+	checks_unknown: 'Checks Unknown', checks_running: 'Checks Running', ready_to_push: 'Ready to Push',
+	needs_rebase: 'Needs Rebase', rebase_conflicts: 'Rebase Conflicts', needs_split: 'Needs Split', pushed_no_pr: 'Needs PR',
+	test_failed: 'Test Failed', ready_to_test: 'Ready to Test', detached_head: 'Detached HEAD',
+	local_changes: 'Local Changes', no_test: 'No Test', snoozed: 'Snoozed', skippable: 'Skippable',
+};
+
 function ItemDetail() {
 	const {project, sha} = Route.useParams();
 	const {data: child} = useSuspenseQuery(childByShaQueryOptions(project, sha));
 	const {data: {files, stat}} = useSuspenseQuery(diffQueryOptions(project, sha));
 	const {data: {log}} = useSuspenseQuery(testLogQueryOptions(project, sha));
+	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
+	const projectInfo = projects.find((p) => p.name === project);
 
 	if (!child) {
 		return (
@@ -36,6 +50,12 @@ function ItemDetail() {
 		);
 	}
 
+	const isPr = 'prUrl' in child && child.prUrl;
+	const isBranch = 'branch' in child;
+	const category = projectInfo
+		? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : classifyCommit(child as any, projectInfo)
+		: undefined;
+
 	return (
 		<div className="p-6">
 			<Link to="/queue" className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors">
@@ -44,13 +64,57 @@ function ItemDetail() {
 			</Link>
 
 			<div className="mb-6">
-				{'prUrl' in child && child.prUrl ? (
-					<PullRequestCard pr={child} />
-				) : 'branch' in child ? (
-					<BranchCard branch={child} />
+				{isPr ? (
+					<PullRequestCard pr={child as any} />
+				) : isBranch ? (
+					<BranchCard branch={child as any} />
 				) : (
-					<CommitCard commit={child} />
+					<CommitCard commit={child as any} />
 				)}
+			</div>
+
+			<div className="mb-6">
+				<h2 className="mb-2 text-sm font-semibold text-text-200">State</h2>
+				<div className="rounded-lg border border-border-300/30 bg-bg-100 p-3">
+					{category && (
+						<div className="mb-3 inline-flex items-center rounded bg-bg-200 px-2 py-1 text-xs font-semibold text-text-100">
+							{CATEGORY_LABELS[category]}
+						</div>
+					)}
+					<dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+						<dt className="text-text-400">type</dt>
+						<dd className="font-mono text-text-200">{isPr ? 'pull_request' : isBranch ? 'branch' : 'commit'}</dd>
+						{Object.entries(child).map(([key, value]) => {
+							if (key === 'subject' || key === 'failureTail') return null;
+							return (
+								<>
+									<dt key={`${key}-dt`} className="text-text-400">{key}</dt>
+									<dd key={`${key}-dd`} className="font-mono text-text-200 break-all">
+										{value === undefined ? <span className="text-text-500">undefined</span>
+											: value === null ? <span className="text-text-500">null</span>
+											: typeof value === 'boolean' ? <span className={value ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{String(value)}</span>
+											: typeof value === 'object' ? JSON.stringify(value)
+											: String(value)}
+									</dd>
+								</>
+							);
+						})}
+						{projectInfo && (
+							<>
+								<dt className="text-text-400 border-t border-border-300/30 pt-1 mt-1">project.dirty</dt>
+								<dd className="font-mono text-text-200 border-t border-border-300/30 pt-1 mt-1">
+									<span className={projectInfo.dirty ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>{String(projectInfo.dirty)}</span>
+								</dd>
+								<dt className="text-text-400">project.hasTestConfigured</dt>
+								<dd className="font-mono text-text-200">
+									<span className={projectInfo.hasTestConfigured ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{String(projectInfo.hasTestConfigured)}</span>
+								</dd>
+								<dt className="text-text-400">project.detachedHead</dt>
+								<dd className="font-mono text-text-200">{String(projectInfo.detachedHead)}</dd>
+							</>
+						)}
+					</dl>
+				</div>
 			</div>
 
 			<div className="mb-6">

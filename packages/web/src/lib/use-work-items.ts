@@ -56,17 +56,24 @@ export function useWorkItems(projects: ProjectInfo[]): WorkItems & {projectCount
 
 		const allSubjects = new Set<string>();
 		const allPrUrls = new Set<string>();
+		const seenShas = new Set<string>();
 
 		for (const q of childQueries) {
 			for (const c of q.data.commits) {
+				if (seenShas.has(c.sha)) continue;
+				seenShas.add(c.sha);
 				commits.push(c);
 				allSubjects.add(c.subject.toLowerCase());
 			}
 			for (const b of q.data.branches) {
+				if (seenShas.has(b.sha)) continue;
+				seenShas.add(b.sha);
 				branches.push(b);
 				allSubjects.add(b.subject.toLowerCase());
 			}
 			for (const pr of q.data.pullRequests) {
+				if (seenShas.has(pr.sha)) continue;
+				seenShas.add(pr.sha);
 				pullRequests.push(pr);
 				allSubjects.add(pr.subject.toLowerCase());
 				allPrUrls.add(pr.prUrl);

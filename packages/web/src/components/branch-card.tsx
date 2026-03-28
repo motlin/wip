@@ -31,11 +31,15 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 	useEffect(() => {
 		if (prevTestStatus.current && (prevTestStatus.current === 'queued' || prevTestStatus.current === 'running')) {
 			if (testJob?.status === 'passed' || testJob?.status === 'failed') {
-				queryClient.invalidateQueries({queryKey: ['children', branch.project]});
+				const testStatus = testJob.status as 'passed' | 'failed';
+				queryClient.setQueryData<import('../lib/server-fns').ProjectChildrenResult>(['children', branch.project], (old) => {
+					if (!old) return old;
+					return {...old, branches: old.branches.map((b) => b.sha === branch.sha ? {...b, testStatus} : b)};
+				});
 			}
 		}
 		prevTestStatus.current = testJob?.status;
-	}, [testJob?.status, queryClient, branch.project]);
+	}, [testJob?.status, queryClient, branch.project, branch.sha]);
 
 	const mergeStatus = useMergeStatus(branch.sha, branch.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? branch.commitsBehind;

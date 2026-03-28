@@ -19,7 +19,16 @@ export function CommitCard({commit}: {commit: CommitItem}) {
 		const result = await createBranch({data: {project: commit.project, sha: commit.sha, branchName: branchName.trim()}});
 		setCreating(false);
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['children', commit.project]});
+			queryClient.setQueryData<import('../lib/server-fns').ProjectChildrenResult>(['children', commit.project], (old) => {
+				if (!old) return old;
+				const c = old.commits.find((x) => x.sha === commit.sha);
+				if (!c) return old;
+				return {
+					commits: old.commits.filter((x) => x.sha !== commit.sha),
+					branches: [...old.branches, {...c, branch: branchName.trim(), pushedToRemote: false, needsRebase: false, commitsBehind: 0, commitsAhead: 1, rebaseable: undefined}],
+					pullRequests: old.pullRequests,
+				};
+			});
 		} else {
 			setError(result.message);
 		}

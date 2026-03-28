@@ -1,9 +1,10 @@
 import {useQueryClient} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, getProjectChildren} from '../lib/server-fns';
 import {useMergeStatus} from '../lib/merge-events-context';
-import type {BranchItem, PullRequestItem} from '@wip/shared';
+import type {BranchItem, PullRequestItem, SnoozedChild} from '@wip/shared';
+import type {ProjectChildrenResult} from '../lib/server-fns';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
 
@@ -26,21 +27,62 @@ function isPullRequest(item: ActionableItem): item is PullRequestItem {
 	return 'prUrl' in item && item.prUrl !== undefined;
 }
 
-function useOptimisticChildren(project: string) {
+function useChildrenCache(project: string) {
 	const queryClient = useQueryClient();
 	const queryKey = ['children', project] as const;
 
 	return {
 		queryClient,
-		invalidate() {
-			queryClient.invalidateQueries({queryKey});
+		/** Update a single item in the cache by SHA */
+		updateItem(sha: string, updater: (item: ActionableItem) => ActionableItem) {
+			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
+				if (!old) return old;
+				return {
+					commits: old.commits,
+					branches: old.branches.map((b) => b.sha === sha ? updater(b) as BranchItem : b),
+					pullRequests: old.pullRequests.map((p) => p.sha === sha ? updater(p) as PullRequestItem : p),
+				};
+			});
+		},
+		/** Remove an item from the cache by SHA */
+		removeItem(sha: string) {
+			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
+				if (!old) return old;
+				return {
+					commits: old.commits.filter((c) => c.sha !== sha),
+					branches: old.branches.filter((b) => b.sha !== sha),
+					pullRequests: old.pullRequests.filter((p) => p.sha !== sha),
+				};
+			});
+		},
+		/** Move a branch to the pullRequests list */
+		promoteToPr(sha: string, prUrl: string, prNumber: number) {
+			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
+				if (!old) return old;
+				const branch = old.branches.find((b) => b.sha === sha);
+				if (!branch) return old;
+				const pr: PullRequestItem = {
+					...branch,
+					pushedToRemote: true,
+					prUrl,
+					prNumber,
+					reviewStatus: 'no_pr' as const,
+					checkStatus: 'pending' as const,
+					failedChecks: undefined,
+				};
+				return {
+					commits: old.commits,
+					branches: old.branches.filter((b) => b.sha !== sha),
+					pullRequests: [...old.pullRequests, pr],
+				};
+			});
 		},
 	};
 }
 
 function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 	const queryClient = useQueryClient();
-	const optimistic = useOptimisticChildren(item.project);
+	const cache = useChildrenCache(item.project);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
@@ -153,8 +195,11 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		const until = hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
 		const result = await snoozeChildFn({data: {project: item.project, sha: item.sha, until}});
 		if (result.ok) {
-			queryClient.invalidateQueries({queryKey: ['snoozed']});
-			optimistic.invalidate();
+			cache.removeItem(item.sha);
+			queryClient.setQueryData<SnoozedChild[]>(['snoozed'], (old) => [
+				...(old ?? []),
+				{sha: item.sha, project: item.project, shortSha: item.shortSha, subject: item.subject, until},
+			]);
 		} else {
 			setError(result.message);
 		}
@@ -172,7 +217,10 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}});
 		setCreatingPr(false);
 		if (result.ok) {
-			optimistic.invalidate();
+			const prUrl = result.compareUrl ?? '';
+			const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
+			const prNumber = prNumberMatch ? Number(prNumberMatch[1]) : 0;
+			cache.promoteToPr(item.sha, prUrl, prNumber);
 		} else {
 			setError(result.message);
 		}
@@ -182,12 +230,13 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRefreshing(true);
 		setError(null);
 		const result = await refreshChild({data: {project: item.project, sha: item.sha}});
-		setRefreshing(false);
 		if (result.ok) {
-			optimistic.invalidate();
+			const fresh = await getProjectChildren({data: {project: item.project}});
+			queryClient.setQueryData(['children', item.project], fresh);
 		} else {
 			setError(result.message);
 		}
+		setRefreshing(false);
 	};
 
 	const handleRebase = async () => {
@@ -202,7 +251,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRebasing(false);
 		if (result.ok) {
 			setRebaseResult({message: result.message});
-			optimistic.invalidate();
+			cache.updateItem(item.sha, (i) => ({...i, commitsBehind: 0, rebaseable: undefined}));
 		} else {
 			setError(result.message);
 		}
@@ -217,7 +266,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}});
 		setForcePushing(false);
 		if (result.ok) {
-			optimistic.invalidate();
+			cache.updateItem(item.sha, (i) => ({...i, localAhead: false}));
 		} else {
 			setError(result.message);
 		}
@@ -235,7 +284,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRenaming(false);
 		if (result.ok) {
 			setRenameOpen(false);
-			optimistic.invalidate();
+			cache.updateItem(item.sha, (i) => ({...i, branch: newBranchName.trim()}));
 		} else {
 			setError(result.message);
 		}
@@ -252,7 +301,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}});
 		setApplyingFixes(false);
 		if (result.ok) {
-			optimistic.invalidate();
+			cache.updateItem(item.sha, (i) => ({...i, checkStatus: 'pending' as const, failedChecks: undefined}));
 		} else {
 			setError(result.message);
 		}
@@ -267,7 +316,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}});
 		setRebasingLocal(false);
 		if (result.ok) {
-			optimistic.invalidate();
+			cache.updateItem(item.sha, (i) => ({...i, needsRebase: false, commitsBehind: 0}));
 		} else {
 			setError(result.message);
 		}
@@ -303,7 +352,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setDeleteLoading(false);
 		if (result.ok) {
 			setDeleteConfirmOpen(false);
-			optimistic.invalidate();
+			cache.removeItem(item.sha);
 		} else {
 			setError(result.message);
 		}

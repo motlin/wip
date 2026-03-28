@@ -4,17 +4,60 @@ import {DiffFile} from '@git-diff-view/core';
 import '@git-diff-view/react/styles/diff-view.css';
 import type {FileDiff} from '../lib/server-fns';
 
+/** Map of file extensions to shiki language identifiers supported by @git-diff-view/shiki's default highlighter. */
+const SUPPORTED_LANGS = new Set([
+	'cpp', 'java', 'javascript', 'css', 'cs', 'c', 'vue', 'astro', 'bash', 'make',
+	'markdown', 'makefile', 'bat', 'cmake', 'cmd', 'csv', 'docker', 'dockerfile',
+	'go', 'python', 'html', 'jsx', 'tsx', 'typescript', 'sql', 'xml', 'sass',
+	'ssh-config', 'kotlin', 'json', 'swift', 'txt', 'diff',
+]);
+
+/** Common file extensions mapped to their shiki language identifier. */
+const EXT_TO_LANG: Record<string, string> = {
+	js: 'javascript',
+	mjs: 'javascript',
+	cjs: 'javascript',
+	ts: 'typescript',
+	mts: 'typescript',
+	cts: 'typescript',
+	py: 'python',
+	rb: 'ruby',
+	rs: 'rust',
+	sh: 'bash',
+	zsh: 'bash',
+	yml: 'yaml',
+	yaml: 'yaml',
+	md: 'markdown',
+	mdx: 'markdown',
+	htm: 'html',
+	kt: 'kotlin',
+	kts: 'kotlin',
+	h: 'c',
+	hpp: 'cpp',
+	cc: 'cpp',
+	cxx: 'cpp',
+	Makefile: 'makefile',
+	Dockerfile: 'dockerfile',
+};
+
+export function resolveLanguage(fileName: string): string {
+	const ext = fileName.split('.').pop() ?? '';
+	const mapped = EXT_TO_LANG[ext] ?? ext;
+	return SUPPORTED_LANGS.has(mapped) ? mapped : 'txt';
+}
+
 function useDiffFile(file: FileDiff, theme: 'light' | 'dark', mode: 'split' | 'unified') {
 	return useMemo(() => {
-		const ext = file.newFileName.split('.').pop() ?? '';
+		const oldLang = resolveLanguage(file.oldFileName);
+		const newLang = resolveLanguage(file.newFileName);
 		const instance = new DiffFile(
 			file.oldFileName,
 			file.oldContent ?? '',
 			file.newFileName,
 			file.newContent ?? '',
 			[file.hunks],
-			ext,
-			ext,
+			oldLang,
+			newLang,
 		);
 		instance.initTheme(theme);
 		instance.init();

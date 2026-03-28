@@ -83,7 +83,13 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 
 		clearExpiredSnoozes();
 		const snoozedSet = getSnoozedSet();
-		const allChildren = [...children, ...needsRebaseBranches].filter((c) => !snoozedSet.has(`${p.name}:${c.sha}`));
+		const seen = new Set<string>();
+		const allChildren = [...children, ...needsRebaseBranches].filter((c) => {
+			if (snoozedSet.has(`${p.name}:${c.sha}`)) return false;
+			if (seen.has(c.sha)) return false;
+			seen.add(c.sha);
+			return true;
+		});
 
 		const commits: CommitItem[] = [];
 		const branches: BranchItem[] = [];

@@ -2,7 +2,9 @@ import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {Play, Loader2, GitBranch} from 'lucide-react';
 import {useState, useMemo} from 'react';
-import {testAllChildren, rebaseAllBranches} from '../../lib/server-fns';
+import {useQueryClient} from '@tanstack/react-query';
+import {testAllChildren, rebaseAllBranches, getProjectChildren} from '../../lib/server-fns';
+import type {ProjectChildrenResult} from '../../lib/server-fns';
 import {useHasActiveTests} from '../../lib/test-events-context';
 import {projectsQueryOptions} from '../../lib/queries';
 import {useWorkItems} from '../../lib/use-work-items';
@@ -75,10 +77,12 @@ export const Route = createFileRoute('/_dashboard/queue')({
 });
 
 function Queue() {
+	const queryClient = useQueryClient();
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
 	const [testingAll, setTestingAll] = useState(false);
 	const [rebasingAll, setRebasingAll] = useState(false);
+	const [rebaseResult, setRebaseResult] = useState<string | null>(null);
 	const hasActiveTests = useHasActiveTests();
 
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
@@ -137,7 +141,15 @@ function Queue() {
 
 	const handleRebaseAll = async () => {
 		setRebasingAll(true);
-		await rebaseAllBranches();
+		setRebaseResult(null);
+		const result = await rebaseAllBranches();
+		setRebaseResult(result.message);
+		// Refresh children for all projects that may have changed
+		const refreshes = projects.map(async (p) => {
+			const fresh = await getProjectChildren({data: {project: p.name}});
+			queryClient.setQueryData<ProjectChildrenResult>(['children', p.name], fresh);
+		});
+		await Promise.all(refreshes);
 		setRebasingAll(false);
 	};
 
@@ -183,6 +195,11 @@ function Queue() {
 					)}
 				</div>
 			</div>
+			{rebaseResult && (
+				<div className="mb-4 rounded-lg bg-bg-200 px-3 py-2 text-sm text-text-200">
+					{rebaseResult}
+				</div>
+			)}
 			<div className="flex flex-col gap-6">
 				{CATEGORY_PRIORITY.map((category) => {
 					const items = grouped[category];

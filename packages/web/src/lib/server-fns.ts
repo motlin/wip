@@ -409,9 +409,10 @@ export const getCommitDiff = createServerFn({method: 'GET'})
 	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> => {
 		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
+		// Use -m --first-parent so merge commits produce a standard diff instead of combined format
 		const [diffResult, statResult, subjectResult] = await Promise.all([
-			execa('git', ['-C', p.dir, 'show', '--format=', data.sha], {reject: false}),
-			execa('git', ['-C', p.dir, 'show', '--stat', '--format=', data.sha], {reject: false}),
+			execa('git', ['-C', p.dir, 'show', '-m', '--first-parent', '--format=', data.sha], {reject: false}),
+			execa('git', ['-C', p.dir, 'show', '-m', '--first-parent', '--stat', '--format=', data.sha], {reject: false}),
 			execa('git', ['-C', p.dir, 'log', '-1', '--format=%s', data.sha], {reject: false}),
 		]);
 
@@ -433,10 +434,19 @@ export const getCommitDiff = createServerFn({method: 'GET'})
 			// Pass full chunk including diff --git header — @git-diff-view/core needs it
 			const hunks = chunk;
 
-			// Get old and new file content for syntax highlighting
+			// Detect new/deleted files from --- and +++ lines to avoid fetching nonexistent content
+			const isNewFile = /^--- \/dev\/null$/m.test(chunk);
+			const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
+
+			// Fetch old and new file content for syntax highlighting.
+			// Use stripFinalNewline: false so the content matches the diff hunks exactly.
 			const [oldResult, newResult] = await Promise.all([
-				execa('git', ['-C', p.dir, 'show', `${data.sha}^:${oldFileName}`], {reject: false}),
-				execa('git', ['-C', p.dir, 'show', `${data.sha}:${newFileName}`], {reject: false}),
+				isNewFile
+					? {exitCode: 0, stdout: ''}
+					: execa('git', ['-C', p.dir, 'show', `${data.sha}^:${oldFileName}`], {reject: false, stripFinalNewline: false}),
+				isDeletedFile
+					? {exitCode: 0, stdout: ''}
+					: execa('git', ['-C', p.dir, 'show', `${data.sha}:${newFileName}`], {reject: false, stripFinalNewline: false}),
 			]);
 
 			files.push({

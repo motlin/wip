@@ -8,7 +8,7 @@ import {BranchCard} from '../components/branch-card';
 import {PullRequestCard} from '../components/pull-request-card';
 import {DiffPanel} from '../components/diff-section';
 import {AnsiText} from '../components/ansi-text';
-import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions, projectsQueryOptions} from '../lib/queries';
+import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions, projectsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
 import type {Category} from '@wip/shared';
 
@@ -19,6 +19,7 @@ export const Route = createFileRoute('/item/$project/$sha')({
 			queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
 			queryClient.ensureQueryData(testLogQueryOptions(params.project, params.sha)),
 			queryClient.ensureQueryData(projectsQueryOptions()),
+			queryClient.ensureQueryData(snoozedQueryOptions()),
 		]),
 	head: ({params}) => ({
 		meta: [{title: `${params.project} / ${params.sha.slice(0, 7)}`}],
@@ -41,7 +42,10 @@ function ItemDetail() {
 	const {data: {files, stat}} = useSuspenseQuery(diffQueryOptions(project, sha));
 	const {data: {log}} = useSuspenseQuery(testLogQueryOptions(project, sha));
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
+	const {data: snoozedItems} = useSuspenseQuery(snoozedQueryOptions());
 	const projectInfo = projects.find((p) => p.name === project);
+	const isSnoozed = snoozedItems.some((s) => s.project === project && s.sha === sha);
+	const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);
 
 	if (!child) {
 		return (
@@ -77,11 +81,16 @@ function ItemDetail() {
 			<div className="mb-6">
 				<h2 className="mb-2 text-sm font-semibold text-text-200">State</h2>
 				<div className="rounded-lg border border-border-300/30 bg-bg-100 p-3">
-					{category && (
-						<div className="mb-3 inline-flex items-center rounded bg-bg-200 px-2 py-1 text-xs font-semibold text-text-100">
-							{CATEGORY_LABELS[category]}
+					<div className="mb-3 flex flex-wrap gap-2">
+						{category && (
+							<div className="inline-flex items-center rounded bg-bg-200 px-2 py-1 text-xs font-semibold text-text-100">
+								{CATEGORY_LABELS[category]}
+							</div>
+						)}
+						<div className={`inline-flex items-center rounded px-2 py-1 text-xs font-semibold ${isSnoozed ? 'bg-amber-500/20 text-amber-400' : 'bg-bg-200 text-text-400'}`}>
+							{isSnoozed ? `Snoozed${snoozedEntry?.until ? ` until ${snoozedEntry.until}` : ''}` : 'Not Snoozed'}
 						</div>
-					)}
+					</div>
 					<dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
 						<dt className="text-text-400">type</dt>
 						<dd className="font-mono text-text-200">{isPr ? 'pull_request' : isBranch ? 'branch' : 'commit'}</dd>

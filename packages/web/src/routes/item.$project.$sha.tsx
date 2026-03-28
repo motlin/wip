@@ -1,3 +1,4 @@
+import {Fragment} from 'react';
 import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery} from '@tanstack/react-query';
 import {ArrowLeft} from 'lucide-react';
@@ -87,16 +88,16 @@ function ItemDetail() {
 						{Object.entries(child).map(([key, value]) => {
 							if (key === 'subject' || key === 'failureTail') return null;
 							return (
-								<>
-									<dt key={`${key}-dt`} className="text-text-400">{key}</dt>
-									<dd key={`${key}-dd`} className="font-mono text-text-200 break-all">
+								<Fragment key={key}>
+									<dt className="text-text-400">{key}</dt>
+									<dd className="font-mono text-text-200 break-all">
 										{value === undefined ? <span className="text-text-500">undefined</span>
 											: value === null ? <span className="text-text-500">null</span>
 											: typeof value === 'boolean' ? <span className={value ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{String(value)}</span>
 											: typeof value === 'object' ? JSON.stringify(value)
 											: String(value)}
 									</dd>
-								</>
+								</Fragment>
 							);
 						})}
 						{projectInfo && (

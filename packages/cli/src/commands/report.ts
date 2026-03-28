@@ -25,6 +25,7 @@ interface ReportJson {
 		readyToTest: number;
 		testFailed: number;
 		needsRebase: number;
+		rebaseConflicts: number;
 		readyToPush: number;
 		pushedNoPr: number;
 		checksUnknown: number;
@@ -44,6 +45,7 @@ interface ReportJson {
 	readyToTest: ClassifiedChild[];
 	testFailed: ClassifiedChild[];
 	needsRebase: ClassifiedChild[];
+	rebaseConflicts: ClassifiedChild[];
 	readyToPush: ClassifiedChild[];
 	pushedNoPr: ClassifiedChild[];
 	checksUnknown: ClassifiedChild[];
@@ -63,6 +65,7 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 	if (project.dirty) return 'local_changes';
 	if (!project.hasTestConfigured) return 'no_test';
 
+	if (child.needsRebase && child.rebaseable === false) return 'rebase_conflicts';
 	if (child.needsRebase) return 'needs_rebase';
 	if (!child.pushedToRemote) {
 		if (child.testStatus === 'passed') return 'ready_to_push';
@@ -99,6 +102,7 @@ const CATEGORY_ORDER: Category[] = [
 	'ready_to_test',
 	'test_failed',
 	'needs_rebase',
+	'rebase_conflicts',
 	'ready_to_push',
 	'pushed_no_pr',
 	'checks_unknown',
@@ -120,6 +124,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	ready_to_test: 'Ready to test',
 	test_failed: 'Test failed',
 	needs_rebase: 'Needs rebase',
+	rebase_conflicts: 'Rebase conflicts',
 	needs_split: 'Needs split',
 	ready_to_push: 'Ready to push',
 	pushed_no_pr: 'Needs PR',
@@ -146,6 +151,7 @@ function categoryStyle(category: Category, text: string): string {
 			return chalk.blue(text);
 		case 'test_failed':
 		case 'checks_failed':
+		case 'rebase_conflicts':
 			return chalk.red(text);
 		case 'ready_to_test':
 		case 'checks_running':
@@ -201,6 +207,7 @@ export default class Report extends Command {
 			ready_to_test: [],
 			test_failed: [],
 			needs_rebase: [],
+			rebase_conflicts: [],
 			needs_split: [],
 			ready_to_push: [],
 			pushed_no_pr: [],
@@ -255,6 +262,7 @@ export default class Report extends Command {
 				readyToTest: grouped.ready_to_test.length,
 				testFailed: grouped.test_failed.length,
 				needsRebase: grouped.needs_rebase.length,
+				rebaseConflicts: grouped.rebase_conflicts.length,
 				readyToPush: grouped.ready_to_push.length,
 				pushedNoPr: grouped.pushed_no_pr.length,
 				checksUnknown: grouped.checks_unknown.length,
@@ -274,6 +282,7 @@ export default class Report extends Command {
 			readyToTest: grouped.ready_to_test,
 			testFailed: grouped.test_failed,
 			needsRebase: grouped.needs_rebase,
+			rebaseConflicts: grouped.rebase_conflicts,
 			readyToPush: grouped.ready_to_push,
 			pushedNoPr: grouped.pushed_no_pr,
 			checksUnknown: grouped.checks_unknown,
@@ -355,6 +364,10 @@ export default class Report extends Command {
 
 		if (grouped.needs_split.length > 0) {
 			steps.push(`wip split                   # split ${grouped.needs_split.length} multi-commit branches`);
+		}
+
+		if (grouped.rebase_conflicts.length > 0) {
+			steps.push(`# ${grouped.rebase_conflicts.length} branches have rebase conflicts — manual resolution needed`);
 		}
 
 		if (grouped.needs_rebase.length > 0) {

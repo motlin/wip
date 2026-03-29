@@ -1,7 +1,7 @@
 import {Fragment} from 'react';
 import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient, useQuery} from '@tanstack/react-query';
-import {ArrowLeft, Loader2, CheckCircle, XCircle, Clock, Ban} from 'lucide-react';
+import {ArrowLeft, Loader2, CheckCircle, XCircle, Clock, Ban, Cloud, HardDrive} from 'lucide-react';
 import '@git-diff-view/react/styles/diff-view.css';
 import {CommitCard} from '../components/commit-card';
 import {BranchCard} from '../components/branch-card';
@@ -127,6 +127,19 @@ function ItemDetail() {
 						<div className={`inline-flex items-center rounded px-2 py-1 text-xs font-semibold ${isSnoozed ? 'bg-amber-500/20 text-amber-400' : 'bg-bg-200 text-text-400'}`}>
 							{isSnoozed ? `Snoozed${snoozedEntry?.until ? ` until ${snoozedEntry.until}` : ''}` : 'Not Snoozed'}
 						</div>
+						{isBranch && (
+							'pushedToRemote' in child && child.pushedToRemote ? (
+								<div className="inline-flex items-center gap-1 rounded bg-blue-500/20 px-2 py-1 text-xs font-semibold text-blue-400">
+									<Cloud className="h-3 w-3" />
+									Remote Branch
+								</div>
+							) : (
+								<div className="inline-flex items-center gap-1 rounded bg-bg-200 px-2 py-1 text-xs font-semibold text-text-400">
+									<HardDrive className="h-3 w-3" />
+									Local Only
+								</div>
+							)
+						)}
 					</div>
 					<dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
 						<dt className="text-text-400">type</dt>

@@ -1,5 +1,5 @@
 import {useQueryClient} from '@tanstack/react-query';
-import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Copy, Check} from 'lucide-react';
+import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Copy, Check, Cloud, HardDrive} from 'lucide-react';
 import {useRef, useEffect, useState} from 'react';
 import {Link} from '@tanstack/react-router';
 import type {BranchItem, Category} from '@wip/shared';
@@ -95,6 +95,17 @@ export function BranchCard({branch, category}: {branch: BranchItem; category: Ca
 				>
 					{branch.branch}
 				</a>
+				{branch.pushedToRemote ? (
+					<span title="Branch exists on remote" className="shrink-0 inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+						<Cloud className="h-2.5 w-2.5" />
+						remote
+					</span>
+				) : (
+					<span title="Branch is local only" className="shrink-0 inline-flex items-center gap-0.5 rounded bg-bg-200 px-1 py-0.5 text-[10px] font-medium text-text-400">
+						<HardDrive className="h-2.5 w-2.5" />
+						local
+					</span>
+				)}
 				{branch.localAhead && (
 					<span title="Local branch is ahead of remote (needs force-push)" className="shrink-0 inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
 						<AlertCircle className="h-2.5 w-2.5" />

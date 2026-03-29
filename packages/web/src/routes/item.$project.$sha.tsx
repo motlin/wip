@@ -1,6 +1,6 @@
 import {Fragment} from 'react';
 import {createFileRoute, Link} from '@tanstack/react-router';
-import {useSuspenseQuery} from '@tanstack/react-query';
+import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {ArrowLeft} from 'lucide-react';
 import '@git-diff-view/react/styles/diff-view.css';
 import {CommitCard} from '../components/commit-card';
@@ -10,6 +10,7 @@ import {DiffPanel} from '../components/diff-section';
 import {AnsiText} from '../components/ansi-text';
 import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions, projectsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
+import {useSyncChildToCache} from '../lib/use-sync-child-to-cache';
 import type {Category} from '@wip/shared';
 
 export const Route = createFileRoute('/item/$project/$sha')({
@@ -38,11 +39,13 @@ const CATEGORY_LABELS: Record<Category, string> = {
 
 function ItemDetail() {
 	const {project, sha} = Route.useParams();
+	const queryClient = useQueryClient();
 	const {data: child} = useSuspenseQuery(childByShaQueryOptions(project, sha));
 	const {data: {files, stat}} = useSuspenseQuery(diffQueryOptions(project, sha));
 	const {data: {log}} = useSuspenseQuery(testLogQueryOptions(project, sha));
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const {data: snoozedItems} = useSuspenseQuery(snoozedQueryOptions());
+	useSyncChildToCache(queryClient, project, child);
 	const projectInfo = projects.find((p) => p.name === project);
 	const isSnoozed = snoozedItems.some((s) => s.project === project && s.sha === sha);
 	const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);

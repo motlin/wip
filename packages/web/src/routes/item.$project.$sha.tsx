@@ -1,7 +1,7 @@
-import {Fragment} from 'react';
+import {Fragment, useEffect, useRef} from 'react';
 import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient, useQuery} from '@tanstack/react-query';
-import {ArrowLeft, Loader2, CheckCircle, XCircle, Clock, Ban, Cloud, HardDrive} from 'lucide-react';
+import {ArrowLeft, Loader2, Clock, Cloud, HardDrive, ArrowDown} from 'lucide-react';
 import '@git-diff-view/react/styles/diff-view.css';
 import {CommitCard} from '../components/commit-card';
 import {BranchCard} from '../components/branch-card';
@@ -13,6 +13,7 @@ import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classi
 import {CATEGORIES, CATEGORY_PRIORITY} from '../lib/category-actions';
 import {useSyncChildToCache} from '../lib/use-sync-child-to-cache';
 import {useTestJob, useTestLog} from '../lib/test-events-context';
+import {useAutoTail} from '../lib/use-auto-tail';
 
 export const Route = createFileRoute('/item/$project/$sha')({
 	loader: ({context: {queryClient}, params}) =>
@@ -43,6 +44,20 @@ function ItemDetail() {
 	const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);
 	const testJob = useTestJob(sha, project);
 	const liveLog = useTestLog(sha, project);
+	const {containerRef: liveLogRef, isFollowing, setFollowing, scrollToStart, handleScroll} = useAutoTail(liveLog);
+
+	// Scroll to the live log panel when a test transitions to running/queued.
+	const prevTestStatus = useRef(testJob?.status);
+	useEffect(() => {
+		const prev = prevTestStatus.current;
+		const curr = testJob?.status;
+		prevTestStatus.current = curr;
+		if ((curr === 'running' || curr === 'queued') && prev !== 'running' && prev !== 'queued') {
+			// Small delay to let the live log DOM node render before scrolling.
+			requestAnimationFrame(() => scrollToStart());
+			setFollowing(true);
+		}
+	}, [testJob?.status, scrollToStart, setFollowing]);
 
 	if (!child) {
 		return (
@@ -106,12 +121,6 @@ function ItemDetail() {
 							{testJob.status === 'running' ? 'Test Running...' : 'Test Queued'}
 						</p>
 					</div>
-					{liveLog && (
-						<AnsiText
-							text={liveLog}
-							className="max-h-96 overflow-auto border-t border-border-300/30 bg-bg-200 p-4 font-mono text-xs leading-relaxed text-text-100 rounded-b-lg"
-						/>
-					)}
 				</div>
 			)}
 
@@ -146,11 +155,33 @@ function ItemDetail() {
 						<dd className="font-mono text-text-200">{isPr ? 'pull_request' : isBranch ? 'branch' : 'commit'}</dd>
 						{Object.entries(child).map(([key, value]) => {
 							if (key === 'subject' || key === 'failureTail') return null;
+							const remoteName = 'remote' in child ? (child as any).remote : undefined;
+							const branchName = 'branch' in child ? (child as any).branch : undefined;
+							const isRemote = 'pushedToRemote' in child && (child as any).pushedToRemote;
 							return (
 								<Fragment key={key}>
 									<dt className="text-text-400">{key}</dt>
 									<dd className="font-mono text-text-200 break-all">
-										{value === undefined ? <span className="text-text-500">undefined</span>
+										{key === 'branch' && typeof value === 'string' && isRemote && remoteName ? (
+											<a href={`https://github.com/${remoteName}/tree/${value}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">{value}</a>
+										) : key === 'prUrl' && typeof value === 'string' ? (
+											<a href={value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">{value}</a>
+										) : key === 'failedChecks' && Array.isArray(value) ? (
+											<ul className="list-none space-y-0.5">
+												{(value as Array<{name: string; url?: string; conclusion?: string}>).map((check) => (
+													<li key={check.name} className="flex items-center gap-1.5">
+														<span className="text-red-600 dark:text-red-400">{check.conclusion || 'failed'}</span>
+														{check.url ? (
+															<a href={check.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">{check.name}</a>
+														) : (
+															<span>{check.name}</span>
+														)}
+													</li>
+												))}
+											</ul>
+										) : key === 'alreadyOnRemote' && typeof value === 'object' && value && 'branch' in value && remoteName ? (
+											<a href={`https://github.com/${remoteName}/tree/${(value as any).branch}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">{(value as any).branch}</a>
+										) : value === undefined ? <span className="text-text-500">undefined</span>
 											: value === null ? <span className="text-text-500">null</span>
 											: typeof value === 'boolean' ? <span className={value ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{String(value)}</span>
 											: typeof value === 'object' ? JSON.stringify(value)
@@ -189,12 +220,38 @@ function ItemDetail() {
 			</div>
 
 			{log && (
-				<div>
+				<div className="mb-6">
 					<h2 className="mb-4 text-sm font-semibold text-text-200">Test Log</h2>
 					<AnsiText
 						text={log}
 						className="overflow-auto rounded-lg bg-bg-200 p-4 font-mono text-xs leading-relaxed text-text-100"
 					/>
+				</div>
+			)}
+
+			{liveLog && (
+				<div className="relative">
+					<h2 className="mb-2 text-sm font-semibold text-text-200">Live Test Output</h2>
+					<div
+						ref={liveLogRef}
+						onScroll={handleScroll}
+						className="max-h-96 overflow-y-auto rounded-lg border border-border-300/30 bg-bg-200 scrollbar-thin"
+					>
+						<AnsiText
+							text={liveLog}
+							className="p-4 font-mono text-xs leading-relaxed text-text-100"
+						/>
+					</div>
+					{!isFollowing && (
+						<button
+							type="button"
+							onClick={() => setFollowing(true)}
+							className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 mt-2 inline-flex items-center gap-1.5 rounded-full bg-bg-000 border border-border-300/50 px-3 py-1.5 text-xs font-medium text-text-200 shadow-lg transition-colors hover:bg-bg-100"
+						>
+							<ArrowDown className="h-3.5 w-3.5" />
+							Follow
+						</button>
+					)}
 				</div>
 			)}
 		</div>

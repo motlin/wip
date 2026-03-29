@@ -1,5 +1,5 @@
 import {queryOptions} from '@tanstack/react-query';
-import {getProjects, getProjectChildren, getProjectTodos, getIssues, getProjectItemsFn, getIssueByNumber, getProjectItemByNumber, getSnoozedList, getTestQueue, getCommitDiff, getTestLog, getChildBySha} from './server-fns';
+import {getProjects, getProjectChildren, getProjectTodos, getIssues, getProjectItemsFn, getIssueByNumber, getProjectItemByNumber, getSnoozedList, getTestQueue, getCommitDiff, getWorkingTreeDiff, getTestLog, getChildBySha} from './server-fns';
 
 export const projectsQueryOptions = () => queryOptions({
 	queryKey: ['projects'],
@@ -36,6 +36,12 @@ export const testQueueQueryOptions = () => queryOptions({
 	queryKey: ['testQueue'],
 	queryFn: () => getTestQueue(),
 	staleTime: 5_000,
+});
+
+export const workingTreeDiffQueryOptions = (project: string) => queryOptions({
+	queryKey: ['workingTreeDiff', project],
+	queryFn: () => getWorkingTreeDiff({data: {project}}),
+	staleTime: 10_000,
 });
 
 export const diffQueryOptions = (project: string, sha: string) => queryOptions({

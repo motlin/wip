@@ -111,15 +111,25 @@ function TestCard({job}: {job: TestQueueJob}) {
 				<div className="mt-0.5">{statusIcon(job.status)}</div>
 				<div className="min-w-0 flex-1">
 					<div className="flex items-baseline gap-2">
-						<span className="truncate text-sm font-medium text-text-100">
+						<Link
+							to="/item/$project/$sha"
+							params={{project: job.project, sha: job.sha}}
+							className="truncate text-sm font-medium text-text-100 hover:underline"
+						>
 							{job.subject || job.shortSha}
-						</span>
+						</Link>
 						{duration && (
 							<span className="shrink-0 text-xs text-text-500">{duration}</span>
 						)}
 					</div>
 					<div className="mt-0.5 flex items-center gap-2 text-xs text-text-500">
-						<span className="font-mono">{job.shortSha}</span>
+						<Link
+							to="/item/$project/$sha"
+							params={{project: job.project, sha: job.sha}}
+							className="font-mono hover:underline"
+						>
+							{job.shortSha}
+						</Link>
 						{job.branch && (
 							<span className="flex items-center gap-0.5">
 								<GitBranch className="h-3 w-3" />

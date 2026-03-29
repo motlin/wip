@@ -1,18 +1,18 @@
 import {Fragment} from 'react';
 import {createFileRoute, Link} from '@tanstack/react-router';
-import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
-import {ArrowLeft} from 'lucide-react';
+import {useSuspenseQuery, useQueryClient, useQuery} from '@tanstack/react-query';
+import {ArrowLeft, Loader2, CheckCircle, XCircle, Clock, Ban} from 'lucide-react';
 import '@git-diff-view/react/styles/diff-view.css';
 import {CommitCard} from '../components/commit-card';
 import {BranchCard} from '../components/branch-card';
 import {PullRequestCard} from '../components/pull-request-card';
 import {DiffPanel} from '../components/diff-section';
 import {AnsiText} from '../components/ansi-text';
-import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions, projectsQueryOptions, snoozedQueryOptions} from '../lib/queries';
+import {childByShaQueryOptions, diffQueryOptions, workingTreeDiffQueryOptions, testLogQueryOptions, projectsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
 import {CATEGORIES, CATEGORY_PRIORITY} from '../lib/category-actions';
 import {useSyncChildToCache} from '../lib/use-sync-child-to-cache';
-import {useTestJob} from '../lib/test-events-context';
+import {useTestJob, useTestLog} from '../lib/test-events-context';
 
 export const Route = createFileRoute('/item/$project/$sha')({
 	loader: ({context: {queryClient}, params}) =>
@@ -42,6 +42,7 @@ function ItemDetail() {
 	const isSnoozed = snoozedItems.some((s) => s.project === project && s.sha === sha);
 	const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);
 	const testJob = useTestJob(sha, project);
+	const liveLog = useTestLog(sha, project);
 
 	if (!child) {
 		return (
@@ -61,6 +62,12 @@ function ItemDetail() {
 			: projectInfo
 				? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : classifyCommit(child as any, projectInfo)
 				: undefined;
+
+	const isLocalChanges = category === 'local_changes';
+	const {data: workingTreeDiff} = useQuery({
+		...workingTreeDiffQueryOptions(project),
+		enabled: isLocalChanges,
+	});
 
 	return (
 		<div className="p-6">
@@ -84,6 +91,29 @@ function ItemDetail() {
 					<CommitCard commit={child as any} />
 				)}
 			</div>
+
+			{testJob && (testJob.status === 'running' || testJob.status === 'queued') && (
+				<div className={`mb-6 rounded-lg border ${
+					testJob.status === 'running'
+						? 'border-card-running-border bg-card-running-bg'
+						: 'border-border-300/50 bg-bg-100'
+				}`}>
+					<div className="flex items-center gap-3 px-4 py-3">
+						{testJob.status === 'running'
+							? <Loader2 className="h-5 w-5 animate-spin text-status-yellow" />
+							: <Clock className="h-5 w-5 text-text-400" />}
+						<p className="text-sm font-medium text-text-100">
+							{testJob.status === 'running' ? 'Test Running...' : 'Test Queued'}
+						</p>
+					</div>
+					{liveLog && (
+						<AnsiText
+							text={liveLog}
+							className="max-h-96 overflow-auto border-t border-border-300/30 bg-bg-200 p-4 font-mono text-xs leading-relaxed text-text-100 rounded-b-lg"
+						/>
+					)}
+				</div>
+			)}
 
 			<div className="mb-6">
 				<h2 className="mb-2 text-sm font-semibold text-text-200">State</h2>
@@ -133,6 +163,13 @@ function ItemDetail() {
 					</dl>
 				</div>
 			</div>
+
+			{isLocalChanges && workingTreeDiff && workingTreeDiff.files.length > 0 && (
+				<div className="mb-6">
+					<h2 className="mb-2 text-sm font-semibold text-text-200">Local Changes</h2>
+					<DiffPanel files={workingTreeDiff.files} stat={workingTreeDiff.stat} />
+				</div>
+			)}
 
 			<div className="mb-6">
 				<DiffPanel files={files} stat={stat} />

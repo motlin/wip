@@ -465,6 +465,74 @@ export const getCommitDiff = createServerFn({method: 'GET'})
 		};
 	});
 
+export const getWorkingTreeDiff = createServerFn({method: 'GET'})
+	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string}> => {
+		const p = await resolveProject(data.project);
+		const {execa} = await import('execa');
+		// Show all uncommitted changes (staged + unstaged) relative to HEAD
+		const [diffResult, statResult] = await Promise.all([
+			execa('git', ['-C', p.dir, 'diff', 'HEAD'], {reject: false}),
+			execa('git', ['-C', p.dir, 'diff', 'HEAD', '--stat'], {reject: false}),
+		]);
+
+		if (diffResult.exitCode !== 0) {
+			return {files: [], stat: ''};
+		}
+
+		const rawDiff = diffResult.stdout;
+		const fileDiffs = rawDiff.split(/^(?=diff --git )/m).filter(Boolean);
+
+		const files: FileDiff[] = [];
+		for (const chunk of fileDiffs) {
+			const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
+			if (!headerMatch) continue;
+			const oldFileName = headerMatch[1];
+			const newFileName = headerMatch[2];
+			const isNewFile = /^--- \/dev\/null$/m.test(chunk);
+			const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
+
+			const [oldResult, newResult] = await Promise.all([
+				isNewFile
+					? {exitCode: 0, stdout: ''}
+					: execa('git', ['-C', p.dir, 'show', `HEAD:${oldFileName}`], {reject: false, stripFinalNewline: false}),
+				isDeletedFile
+					? {exitCode: 0, stdout: ''}
+					: execa('git', ['-C', p.dir, 'cat-file', '-p', `:${newFileName}`], {reject: false, stripFinalNewline: false})
+						.then((r) => r.exitCode === 0 ? r : execa('git', ['-C', p.dir, 'show', `HEAD:${newFileName}`], {reject: false, stripFinalNewline: false})),
+			]);
+
+			files.push({
+				oldFileName,
+				newFileName,
+				hunks: chunk,
+				oldContent: oldResult.exitCode === 0 ? oldResult.stdout : '',
+				newContent: newResult.exitCode === 0 ? newResult.stdout : '',
+			});
+		}
+
+		return {
+			files,
+			stat: statResult.exitCode === 0 ? statResult.stdout : '',
+		};
+	});
+
+export const commitWorkingTree = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+		const p = await resolveProject(data.project);
+		const {execa} = await import('execa');
+		const result = await execa('claude', ['-p', '/git:commit'], {
+			cwd: p.dir,
+			reject: false,
+			timeout: 120_000,
+		});
+		if (result.exitCode !== 0) {
+			return {ok: false, message: result.stderr || result.stdout || `claude exited with code ${result.exitCode}`};
+		}
+		return {ok: true, message: result.stdout};
+	});
+
 export const getTestLog = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
 	.handler(async ({data}): Promise<{log: string | null; tail: string | null}> => {

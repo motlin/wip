@@ -14,13 +14,13 @@ export function classifyBranch(branch: BranchItem, project: ProjectInfo): Catego
 	if (branch.skippable) return 'skippable';
 	if (branch.testStatus === 'failed') return 'test_failed';
 	if (branch.pushedToRemote && branch.localAhead) return 'ready_to_push';
-	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	if (branch.needsRebase && branch.rebaseable === false) return 'rebase_conflicts';
 	if (branch.needsRebase) return 'needs_rebase';
-	if (branch.testStatus === 'passed' && (branch.commitsAhead ?? 1) > 1) return 'needs_split';
-	if (branch.testStatus === 'passed') return 'ready_to_push';
 	if (project.dirty) return 'local_changes';
 	if (!project.hasTestConfigured) return 'no_test';
+	if (branch.testStatus === 'passed' && (branch.commitsAhead ?? 1) > 1) return 'needs_split';
+	if (branch.testStatus === 'passed') return 'ready_to_push';
+	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	return 'ready_to_test';
 }
 

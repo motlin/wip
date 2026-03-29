@@ -23,6 +23,7 @@ interface ReportJson {
 		detachedHead: number;
 		localChanges: number;
 		readyToTest: number;
+		testRunning: number;
 		testFailed: number;
 		needsRebase: number;
 		rebaseConflicts: number;
@@ -43,6 +44,7 @@ interface ReportJson {
 	detachedHead: ClassifiedChild[];
 	localChanges: ClassifiedChild[];
 	readyToTest: ClassifiedChild[];
+	testRunning: ClassifiedChild[];
 	testFailed: ClassifiedChild[];
 	needsRebase: ClassifiedChild[];
 	rebaseConflicts: ClassifiedChild[];
@@ -264,6 +266,7 @@ export default class Report extends Command {
 				detachedHead: grouped.detached_head.length,
 				localChanges: grouped.local_changes.length,
 				readyToTest: grouped.ready_to_test.length,
+				testRunning: grouped.test_running.length,
 				testFailed: grouped.test_failed.length,
 				needsRebase: grouped.needs_rebase.length,
 				rebaseConflicts: grouped.rebase_conflicts.length,
@@ -284,6 +287,7 @@ export default class Report extends Command {
 			detachedHead: grouped.detached_head,
 			localChanges: grouped.local_changes,
 			readyToTest: grouped.ready_to_test,
+			testRunning: grouped.test_running,
 			testFailed: grouped.test_failed,
 			needsRebase: grouped.needs_rebase,
 			rebaseConflicts: grouped.rebase_conflicts,

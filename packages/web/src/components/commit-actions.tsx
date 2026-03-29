@@ -1,7 +1,7 @@
 import {useQueryClient, useQuery} from '@tanstack/react-query';
-import {ArrowRight, Play, Loader2, Moon, Sun, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
+import {ArrowRight, Play, Loader2, Moon, Sun, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench, Save} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, getProjectChildren} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, commitWorkingTree, getProjectChildren} from '../lib/server-fns';
 import {snoozedQueryOptions} from '../lib/queries';
 import {useMergeStatus} from '../lib/merge-events-context';
 import {suppressMergeUpdates} from '../lib/use-merge-events';
@@ -121,6 +121,7 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 	const fixesFormRef = useRef<HTMLDivElement>(null);
 	const [fixesPos, setFixesPos] = useState<{top: number; left: number} | null>(null);
 	const [rebasingLocal, setRebasingLocal] = useState(false);
+	const [committing, setCommitting] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -245,6 +246,19 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 			queryClient.setQueryData<SnoozedChild[]>(['snoozed'], (old) =>
 				(old ?? []).filter((s) => !(s.project === item.project && s.sha === item.sha)),
 			);
+			const fresh = await getProjectChildren({data: {project: item.project}});
+			queryClient.setQueryData<ProjectChildrenResult>(['children', item.project], fresh);
+		} else {
+			setError(result.message);
+		}
+	};
+
+	const handleCommit = async () => {
+		setCommitting(true);
+		setError(null);
+		const result = await commitWorkingTree({data: {project: item.project}});
+		setCommitting(false);
+		if (result.ok) {
 			const fresh = await getProjectChildren({data: {project: item.project}});
 			queryClient.setQueryData<ProjectChildrenResult>(['children', item.project], fresh);
 		} else {
@@ -558,6 +572,21 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 						</div>
 					);
 				})()}
+
+				{/* Commit local changes */}
+				{actions.has('commit') && (
+					<button
+						type="button"
+						onClick={handleCommit}
+						disabled={committing}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							committing ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-green-600 hover:bg-green-700 text-white'
+						}`}
+					>
+						{committing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+						{committing ? 'Committing...' : 'Commit'}
+					</button>
+				)}
 
 				{/* Inline rename widget for main/master branches */}
 				{actions.has('rename') && isDefaultBranch && (

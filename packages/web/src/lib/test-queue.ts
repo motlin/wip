@@ -30,6 +30,8 @@ export interface JobEvent {
 	branch?: string;
 	status: JobStatus;
 	message?: string;
+	type?: 'status' | 'log';
+	log?: string;
 }
 
 let nextId = 1;
@@ -42,7 +44,12 @@ export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
 
 function emit(job: TestJob): void {
-	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, message: job.message};
+	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, message: job.message, type: 'status'};
+	emitter.emit('job', event);
+}
+
+function emitLog(job: TestJob, chunk: string): void {
+	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, type: 'log', log: chunk};
 	emitter.emit('job', event);
 }
 
@@ -80,8 +87,20 @@ async function runTest(job: TestJob): Promise<void> {
 	const childProcess = execa('git', ['-C', job.projectDir, 'test', 'run', '--retest', job.sha], {
 		reject: false,
 		env: {...miseEnv, FORCE_COLOR: '1', CLICOLOR_FORCE: '1'},
+		buffer: true,
 	});
 	runningProcesses.set(job.id, {kill: () => childProcess.kill('SIGTERM')});
+
+	if (childProcess.stdout) {
+		childProcess.stdout.on('data', (chunk: Buffer) => {
+			emitLog(job, chunk.toString());
+		});
+	}
+	if (childProcess.stderr) {
+		childProcess.stderr.on('data', (chunk: Buffer) => {
+			emitLog(job, chunk.toString());
+		});
+	}
 
 	const result = await childProcess;
 	runningProcesses.delete(job.id);

@@ -11,6 +11,8 @@ export interface JobEvent {
 	branch?: string;
 	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
 	message?: string;
+	type?: 'status' | 'log';
+	log?: string;
 }
 
 const TERMINAL_STATUSES = new Set(['passed', 'failed', 'cancelled']);
@@ -33,6 +35,7 @@ function updateTestStatus(queryClient: ReturnType<typeof useQueryClient>, projec
 
 export function useTestEvents() {
 	const [jobs, setJobs] = useState<Map<string, JobEvent>>(new Map());
+	const [logs, setLogs] = useState<Map<string, string>>(new Map());
 	const queryClient = useQueryClient();
 
 	useEffect(() => {
@@ -40,11 +43,34 @@ export function useTestEvents() {
 
 		es.onmessage = (event) => {
 			const data = JSON.parse(event.data) as JobEvent;
+			const key = `${data.project}:${data.sha}`;
+
+			if (data.type === 'log' && data.log) {
+				setLogs((prev) => {
+					const next = new Map(prev);
+					next.set(key, (prev.get(key) ?? '') + data.log);
+					return next;
+				});
+				return;
+			}
+
 			setJobs((prev) => {
 				const next = new Map(prev);
-				next.set(`${data.project}:${data.sha}`, data);
+				next.set(key, data);
 				return next;
 			});
+
+			if (data.status === 'queued' || data.status === 'running') {
+				// Clear log when a new test starts
+				if (data.status === 'queued') {
+					setLogs((prev) => {
+						const next = new Map(prev);
+						next.delete(key);
+						return next;
+					});
+				}
+			}
+
 			if (TERMINAL_STATUSES.has(data.status)) {
 				updateTestStatus(queryClient, data.project, data.sha, data.status);
 			}
@@ -57,7 +83,11 @@ export function useTestEvents() {
 		return jobs.get(`${project}:${sha}`);
 	}, [jobs]);
 
+	const getLog = useCallback((sha: string, project: string): string | undefined => {
+		return logs.get(`${project}:${sha}`);
+	}, [logs]);
+
 	const hasActiveJobs = Array.from(jobs.values()).some((j) => j.status === 'queued' || j.status === 'running');
 
-	return {jobs, getJob, hasActiveJobs};
+	return {jobs, getJob, getLog, hasActiveJobs};
 }

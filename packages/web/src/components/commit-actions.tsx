@@ -110,6 +110,10 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
 	const [renaming, setRenaming] = useState(false);
 	const [applyingFixes, setApplyingFixes] = useState(false);
+	const [fixesConfirmOpen, setFixesConfirmOpen] = useState(false);
+	const fixesButtonRef = useRef<HTMLButtonElement>(null);
+	const fixesFormRef = useRef<HTMLDivElement>(null);
+	const [fixesPos, setFixesPos] = useState<{top: number; left: number} | null>(null);
 	const [rebasingLocal, setRebasingLocal] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
@@ -153,6 +157,18 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		document.addEventListener('mousedown', handleClick);
 		return () => document.removeEventListener('mousedown', handleClick);
 	}, [renameOpen]);
+
+	useEffect(() => {
+		if (!fixesConfirmOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (fixesFormRef.current && !fixesFormRef.current.contains(e.target as Node) &&
+				fixesButtonRef.current && !fixesButtonRef.current.contains(e.target as Node)) {
+				setFixesConfirmOpen(false);
+			}
+		}
+		document.addEventListener('mousedown', handleClick);
+		return () => document.removeEventListener('mousedown', handleClick);
+	}, [fixesConfirmOpen]);
 
 	const pushLabel = 'Push';
 
@@ -432,20 +448,86 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Apply Fixes */}
-				{pr && pr.checkStatus === 'failed' && pr.failedChecks?.some((c) => c.name.endsWith('-fix')) && (
-					<button
-						type="button"
-						onClick={handleApplyFixes}
-						disabled={applyingFixes}
-						title="Fetch fix branches, cherry-pick, squash into commit, and force-push"
-						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							applyingFixes ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-orange-600 hover:bg-orange-700 text-white'
-						}`}
-					>
-						{applyingFixes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
-						{applyingFixes ? 'Cherry-Picking...' : 'Cherry-Pick Fixes'}
-					</button>
-				)}
+				{pr && pr.checkStatus === 'failed' && pr.failedChecks?.some((c) => c.name.endsWith('-fix')) && (() => {
+					const fixChecks = pr.failedChecks!.filter((c) => c.name.endsWith('-fix'));
+					return (
+						<div className="relative">
+							<button
+								ref={fixesButtonRef}
+								type="button"
+								onClick={() => {
+									if (!fixesConfirmOpen && fixesButtonRef.current) {
+										const rect = fixesButtonRef.current.getBoundingClientRect();
+										setFixesPos({top: rect.bottom + 4, left: rect.left});
+									}
+									setFixesConfirmOpen(!fixesConfirmOpen);
+								}}
+								disabled={applyingFixes}
+								title="Fetch fix branches, cherry-pick, squash into commit, and force-push"
+								className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+									applyingFixes ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-orange-600 hover:bg-orange-700 text-white'
+								}`}
+							>
+								{applyingFixes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
+								{applyingFixes ? 'Cherry-Picking...' : `Cherry-Pick Fixes (${fixChecks.length})`}
+							</button>
+							{fixesConfirmOpen && fixesPos && (
+								<div
+									ref={fixesFormRef}
+									className="fixed z-50 w-72 max-h-64 overflow-y-auto rounded-lg border border-border-300/50 bg-bg-000 p-3 shadow-lg"
+									style={{top: fixesPos.top, left: fixesPos.left}}
+								>
+									<div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-orange-600 dark:text-orange-400">
+										<Wrench className="h-3.5 w-3.5" />
+										{fixChecks.length} fix {fixChecks.length === 1 ? 'branch' : 'branches'} available
+									</div>
+									<ul className="mb-2 space-y-1">
+										{fixChecks.map((check) => (
+											<li key={check.name} className="flex items-center gap-1.5 text-xs text-text-300">
+												<GitBranch className="h-3 w-3 shrink-0 text-text-400" />
+												{check.url ? (
+													<a
+														href={check.url}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="truncate font-mono text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+													>
+														{check.name}
+													</a>
+												) : (
+													<span className="truncate font-mono">{check.name}</span>
+												)}
+											</li>
+										))}
+									</ul>
+									<p className="mb-2 text-[10px] leading-tight text-text-400">
+										Cherry-picks each fix, squashes into commit, and force-pushes.
+									</p>
+									<div className="flex gap-1.5">
+										<button
+											type="button"
+											onClick={() => { setFixesConfirmOpen(false); handleApplyFixes(); }}
+											disabled={applyingFixes}
+											className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+												applyingFixes ? 'cursor-not-allowed opacity-60' : 'bg-orange-600 hover:bg-orange-700 text-white'
+											}`}
+										>
+											{applyingFixes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
+											{applyingFixes ? 'Applying...' : 'Apply'}
+										</button>
+										<button
+											type="button"
+											onClick={() => setFixesConfirmOpen(false)}
+											className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
+										>
+											Cancel
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					);
+				})()}
 
 				{/* Inline rename widget for main/master branches */}
 				{!pr && isDefaultBranch && (

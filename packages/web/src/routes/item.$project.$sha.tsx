@@ -1,7 +1,7 @@
 import {Fragment, useEffect, useRef} from 'react';
 import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient, useQuery} from '@tanstack/react-query';
-import {ArrowLeft, Loader2, Clock, Cloud, HardDrive, ArrowDown} from 'lucide-react';
+import {ArrowLeft, Loader2, Clock, Cloud, HardDrive, ArrowDown, ExternalLink} from 'lucide-react';
 import '@git-diff-view/react/styles/diff-view.css';
 import {CommitCard} from '../components/commit-card';
 import {BranchCard} from '../components/branch-card';
@@ -221,7 +221,17 @@ function ItemDetail() {
 
 			{log && (
 				<div className="mb-6">
-					<h2 className="mb-4 text-sm font-semibold text-text-200">Test Log</h2>
+					<div className="mb-4 flex items-center justify-between">
+						<h2 className="text-sm font-semibold text-text-200">Test Log</h2>
+						<Link
+							to="/log/$project/$sha"
+							params={{project, sha}}
+							className="inline-flex items-center gap-1 text-xs text-text-400 hover:text-text-100 transition-colors"
+						>
+							Full Log
+							<ExternalLink className="h-3 w-3" />
+						</Link>
+					</div>
 					<AnsiText
 						text={log}
 						className="overflow-auto rounded-lg bg-bg-200 p-4 font-mono text-xs leading-relaxed text-text-100"
@@ -231,7 +241,17 @@ function ItemDetail() {
 
 			{liveLog && (
 				<div className="relative">
-					<h2 className="mb-2 text-sm font-semibold text-text-200">Live Test Output</h2>
+					<div className="mb-2 flex items-center justify-between">
+						<h2 className="text-sm font-semibold text-text-200">Live Test Output</h2>
+						<Link
+							to="/log/$project/$sha"
+							params={{project, sha}}
+							className="inline-flex items-center gap-1 text-xs text-text-400 hover:text-text-100 transition-colors"
+						>
+							Full Log
+							<ExternalLink className="h-3 w-3" />
+						</Link>
+					</div>
 					<div
 						ref={liveLogRef}
 						onScroll={handleScroll}

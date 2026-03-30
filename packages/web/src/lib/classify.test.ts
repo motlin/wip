@@ -1,8 +1,8 @@
 import {describe, it, expect} from 'vitest';
 
-import type {BranchItem, IssueItem, ProjectInfo, PullRequestItem, TodoItem} from '@wip/shared';
+import type {BranchItem, CommitItem, IssueItem, ProjectInfo, PullRequestItem, TodoItem} from '@wip/shared';
 
-import {classifyBranch, classifyIssue, classifyPullRequest, classifyTodo} from './classify';
+import {classifyBranch, classifyCommit, classifyIssue, classifyPullRequest, classifyTodo} from './classify';
 
 function makePR(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
 	return {
@@ -56,6 +56,54 @@ function makeBranch(overrides: Partial<BranchItem> = {}): BranchItem {
 	};
 }
 
+function makeCommit(overrides: Partial<CommitItem> = {}): CommitItem {
+	return {
+		project: 'test',
+		remote: 'origin',
+		sha: 'abc123',
+		shortSha: 'abc',
+		subject: 'Test commit',
+		date: '2026-01-01',
+		skippable: false,
+		testStatus: 'unknown',
+		...overrides,
+	};
+}
+
+describe('classifyCommit', () => {
+	it('returns skippable for skippable commits', () => {
+		expect(classifyCommit(makeCommit({skippable: true}), makeProject())).toBe('skippable');
+	});
+
+	it('returns test_failed when test failed', () => {
+		expect(classifyCommit(makeCommit({testStatus: 'failed'}), makeProject())).toBe('test_failed');
+	});
+
+	it('returns ready_to_push when test passed', () => {
+		expect(classifyCommit(makeCommit({testStatus: 'passed'}), makeProject())).toBe('ready_to_push');
+	});
+
+	it('returns detached_head when project has detached head', () => {
+		expect(classifyCommit(makeCommit(), makeProject({detachedHead: true}))).toBe('detached_head');
+	});
+
+	it('returns local_changes when project is dirty', () => {
+		expect(classifyCommit(makeCommit(), makeProject({dirty: true}))).toBe('local_changes');
+	});
+
+	it('returns no_test when project has no test configured', () => {
+		expect(classifyCommit(makeCommit(), makeProject({hasTestConfigured: false}))).toBe('no_test');
+	});
+
+	it('returns ready_to_test for default untested commit', () => {
+		expect(classifyCommit(makeCommit(), makeProject())).toBe('ready_to_test');
+	});
+
+	it('prioritizes test_failed over detached_head', () => {
+		expect(classifyCommit(makeCommit({testStatus: 'failed'}), makeProject({detachedHead: true}))).toBe('test_failed');
+	});
+});
+
 describe('classifyBranch', () => {
 	it('returns ready_to_push for single-commit branch with tests passed', () => {
 		expect(classifyBranch(makeBranch({testStatus: 'passed', commitsAhead: 1}), makeProject())).toBe('ready_to_push');
@@ -87,6 +135,38 @@ describe('classifyBranch', () => {
 
 	it('returns pushed_no_pr when pushed and localAhead is undefined (defaults to in-sync)', () => {
 		expect(classifyBranch(makeBranch({pushedToRemote: true}), makeProject())).toBe('pushed_no_pr');
+	});
+
+	it('prioritizes test_failed over needs_rebase', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'failed', needsRebase: true}), makeProject())).toBe('test_failed');
+	});
+
+	it('prioritizes skippable over test_failed', () => {
+		expect(classifyBranch(makeBranch({skippable: true, testStatus: 'failed'}), makeProject())).toBe('skippable');
+	});
+
+	it('returns rebase_conflicts when needsRebase and not rebaseable', () => {
+		expect(classifyBranch(makeBranch({needsRebase: true, rebaseable: false}), makeProject())).toBe('rebase_conflicts');
+	});
+
+	it('returns needs_rebase when needsRebase and rebaseable', () => {
+		expect(classifyBranch(makeBranch({needsRebase: true, rebaseable: true}), makeProject())).toBe('needs_rebase');
+	});
+
+	it('returns needs_rebase when needsRebase and rebaseable is undefined', () => {
+		expect(classifyBranch(makeBranch({needsRebase: true}), makeProject())).toBe('needs_rebase');
+	});
+
+	it('returns test_failed when test failed even with dirty project', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'failed'}), makeProject({dirty: true}))).toBe('test_failed');
+	});
+
+	it('returns local_changes when project dirty and no other flags', () => {
+		expect(classifyBranch(makeBranch(), makeProject({dirty: true}))).toBe('local_changes');
+	});
+
+	it('returns no_test when no test configured', () => {
+		expect(classifyBranch(makeBranch(), makeProject({hasTestConfigured: false}))).toBe('no_test');
 	});
 });
 

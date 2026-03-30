@@ -1,5 +1,6 @@
 import {EventEmitter} from 'node:events';
 import {discoverAllProjects, getProjectsDirs, fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from '@wip/shared';
+import type {ProjectInfo} from '@wip/shared';
 
 export interface MergeStatusEvent {
 	project: string;
@@ -16,12 +17,7 @@ function emit(event: MergeStatusEvent): void {
 	emitter.emit('mergeStatus', event);
 }
 
-export async function checkProject(projectName: string): Promise<void> {
-	const projectsDirs = getProjectsDirs();
-	const projects = await discoverAllProjects(projectsDirs);
-	const p = projects.find((proj) => proj.name === projectName);
-	if (!p) return;
-
+async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 	const {sha: upstreamSha} = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
 	if (!upstreamSha) return;
 
@@ -41,22 +37,35 @@ export async function checkProject(projectName: string): Promise<void> {
 	}
 }
 
-export async function checkAllProjects(): Promise<void> {
+export async function checkProject(projectName: string): Promise<void> {
 	const projectsDirs = getProjectsDirs();
 	const projects = await discoverAllProjects(projectsDirs);
-
-	for (const p of projects) {
-		try {
-			await checkProject(p.name);
-		} catch {
-			// Skip projects that fail (network issues, etc.)
-		}
-	}
+	const p = projects.find((proj) => proj.name === projectName);
+	if (!p) return;
+	await checkProjectInfo(p);
 }
 
-export function getAllCachedStatuses(): MergeStatusEvent[] {
-	// Synchronous read — return all cached statuses across all projects
-	// We need discover to be sync for this, so we just return empty on cold start
-	// The SSE endpoint will stream results as they come in
-	return [];
+let inflightCheckAll: Promise<void> | null = null;
+
+export async function checkAllProjects(): Promise<void> {
+	if (inflightCheckAll) return inflightCheckAll;
+
+	inflightCheckAll = (async () => {
+		const projectsDirs = getProjectsDirs();
+		const projects = await discoverAllProjects(projectsDirs);
+
+		for (const p of projects) {
+			try {
+				await checkProjectInfo(p);
+			} catch {
+				// Skip projects that fail (network issues, etc.)
+			}
+		}
+	})();
+
+	try {
+		await inflightCheckAll;
+	} finally {
+		inflightCheckAll = null;
+	}
 }

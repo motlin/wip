@@ -368,13 +368,14 @@ export const testAllChildren = createServerFn({method: 'POST'}).handler(async ()
 	const snoozedSet = getSnoozedSet();
 
 	const testableProjects = projects.filter((p) => p.hasTestConfigured && !p.dirty);
-	const projectResults = await Promise.all(testableProjects.map(async (p) => {
+	const projectResults: {project: ProjectInfo; children: ChildCommit[]}[] = [];
+	for (const p of testableProjects) {
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
 		const descendantShas = new Set(children.map((c) => c.sha));
 		const needsRebaseBranches = await getNeedsRebaseBranches(p.dir, p.upstreamRef, descendantShas);
-		return {project: p, children: [...children, ...needsRebaseBranches]};
-	}));
+		projectResults.push({project: p, children: [...children, ...needsRebaseBranches]});
+	}
 
 	const queued: TestJobStatus[] = [];
 	for (const {project: p, children} of projectResults) {

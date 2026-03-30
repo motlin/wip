@@ -143,7 +143,7 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 	return output.split('\n').filter(Boolean);
 }
 
-export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, descendantShas: Set<string>): Promise<ChildCommit[]> {
+export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, descendantShas: Set<string>, projectName?: string): Promise<ChildCommit[]> {
 	// Get all local branches
 	const branchList = await git(dir, 'branch', '--list');
 	if (!branchList) return [];
@@ -153,6 +153,10 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 	// Filter to only branches that are not main/master
 	const nonMainBranches = branches.filter((b) => !b.match(/^(main|master)$/));
 	if (nonMainBranches.length === 0) return [];
+
+	const testStatusMap: Map<string, 'passed' | 'failed'> = projectName
+		? getTestResultsForProject(projectName)
+		: new Map();
 
 	// Get commit info for each branch
 	const needsRebase: ChildCommit[] = [];
@@ -179,7 +183,7 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 				subject,
 				date,
 				branch,
-				testStatus: 'unknown',
+				testStatus: testStatusMap.get(sha) ?? 'unknown',
 				checkStatus: 'none',
 				skippable: isSkippable(subject),
 				pushedToRemote: false,

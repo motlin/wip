@@ -79,7 +79,7 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 
 		// Discover branches that need rebase (not descendants of upstream)
 		const descendantShas = new Set(children.map((c) => c.sha));
-		const needsRebaseBranches = await getNeedsRebaseBranches(p.dir, p.upstreamRef, descendantShas);
+		const needsRebaseBranches = await getNeedsRebaseBranches(p.dir, p.upstreamRef, descendantShas, p.name);
 
 		clearExpiredSnoozes();
 		const snoozedSet = getSnoozedSet();

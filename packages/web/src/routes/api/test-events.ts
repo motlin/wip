@@ -1,6 +1,7 @@
 import {createFileRoute} from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/test-events')({
+	// @ts-expect-error TanStack Start server handlers not yet in published types
 	server: {
 		handlers: {
 			GET: async () => {

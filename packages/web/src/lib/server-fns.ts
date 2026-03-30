@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem} from '@wip/shared';
 import {
 	type ActionResult,
@@ -686,8 +686,7 @@ export const getChildBySha = createServerFn({method: 'GET'})
 		if (logResult.exitCode !== 0) return null;
 
 		const [sha, shortSha, subject, fullMessage, date, decorations] = logResult.stdout.split('\0');
-		const SKIP_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
-		const skippable = SKIP_PATTERNS.some((pat) => fullMessage.includes(pat));
+		const skippable = isSkippable(fullMessage);
 
 		const testResults = p.hasTestConfigured ? getTestResultsForProject(p.name) : new Map();
 		const testStatus = skippable ? ('unknown' as const) : (testResults.get(sha) ?? ('unknown' as const));
@@ -699,42 +698,57 @@ export const getChildBySha = createServerFn({method: 'GET'})
 
 		const base = {project: p.name, remote: p.remote, sha, shortSha, subject, date, skippable};
 
-		const branchMatch = decorations?.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
-		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
+		const branch = parseBranch(decorations ?? '');
 
 		if (!branch) return {...base, testStatus};
 
-		const prStatuses = await getPrStatuses(p.dir, p.name);
+		const [prStatuses, remoteBranchInfo] = await Promise.all([
+			getPrStatuses(p.dir, p.name),
+			getRemoteBranchInfo(p.dir),
+		]);
 		const prUrl = prStatuses.urls.get(branch);
 		const prNumber = prStatuses.prNumbers.get(branch);
+		const pushedToRemote = remoteBranchInfo.remoteBranches.has(branch);
+		const failedChecks = prStatuses.failedChecks.get(branch);
+
+		// Detect if local branch is ahead of remote tracking branch
+		let localAhead: boolean | undefined;
+		if (pushedToRemote) {
+			const remoteRef = remoteBranchInfo.remoteBranchRefs.get(branch);
+			if (remoteRef) {
+				const remoteSha = await execa('git', ['-C', p.dir, 'rev-parse', remoteRef], {reject: false});
+				localAhead = remoteSha.exitCode === 0 && remoteSha.stdout.trim() !== '' && remoteSha.stdout.trim() !== sha;
+			}
+		}
 
 		if (prUrl && prNumber != null) {
 			return {
 				...base,
 				branch,
 				pushedToRemote: true as const,
+				localAhead,
 				needsRebase: ms ? ms.commitsBehind > 0 : false,
 				testStatus,
-				commitsBehind: ms?.commitsBehind ?? 0,
-				commitsAhead: ms?.commitsAhead ?? 1,
+				commitsBehind: ms?.commitsBehind,
+				commitsAhead: ms?.commitsAhead,
 				rebaseable: ms?.rebaseable ?? undefined,
 				prUrl,
 				prNumber,
 				reviewStatus: prStatuses.review.get(branch) ?? ('no_pr' as const),
 				checkStatus: prStatuses.checks.get(branch) ?? ('unknown' as const),
-				failedChecks: prStatuses.failedChecks.get(branch),
+				failedChecks,
 			};
 		}
 
-		const remoteCheck = await execa('git', ['-C', p.dir, 'rev-parse', '--verify', `${p.upstreamRemote}/${branch}`], {reject: false});
 		return {
 			...base,
 			branch,
-			pushedToRemote: remoteCheck.exitCode === 0,
+			pushedToRemote,
+			localAhead,
 			needsRebase: ms ? ms.commitsBehind > 0 : false,
 			testStatus,
-			commitsBehind: ms?.commitsBehind ?? 0,
-			commitsAhead: ms?.commitsAhead ?? 1,
+			commitsBehind: ms?.commitsBehind,
+			commitsAhead: ms?.commitsAhead,
 			rebaseable: ms?.rebaseable ?? undefined,
 		};
 	});

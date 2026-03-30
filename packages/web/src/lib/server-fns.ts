@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem} from '@wip/shared';
 import {
 	type ActionResult,
@@ -75,11 +75,17 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 			}
 		}
 
-		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap);
+		const [children, remoteBranchInfo] = await Promise.all([
+			getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap),
+			getRemoteBranchInfo(p.dir),
+		]);
 
 		// Discover branches that need rebase (not descendants of upstream)
 		const descendantShas = new Set(children.map((c) => c.sha));
-		const needsRebaseBranches = await getNeedsRebaseBranches(p.dir, p.upstreamRef, descendantShas, p.name);
+		const needsRebaseBranches = await getNeedsRebaseBranches(
+			p.dir, p.upstreamRef, descendantShas, p.name,
+			prStatuses, remoteBranchInfo.remoteBranches, remoteBranchInfo.remoteBranchRefs, mergeStatusMap,
+		);
 
 		clearExpiredSnoozes();
 		const snoozedSet = getSnoozedSet();

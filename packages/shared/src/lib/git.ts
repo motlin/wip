@@ -143,7 +143,16 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 	return output.split('\n').filter(Boolean);
 }
 
-export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, descendantShas: Set<string>, projectName?: string): Promise<ChildCommit[]> {
+export async function getNeedsRebaseBranches(
+	dir: string,
+	upstreamRef: string,
+	descendantShas: Set<string>,
+	projectName?: string,
+	prStatuses?: PrStatuses,
+	remoteBranches?: Set<string>,
+	remoteBranchRefs?: Map<string, string>,
+	mergeStatusMap?: Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>,
+): Promise<ChildCommit[]> {
 	// Get all local branches
 	const branchList = await git(dir, 'branch', '--list');
 	if (!branchList) return [];
@@ -160,7 +169,7 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 
 	// Get commit info for each branch
 	const needsRebase: ChildCommit[] = [];
-	const format = '%H%x00%h%x00%s%x00%ai';
+	const format = '%H%x00%h%x00%s%x00%B%x00%ai';
 
 	for (const branch of nonMainBranches) {
 		const logResult = await execa('git', ['-C', dir, 'log', '-1', `--format=${format}`, `refs/heads/${branch}`], {
@@ -170,13 +179,32 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 		if (logResult.exitCode !== 0) continue;
 
 		const fields = logResult.stdout.trim().split('\0');
-		if (fields.length < 4) continue;
+		if (fields.length < 5) continue;
 
-		const [sha, shortSha, subject, rawDate] = fields;
+		const [sha, shortSha, subject, fullMessage, rawDate] = fields;
 		const date = rawDate.trim().split(' ')[0];
 
 		// Only include branches that are NOT descendants of upstream
 		if (!descendantShas.has(sha)) {
+			const pushedToRemote = remoteBranches ? remoteBranches.has(branch) : false;
+			const reviewStatus = prStatuses ? (prStatuses.review.get(branch) ?? 'no_pr' as const) : 'no_pr' as const;
+			const checkStatus: CheckStatus = prStatuses ? (prStatuses.checks.get(branch) ?? 'none') : 'none';
+			const prUrl = prStatuses ? prStatuses.urls.get(branch) : undefined;
+			const prNumber = prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
+			const failedChecks = prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
+			const behind = prStatuses ? prStatuses.behind.get(branch) : undefined;
+			const ms = mergeStatusMap?.get(sha);
+
+			// Detect if local branch is ahead of remote tracking branch
+			let localAhead: boolean | undefined;
+			if (pushedToRemote && remoteBranchRefs) {
+				const remoteRef = remoteBranchRefs.get(branch);
+				if (remoteRef) {
+					const remoteSha = await git(dir, 'rev-parse', remoteRef);
+					localAhead = remoteSha !== '' && remoteSha !== sha;
+				}
+			}
+
 			needsRebase.push({
 				sha,
 				shortSha,
@@ -184,11 +212,19 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 				date,
 				branch,
 				testStatus: testStatusMap.get(sha) ?? 'unknown',
-				checkStatus: 'none',
-				skippable: isSkippable(subject),
-				pushedToRemote: false,
+				checkStatus,
+				skippable: isSkippable(fullMessage),
+				pushedToRemote,
+				localAhead,
 				needsRebase: true,
-				reviewStatus: 'no_pr',
+				reviewStatus,
+				prUrl,
+				prNumber,
+				failedChecks,
+				behind,
+				commitsBehind: ms?.commitsBehind,
+				commitsAhead: ms?.commitsAhead,
+				rebaseable: ms?.rebaseable ?? undefined,
 			});
 		}
 	}

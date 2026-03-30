@@ -1,4 +1,4 @@
-import {createFileRoute} from '@tanstack/react-router';
+import {createFileRoute, Link} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
 import {AlarmClockOff, Loader2} from 'lucide-react';
 import {useState} from 'react';
@@ -102,7 +102,11 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 	};
 
 	return (
-		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm">
+		<Link
+			to="/item/$project/$sha"
+			params={{project: item.project, sha: item.sha}}
+			className="block rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-colors hover:border-border-300"
+		>
 			<div className="flex items-start justify-between gap-2">
 				<span className="shrink-0 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">
 					{item.shortSha || item.sha.slice(0, 7)}
@@ -119,7 +123,7 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 				<span className="text-xs font-medium text-text-300">{item.project}</span>
 				<button
 					type="button"
-					onClick={handleUnsnooze}
+					onClick={(e) => { e.preventDefault(); handleUnsnooze(); }}
 					disabled={waking}
 					className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
 						waking ? 'cursor-not-allowed opacity-60 text-text-400' : 'text-text-300 hover:bg-bg-200 hover:text-text-100'
@@ -129,6 +133,6 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 					{waking ? 'Waking...' : 'Wake'}
 				</button>
 			</div>
-		</div>
+		</Link>
 	);
 }

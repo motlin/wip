@@ -60,6 +60,27 @@ function ItemDetail() {
 	}, [testJob?.status, scrollToStart, setFollowing]);
 
 	if (!child) {
+		if (isSnoozed && snoozedEntry) {
+			return (
+				<div className="p-6">
+					<Link to="/queue" className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors">
+						<ArrowLeft className="h-4 w-4" />
+						Back
+					</Link>
+					<div className="mt-4 rounded-lg border border-border-300/30 bg-bg-100 p-4">
+						<h2 className="mb-2 text-sm font-semibold text-text-500">{CATEGORIES.snoozed.label}</h2>
+						<p className="font-mono text-xs text-text-300">{snoozedEntry.shortSha || sha.slice(0, 7)}</p>
+						<p className="mt-1 text-sm text-text-100">{snoozedEntry.subject}</p>
+						<p className="mt-2 text-xs text-amber-400">
+							{snoozedEntry.until ? `Snoozed until ${snoozedEntry.until}` : 'On Hold'}
+						</p>
+						<p className="mt-2 text-xs text-text-500">
+							Commit no longer found in git — the branch may have been rebased.
+						</p>
+					</div>
+				</div>
+			);
+		}
 		return (
 			<div className="p-6">
 				<p className="text-sm text-text-500">Item not found: {project} / {sha.slice(0, 7)}</p>

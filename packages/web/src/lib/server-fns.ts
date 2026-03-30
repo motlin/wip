@@ -674,18 +674,29 @@ export const getChildBySha = createServerFn({method: 'GET'})
 		const {execa} = await import('execa');
 		const logResult = await execa('git', [
 			'-C', p.dir, 'log', '-1',
-			'--format=%H%x00%h%x00%s%x00%ai%x00%D',
+			'--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D',
 			data.sha,
 		], {reject: false});
 		if (logResult.exitCode !== 0) return null;
 
-		const [sha, shortSha, subject, date, decorations] = logResult.stdout.split('\0');
-		const base = {project: p.name, remote: p.remote, sha, shortSha, subject, date, skippable: false};
+		const [sha, shortSha, subject, fullMessage, date, decorations] = logResult.stdout.split('\0');
+		const SKIP_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
+		const skippable = SKIP_PATTERNS.some((pat) => fullMessage.includes(pat));
+
+		const testResults = p.hasTestConfigured ? getTestResultsForProject(p.name) : new Map();
+		const testStatus = skippable ? ('unknown' as const) : (testResults.get(sha) ?? ('unknown' as const));
+
+		const upstreamSha = getCachedUpstreamSha(p.name);
+		const ms = upstreamSha
+			? getCachedMergeStatuses(p.name, upstreamSha).find((s) => s.sha === sha)
+			: undefined;
+
+		const base = {project: p.name, remote: p.remote, sha, shortSha, subject, date, skippable};
 
 		const branchMatch = decorations?.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
 		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
 
-		if (!branch) return {...base, testStatus: 'unknown' as const};
+		if (!branch) return {...base, testStatus};
 
 		const prStatuses = await getPrStatuses(p.dir, p.name);
 		const prUrl = prStatuses.urls.get(branch);
@@ -696,11 +707,11 @@ export const getChildBySha = createServerFn({method: 'GET'})
 				...base,
 				branch,
 				pushedToRemote: true as const,
-				needsRebase: false,
-				testStatus: 'unknown' as const,
-				commitsBehind: 0,
-				commitsAhead: 1,
-				rebaseable: undefined,
+				needsRebase: ms ? ms.commitsBehind > 0 : false,
+				testStatus,
+				commitsBehind: ms?.commitsBehind ?? 0,
+				commitsAhead: ms?.commitsAhead ?? 1,
+				rebaseable: ms?.rebaseable ?? undefined,
 				prUrl,
 				prNumber,
 				reviewStatus: prStatuses.review.get(branch) ?? ('no_pr' as const),
@@ -714,11 +725,11 @@ export const getChildBySha = createServerFn({method: 'GET'})
 			...base,
 			branch,
 			pushedToRemote: remoteCheck.exitCode === 0,
-			needsRebase: false,
-			testStatus: 'unknown' as const,
-			commitsBehind: 0,
-			commitsAhead: 1,
-			rebaseable: undefined,
+			needsRebase: ms ? ms.commitsBehind > 0 : false,
+			testStatus,
+			commitsBehind: ms?.commitsBehind ?? 0,
+			commitsAhead: ms?.commitsAhead ?? 1,
+			rebaseable: ms?.rebaseable ?? undefined,
 		};
 	});
 

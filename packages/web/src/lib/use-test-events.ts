@@ -25,6 +25,10 @@ function updateTestStatus(queryClient: ReturnType<typeof useQueryClient>, projec
 			pullRequests: old.pullRequests,
 		};
 	});
+	queryClient.setQueryData(['child', project, sha], (old: Record<string, unknown> | undefined) => {
+		if (!old) return old;
+		return {...old, testStatus};
+	});
 }
 
 export function useTestEvents() {

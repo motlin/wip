@@ -15,6 +15,8 @@ export const CategorySchema = z.enum([
 	'skippable',
 	'untriaged',
 	'triaged',
+	'plan_unreviewed',
+	'plan_approved',
 	'no_test',
 	'detached_head',
 	'local_changes',
@@ -40,6 +42,8 @@ export type Category = z.infer<typeof CategorySchema>;
 export const TransitionSchema = z.enum([
 	'snooze',
 	'unsnooze',
+	'generate_plan',
+	'approve_plan',
 	'create_branch',
 	'edit_code',
 	'commit',
@@ -81,6 +85,11 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: 'checks_passed',     transition: 'snooze',            to: 'snoozed'},
 	{from: 'checks_failed',     transition: 'snooze',            to: 'snoozed'},
 	{from: 'snoozed',           transition: 'unsnooze',          to: 'ready_to_test'},
+
+	// Plan flow
+	{from: 'triaged',           transition: 'generate_plan',     to: 'plan_unreviewed'},
+	{from: 'plan_unreviewed',   transition: 'approve_plan',      to: 'plan_approved'},
+	{from: 'plan_approved',     transition: 'create_branch',     to: 'ready_to_test'},
 
 	// Local development flow
 	{from: 'triaged',           transition: 'create_branch',     to: 'ready_to_test'},
@@ -279,6 +288,9 @@ export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
 const LabelSchema = z.object({name: z.string(), color: z.string()});
 
 // A GitHub issue assigned to me
+export const PlanStatusSchema = z.enum(['none', 'unreviewed', 'approved']);
+export type PlanStatus = z.infer<typeof PlanStatusSchema>;
+
 export const IssueItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
@@ -286,6 +298,7 @@ export const IssueItemSchema = z.object({
 	number: z.number(),
 	title: z.string(),
 	labels: z.array(LabelSchema),
+	planStatus: PlanStatusSchema.optional(),
 });
 export type IssueItem = z.infer<typeof IssueItemSchema>;
 
@@ -308,6 +321,7 @@ export const TodoItemSchema = z.object({
 	title: z.string(),
 	sourceFile: z.string(),
 	sourceLabel: z.string(),
+	planStatus: PlanStatusSchema.optional(),
 });
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 

@@ -1,4 +1,4 @@
-import type {Category, CommitItem, BranchItem, PullRequestItem, ProjectInfo} from '@wip/shared';
+import type {Category, CommitItem, BranchItem, PullRequestItem, IssueItem, TodoItem, ProjectInfo} from '@wip/shared';
 
 export function classifyCommit(commit: CommitItem, project: ProjectInfo): Category {
 	if (commit.skippable) return 'skippable';
@@ -22,6 +22,20 @@ export function classifyBranch(branch: BranchItem, project: ProjectInfo): Catego
 	if (branch.testStatus === 'passed') return 'ready_to_push';
 	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	return 'ready_to_test';
+}
+
+function classifyPlanStatus(planStatus: 'none' | 'unreviewed' | 'approved' | undefined): Category | null {
+	if (planStatus === 'unreviewed') return 'plan_unreviewed';
+	if (planStatus === 'approved') return 'plan_approved';
+	return null;
+}
+
+export function classifyIssue(issue: IssueItem): Category {
+	return classifyPlanStatus(issue.planStatus) ?? 'triaged';
+}
+
+export function classifyTodo(todo: TodoItem): Category {
+	return classifyPlanStatus(todo.planStatus) ?? 'triaged';
 }
 
 export function classifyPullRequest(pr: PullRequestItem): Category {

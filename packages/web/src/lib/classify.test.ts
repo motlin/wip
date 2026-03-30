@@ -1,8 +1,8 @@
 import {describe, it, expect} from 'vitest';
 
-import type {BranchItem, ProjectInfo, PullRequestItem} from '@wip/shared';
+import type {BranchItem, IssueItem, ProjectInfo, PullRequestItem, TodoItem} from '@wip/shared';
 
-import {classifyBranch, classifyPullRequest} from './classify';
+import {classifyBranch, classifyIssue, classifyPullRequest, classifyTodo} from './classify';
 
 function makePR(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
 	return {
@@ -157,5 +157,63 @@ describe('classifyPullRequest', () => {
 
 	it('returns checks_failed when checks failed and localAhead is undefined', () => {
 		expect(classifyPullRequest(makePR({checkStatus: 'failed'}))).toBe('checks_failed');
+	});
+});
+
+function makeIssue(overrides: Partial<IssueItem> = {}): IssueItem {
+	return {
+		project: 'test',
+		remote: 'origin',
+		url: 'https://github.com/test/test/issues/1',
+		number: 1,
+		title: 'Test issue',
+		labels: [],
+		...overrides,
+	};
+}
+
+function makeTodo(overrides: Partial<TodoItem> = {}): TodoItem {
+	return {
+		project: 'test',
+		title: 'Test todo',
+		sourceFile: 'todo.md',
+		sourceLabel: 'todo.md',
+		...overrides,
+	};
+}
+
+describe('classifyIssue', () => {
+	it('returns triaged when no planStatus', () => {
+		expect(classifyIssue(makeIssue())).toBe('triaged');
+	});
+
+	it('returns triaged when planStatus is none', () => {
+		expect(classifyIssue(makeIssue({planStatus: 'none'}))).toBe('triaged');
+	});
+
+	it('returns plan_unreviewed when planStatus is unreviewed', () => {
+		expect(classifyIssue(makeIssue({planStatus: 'unreviewed'}))).toBe('plan_unreviewed');
+	});
+
+	it('returns plan_approved when planStatus is approved', () => {
+		expect(classifyIssue(makeIssue({planStatus: 'approved'}))).toBe('plan_approved');
+	});
+});
+
+describe('classifyTodo', () => {
+	it('returns triaged when no planStatus', () => {
+		expect(classifyTodo(makeTodo())).toBe('triaged');
+	});
+
+	it('returns triaged when planStatus is none', () => {
+		expect(classifyTodo(makeTodo({planStatus: 'none'}))).toBe('triaged');
+	});
+
+	it('returns plan_unreviewed when planStatus is unreviewed', () => {
+		expect(classifyTodo(makeTodo({planStatus: 'unreviewed'}))).toBe('plan_unreviewed');
+	});
+
+	it('returns plan_approved when planStatus is approved', () => {
+		expect(classifyTodo(makeTodo({planStatus: 'approved'}))).toBe('plan_approved');
 	});
 });

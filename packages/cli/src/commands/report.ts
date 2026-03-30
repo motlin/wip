@@ -20,6 +20,8 @@ interface ReportJson {
 		skippable: number;
 		untriaged: number;
 		triaged: number;
+		planUnreviewed: number;
+		planApproved: number;
 		noTest: number;
 		detachedHead: number;
 		localChanges: number;
@@ -42,6 +44,8 @@ interface ReportJson {
 	skippable: ClassifiedChild[];
 	untriaged: ClassifiedChild[];
 	triaged: ClassifiedChild[];
+	planUnreviewed: ClassifiedChild[];
+	planApproved: ClassifiedChild[];
 	noTest: ClassifiedChild[];
 	detachedHead: ClassifiedChild[];
 	localChanges: ClassifiedChild[];
@@ -101,6 +105,8 @@ const CATEGORY_ORDER: Category[] = [
 	'skippable',
 	'untriaged',
 	'triaged',
+	'plan_unreviewed',
+	'plan_approved',
 	'no_test',
 	'detached_head',
 	'local_changes',
@@ -125,6 +131,8 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	skippable: 'Skippable',
 	untriaged: 'Untriaged',
 	triaged: 'Triaged',
+	plan_unreviewed: 'Plan unreviewed',
+	plan_approved: 'Plan approved',
 	no_test: 'No test configured',
 	detached_head: 'Detached HEAD',
 	local_changes: 'Local changes — dirty worktree',
@@ -172,6 +180,10 @@ function categoryStyle(category: Category, text: string): string {
 		case 'no_test':
 		case 'skippable':
 		case 'snoozed':
+		case 'plan_unreviewed':
+			return chalk.yellow(text);
+		case 'plan_approved':
+			return chalk.green(text);
 		case 'untriaged':
 		case 'triaged':
 		case 'checks_unknown':
@@ -212,6 +224,8 @@ export default class Report extends Command {
 			skippable: [],
 			untriaged: [],
 			triaged: [],
+			plan_unreviewed: [],
+			plan_approved: [],
 			no_test: [],
 			detached_head: [],
 			local_changes: [],
@@ -269,6 +283,8 @@ export default class Report extends Command {
 				skippable: grouped.skippable.length,
 				untriaged: grouped.untriaged.length,
 				triaged: grouped.triaged.length,
+				planUnreviewed: grouped.plan_unreviewed.length,
+				planApproved: grouped.plan_approved.length,
 				noTest: grouped.no_test.length,
 				detachedHead: grouped.detached_head.length,
 				localChanges: grouped.local_changes.length,
@@ -291,6 +307,8 @@ export default class Report extends Command {
 			skippable: grouped.skippable,
 			untriaged: grouped.untriaged,
 			triaged: grouped.triaged,
+			planUnreviewed: grouped.plan_unreviewed,
+			planApproved: grouped.plan_approved,
 			noTest: grouped.no_test,
 			detachedHead: grouped.detached_head,
 			localChanges: grouped.local_changes,

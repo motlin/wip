@@ -17,6 +17,7 @@ export {
 	BranchItemSchema, type BranchItem,
 	PullRequestItemSchema, type PullRequestItem,
 	type GitItem,
+	PlanStatusSchema, type PlanStatus,
 	IssueItemSchema, type IssueItem,
 	ProjectBoardItemSchema, type ProjectBoardItem,
 	TodoItemSchema, type TodoItem,

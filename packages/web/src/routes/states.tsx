@@ -31,7 +31,7 @@ interface NodePos {
 // Column assignments: group states by lifecycle phase
 const COLUMNS: Category[][] = [
 	// Col 0: overrides + ideas
-	['snoozed', 'skippable', 'untriaged', 'triaged'],
+	['snoozed', 'skippable', 'untriaged', 'triaged', 'plan_unreviewed', 'plan_approved'],
 	// Col 1: early local
 	['detached_head', 'local_changes', 'no_test'],
 	// Col 2: test cycle
@@ -65,7 +65,7 @@ function computePositions(): Record<Category, NodePos> {
 
 const POSITIONS = computePositions();
 const SVG_WIDTH = 20 + COLUMNS.length * (NODE_W + COL_GAP);
-const SVG_HEIGHT = 20 + 4 * (NODE_H + ROW_GAP) + NODE_H;
+const SVG_HEIGHT = 20 + Math.max(...COLUMNS.map((col) => col.length - 1)) * (NODE_H + ROW_GAP) + NODE_H;
 
 // Color mapping from Tailwind class strings to fill colors for the SVG nodes
 function nodeColor(category: Category, isActive: boolean): {fill: string; stroke: string; text: string} {

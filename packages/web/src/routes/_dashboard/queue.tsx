@@ -9,7 +9,7 @@ import {useHasActiveTests} from '../../lib/test-events-context';
 import {projectsQueryOptions} from '../../lib/queries';
 import {useWorkItems} from '../../lib/use-work-items';
 import type {ColumnItems} from '../../components/kanban-column';
-import {classifyCommit, classifyBranch, classifyPullRequest} from '../../lib/classify';
+import {classifyCommit, classifyBranch, classifyIssue, classifyPullRequest, classifyTodo} from '../../lib/classify';
 import {CommitCard} from '../../components/commit-card';
 import {BranchCard} from '../../components/branch-card';
 import {PullRequestCard} from '../../components/pull-request-card';
@@ -43,7 +43,7 @@ function Queue() {
 
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
-			untriaged: {}, triaged: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
+			untriaged: {}, triaged: {}, plan_unreviewed: {}, plan_approved: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
 			local_changes: {}, ready_to_test: {}, test_running: {}, test_failed: {}, needs_rebase: {}, rebase_conflicts: {},
 			needs_split: {}, ready_to_push: {}, pushed_no_pr: {}, checks_unknown: {}, checks_running: {},
 			checks_failed: {}, checks_passed: {}, review_comments: {}, changes_requested: {},
@@ -74,11 +74,21 @@ function Queue() {
 			g[cat].pullRequests.push(pr);
 		}
 
-		// Issues are pre-filtered to assigned-to-me, so they are triaged.
-		// Todos are always triaged (implicitly assigned + ordered).
+		// Issues are classified by plan status (triaged, plan_unreviewed, plan_approved).
+		for (const issue of workItems.issues) {
+			const cat = classifyIssue(issue);
+			g[cat].issues = g[cat].issues ?? [];
+			g[cat].issues.push(issue);
+		}
+
+		// Todos are classified by plan status (triaged, plan_unreviewed, plan_approved).
+		for (const todo of workItems.todos) {
+			const cat = classifyTodo(todo);
+			g[cat].todos = g[cat].todos ?? [];
+			g[cat].todos.push(todo);
+		}
+
 		// Project items lack assignment info, so they are untriaged.
-		g.triaged.issues = workItems.issues;
-		g.triaged.todos = workItems.todos;
 		g.untriaged.projectItems = workItems.projectItems;
 
 		let total = 0;

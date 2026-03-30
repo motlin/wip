@@ -3,7 +3,8 @@ import type {Category} from '@wip/shared';
 export type Action =
 	| 'open_pr_link' | 'rebase_pr' | 'force_push' | 'rebase_local'
 	| 'apply_fixes' | 'rename' | 'create_pr' | 'push' | 'commit'
-	| 'test' | 'view_test_log' | 'delete_branch' | 'refresh';
+	| 'test' | 'view_test_log' | 'delete_branch' | 'refresh'
+	| 'review_plan' | 'implement';
 
 export interface CategoryConfig {
 	label: string;
@@ -33,6 +34,8 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	no_test:           {label: 'No Test',           color: 'text-text-300',                        columnBg: 'bg-dim-column',    actions: ['push', 'rename', 'delete_branch']},
 	untriaged:         {label: 'Untriaged',          color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
 	triaged:           {label: 'Triaged',            color: 'text-purple-700 dark:text-purple-400', columnBg: 'bg-purple-column', actions: []},
+	plan_unreviewed:   {label: 'Plan Unreviewed',   color: 'text-orange-700 dark:text-orange-400', columnBg: 'bg-yellow-column', actions: ['review_plan']},
+	plan_approved:     {label: 'Plan Approved',     color: 'text-green-700 dark:text-green-400',   columnBg: 'bg-green-column',  actions: ['implement']},
 	skippable:         {label: 'Skippable',         color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
 	snoozed:           {label: 'Snoozed',           color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
 };

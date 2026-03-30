@@ -41,6 +41,7 @@ function RootComponent() {
 						<Link to="/kanban" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Kanban</Link>
 						<Link to="/snoozed" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Snoozed</Link>
 						<Link to="/tests" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">Tests</Link>
+						<Link to="/states" className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium">States</Link>
 						<button
 							type="button"
 							onClick={toggle}

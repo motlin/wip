@@ -115,8 +115,10 @@ function ItemDetail() {
 			<div className="mb-6">
 				{category && (
 					<h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
-						{CATEGORIES[category].label}
-						<code className="ml-2 text-xs font-normal text-text-300">#{CATEGORY_PRIORITY.indexOf(category)} {category}</code>
+						<Link to="/states" search={{state: category}} className="hover:underline">
+							{CATEGORIES[category].label}
+							<code className="ml-2 text-xs font-normal text-text-300">#{CATEGORY_PRIORITY.indexOf(category)} {category}</code>
+						</Link>
 					</h2>
 				)}
 				{isPr ? (

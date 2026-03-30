@@ -31,7 +31,8 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	detached_head:     {label: 'Detached HEAD',     color: 'text-yellow-700 dark:text-yellow-400', columnBg: 'bg-yellow-column', actions: []},
 	local_changes:     {label: 'Local Changes',     color: 'text-text-300',                        columnBg: 'bg-dim-column',    actions: ['commit', 'rename']},
 	no_test:           {label: 'No Test',           color: 'text-text-300',                        columnBg: 'bg-dim-column',    actions: ['push', 'rename', 'delete_branch']},
-	not_started:       {label: 'Not Started',       color: 'text-purple-700 dark:text-purple-400', columnBg: 'bg-purple-column', actions: []},
+	untriaged:         {label: 'Untriaged',          color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
+	triaged:           {label: 'Triaged',            color: 'text-purple-700 dark:text-purple-400', columnBg: 'bg-purple-column', actions: []},
 	skippable:         {label: 'Skippable',         color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
 	snoozed:           {label: 'Snoozed',           color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
 };

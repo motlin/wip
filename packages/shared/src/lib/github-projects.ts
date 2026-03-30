@@ -136,8 +136,8 @@ export function mapProjectStatusToCategory(status: string): Category {
 	if (lower === 'in progress' || lower === 'active' || lower === 'doing' || lower === 'started') return 'checks_running';
 	if (lower === 'in review' || lower === 'review') return 'checks_passed';
 
-	// Default: treat as not started (Todo, Backlog, New, etc.)
-	return 'not_started';
+	// Default: treat as untriaged (Todo, Backlog, New, etc.)
+	return 'untriaged';
 }
 
 const PROJECT_ITEMS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes

@@ -18,7 +18,8 @@ interface ReportJson {
 		children: number;
 		snoozed: number;
 		skippable: number;
-		notStarted: number;
+		untriaged: number;
+		triaged: number;
 		noTest: number;
 		detachedHead: number;
 		localChanges: number;
@@ -39,7 +40,8 @@ interface ReportJson {
 	};
 	snoozed: ClassifiedChild[];
 	skippable: ClassifiedChild[];
-	notStarted: ClassifiedChild[];
+	untriaged: ClassifiedChild[];
+	triaged: ClassifiedChild[];
 	noTest: ClassifiedChild[];
 	detachedHead: ClassifiedChild[];
 	localChanges: ClassifiedChild[];
@@ -90,14 +92,15 @@ function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
 		if (child.checkStatus === 'unknown') return 'checks_unknown';
 	}
 
-	return 'not_started';
+	return 'untriaged';
 }
 
 // Kanban left-to-right: full SDLC flow
 const CATEGORY_ORDER: Category[] = [
 	'snoozed',
 	'skippable',
-	'not_started',
+	'untriaged',
+	'triaged',
 	'no_test',
 	'detached_head',
 	'local_changes',
@@ -120,7 +123,8 @@ const CATEGORY_ORDER: Category[] = [
 const CATEGORY_LABELS: Record<Category, string> = {
 	snoozed: 'Snoozed',
 	skippable: 'Skippable',
-	not_started: 'Not started',
+	untriaged: 'Untriaged',
+	triaged: 'Triaged',
 	no_test: 'No test configured',
 	detached_head: 'Detached HEAD',
 	local_changes: 'Local changes — dirty worktree',
@@ -168,7 +172,8 @@ function categoryStyle(category: Category, text: string): string {
 		case 'no_test':
 		case 'skippable':
 		case 'snoozed':
-		case 'not_started':
+		case 'untriaged':
+		case 'triaged':
 		case 'checks_unknown':
 			return chalk.dim(text);
 	}
@@ -205,7 +210,8 @@ export default class Report extends Command {
 		const grouped: Record<Category, ClassifiedChild[]> = {
 			snoozed: [],
 			skippable: [],
-			not_started: [],
+			untriaged: [],
+			triaged: [],
 			no_test: [],
 			detached_head: [],
 			local_changes: [],
@@ -261,7 +267,8 @@ export default class Report extends Command {
 				children: totalChildren,
 				snoozed: grouped.snoozed.length,
 				skippable: grouped.skippable.length,
-				notStarted: grouped.not_started.length,
+				untriaged: grouped.untriaged.length,
+				triaged: grouped.triaged.length,
 				noTest: grouped.no_test.length,
 				detachedHead: grouped.detached_head.length,
 				localChanges: grouped.local_changes.length,
@@ -282,7 +289,8 @@ export default class Report extends Command {
 			},
 			snoozed: grouped.snoozed,
 			skippable: grouped.skippable,
-			notStarted: grouped.not_started,
+			untriaged: grouped.untriaged,
+			triaged: grouped.triaged,
 			noTest: grouped.no_test,
 			detachedHead: grouped.detached_head,
 			localChanges: grouped.local_changes,
@@ -415,8 +423,12 @@ export default class Report extends Command {
 			steps.push(`# ${grouped.snoozed.length} snoozed items`);
 		}
 
-		if (grouped.not_started.length > 0) {
-			steps.push(`# ${grouped.not_started.length} not started`);
+		if (grouped.untriaged.length > 0) {
+			steps.push(`# ${grouped.untriaged.length} untriaged`);
+		}
+
+		if (grouped.triaged.length > 0) {
+			steps.push(`# ${grouped.triaged.length} triaged`);
 		}
 
 		return steps;

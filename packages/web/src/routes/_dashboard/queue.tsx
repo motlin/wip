@@ -43,7 +43,7 @@ function Queue() {
 
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
-			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
+			untriaged: {}, triaged: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
 			local_changes: {}, ready_to_test: {}, test_running: {}, test_failed: {}, needs_rebase: {}, rebase_conflicts: {},
 			needs_split: {}, ready_to_push: {}, pushed_no_pr: {}, checks_unknown: {}, checks_running: {},
 			checks_failed: {}, checks_passed: {}, review_comments: {}, changes_requested: {},
@@ -74,9 +74,12 @@ function Queue() {
 			g[cat].pullRequests.push(pr);
 		}
 
-		g.not_started.issues = workItems.issues;
-		g.not_started.projectItems = workItems.projectItems;
-		g.not_started.todos = workItems.todos;
+		// Issues are pre-filtered to assigned-to-me, so they are triaged.
+		// Todos are always triaged (implicitly assigned + ordered).
+		// Project items lack assignment info, so they are untriaged.
+		g.triaged.issues = workItems.issues;
+		g.triaged.todos = workItems.todos;
+		g.untriaged.projectItems = workItems.projectItems;
 
 		let total = 0;
 		for (const cat of CATEGORY_PRIORITY) {

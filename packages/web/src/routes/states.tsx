@@ -31,7 +31,7 @@ interface NodePos {
 // Column assignments: group states by lifecycle phase
 const COLUMNS: Category[][] = [
 	// Col 0: overrides + ideas
-	['snoozed', 'skippable', 'not_started'],
+	['snoozed', 'skippable', 'untriaged', 'triaged'],
 	// Col 1: early local
 	['detached_head', 'local_changes', 'no_test'],
 	// Col 2: test cycle

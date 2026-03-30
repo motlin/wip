@@ -13,7 +13,8 @@ export type TestStatus = z.infer<typeof TestStatusSchema>;
 export const CategorySchema = z.enum([
 	'snoozed',
 	'skippable',
-	'not_started',
+	'untriaged',
+	'triaged',
 	'no_test',
 	'detached_head',
 	'local_changes',
@@ -82,7 +83,8 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: 'snoozed',           transition: 'unsnooze',          to: 'ready_to_test'},
 
 	// Local development flow
-	{from: 'not_started',       transition: 'create_branch',     to: 'ready_to_test'},
+	{from: 'triaged',           transition: 'create_branch',     to: 'ready_to_test'},
+	{from: 'untriaged',         transition: 'create_branch',     to: 'ready_to_test'},
 	{from: 'detached_head',     transition: 'create_branch',     to: 'ready_to_test'},
 	{from: 'local_changes',     transition: 'commit',            to: 'ready_to_test'},
 

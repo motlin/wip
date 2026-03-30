@@ -2,7 +2,7 @@ import {useQueryClient} from '@tanstack/react-query';
 import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Copy, Check} from 'lucide-react';
 import {useRef, useEffect, useState} from 'react';
 import {Link} from '@tanstack/react-router';
-import type {BranchItem} from '@wip/shared';
+import type {BranchItem, Category} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
@@ -22,7 +22,7 @@ function relativeTime(dateStr: string): string {
 	return `${Math.floor(diffDays / 365)} years ago`;
 }
 
-export function BranchCard({branch}: {branch: BranchItem}) {
+export function BranchCard({branch, category}: {branch: BranchItem; category: Category}) {
 	const queryClient = useQueryClient();
 	const testJob = useTestJob(branch.sha, branch.project);
 	const prevTestStatus = useRef(testJob?.status);
@@ -40,6 +40,8 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 		}
 		prevTestStatus.current = testJob?.status;
 	}, [testJob?.status, queryClient, branch.project, branch.sha]);
+
+	const effectiveCategory = (testJob?.status === 'running' || testJob?.status === 'queued') ? 'test_running' as const : category;
 
 	const mergeStatus = useMergeStatus(branch.sha, branch.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? branch.commitsBehind;
@@ -173,7 +175,7 @@ export function BranchCard({branch}: {branch: BranchItem}) {
 			</div>
 
 			<div className="mt-2 border-t border-border-300/20 pt-2">
-				<BranchActions item={branch} layout="row" />
+				<BranchActions item={branch} category={effectiveCategory} layout="row" />
 			</div>
 		</div>
 	);

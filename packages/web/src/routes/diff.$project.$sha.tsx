@@ -4,12 +4,14 @@ import {useSuspenseQuery} from '@tanstack/react-query';
 import '@git-diff-view/react/styles/diff-view.css';
 import {BranchActions, PullRequestActions} from '../components/commit-actions';
 import {FileDiffSection, DiffToolbar} from '../components/diff-section';
-import {diffQueryOptions, childByShaQueryOptions} from '../lib/queries';
+import {diffQueryOptions, childByShaQueryOptions, projectsQueryOptions} from '../lib/queries';
+import {classifyBranch, classifyPullRequest} from '../lib/classify';
 
 export const Route = createFileRoute('/diff/$project/$sha')({
 	loader: ({context: {queryClient}, params}) => Promise.all([
 		queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
 		queryClient.ensureQueryData(childByShaQueryOptions(params.project, params.sha)),
+		queryClient.ensureQueryData(projectsQueryOptions()),
 	]),
 	head: ({params}) => ({
 		meta: [{title: `Diff: ${params.sha.slice(0, 7)}`}],
@@ -21,8 +23,16 @@ function DiffViewer() {
 	const {project, sha} = Route.useParams();
 	const {data: {files, stat, subject}} = useSuspenseQuery(diffQueryOptions(project, sha));
 	const {data: child} = useSuspenseQuery(childByShaQueryOptions(project, sha));
+	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
+	const projectInfo = projects.find((p) => p.name === project);
 	const [mode, setMode] = useState<'split' | 'unified'>('split');
 	const [wrap, setWrap] = useState(false);
+
+	const isPr = child && 'prUrl' in child && child.prUrl;
+	const isBranch = child && 'branch' in child;
+	const category = child && projectInfo
+		? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : undefined
+		: undefined;
 
 	const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 	const theme = isDark ? 'dark' : 'light';
@@ -38,14 +48,14 @@ function DiffViewer() {
 				</div>
 				<DiffToolbar mode={mode} setMode={setMode} wrap={wrap} setWrap={setWrap} />
 			</div>
-			{child && 'prUrl' in child && child.prUrl && (
+			{isPr && category && (
 				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
-					<PullRequestActions item={child} layout="row" />
+					<PullRequestActions item={child as any} category={category} layout="row" />
 				</div>
 			)}
-			{child && 'branch' in child && !('prUrl' in child && child.prUrl) && (
+			{isBranch && !isPr && category && (
 				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
-					<BranchActions item={child} layout="row" />
+					<BranchActions item={child as any} category={category} layout="row" />
 				</div>
 			)}
 			{stat && (

@@ -2,7 +2,7 @@ import {useQueryClient} from '@tanstack/react-query';
 import {Loader2, Clock, Diff, X, GitBranch, AlertCircle, XCircle} from 'lucide-react';
 import {useRef, useEffect} from 'react';
 import {Link} from '@tanstack/react-router';
-import type {PullRequestItem} from '@wip/shared';
+import type {PullRequestItem, Category} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
@@ -23,7 +23,7 @@ function relativeTime(dateStr: string): string {
 	return `${Math.floor(diffDays / 365)} years ago`;
 }
 
-export function PullRequestCard({pr}: {pr: PullRequestItem}) {
+export function PullRequestCard({pr, category}: {pr: PullRequestItem; category: Category}) {
 	const queryClient = useQueryClient();
 	const testJob = useTestJob(pr.sha, pr.project);
 	const prevTestStatus = useRef(testJob?.status);
@@ -40,6 +40,8 @@ export function PullRequestCard({pr}: {pr: PullRequestItem}) {
 		}
 		prevTestStatus.current = testJob?.status;
 	}, [testJob?.status, queryClient, pr.project, pr.sha]);
+
+	const effectiveCategory = (testJob?.status === 'running' || testJob?.status === 'queued') ? 'test_running' as const : category;
 
 	const mergeStatus = useMergeStatus(pr.sha, pr.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? pr.commitsBehind;
@@ -177,7 +179,7 @@ export function PullRequestCard({pr}: {pr: PullRequestItem}) {
 			</div>
 
 			<div className="mt-2 border-t border-border-300/20 pt-2">
-				<PullRequestActions item={pr} layout="row" />
+				<PullRequestActions item={pr} category={effectiveCategory} layout="row" />
 			</div>
 		</div>
 	);

@@ -18,6 +18,7 @@ export const CategorySchema = z.enum([
 	'detached_head',
 	'local_changes',
 	'ready_to_test',
+	'test_running',
 	'test_failed',
 	'needs_rebase',
 	'rebase_conflicts',

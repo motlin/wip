@@ -1,10 +1,13 @@
-import {useQueryClient} from '@tanstack/react-query';
-import {ArrowRight, Play, Loader2, Moon, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
+import {useQueryClient, useQuery} from '@tanstack/react-query';
+import {ArrowRight, Play, Loader2, Moon, Sun, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, getProjectChildren} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, getProjectChildren} from '../lib/server-fns';
+import {snoozedQueryOptions} from '../lib/queries';
 import {useMergeStatus} from '../lib/merge-events-context';
-import type {BranchItem, PullRequestItem, SnoozedChild} from '@wip/shared';
+import {suppressMergeUpdates} from '../lib/use-merge-events';
+import type {BranchItem, PullRequestItem, SnoozedChild, Category} from '@wip/shared';
 import type {ProjectChildrenResult} from '../lib/server-fns';
+import {CATEGORIES} from '../lib/category-actions';
 import {GitHubIcon} from './github-icon';
 import {useTestJob} from '../lib/test-events-context';
 
@@ -20,6 +23,7 @@ type ActionableItem = BranchItem | PullRequestItem;
 
 interface ItemActionsProps {
 	item: ActionableItem;
+	category: Category;
 	layout?: 'row' | 'column';
 }
 
@@ -80,9 +84,11 @@ function useChildrenCache(project: string) {
 	};
 }
 
-function ItemActions({item, layout = 'column'}: ItemActionsProps) {
+function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 	const queryClient = useQueryClient();
 	const cache = useChildrenCache(item.project);
+	const {data: snoozedItems} = useQuery(snoozedQueryOptions());
+	const snoozedEntry = snoozedItems?.find((s) => s.project === item.project && s.sha === item.sha);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
@@ -183,6 +189,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setLoading(false);
 		if (result.ok) {
 			setPushResult({message: result.message, compareUrl: result.compareUrl});
+			cache.updateItem(item.sha, (i) => ({...i, pushedToRemote: true, localAhead: false}));
 			if (result.compareUrl) {
 				window.open(result.compareUrl, '_blank');
 			}
@@ -193,16 +200,25 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 
 	const handleTest = async () => {
 		setError(null);
-		await testChild({data: {
-			project: item.project,
-			sha: item.sha,
-		}});
+		try {
+			await testChild({data: {
+				project: item.project,
+				sha: item.sha,
+			}});
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Failed to enqueue test');
+		}
 	};
 
 	const handleCancelTest = async () => {
 		if (!testJob) return;
 		setError(null);
-		await cancelTestFn({data: {id: testJob.id}});
+		try {
+			const result = await cancelTestFn({data: {id: testJob.id}});
+			if (!result.ok) setError(result.message);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Failed to cancel test');
+		}
 	};
 
 	const handleSnooze = async (hours: number | null) => {
@@ -216,6 +232,21 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				...(old ?? []),
 				{sha: item.sha, project: item.project, shortSha: item.shortSha, subject: item.subject, until},
 			]);
+		} else {
+			setError(result.message);
+		}
+	};
+
+	const handleUnsnooze = async () => {
+		setSnoozeOpen(false);
+		setError(null);
+		const result = await unsnoozeChildFn({data: {project: item.project, sha: item.sha}});
+		if (result.ok) {
+			queryClient.setQueryData<SnoozedChild[]>(['snoozed'], (old) =>
+				(old ?? []).filter((s) => !(s.project === item.project && s.sha === item.sha)),
+			);
+			const fresh = await getProjectChildren({data: {project: item.project}});
+			queryClient.setQueryData<ProjectChildrenResult>(['children', item.project], fresh);
 		} else {
 			setError(result.message);
 		}
@@ -267,6 +298,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		setRebasing(false);
 		if (result.ok) {
 			setRebaseResult({message: result.message});
+			suppressMergeUpdates(item.project, item.sha);
 			cache.updateItem(item.sha, (i) => ({...i, commitsBehind: 0, rebaseable: undefined}));
 		} else {
 			setError(result.message);
@@ -332,6 +364,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}});
 		setRebasingLocal(false);
 		if (result.ok) {
+			suppressMergeUpdates(item.project, item.sha);
 			cache.updateItem(item.sha, (i) => ({...i, needsRebase: false, commitsBehind: 0}));
 		} else {
 			setError(result.message);
@@ -374,11 +407,8 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		}
 	};
 
+	const actions = new Set(CATEGORIES[category].actions);
 	const isDefaultBranch = /^(main|master)$/.test(item.branch);
-	const showDeleteBranch = !pr && !item.pushedToRemote;
-	const showTestButton = !pr && !isDefaultBranch && item.testStatus !== 'passed';
-	const showPushButton = !pr && !isDefaultBranch && item.testStatus === 'passed' && !item.pushedToRemote;
-	const showCreatePr = !pr && !isDefaultBranch && item.pushedToRemote;
 
 	const isRow = layout === 'row';
 
@@ -386,7 +416,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 		<div>
 			<div className={`flex ${isRow ? 'flex-wrap items-center gap-2' : 'flex-col gap-1.5'}`}>
 				{/* PR link */}
-				{pr && (
+				{actions.has('open_pr_link') && pr && (
 					<a
 						href={pr.prUrl}
 						target="_blank"
@@ -399,7 +429,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Rebase PR */}
-				{pr && (
+				{actions.has('rebase_pr') && pr && (
 					<button
 						type="button"
 						onClick={handleRebase}
@@ -417,7 +447,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Force Push (local ahead of remote) */}
-				{item.localAhead && (
+				{actions.has('force_push') && item.localAhead && (
 					<button
 						type="button"
 						onClick={handleForcePush}
@@ -432,7 +462,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Local Rebase */}
-				{(item.needsRebase || (commitsBehind != null && commitsBehind > 0 && rebaseable === true)) && (
+				{actions.has('rebase_local') && (
 					<button
 						type="button"
 						onClick={handleRebaseLocal}
@@ -448,7 +478,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Apply Fixes */}
-				{pr && pr.checkStatus === 'failed' && pr.failedChecks?.some((c) => c.name.endsWith('-fix')) && (() => {
+				{actions.has('apply_fixes') && pr?.failedChecks?.some((c) => c.name.endsWith('-fix')) && (() => {
 					const fixChecks = pr.failedChecks!.filter((c) => c.name.endsWith('-fix'));
 					return (
 						<div className="relative">
@@ -530,7 +560,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				})()}
 
 				{/* Inline rename widget for main/master branches */}
-				{!pr && isDefaultBranch && (
+				{actions.has('rename') && isDefaultBranch && (
 					<div className="flex items-center gap-1.5">
 						<Pencil className="h-3.5 w-3.5 shrink-0 text-text-400" />
 						<input
@@ -556,7 +586,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Rename Branch popup (for non-default, non-PR branches) */}
-				{!pr && !isDefaultBranch && (
+				{actions.has('rename') && !isDefaultBranch && (
 					<div className="relative">
 						<button
 							ref={renameButtonRef}
@@ -612,7 +642,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Create PR */}
-				{showCreatePr && (
+				{actions.has('create_pr') && (
 					<button
 						type="button"
 						onClick={handleCreatePr}
@@ -627,7 +657,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Push */}
-				{showPushButton && (
+				{actions.has('push') && !item.localAhead && (
 					<button
 						type="button"
 						onClick={handlePush}
@@ -642,7 +672,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Test */}
-				{showTestButton && (
+				{actions.has('test') && (
 					<button
 						type="button"
 						onClick={handleTest}
@@ -666,7 +696,7 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				)}
 
 				{/* Test failure log */}
-				{item.testStatus === 'failed' && (
+				{actions.has('view_test_log') && (
 					<a
 						href={`/log/${item.project}/${item.sha}`}
 						target="_blank"
@@ -691,10 +721,18 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 							setSnoozeOpen(!snoozeOpen);
 						}}
 						disabled={loading}
-						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							snoozedEntry
+								? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+								: 'text-text-400 hover:bg-bg-200 hover:text-text-300'
+						}`}
 					>
-						<Moon className="h-3.5 w-3.5" />
-						Snooze
+						{snoozedEntry ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+						{snoozedEntry
+							? snoozedEntry.until
+								? `Snoozed until ${new Date(snoozedEntry.until).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}`
+								: 'On Hold'
+							: 'Snooze'}
 					</button>
 					{snoozeOpen && snoozePos && (
 						<div
@@ -702,6 +740,18 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 							className="fixed z-50 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg"
 							style={{top: snoozePos.top, left: snoozePos.left}}
 						>
+							{snoozedEntry && (
+								<>
+									<button
+										type="button"
+										onClick={handleUnsnooze}
+										className="block w-full px-3 py-1.5 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-bg-200"
+									>
+										Unsnooze
+									</button>
+									<div className="my-1 border-t border-border-300/30" />
+								</>
+							)}
 							{SNOOZE_PRESETS.map((preset) => (
 								<button
 									key={preset.label}
@@ -717,18 +767,20 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 				</div>
 
 				{/* Refresh */}
-				<button
-					type="button"
-					onClick={handleRefresh}
-					disabled={refreshing}
-					className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
-				>
-					<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-					{refreshing ? 'Refreshing...' : 'Refresh'}
-				</button>
+				{actions.has('refresh') && (
+					<button
+						type="button"
+						onClick={handleRefresh}
+						disabled={refreshing}
+						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+					>
+						<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+						{refreshing ? 'Refreshing...' : 'Refresh'}
+					</button>
+				)}
 
 				{/* Delete Branch */}
-				{showDeleteBranch && (
+				{actions.has('delete_branch') && (
 					<div className="relative">
 						<button
 							ref={deleteButtonRef}
@@ -821,10 +873,10 @@ function ItemActions({item, layout = 'column'}: ItemActionsProps) {
 	);
 }
 
-export function BranchActions({item, layout}: {item: BranchItem; layout?: 'row' | 'column'}) {
-	return <ItemActions item={item} layout={layout} />;
+export function BranchActions({item, category, layout}: {item: BranchItem; category: Category; layout?: 'row' | 'column'}) {
+	return <ItemActions item={item} category={category} layout={layout} />;
 }
 
-export function PullRequestActions({item, layout}: {item: PullRequestItem; layout?: 'row' | 'column'}) {
-	return <ItemActions item={item} layout={layout} />;
+export function PullRequestActions({item, category, layout}: {item: PullRequestItem; category: Category; layout?: 'row' | 'column'}) {
+	return <ItemActions item={item} category={category} layout={layout} />;
 }

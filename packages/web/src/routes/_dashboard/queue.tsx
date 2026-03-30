@@ -17,54 +17,7 @@ import {IssueCard} from '../../components/issue-card';
 import {ProjectBoardItemCard} from '../../components/project-board-item-card';
 import {TodoCard} from '../../components/todo-card';
 import type {Category} from '@wip/shared';
-
-const CATEGORY_PRIORITY: Category[] = ['approved', 'changes_requested', 'review_comments', 'checks_passed', 'checks_failed', 'checks_running', 'checks_unknown', 'pushed_no_pr', 'ready_to_push', 'needs_split', 'needs_rebase', 'rebase_conflicts', 'test_failed', 'ready_to_test', 'detached_head', 'local_changes', 'no_test', 'not_started', 'skippable', 'snoozed'];
-
-const CATEGORY_LABELS: Record<Category, string> = {
-	not_started: 'Not Started',
-	approved: 'Approved',
-	changes_requested: 'Changes Requested',
-	review_comments: 'Review Comments',
-	checks_passed: 'Checks Passed',
-	checks_failed: 'Checks Failed',
-	checks_unknown: 'Checks Unknown',
-	checks_running: 'Checks Running',
-	ready_to_push: 'Ready to Push',
-	needs_rebase: 'Needs Rebase',
-	rebase_conflicts: 'Rebase Conflicts',
-	needs_split: 'Needs Split',
-	pushed_no_pr: 'Needs PR',
-	test_failed: 'Test Failed',
-	ready_to_test: 'Ready to Test',
-	detached_head: 'Detached HEAD',
-	local_changes: 'Local Changes',
-	no_test: 'No Test',
-	snoozed: 'Snoozed',
-	skippable: 'Skippable',
-};
-
-const CATEGORY_COLORS: Record<Category, string> = {
-	not_started: 'text-purple-700 dark:text-purple-400',
-	approved: 'text-green-700 dark:text-green-400',
-	changes_requested: 'text-purple-700 dark:text-purple-400',
-	review_comments: 'text-blue-700 dark:text-blue-400',
-	checks_passed: 'text-blue-700 dark:text-blue-400',
-	checks_failed: 'text-red-700 dark:text-red-400',
-	checks_unknown: 'text-text-300',
-	checks_running: 'text-yellow-700 dark:text-yellow-400',
-	ready_to_push: 'text-green-700 dark:text-green-400',
-	needs_rebase: 'text-orange-700 dark:text-orange-400',
-	rebase_conflicts: 'text-red-700 dark:text-red-400',
-	needs_split: 'text-orange-700 dark:text-orange-400',
-	pushed_no_pr: 'text-blue-700 dark:text-blue-400',
-	test_failed: 'text-red-700 dark:text-red-400',
-	ready_to_test: 'text-yellow-700 dark:text-yellow-400',
-	detached_head: 'text-yellow-700 dark:text-yellow-400',
-	local_changes: 'text-text-300',
-	no_test: 'text-text-300',
-	snoozed: 'text-text-500',
-	skippable: 'text-text-500',
-};
+import {CATEGORIES, CATEGORY_PRIORITY} from '../../lib/category-actions';
 
 function bucketCount(items: ColumnItems): number {
 	return (items.commits?.length ?? 0) + (items.branches?.length ?? 0) + (items.pullRequests?.length ?? 0)
@@ -83,6 +36,7 @@ function Queue() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
 	const [testingAll, setTestingAll] = useState(false);
+	const [testAllError, setTestAllError] = useState<string | null>(null);
 	const [rebasingAll, setRebasingAll] = useState(false);
 	const [rebaseResult, setRebaseResult] = useState<string | null>(null);
 	const hasActiveTests = useHasActiveTests();
@@ -90,7 +44,7 @@ function Queue() {
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
 			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
-			local_changes: {}, ready_to_test: {}, test_failed: {}, needs_rebase: {}, rebase_conflicts: {},
+			local_changes: {}, ready_to_test: {}, test_running: {}, test_failed: {}, needs_rebase: {}, rebase_conflicts: {},
 			needs_split: {}, ready_to_push: {}, pushed_no_pr: {}, checks_unknown: {}, checks_running: {},
 			checks_failed: {}, checks_passed: {}, review_comments: {}, changes_requested: {},
 			approved: {},
@@ -137,7 +91,12 @@ function Queue() {
 
 	const handleTestAll = async () => {
 		setTestingAll(true);
-		await testAllChildren();
+		setTestAllError(null);
+		try {
+			await testAllChildren();
+		} catch (e) {
+			setTestAllError(e instanceof Error ? e.message : 'Failed to enqueue tests');
+		}
 		setTestingAll(false);
 	};
 
@@ -202,6 +161,11 @@ function Queue() {
 					{rebaseResult}
 				</div>
 			)}
+			{testAllError && (
+				<div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+					{testAllError}
+				</div>
+			)}
 			<div className="flex flex-col gap-6">
 				{CATEGORY_PRIORITY.map((category) => {
 					const items = grouped[category];
@@ -209,15 +173,15 @@ function Queue() {
 					if (count === 0) return null;
 					return (
 						<section key={category}>
-							<h2 className={`mb-2 text-sm font-semibold ${CATEGORY_COLORS[category]}`}>
-								{CATEGORY_LABELS[category]}
+							<h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
+								{CATEGORIES[category].label}
 								<span className="ml-2 font-normal text-text-500">{count}</span>
 							</h2>
 							<div className="flex flex-col gap-2">
-								{items.pullRequests?.map((pr) => <PullRequestCard key={pr.sha} pr={pr} />)}
-								{items.branches?.filter((b) => b.commitsAhead === 1).map((b) => <BranchCard key={b.sha} branch={b} />)}
+								{items.pullRequests?.map((pr) => <PullRequestCard key={pr.sha} pr={pr} category={category} />)}
+								{items.branches?.filter((b) => b.commitsAhead === 1).map((b) => <BranchCard key={b.sha} branch={b} category={category} />)}
 								{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} />)}
-								{items.branches?.filter((b) => b.commitsAhead !== 1).map((b) => <BranchCard key={b.sha} branch={b} />)}
+								{items.branches?.filter((b) => b.commitsAhead !== 1).map((b) => <BranchCard key={b.sha} branch={b} category={category} />)}
 								{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />)}
 								{items.projectItems?.map((p) => <ProjectBoardItemCard key={`project-${p.title}`} item={p} />)}
 								{items.todos?.map((t) => <TodoCard key={`todo-${t.project}-${t.title}`} todo={t} />)}

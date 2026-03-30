@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem} from '@wip/shared';
 import {
 	type ActionResult,
@@ -770,9 +770,14 @@ export const rebaseLocal = createServerFn({method: 'POST'})
 			return {ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}`};
 		}
 
+		const branchSha = (await execa('git', ['-C', p.dir, 'rev-parse', 'HEAD'], {reject: false, env})).stdout.trim();
 		const rebase = await execa('git', ['-C', p.dir, 'rebase', p.upstreamRef], {reject: false, env});
 		if (rebase.exitCode !== 0) {
 			await execa('git', ['-C', p.dir, 'rebase', '--abort'], {reject: false, env});
+			const upstreamSha = getCachedUpstreamSha(data.project);
+			if (upstreamSha && branchSha) {
+				cacheMergeStatus(data.project, branchSha, upstreamSha, 0, 1, false);
+			}
 			return {ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}`};
 		}
 
@@ -809,9 +814,14 @@ export const rebaseAllBranches = createServerFn({method: 'POST'}).handler(async 
 			const checkout = await execa('git', ['-C', p.dir, 'checkout', branch], {reject: false, env});
 			if (checkout.exitCode !== 0) continue;
 
+			const branchSha = (await execa('git', ['-C', p.dir, 'rev-parse', 'HEAD'], {reject: false, env})).stdout.trim();
 			const rebase = await execa('git', ['-C', p.dir, 'rebase', '--rebase-merges', '--update-refs', p.upstreamRef], {reject: false, env});
 			if (rebase.exitCode !== 0) {
 				await execa('git', ['-C', p.dir, 'rebase', '--abort'], {reject: false, env});
+				const upstreamSha = getCachedUpstreamSha(p.name);
+				if (upstreamSha && branchSha) {
+					cacheMergeStatus(p.name, branchSha, upstreamSha, 0, 1, false);
+				}
 				errors.push(`${p.name}/${branch}: conflicts`);
 				continue;
 			}

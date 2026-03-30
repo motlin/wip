@@ -100,6 +100,7 @@ const CATEGORY_ORDER: Category[] = [
 	'detached_head',
 	'local_changes',
 	'ready_to_test',
+	'test_running',
 	'test_failed',
 	'needs_rebase',
 	'rebase_conflicts',
@@ -122,6 +123,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	detached_head: 'Detached HEAD',
 	local_changes: 'Local changes — dirty worktree',
 	ready_to_test: 'Ready to test',
+	test_running: 'Test running',
 	test_failed: 'Test failed',
 	needs_rebase: 'Needs rebase',
 	rebase_conflicts: 'Rebase conflicts',
@@ -154,6 +156,7 @@ function categoryStyle(category: Category, text: string): string {
 		case 'rebase_conflicts':
 			return chalk.red(text);
 		case 'ready_to_test':
+		case 'test_running':
 		case 'checks_running':
 		case 'detached_head':
 		case 'needs_rebase':
@@ -205,6 +208,7 @@ export default class Report extends Command {
 			detached_head: [],
 			local_changes: [],
 			ready_to_test: [],
+			test_running: [],
 			test_failed: [],
 			needs_rebase: [],
 			rebase_conflicts: [],

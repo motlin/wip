@@ -10,8 +10,9 @@ import {DiffPanel} from '../components/diff-section';
 import {AnsiText} from '../components/ansi-text';
 import {childByShaQueryOptions, diffQueryOptions, testLogQueryOptions, projectsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
+import {CATEGORIES, CATEGORY_PRIORITY} from '../lib/category-actions';
 import {useSyncChildToCache} from '../lib/use-sync-child-to-cache';
-import type {Category} from '@wip/shared';
+import {useTestJob} from '../lib/test-events-context';
 
 export const Route = createFileRoute('/item/$project/$sha')({
 	loader: ({context: {queryClient}, params}) =>
@@ -28,15 +29,6 @@ export const Route = createFileRoute('/item/$project/$sha')({
 	component: ItemDetail,
 });
 
-const CATEGORY_LABELS: Record<Category, string> = {
-	not_started: 'Not Started', approved: 'Approved', changes_requested: 'Changes Requested',
-	review_comments: 'Review Comments', checks_passed: 'Checks Passed', checks_failed: 'Checks Failed',
-	checks_unknown: 'Checks Unknown', checks_running: 'Checks Running', ready_to_push: 'Ready to Push',
-	needs_rebase: 'Needs Rebase', rebase_conflicts: 'Rebase Conflicts', needs_split: 'Needs Split', pushed_no_pr: 'Needs PR',
-	test_failed: 'Test Failed', ready_to_test: 'Ready to Test', detached_head: 'Detached HEAD',
-	local_changes: 'Local Changes', no_test: 'No Test', snoozed: 'Snoozed', skippable: 'Skippable',
-};
-
 function ItemDetail() {
 	const {project, sha} = Route.useParams();
 	const queryClient = useQueryClient();
@@ -49,6 +41,7 @@ function ItemDetail() {
 	const projectInfo = projects.find((p) => p.name === project);
 	const isSnoozed = snoozedItems.some((s) => s.project === project && s.sha === sha);
 	const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);
+	const testJob = useTestJob(sha, project);
 
 	if (!child) {
 		return (
@@ -60,9 +53,14 @@ function ItemDetail() {
 
 	const isPr = 'prUrl' in child && child.prUrl;
 	const isBranch = 'branch' in child;
-	const category = projectInfo
-		? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : classifyCommit(child as any, projectInfo)
-		: undefined;
+	const isTestRunning = testJob?.status === 'running' || testJob?.status === 'queued';
+	const category = isSnoozed
+		? 'snoozed' as const
+		: isTestRunning
+			? 'test_running' as const
+			: projectInfo
+				? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : classifyCommit(child as any, projectInfo)
+				: undefined;
 
 	return (
 		<div className="p-6">
@@ -72,10 +70,16 @@ function ItemDetail() {
 			</Link>
 
 			<div className="mb-6">
+				{category && (
+					<h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
+						{CATEGORIES[category].label}
+						<code className="ml-2 text-xs font-normal text-text-300">#{CATEGORY_PRIORITY.indexOf(category)} {category}</code>
+					</h2>
+				)}
 				{isPr ? (
-					<PullRequestCard pr={child as any} />
+					<PullRequestCard pr={child as any} category={category!} />
 				) : isBranch ? (
-					<BranchCard branch={child as any} />
+					<BranchCard branch={child as any} category={category!} />
 				) : (
 					<CommitCard commit={child as any} />
 				)}
@@ -87,7 +91,7 @@ function ItemDetail() {
 					<div className="mb-3 flex flex-wrap gap-2">
 						{category && (
 							<div className="inline-flex items-center rounded bg-bg-200 px-2 py-1 text-xs font-semibold text-text-100">
-								{CATEGORY_LABELS[category]}
+								{CATEGORIES[category].label}
 							</div>
 						)}
 						<div className={`inline-flex items-center rounded px-2 py-1 text-xs font-semibold ${isSnoozed ? 'bg-amber-500/20 text-amber-400' : 'bg-bg-200 text-text-400'}`}>

@@ -1,6 +1,7 @@
 import {createFileRoute} from '@tanstack/react-router';
 import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
-import {AlarmClockOff} from 'lucide-react';
+import {AlarmClockOff, Loader2} from 'lucide-react';
+import {useState} from 'react';
 import {unsnoozeChildFn, getProjectChildren} from '../lib/server-fns';
 import type {SnoozedChild} from '../lib/server-fns';
 import {snoozedQueryOptions} from '../lib/queries';
@@ -76,14 +77,28 @@ function Snoozed() {
 
 function SnoozedCard({item}: {item: SnoozedChild}) {
 	const queryClient = useQueryClient();
+	const [waking, setWaking] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const handleUnsnooze = async () => {
+		setWaking(true);
+		setError(null);
+		const saved = queryClient.getQueryData<SnoozedChild[]>(['snoozed']);
 		queryClient.setQueryData<SnoozedChild[]>(['snoozed'], (old) => old?.filter((s) => !(s.sha === item.sha && s.project === item.project)));
-		const result = await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
-		if (result.ok) {
-			const fresh = await getProjectChildren({data: {project: item.project}});
-			queryClient.setQueryData(['children', item.project], fresh);
+		try {
+			const result = await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
+			if (result.ok) {
+				const fresh = await getProjectChildren({data: {project: item.project}});
+				queryClient.setQueryData(['children', item.project], fresh);
+			} else {
+				queryClient.setQueryData<SnoozedChild[]>(['snoozed'], saved);
+				setError(result.message);
+			}
+		} catch (e) {
+			queryClient.setQueryData<SnoozedChild[]>(['snoozed'], saved);
+			setError(e instanceof Error ? e.message : 'Failed to unsnooze');
 		}
+		setWaking(false);
 	};
 
 	return (
@@ -97,15 +112,21 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 			{item.subject && (
 				<p className="mt-1.5 text-sm leading-snug text-text-100">{item.subject}</p>
 			)}
+			{error && (
+				<p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>
+			)}
 			<div className="mt-2 flex items-center justify-between">
 				<span className="text-xs font-medium text-text-300">{item.project}</span>
 				<button
 					type="button"
 					onClick={handleUnsnooze}
-					className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
+					disabled={waking}
+					className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+						waking ? 'cursor-not-allowed opacity-60 text-text-400' : 'text-text-300 hover:bg-bg-200 hover:text-text-100'
+					}`}
 				>
-					<AlarmClockOff className="h-3 w-3" />
-					Wake
+					{waking ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlarmClockOff className="h-3 w-3" />}
+					{waking ? 'Waking...' : 'Wake'}
 				</button>
 			</div>
 		</div>

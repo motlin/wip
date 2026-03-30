@@ -10,6 +10,13 @@ export interface MergeStatusEvent {
 	rebaseable: boolean | null;
 }
 
+const SUPPRESSION_MS = 5_000;
+const recentManualUpdates = new Map<string, number>();
+
+export function suppressMergeUpdates(project: string, sha: string): void {
+	recentManualUpdates.set(`${project}:${sha}`, Date.now());
+}
+
 export function useMergeEvents() {
 	const [statuses, setStatuses] = useState<Map<string, MergeStatusEvent>>(new Map());
 	const queryClient = useQueryClient();
@@ -19,11 +26,20 @@ export function useMergeEvents() {
 
 		es.onmessage = (event) => {
 			const data = JSON.parse(event.data) as MergeStatusEvent;
+			const key = `${data.project}:${data.sha}`;
+
 			setStatuses((prev) => {
 				const next = new Map(prev);
-				next.set(`${data.project}:${data.sha}`, data);
+				next.set(key, data);
 				return next;
 			});
+
+			const lastManual = recentManualUpdates.get(key);
+			if (lastManual && Date.now() - lastManual < SUPPRESSION_MS) {
+				return;
+			}
+			recentManualUpdates.delete(key);
+
 			queryClient.setQueryData<ProjectChildrenResult>(['children', data.project], (old) => {
 				if (!old) return old;
 				const update = (i: {sha: string; commitsBehind?: number; commitsAhead?: number; rebaseable?: boolean | null}) =>

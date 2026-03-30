@@ -20,7 +20,7 @@
 	},
 	"dependencies": {
 		"better-sqlite3": "^12.8.0",
-		"drizzle-orm": "^0.45.1",
+		"drizzle-orm": "^0.45.2",
 		"execa": "^9.6.1",
 		"json5": "^2.2.3",
 		"pino": "^10.3.1",

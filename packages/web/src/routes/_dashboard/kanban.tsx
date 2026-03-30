@@ -1,12 +1,12 @@
 import {createFileRoute} from '@tanstack/react-router';
-import {useSuspenseQuery, useQueryClient} from '@tanstack/react-query';
-import {RefreshCw} from 'lucide-react';
+import {useQuery, useQueryClient} from '@tanstack/react-query';
+import {RefreshCw, Loader2} from 'lucide-react';
 import {useState, useMemo} from 'react';
 import {KanbanColumn} from '../../components/kanban-column';
 import type {ColumnItems} from '../../components/kanban-column';
 import {refreshAll} from '../../lib/server-fns';
 import {projectsQueryOptions} from '../../lib/queries';
-import {useWorkItems} from '../../lib/use-work-items';
+import {useWorkItemsAsync} from '../../lib/use-work-items';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../../lib/classify';
 import type {Category} from '@wip/shared';
 
@@ -25,12 +25,14 @@ export const Route = createFileRoute('/_dashboard/kanban')({
 });
 
 function Kanban() {
-	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
-	const workItems = useWorkItems(projects);
+	const {data: projects} = useQuery(projectsQueryOptions());
+	const {data: workItems, isLoading} = useWorkItemsAsync(projects ?? []);
 	const queryClient = useQueryClient();
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
 	const {grouped, totalCount} = useMemo(() => {
+		if (!workItems || !projects) return {grouped: undefined, totalCount: 0};
+
 		const g: Record<Category, ColumnItems> = {
 			not_started: {}, skippable: {}, snoozed: {}, no_test: {}, detached_head: {},
 			local_changes: {}, ready_to_test: {}, test_running: {}, test_failed: {}, needs_rebase: {}, rebase_conflicts: {},
@@ -89,25 +91,32 @@ function Kanban() {
 					<button
 						type="button"
 						onClick={handleRefreshAll}
-						disabled={refreshingAll}
+						disabled={refreshingAll || isLoading}
 						className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100 disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						<RefreshCw className={`h-3.5 w-3.5 ${refreshingAll ? 'animate-spin' : ''}`} />
 						{refreshingAll ? 'Refreshing...' : 'Refresh All'}
 					</button>
 					<span className="text-sm text-text-500">
-						{workItems.projectCount} projects, {totalCount} items
+						{workItems?.projectCount ?? 0} projects, {totalCount} items
 					</span>
 				</div>
 			</div>
-			<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
-				{CATEGORY_ORDER.map((category) => {
-					const items = grouped[category];
-					const count = bucketCount(items);
-					if (count === 0) return null;
-					return <KanbanColumn key={category} category={category} items={items} count={count} />;
-				})}
-			</div>
+			{isLoading || !grouped ? (
+				<div className="flex items-center gap-2 py-12 text-sm text-text-400">
+					<Loader2 className="h-4 w-4 animate-spin" />
+					Loading work items…
+				</div>
+			) : (
+				<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
+					{CATEGORY_ORDER.map((category) => {
+						const items = grouped[category];
+						const count = bucketCount(items);
+						if (count === 0) return null;
+						return <KanbanColumn key={category} category={category} items={items} count={count} />;
+					})}
+				</div>
+			)}
 		</div>
 	);
 }

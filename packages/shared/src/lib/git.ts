@@ -55,7 +55,7 @@ async function git(dir: string, ...args: string[]): Promise<string> {
 	return result.stdout.trim();
 }
 
-function isSkippable(message: string): boolean {
+export function isSkippable(message: string): boolean {
 	return SKIPPABLE_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
@@ -196,7 +196,42 @@ export async function getNeedsRebaseBranches(dir: string, upstreamRef: string, d
 	return needsRebase;
 }
 
-function parseBranch(decoration: string): string | undefined {
+export interface RemoteBranchInfo {
+	remoteBranches: Set<string>;
+	remoteBranchRefs: Map<string, string>;
+	defaultBranch: string | undefined;
+}
+
+export function parseRemoteBranchOutput(output: string): RemoteBranchInfo {
+	const remoteBranches = new Set<string>();
+	const remoteBranchRefs = new Map<string, string>();
+	let defaultBranch: string | undefined;
+	for (const line of output.split('\n')) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		const arrowIdx = trimmed.indexOf(' -> ');
+		if (arrowIdx >= 0) {
+			const target = trimmed.slice(arrowIdx + 4);
+			const slashIdx = target.indexOf('/');
+			if (slashIdx >= 0) defaultBranch = target.slice(slashIdx + 1);
+			continue;
+		}
+		const slashIdx = trimmed.indexOf('/');
+		if (slashIdx >= 0) {
+			const branchName = trimmed.slice(slashIdx + 1);
+			remoteBranches.add(branchName);
+			remoteBranchRefs.set(branchName, trimmed);
+		}
+	}
+	return {remoteBranches, remoteBranchRefs, defaultBranch};
+}
+
+export async function getRemoteBranchInfo(dir: string): Promise<RemoteBranchInfo> {
+	const output = await git(dir, 'branch', '-r');
+	return parseRemoteBranchOutput(output);
+}
+
+export function parseBranch(decoration: string): string | undefined {
 	const refs = decoration.split(',').map((r) => r.trim()).filter(Boolean);
 	for (const ref of refs) {
 		const branch = ref.replace(/^HEAD -> /, '');
@@ -532,27 +567,7 @@ export async function getChildCommits(dir: string, upstreamRef: string, hasTest:
 
 	if (logResult.exitCode !== 0) return [];
 
-	// Build a map of remote branch names to their full ref (e.g. "foo" -> "origin/foo")
-	const remoteBranches = new Set<string>();
-	const remoteBranchRefs = new Map<string, string>();
-	let defaultBranch: string | undefined;
-	for (const line of remoteBranchOutput.split('\n')) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		const arrowIdx = trimmed.indexOf(' -> ');
-		if (arrowIdx >= 0) {
-			const target = trimmed.slice(arrowIdx + 4);
-			const slashIdx = target.indexOf('/');
-			if (slashIdx >= 0) defaultBranch = target.slice(slashIdx + 1);
-			continue;
-		}
-		const slashIdx = trimmed.indexOf('/');
-		if (slashIdx >= 0) {
-			const branchName = trimmed.slice(slashIdx + 1);
-			remoteBranches.add(branchName);
-			remoteBranchRefs.set(branchName, trimmed);
-		}
-	}
+	const {remoteBranches, remoteBranchRefs, defaultBranch} = parseRemoteBranchOutput(remoteBranchOutput);
 
 	const testStatusMap: Map<string, 'passed' | 'failed'> = hasTest && projectName
 		? getTestResultsForProject(projectName)

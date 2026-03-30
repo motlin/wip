@@ -224,6 +224,7 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 						<th className="px-3 py-2 text-left text-xs font-semibold text-text-400">State</th>
 						<th className="px-3 py-2 text-left text-xs font-semibold text-text-400">Label</th>
 						<th className="px-3 py-2 text-left text-xs font-semibold text-text-400">Actions</th>
+						<th className="px-3 py-2 text-left text-xs font-semibold text-text-400">LLM Command</th>
 						<th className="px-3 py-2 text-left text-xs font-semibold text-text-400">Transitions Out</th>
 						<th className="px-3 py-2 text-left text-xs font-semibold text-text-400">Transitions In</th>
 					</tr>
@@ -262,6 +263,11 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 											<span key={action} className="rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">{action}</span>
 										))}
 									</div>
+								</td>
+								<td className="px-3 py-2">
+									{config.llmCommand && (
+										<code className="rounded bg-violet-500/20 px-1.5 py-0.5 font-mono text-xs text-violet-400">{config.llmCommand}</code>
+									)}
 								</td>
 								<td className="px-3 py-2">
 									<div className="flex flex-wrap gap-1">

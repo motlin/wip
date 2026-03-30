@@ -35,6 +35,104 @@ export const CategorySchema = z.enum([
 ]);
 export type Category = z.infer<typeof CategorySchema>;
 
+// Named transitions: verbs that move items between states
+export const TransitionSchema = z.enum([
+	'snooze',
+	'unsnooze',
+	'create_branch',
+	'edit_code',
+	'commit',
+	'run_test',
+	'test_pass',
+	'test_fail',
+	'rebase',
+	'resolve_conflicts',
+	'split',
+	'push',
+	'force_push',
+	'create_pr',
+	'checks_start',
+	'checks_pass',
+	'checks_fail',
+	'review_comment',
+	'request_changes',
+	'approve',
+	'refresh',
+]);
+export type Transition = z.infer<typeof TransitionSchema>;
+
+export interface StateTransition {
+	from: Category;
+	transition: Transition;
+	to: Category;
+}
+
+// Formal state machine: every valid (from, action, to) triple.
+// States are nouns/adjectives (what the item IS); transitions are verbs (what HAPPENS).
+export const STATE_MACHINE: readonly StateTransition[] = [
+	// Snooze/unsnooze — available from most states
+	{from: 'ready_to_test',     transition: 'snooze',            to: 'snoozed'},
+	{from: 'test_failed',       transition: 'snooze',            to: 'snoozed'},
+	{from: 'ready_to_push',     transition: 'snooze',            to: 'snoozed'},
+	{from: 'needs_rebase',      transition: 'snooze',            to: 'snoozed'},
+	{from: 'needs_split',       transition: 'snooze',            to: 'snoozed'},
+	{from: 'pushed_no_pr',      transition: 'snooze',            to: 'snoozed'},
+	{from: 'checks_passed',     transition: 'snooze',            to: 'snoozed'},
+	{from: 'checks_failed',     transition: 'snooze',            to: 'snoozed'},
+	{from: 'snoozed',           transition: 'unsnooze',          to: 'ready_to_test'},
+
+	// Local development flow
+	{from: 'not_started',       transition: 'create_branch',     to: 'ready_to_test'},
+	{from: 'detached_head',     transition: 'create_branch',     to: 'ready_to_test'},
+	{from: 'local_changes',     transition: 'commit',            to: 'ready_to_test'},
+
+	// Testing flow
+	{from: 'ready_to_test',     transition: 'run_test',          to: 'ready_to_test'},
+	{from: 'ready_to_test',     transition: 'test_pass',         to: 'ready_to_push'},
+	{from: 'ready_to_test',     transition: 'test_fail',         to: 'test_failed'},
+	{from: 'test_failed',       transition: 'run_test',          to: 'ready_to_test'},
+	{from: 'test_failed',       transition: 'test_pass',         to: 'ready_to_push'},
+
+	// Rebase flow
+	{from: 'needs_rebase',      transition: 'rebase',            to: 'ready_to_test'},
+	{from: 'needs_rebase',      transition: 'rebase',            to: 'rebase_conflicts'},
+	{from: 'rebase_conflicts',  transition: 'resolve_conflicts', to: 'ready_to_test'},
+
+	// Split flow (multi-commit branches)
+	{from: 'needs_split',       transition: 'split',             to: 'ready_to_push'},
+
+	// Push flow
+	{from: 'ready_to_push',     transition: 'push',              to: 'pushed_no_pr'},
+	{from: 'ready_to_push',     transition: 'force_push',        to: 'pushed_no_pr'},
+	{from: 'no_test',           transition: 'push',              to: 'pushed_no_pr'},
+
+	// PR creation
+	{from: 'pushed_no_pr',      transition: 'create_pr',         to: 'checks_unknown'},
+
+	// CI checks flow
+	{from: 'checks_unknown',    transition: 'checks_start',      to: 'checks_running'},
+	{from: 'checks_running',    transition: 'checks_pass',       to: 'checks_passed'},
+	{from: 'checks_running',    transition: 'checks_fail',       to: 'checks_failed'},
+	{from: 'checks_failed',     transition: 'force_push',        to: 'checks_running'},
+
+	// Code review flow
+	{from: 'checks_passed',     transition: 'review_comment',    to: 'review_comments'},
+	{from: 'checks_passed',     transition: 'request_changes',   to: 'changes_requested'},
+	{from: 'checks_passed',     transition: 'approve',           to: 'approved'},
+	{from: 'review_comments',   transition: 'approve',           to: 'approved'},
+	{from: 'changes_requested', transition: 'force_push',        to: 'checks_running'},
+	{from: 'review_comments',   transition: 'force_push',        to: 'checks_running'},
+] as const;
+
+// Lookup helpers
+export function getTransitionsFrom(state: Category): StateTransition[] {
+	return STATE_MACHINE.filter((t) => t.from === state);
+}
+
+export function getTransitionsTo(state: Category): StateTransition[] {
+	return STATE_MACHINE.filter((t) => t.to === state);
+}
+
 export const ProjectInfoSchema = z.object({
 	name: z.string(),
 	dir: z.string(),

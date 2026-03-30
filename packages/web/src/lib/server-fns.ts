@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getSnoozedSet, getTestLogDir, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, log, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem} from '@wip/shared';
 import {
 	type ActionResult,
@@ -361,30 +361,47 @@ export const testChild = createServerFn({method: 'POST'})
 export const testAllChildren = createServerFn({method: 'POST'}).handler(async (): Promise<TestJobStatus[]> => {
 
 	const {enqueueTest} = await import('./test-queue.js');
+	const {execa} = await import('execa');
 	const projectsDirs = getProjectsDirs();
 	const projects = await discoverAllProjects(projectsDirs);
 
 	clearExpiredSnoozes();
 	const snoozedSet = getSnoozedSet();
 
-	const testableProjects = projects.filter((p) => p.hasTestConfigured && !p.dirty);
-	const projectResults: {project: ProjectInfo; children: ChildCommit[]}[] = [];
-	for (const p of testableProjects) {
-		const prStatuses = await getPrStatuses(p.dir, p.name);
-		const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
-		const descendantShas = new Set(children.map((c) => c.sha));
-		const needsRebaseBranches = await getNeedsRebaseBranches(p.dir, p.upstreamRef, descendantShas);
-		projectResults.push({project: p, children: [...children, ...needsRebaseBranches]});
-	}
-
+	const SKIP_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 	const queued: TestJobStatus[] = [];
-	for (const {project: p, children} of projectResults) {
-		for (const child of children) {
-			if (child.skippable) continue;
-			if (snoozedSet.has(`${p.name}:${child.sha}`)) continue;
-			if (child.reviewStatus !== 'no_pr') continue;
-			if (child.testStatus !== 'unknown') continue;
-			const job = enqueueTest(p.name, p.dir, child.sha, child.shortSha, child.subject, child.branch);
+
+	for (const p of projects) {
+		if (!p.hasTestConfigured || p.dirty) continue;
+
+		const childShas = await getChildren(p.dir, p.upstreamRef);
+		if (childShas.length === 0) continue;
+
+		const testResults = getTestResultsForProject(p.name);
+
+		const untested = childShas.filter((sha) => {
+			if (testResults.has(sha)) return false;
+			if (snoozedSet.has(`${p.name}:${sha}`)) return false;
+			return true;
+		});
+		if (untested.length === 0) continue;
+
+		const logResult = await execa('git', [
+			'-C', p.dir, 'log', '--stdin', '--no-walk',
+			'--format=%H%x00%h%x00%s%x00%B%x00%D%x1e',
+		], {input: untested.join('\n'), reject: false});
+		if (logResult.exitCode !== 0) continue;
+
+		for (const record of logResult.stdout.split('\x1e')) {
+			const trimmed = record.replace(/^\n+/, '');
+			if (!trimmed) continue;
+			const [sha, shortSha, subject, fullMessage, decoration] = trimmed.split('\0');
+			if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
+
+			const branchMatch = decoration?.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
+			const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
+
+			const job = enqueueTest(p.name, p.dir, sha, shortSha, subject, branch);
 			queued.push({id: job.id, status: job.status, message: job.message});
 		}
 	}

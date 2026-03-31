@@ -6,6 +6,7 @@ import {Sun, Moon} from 'lucide-react';
 import appCss from '../styles/globals.css?url';
 import {TestEventsProvider} from '../lib/test-events-context';
 import {MergeEventsProvider} from '../lib/merge-events-context';
+import {ProjectEventsProvider} from '../lib/project-events-context';
 import {useTheme} from '../lib/use-theme';
 
 export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
@@ -34,6 +35,7 @@ function RootComponent() {
 		<RootDocument>
 			<TestEventsProvider>
 			<MergeEventsProvider>
+			<ProjectEventsProvider>
 				<div className="min-h-screen bg-bg-000">
 					<nav className="flex items-center gap-4 border-b border-border-300/50 px-6 py-2 text-sm">
 						<Link to="/" className="font-semibold text-text-100 hover:text-text-000">WIP</Link>
@@ -53,6 +55,7 @@ function RootComponent() {
 					</nav>
 					<Outlet />
 				</div>
+			</ProjectEventsProvider>
 			</MergeEventsProvider>
 			</TestEventsProvider>
 		</RootDocument>

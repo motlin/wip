@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches, STATE_MACHINE, getTransitionsFrom} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches, STATE_MACHINE, getTransitionsFrom, getCachedProjectList, setCachedProjectList} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem, Transition} from '@wip/shared';
 import {
 	type ActionResult,
@@ -37,27 +37,45 @@ export interface ProjectChildrenResult {
 let cachedProjects: ProjectInfo[] | null = null;
 let cachedProjectsTime = 0;
 const PROJECT_CACHE_TTL = 5 * 60 * 1000;
+let discoverInFlight: Promise<ProjectInfo[]> | null = null;
+
+async function refreshProjectCache(): Promise<ProjectInfo[]> {
+	if (discoverInFlight) return discoverInFlight;
+	const projectsDirs = getProjectsDirs();
+	discoverInFlight = discoverAllProjects(projectsDirs).then(async (projects) => {
+		cachedProjects = projects;
+		cachedProjectsTime = Date.now();
+		discoverInFlight = null;
+		setCachedProjectList(projects);
+		const {projectEmitter} = await import('./project-events.js');
+		projectEmitter.emit('projects', projects);
+		return projects;
+	});
+	return discoverInFlight;
+}
+
+async function ensureProjects(): Promise<void> {
+	if (cachedProjects && Date.now() - cachedProjectsTime <= PROJECT_CACHE_TTL) return;
+	const fromDb = getCachedProjectList();
+	if (fromDb) {
+		cachedProjects = fromDb;
+		cachedProjectsTime = Date.now();
+		refreshProjectCache().catch(() => {});
+		return;
+	}
+	await refreshProjectCache();
+}
 
 async function resolveProject(project: string): Promise<ProjectInfo> {
-	const now = Date.now();
-	if (!cachedProjects || now - cachedProjectsTime > PROJECT_CACHE_TTL) {
-		const projectsDirs = getProjectsDirs();
-		cachedProjects = await discoverAllProjects(projectsDirs);
-		cachedProjectsTime = now;
-	}
-	const p = cachedProjects.find((proj) => proj.name === project);
+	await ensureProjects();
+	const p = cachedProjects!.find((proj) => proj.name === project);
 	if (!p) throw new Error(`Project not found: ${project}`);
 	return p;
 }
 
 export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
-	const now = Date.now();
-	if (!cachedProjects || now - cachedProjectsTime > PROJECT_CACHE_TTL) {
-		const projectsDirs = getProjectsDirs();
-		cachedProjects = await discoverAllProjects(projectsDirs);
-		cachedProjectsTime = now;
-	}
-	return cachedProjects;
+	await ensureProjects();
+	return cachedProjects!;
 });
 
 async function applySuggestedBranchNames(items: Array<{sha: string; project: string; subject: string; suggestedBranch?: string}>, dir: string): Promise<void> {
@@ -578,7 +596,9 @@ export const getTestLog = createServerFn({method: 'GET'})
 	.handler(async ({data}): Promise<{log: string | null; tail: string | null}> => {
 		const logDir = getTestLogDir(data.project);
 		const logPath = path.join(logDir, `${data.sha}.log`);
-		if (!fs.existsSync(logPath)) return {log: null, tail: null};
+		if (!fs.existsSync(logPath)) {
+			return {log: null, tail: null};
+		}
 		const content = fs.readFileSync(logPath, 'utf-8');
 		const lines = content.trimEnd().split('\n');
 		const tail = lines.slice(-20).join('\n');
@@ -720,7 +740,9 @@ export const getChildBySha = createServerFn({method: 'GET'})
 
 		const branch = parseBranch(decorations ?? '');
 
-		if (!branch) return {...base, testStatus};
+		if (!branch) {
+			return {...base, testStatus};
+		}
 
 		const [prStatuses, remoteBranchInfo] = await Promise.all([
 			getPrStatuses(p.dir, p.name),
@@ -986,14 +1008,12 @@ export const rebaseAllBranches = createServerFn({method: 'POST'}).handler(async 
 
 export const refreshAll = createServerFn({method: 'POST'}).handler(async (): Promise<ActionResult> => {
 	cachedProjects = null;
+	cachedProjectsTime = 0;
 	invalidateIssuesCache();
 	invalidateProjectItemsCache();
 	// Re-populate the project cache and invalidate PR caches
-	const now = Date.now();
-	const projectsDirs = getProjectsDirs();
-	cachedProjects = await discoverAllProjects(projectsDirs);
-	cachedProjectsTime = now;
-	for (const p of cachedProjects) {
+	const projects = await refreshProjectCache();
+	for (const p of projects) {
 		invalidatePrCache(p.name);
 	}
 	return {ok: true, message: 'All caches invalidated'};

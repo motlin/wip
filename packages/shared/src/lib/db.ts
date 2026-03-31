@@ -4,9 +4,9 @@ import {drizzle, type BetterSQLite3Database} from 'drizzle-orm/better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import type {CheckStatus, ReviewStatus} from './schemas.js';
+import type {CheckStatus, ProjectInfo, ReviewStatus} from './schemas.js';
 import * as schema from './schema.js';
-import {branchNames, FAR_FUTURE, ghLoginCache, githubIssuesCache, githubProjectItemsCache, mergeStatus, miseEnvCache, prStatusCache, reportCache, snoozed, testResults, upstreamRefs} from './schema.js';
+import {branchNames, FAR_FUTURE, ghLoginCache, githubIssuesCache, githubProjectItemsCache, mergeStatus, miseEnvCache, prStatusCache, projectCache, reportCache, snoozed, testResults, upstreamRefs} from './schema.js';
 
 const APP_NAME = 'wip';
 
@@ -183,6 +183,24 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (project, sha, system_from)
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS project_cache (
+			name TEXT NOT NULL,
+			dir TEXT NOT NULL,
+			remote TEXT NOT NULL,
+			upstream_remote TEXT NOT NULL,
+			upstream_branch TEXT NOT NULL,
+			upstream_ref TEXT NOT NULL,
+			has_test_configured INTEGER NOT NULL,
+			dirty INTEGER NOT NULL,
+			detached_head INTEGER NOT NULL,
+			branch_count INTEGER NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (name, system_from)
 		)
 	`);
 
@@ -617,4 +635,47 @@ export function cacheMergeStatus(project: string, sha: string, upstreamSha: stri
 export function invalidateMergeStatus(project: string): void {
 	const d = getDb();
 	d.update(mergeStatus).set({systemTo: now()}).where(and(eq(mergeStatus.project, project), eq(mergeStatus.systemTo, FAR_FUTURE))).run();
+}
+
+// --- Project cache ---
+
+export function getCachedProjectList(): ProjectInfo[] | null {
+	const d = getDb();
+	const rows = d.select().from(projectCache).where(eq(projectCache.systemTo, FAR_FUTURE)).all();
+	if (rows.length === 0) return null;
+	return rows.map((row) => ({
+		name: row.name,
+		dir: row.dir,
+		remote: row.remote,
+		upstreamRemote: row.upstreamRemote,
+		upstreamBranch: row.upstreamBranch,
+		upstreamRef: row.upstreamRef,
+		hasTestConfigured: Boolean(row.hasTestConfigured),
+		dirty: Boolean(row.dirty),
+		detachedHead: Boolean(row.detachedHead),
+		branchCount: row.branchCount,
+	}));
+}
+
+export function setCachedProjectList(projects: ProjectInfo[]): void {
+	const d = getDb();
+	const timestamp = now();
+	d.transaction((tx) => {
+		tx.update(projectCache).set({systemTo: timestamp}).where(eq(projectCache.systemTo, FAR_FUTURE)).run();
+		for (const p of projects) {
+			tx.insert(projectCache).values({
+				name: p.name,
+				dir: p.dir,
+				remote: p.remote,
+				upstreamRemote: p.upstreamRemote,
+				upstreamBranch: p.upstreamBranch,
+				upstreamRef: p.upstreamRef,
+				hasTestConfigured: p.hasTestConfigured ? 1 : 0,
+				dirty: p.dirty ? 1 : 0,
+				detachedHead: p.detachedHead ? 1 : 0,
+				branchCount: p.branchCount,
+				systemFrom: timestamp,
+			}).run();
+		}
+	});
 }

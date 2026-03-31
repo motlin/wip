@@ -165,3 +165,25 @@ export const snoozed = sqliteTable(
 		pk: primaryKey({columns: [table.sha, table.project, table.systemFrom]}),
 	}),
 );
+
+export const projectCache = sqliteTable(
+	'project_cache',
+	{
+		name: text('name').notNull(),
+		dir: text('dir').notNull(),
+		remote: text('remote').notNull(),
+		upstreamRemote: text('upstream_remote').notNull(),
+		upstreamBranch: text('upstream_branch').notNull(),
+		upstreamRef: text('upstream_ref').notNull(),
+		hasTestConfigured: integer('has_test_configured').notNull(),
+		dirty: integer('dirty').notNull(),
+		detachedHead: integer('detached_head').notNull(),
+		branchCount: integer('branch_count').notNull(),
+		systemFrom: text('system_from').notNull(),
+		systemTo: text('system_to').notNull().default(FAR_FUTURE),
+	},
+	(table) => ({
+		pk: primaryKey({columns: [table.name, table.systemFrom]}),
+		activeIdx: index('project_cache_active_idx').on(table.name, table.systemTo),
+	}),
+);

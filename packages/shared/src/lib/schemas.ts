@@ -133,6 +133,10 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: 'review_comments',   transition: 'approve',           to: 'approved'},
 	{from: 'changes_requested', transition: 'force_push',        to: 'checks_running'},
 	{from: 'review_comments',   transition: 'force_push',        to: 'checks_running'},
+
+	// Skippable — orthogonal state (no incoming transitions; derived from item.skippable flag)
+	// Skippable items are terminal and cannot transition to other states via actions
+	// Only way to exit is to mark as unskippable (implicit, not modeled as explicit transition)
 ] as const;
 
 // Lookup helpers

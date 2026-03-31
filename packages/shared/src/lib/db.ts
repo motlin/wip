@@ -351,9 +351,17 @@ export function recordTestResult(sha: string, project: string, status: 'passed' 
 const PR_CACHE_TTL_MINUTES = 10;
 
 function parseFailedChecks(json: string): Array<{name: string; url?: string}> {
-	const parsed = JSON.parse(json) as unknown;
-	if (!Array.isArray(parsed)) return [];
-	return parsed.map((item) => typeof item === 'string' ? {name: item} : item as {name: string; url?: string});
+	try {
+		const parsed = JSON.parse(json) as unknown;
+		if (!Array.isArray(parsed)) return [];
+		return parsed
+			.map((item) => typeof item === 'string' ? {name: item} : item)
+			.filter((item): item is {name: string; url?: string} =>
+				typeof item === 'object' && item !== null && typeof (item as Record<string, unknown>).name === 'string',
+			);
+	} catch {
+		return [];
+	}
 }
 
 export interface CachedPrStatus {
@@ -383,7 +391,7 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
 		prUrl: r.prUrl,
 		prNumber: r.prNumber ?? undefined,
 		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
-		behind: r.behind === 1 ? true : undefined,
+		behind: r.behind === null ? undefined : r.behind === 1,
 	}));
 }
 
@@ -402,7 +410,7 @@ export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
 		prUrl: r.prUrl,
 		prNumber: r.prNumber ?? undefined,
 		failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
-		behind: r.behind === 1 ? true : undefined,
+		behind: r.behind === null ? undefined : r.behind === 1,
 	}));
 }
 
@@ -426,7 +434,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 					prUrl: s.prUrl,
 					prNumber: s.prNumber ?? null,
 					failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
-					behind: s.behind ? 1 : 0,
+					behind: s.behind === undefined ? null : s.behind ? 1 : 0,
 					systemFrom: timestamp,
 				})))
 				.run();

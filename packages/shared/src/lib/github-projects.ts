@@ -129,8 +129,18 @@ export async function fetchProjectItems(projectNumber: number, owner?: string): 
  * Map a GitHub Project status string to a kanban Category.
  * Common status names: Todo, In Progress, In Review, Done.
  */
+const KNOWN_PROJECT_STATUSES = new Set([
+	'todo', 'backlog', 'new', 'triage',
+	'in progress', 'active', 'doing', 'started',
+	'in review', 'review',
+	'done', 'closed', 'completed',
+]);
+
 export function mapProjectStatusToCategory(status: string): Category {
 	const lower = status.toLowerCase().trim();
+
+	if (!lower || KNOWN_PROJECT_STATUSES.has(lower)) { /* known or empty */ }
+	else log.subprocess.debug({status}, `Unknown project board status: "${status}"`);
 
 	if (lower === 'done' || lower === 'closed' || lower === 'completed') return 'approved';
 	if (lower === 'in progress' || lower === 'active' || lower === 'doing' || lower === 'started') return 'checks_running';

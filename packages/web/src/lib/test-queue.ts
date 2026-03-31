@@ -75,6 +75,14 @@ function processQueue(project: string): void {
 		queue.shift();
 		runningProjects.delete(project);
 		processQueue(project);
+	}).catch((err) => {
+		job.status = 'failed';
+		job.message = `${job.shortSha} failed: ${err instanceof Error ? err.message : 'unknown error'}`;
+		job.finishedAt = Date.now();
+		emit(job);
+		queue.shift();
+		runningProjects.delete(project);
+		processQueue(project);
 	});
 }
 

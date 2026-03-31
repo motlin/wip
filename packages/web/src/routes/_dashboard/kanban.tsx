@@ -8,9 +8,8 @@ import {refreshAll} from '../../lib/server-fns';
 import {projectsQueryOptions} from '../../lib/queries';
 import {useWorkItemsAsync} from '../../lib/use-work-items';
 import {classifyCommit, classifyBranch, classifyIssue, classifyPullRequest, classifyTodo} from '../../lib/classify';
+import {CATEGORY_PRIORITY} from '../../lib/category-actions';
 import type {Category} from '@wip/shared';
-
-const CATEGORY_ORDER: Category[] = ['snoozed', 'skippable', 'untriaged', 'triaged', 'no_test', 'detached_head', 'local_changes', 'ready_to_test', 'test_running', 'test_failed', 'needs_rebase', 'rebase_conflicts', 'needs_split', 'ready_to_push', 'pushed_no_pr', 'checks_unknown', 'checks_running', 'checks_failed', 'checks_passed', 'review_comments', 'changes_requested', 'approved'];
 
 function bucketCount(items: ColumnItems): number {
 	return (items.commits?.length ?? 0) + (items.branches?.length ?? 0) + (items.pullRequests?.length ?? 0)
@@ -80,7 +79,7 @@ function Kanban() {
 		g.untriaged.projectItems = workItems.projectItems;
 
 		let total = 0;
-		for (const cat of CATEGORY_ORDER) total += bucketCount(g[cat]);
+		for (const cat of CATEGORY_PRIORITY) total += bucketCount(g[cat]);
 		return {grouped: g, totalCount: total};
 	}, [workItems, projects]);
 
@@ -122,7 +121,7 @@ function Kanban() {
 				</div>
 			) : (
 				<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
-					{CATEGORY_ORDER.map((category) => {
+					{CATEGORY_PRIORITY.map((category) => {
 						const items = grouped[category];
 						const count = bucketCount(items);
 						if (count === 0) return null;

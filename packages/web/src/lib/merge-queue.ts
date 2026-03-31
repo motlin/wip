@@ -57,8 +57,8 @@ export async function checkAllProjects(): Promise<void> {
 		for (const p of projects) {
 			try {
 				await checkProjectInfo(p);
-			} catch {
-				// Skip projects that fail (network issues, etc.)
+			} catch (e) {
+				console.error(`[merge-queue] Failed to check merge status for ${p.name}:`, e instanceof Error ? e.message : e);
 			}
 		}
 	})();

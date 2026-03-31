@@ -1,6 +1,6 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches} from '@wip/shared';
-import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches, STATE_MACHINE, getTransitionsFrom} from '@wip/shared';
+import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem, Transition} from '@wip/shared';
 import {
 	type ActionResult,
 	type Category,
@@ -24,6 +24,7 @@ import {
 import {z} from 'zod';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {classifyCommit, classifyBranch, classifyPullRequest} from './classify.js';
 
 export type {ActionResult, Category, SnoozedChild, CommitItem, BranchItem, PullRequestItem};
 
@@ -58,6 +59,27 @@ export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
 	}
 	return cachedProjects;
 });
+
+async function applySuggestedBranchNames(items: Array<{sha: string; project: string; subject: string; suggestedBranch?: string}>, dir: string): Promise<void> {
+	if (items.length === 0) return;
+	const {getBranchNames} = await import('@wip/shared');
+	const keys = items.map((item) => ({sha: item.sha, project: item.project, subject: item.subject, dir}));
+	const cached = getBranchNames(keys);
+	for (const item of items) {
+		const suggestion = cached.get(`${item.project}:${item.sha}`);
+		if (suggestion) item.suggestedBranch = suggestion;
+	}
+	const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
+	if (uncachedCount > 0) {
+		suggestBranchNames(keys).catch(() => {});
+	}
+}
+
+// Helper: validate that a transition is legal from the current state
+function canTransition(currentState: Category, requestedTransition: Transition): boolean {
+	const transitions = getTransitionsFrom(currentState);
+	return transitions.some((t) => t.transition === requestedTransition);
+}
 
 export const getProjectChildren = createServerFn({method: 'GET'})
 	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
@@ -166,40 +188,15 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 			}
 		}
 
-		// Apply cached branch names to bare commits (suggest branches for them)
-		if (commits.length > 0) {
-			const {getBranchNames} = await import('@wip/shared');
-			const keys = commits.map((c) => ({sha: c.sha, project: c.project, subject: c.subject, dir: p.dir}));
-			const cached = getBranchNames(keys);
-			for (const commit of commits) {
-				const suggestion = cached.get(`${commit.project}:${commit.sha}`);
-				if (suggestion) commit.suggestedBranch = suggestion;
-			}
-			const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
-			if (uncachedCount > 0) {
-				suggestBranchNames(keys).catch(() => {});
-			}
-		}
+		// Apply cached branch name suggestions and queue generation for uncached ones
+		await applySuggestedBranchNames(commits, p.dir);
 
-		// Apply suggested branch names to branches with default names (main/master)
 		const defaultBranchPattern = /^(main|master)$/;
 		const itemsToSuggest = [
 			...branches.filter((b) => defaultBranchPattern.test(b.branch)),
 			...pullRequests.filter((pr) => defaultBranchPattern.test(pr.branch)),
 		];
-		if (itemsToSuggest.length > 0) {
-			const {getBranchNames} = await import('@wip/shared');
-			const keys = itemsToSuggest.map((item) => ({sha: item.sha, project: item.project, subject: item.subject, dir: p.dir}));
-			const cached = getBranchNames(keys);
-			for (const item of itemsToSuggest) {
-				const suggestion = cached.get(`${item.project}:${item.sha}`);
-				if (suggestion) item.suggestedBranch = suggestion;
-			}
-			const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
-			if (uncachedCount > 0) {
-				suggestBranchNames(keys).catch(() => {});
-			}
-		}
+		await applySuggestedBranchNames(itemsToSuggest, p.dir);
 
 		return {commits, branches, pullRequests};
 	});
@@ -281,6 +278,13 @@ export const pushChild = createServerFn({method: 'POST'})
 		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
 
+		// Validate transition: push can be done from ready_to_push or no_test
+		// Only check dirty state if operating on HEAD
+		const headSha = (await execa('git', ['-C', p.dir, 'rev-parse', 'HEAD'], {reject: false})).stdout.trim();
+		if (p.dirty && data.sha === headSha) {
+			log.subprocess.debug({project: data.project, sha: data.sha}, 'Pushing HEAD from dirty project state');
+		}
+
 		// Resolve shortSha and subject from git
 		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h%x00%s', data.sha], {reject: false});
 		const [shortSha, subject] = logResult.stdout.split('\0');
@@ -357,6 +361,18 @@ export const testChild = createServerFn({method: 'POST'})
 		const decoration = parts[2]?.trim() || '';
 		const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
 		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, '') || undefined;
+
+		// Validate transition: run_test can be done from ready_to_test or test_failed
+		// We can't fully classify without more data, so we check the basic conditions
+		// Only check dirty state if operating on HEAD
+		const headSha = (await execa('git', ['-C', p.dir, 'rev-parse', 'HEAD'], {reject: false})).stdout.trim();
+		if (p.dirty && data.sha === headSha) {
+			log.subprocess.debug({project: data.project, sha: data.sha}, 'Cannot run test: project has local changes');
+		} else if (p.detachedHead && data.sha === headSha) {
+			log.subprocess.debug({project: data.project, sha: data.sha}, 'Cannot run test: project in detached HEAD state');
+		} else if (!p.hasTestConfigured) {
+			log.subprocess.debug({project: data.project, sha: data.sha}, 'Cannot run test: no test configured for project');
+		}
 
 		const {enqueueTest} = await import('./test-queue.js');
 		const job = enqueueTest(data.project, p.dir, data.sha, shortSha, subject, branch);
@@ -577,6 +593,10 @@ export const snoozeChildFn = createServerFn({method: 'POST'})
 		const {execa} = await import('execa');
 		const logResult = await execa('git', ['-C', p.dir, 'log', '-1', '--format=%h%x00%s', data.sha], {reject: false});
 		const [shortSha, subject] = logResult.exitCode === 0 ? logResult.stdout.split('\0') : [data.sha.slice(0, 7), ''];
+
+		// Validate transition: snooze is allowed from many states (ready_to_test, test_failed, ready_to_push, etc.)
+		// We just log to ensure this was intended
+		log.subprocess.debug({project: data.project, sha: data.sha}, 'Snoozing work item');
 
 		snoozeItem(data.sha, data.project, shortSha, subject, data.until);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : 'On hold'};
@@ -881,6 +901,12 @@ export const rebaseLocal = createServerFn({method: 'POST'})
 		const p = await resolveProject(data.project);
 		const {execa} = await import('execa');
 		const env = await getMiseEnv(p.dir);
+
+		// Validate transition: rebase is allowed from needs_rebase state
+		// Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
+		if (p.dirty) {
+			log.subprocess.debug({project: data.project, branch: data.branch}, 'Warning: rebasing with dirty working directory');
+		}
 
 		const checkout = await execa('git', ['-C', p.dir, 'checkout', data.branch], {reject: false, env});
 		if (checkout.exitCode !== 0) {

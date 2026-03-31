@@ -116,15 +116,19 @@ function Queue() {
 	const handleRebaseAll = async () => {
 		setRebasingAll(true);
 		setRebaseResult(null);
-		const result = await rebaseAllBranches();
-		setRebaseResult(result.message);
-		// Refresh children for all projects that may have changed
-		const refreshes = projects.map(async (p) => {
-			const fresh = await getProjectChildren({data: {project: p.name}});
-			queryClient.setQueryData<ProjectChildrenResult>(['children', p.name], fresh);
-		});
-		await Promise.all(refreshes);
-		setRebasingAll(false);
+		try {
+			const result = await rebaseAllBranches();
+			setRebaseResult(result.message);
+			const refreshes = projects.map(async (p) => {
+				const fresh = await getProjectChildren({data: {project: p.name}});
+				queryClient.setQueryData<ProjectChildrenResult>(['children', p.name], fresh);
+			});
+			await Promise.all(refreshes);
+		} catch (e) {
+			setRebaseResult(e instanceof Error ? e.message : 'Rebase failed');
+		} finally {
+			setRebasingAll(false);
+		}
 	};
 
 	return (
@@ -196,8 +200,8 @@ function Queue() {
 								{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} />)}
 								{items.branches?.filter((b) => b.commitsAhead !== 1).map((b) => <BranchCard key={b.sha} branch={b} category={category} />)}
 								{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />)}
-								{items.projectItems?.map((p) => <ProjectBoardItemCard key={`project-${p.title}`} item={p} />)}
-								{items.todos?.map((t) => <TodoCard key={`todo-${t.project}-${t.title}`} todo={t} />)}
+								{items.projectItems?.map((p, i) => <ProjectBoardItemCard key={`project-${p.number ?? i}-${p.project}`} item={p} />)}
+								{items.todos?.map((t, i) => <TodoCard key={`todo-${t.project}-${t.sourceFile}-${i}`} todo={t} />)}
 							</div>
 						</section>
 					);

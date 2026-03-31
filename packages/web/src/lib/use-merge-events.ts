@@ -25,7 +25,12 @@ export function useMergeEvents() {
 		const es = new EventSource('/api/merge-events');
 
 		es.onmessage = (event) => {
-			const data = JSON.parse(event.data) as MergeStatusEvent;
+			let data: MergeStatusEvent;
+			try {
+				data = JSON.parse(event.data) as MergeStatusEvent;
+			} catch {
+				return;
+			}
 			const key = `${data.project}:${data.sha}`;
 
 			setStatuses((prev) => {

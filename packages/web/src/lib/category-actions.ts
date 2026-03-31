@@ -1,4 +1,5 @@
 import type {Category} from '@wip/shared';
+import {STATE_MACHINE} from '@wip/shared';
 
 export type Action =
 	| 'open_pr_link' | 'rebase_pr' | 'force_push' | 'rebase_local'
@@ -41,4 +42,92 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	snoozed:           {label: 'Snoozed',           color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: []},
 };
 
-export const CATEGORY_PRIORITY: Category[] = Object.keys(CATEGORIES) as Category[];
+// Derive category order from STATE_MACHINE topology using topological sort
+// This ensures columns flow left-to-right following the SDLC progression
+function deriveCategoryPriority(): Category[] {
+	const allStates = new Set<Category>();
+	const inDegree = new Map<Category, number>();
+
+	// Collect all states and build adjacency graph
+	for (const transition of STATE_MACHINE) {
+		allStates.add(transition.from);
+		allStates.add(transition.to);
+	}
+
+	// Initialize in-degree counts
+	for (const state of allStates) {
+		inDegree.set(state, 0);
+	}
+
+	// Count incoming edges (excluding self-loops and cycles like snooze/unsnooze)
+	for (const transition of STATE_MACHINE) {
+		if (transition.from === transition.to) continue; // Skip self-loops
+		if (transition.transition === 'snooze' || transition.transition === 'unsnooze') continue; // Skip cycle edges
+
+		const current = inDegree.get(transition.to) ?? 0;
+		inDegree.set(transition.to, current + 1);
+	}
+
+	// Kahn's topological sort
+	const queue: Category[] = [];
+	for (const [state, degree] of inDegree) {
+		if (degree === 0) queue.push(state);
+	}
+
+	const sorted: Category[] = [];
+	const adjMap = new Map<Category, Category[]>();
+
+	// Build adjacency map (excluding cycles and snooze/unsnooze)
+	for (const state of allStates) {
+		adjMap.set(state, []);
+	}
+	for (const transition of STATE_MACHINE) {
+		if (transition.from === transition.to) continue;
+		if (transition.transition === 'snooze' || transition.transition === 'unsnooze') continue;
+
+		const neighbors = adjMap.get(transition.from) ?? [];
+		if (!neighbors.includes(transition.to)) {
+			neighbors.push(transition.to);
+		}
+		adjMap.set(transition.from, neighbors);
+	}
+
+	while (queue.length > 0) {
+		const state = queue.shift()!;
+		sorted.push(state);
+
+		for (const neighbor of adjMap.get(state) ?? []) {
+			const newDegree = (inDegree.get(neighbor) ?? 0) - 1;
+			inDegree.set(neighbor, newDegree);
+			if (newDegree === 0) {
+				queue.push(neighbor);
+			}
+		}
+	}
+
+	// Place special orthogonal states at the edges:
+	// - snoozed first (can snooze from many states, but only unsnooze to ready_to_test)
+	// - skippable last (derived state, not a transition target)
+	const result: Category[] = [];
+
+	const snoozedIndex = sorted.indexOf('snoozed');
+	const skippableIndex = sorted.indexOf('skippable');
+
+	if (snoozedIndex >= 0) {
+		result.push('snoozed');
+	}
+
+	for (const state of sorted) {
+		if (state !== 'snoozed' && state !== 'skippable') {
+			result.push(state);
+		}
+	}
+
+	if (skippableIndex >= 0) {
+		result.push('skippable');
+	}
+
+	return result;
+}
+
+export const CATEGORY_PRIORITY: Category[] = deriveCategoryPriority();

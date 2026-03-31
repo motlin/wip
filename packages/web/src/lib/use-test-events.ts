@@ -42,7 +42,12 @@ export function useTestEvents() {
 		const es = new EventSource('/api/test-events');
 
 		es.onmessage = (event) => {
-			const data = JSON.parse(event.data) as JobEvent;
+			let data: JobEvent;
+			try {
+				data = JSON.parse(event.data) as JobEvent;
+			} catch {
+				return;
+			}
 			const key = `${data.project}:${data.sha}`;
 
 			if (data.type === 'log' && data.log) {

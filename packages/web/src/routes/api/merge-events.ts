@@ -28,7 +28,9 @@ export const Route = createFileRoute('/api/merge-events')({
 						emitter.on('mergeStatus', onStatus);
 
 						// Trigger background computation on connect
-						checkAllProjects().catch(() => {});
+						checkAllProjects().catch((e) => {
+								console.error('[merge-events] checkAllProjects failed:', e instanceof Error ? e.message : e);
+							});
 
 						const keepalive = setInterval(() => {
 							if (closed) return;

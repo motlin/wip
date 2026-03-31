@@ -1,6 +1,7 @@
 import {describe, it, expect} from 'vitest';
 
 import type {BranchItem, CommitItem, IssueItem, ProjectInfo, PullRequestItem, TodoItem} from '@wip/shared';
+import {STATE_MACHINE, CategorySchema} from '@wip/shared';
 
 import {classifyBranch, classifyCommit, classifyIssue, classifyPullRequest, classifyTodo} from './classify';
 
@@ -295,5 +296,161 @@ describe('classifyTodo', () => {
 
 	it('returns plan_approved when planStatus is approved', () => {
 		expect(classifyTodo(makeTodo({planStatus: 'approved'}))).toBe('plan_approved');
+	});
+});
+
+describe('State machine consistency', () => {
+	// Build set of all states that appear in the state machine (either as from or to)
+	const statesInMachine = new Set<string>();
+	for (const transition of STATE_MACHINE) {
+		statesInMachine.add(transition.from);
+		statesInMachine.add(transition.to);
+	}
+
+	// Get all valid categories from the schema
+	const validCategories = CategorySchema.options;
+
+	// Special states that are orthogonal/transient and not part of the formal state machine
+	// - skippable: derived from item.skippable flag, no transitions in/out (yet)
+	// - test_running: transient override while test job is active (formalized in task 6)
+	const specialStates = new Set(['skippable', 'test_running']);
+
+	it('every non-special category in schema appears in STATE_MACHINE as from or to state', () => {
+		const missingStates = validCategories.filter((cat) => !statesInMachine.has(cat) && !specialStates.has(cat));
+		expect(missingStates, `Categories not in state machine: ${missingStates.join(', ')}`).toEqual([]);
+	});
+
+	it('every state in STATE_MACHINE is a valid category', () => {
+		const invalidStates = Array.from(statesInMachine).filter((state) => !validCategories.includes(state as any));
+		expect(invalidStates, `States in machine not in schema: ${invalidStates.join(', ')}`).toEqual([]);
+	});
+
+	describe('classifyCommit returns valid state machine states', () => {
+		it('returns state that appears in STATE_MACHINE or is a special state', () => {
+			const commit = makeCommit();
+			const project = makeProject();
+			const category = classifyCommit(commit, project);
+			const isValid = statesInMachine.has(category) || specialStates.has(category);
+			expect(isValid, `classifyCommit returned invalid state: ${category}`).toBe(true);
+		});
+
+		it('returns valid state for all test cases', () => {
+			const testCases = [
+				{commit: makeCommit({skippable: true}), project: makeProject()},
+				{commit: makeCommit({testStatus: 'failed'}), project: makeProject()},
+				{commit: makeCommit({testStatus: 'passed'}), project: makeProject()},
+				{commit: makeCommit(), project: makeProject({detachedHead: true})},
+				{commit: makeCommit(), project: makeProject({dirty: true})},
+				{commit: makeCommit(), project: makeProject({hasTestConfigured: false})},
+			];
+
+			for (const {commit, project} of testCases) {
+				const category = classifyCommit(commit, project);
+				const isValid = statesInMachine.has(category) || specialStates.has(category);
+				expect(isValid, `classifyCommit returned invalid state: ${category}`).toBe(true);
+			}
+		});
+	});
+
+	describe('classifyBranch returns valid state machine states', () => {
+		it('returns state that appears in STATE_MACHINE or is a special state', () => {
+			const branch = makeBranch();
+			const project = makeProject();
+			const category = classifyBranch(branch, project);
+			const isValid = statesInMachine.has(category) || specialStates.has(category);
+			expect(isValid, `classifyBranch returned invalid state: ${category}`).toBe(true);
+		});
+
+		it('returns valid state for all test cases', () => {
+			const testCases = [
+				{branch: makeBranch({testStatus: 'passed', commitsAhead: 1}), project: makeProject()},
+				{branch: makeBranch({testStatus: 'passed', commitsAhead: 3}), project: makeProject()},
+				{branch: makeBranch({pushedToRemote: true, localAhead: false}), project: makeProject()},
+				{branch: makeBranch({needsRebase: true, rebaseable: false}), project: makeProject()},
+				{branch: makeBranch({needsRebase: true, rebaseable: true}), project: makeProject()},
+			];
+
+			for (const {branch, project} of testCases) {
+				const category = classifyBranch(branch, project);
+				const isValid = statesInMachine.has(category) || specialStates.has(category);
+				expect(isValid, `classifyBranch returned invalid state: ${category}`).toBe(true);
+			}
+		});
+	});
+
+	describe('classifyPullRequest returns valid state machine states', () => {
+		it('returns state that appears in STATE_MACHINE or is a special state', () => {
+			const pr = makePR();
+			const category = classifyPullRequest(pr);
+			const isValid = statesInMachine.has(category) || specialStates.has(category);
+			expect(isValid, `classifyPullRequest returned invalid state: ${category}`).toBe(true);
+		});
+
+		it('returns valid state for all test cases', () => {
+			const testCases = [
+				makePR({skippable: true}),
+				makePR({checkStatus: 'failed', reviewStatus: 'approved'}),
+				makePR({checkStatus: 'running', reviewStatus: 'approved'}),
+				makePR({checkStatus: 'passed', reviewStatus: 'approved'}),
+				makePR({checkStatus: 'passed', reviewStatus: 'changes_requested'}),
+				makePR({checkStatus: 'passed', reviewStatus: 'commented'}),
+				makePR({checkStatus: 'passed', reviewStatus: 'no_pr'}),
+				makePR({checkStatus: 'unknown', reviewStatus: 'no_pr'}),
+			];
+
+			for (const pr of testCases) {
+				const category = classifyPullRequest(pr);
+				const isValid = statesInMachine.has(category) || specialStates.has(category);
+				expect(isValid, `classifyPullRequest returned invalid state: ${category}`).toBe(true);
+			}
+		});
+	});
+
+	describe('classifyIssue returns valid state machine states', () => {
+		it('returns state that appears in STATE_MACHINE or is a special state', () => {
+			const issue = makeIssue();
+			const category = classifyIssue(issue);
+			const isValid = statesInMachine.has(category) || specialStates.has(category);
+			expect(isValid, `classifyIssue returned invalid state: ${category}`).toBe(true);
+		});
+
+		it('returns valid state for all plan status cases', () => {
+			const testCases = [
+				makeIssue(),
+				makeIssue({planStatus: 'none'}),
+				makeIssue({planStatus: 'unreviewed'}),
+				makeIssue({planStatus: 'approved'}),
+			];
+
+			for (const issue of testCases) {
+				const category = classifyIssue(issue);
+				const isValid = statesInMachine.has(category) || specialStates.has(category);
+				expect(isValid, `classifyIssue returned invalid state: ${category}`).toBe(true);
+			}
+		});
+	});
+
+	describe('classifyTodo returns valid state machine states', () => {
+		it('returns state that appears in STATE_MACHINE or is a special state', () => {
+			const todo = makeTodo();
+			const category = classifyTodo(todo);
+			const isValid = statesInMachine.has(category) || specialStates.has(category);
+			expect(isValid, `classifyTodo returned invalid state: ${category}`).toBe(true);
+		});
+
+		it('returns valid state for all plan status cases', () => {
+			const testCases = [
+				makeTodo(),
+				makeTodo({planStatus: 'none'}),
+				makeTodo({planStatus: 'unreviewed'}),
+				makeTodo({planStatus: 'approved'}),
+			];
+
+			for (const todo of testCases) {
+				const category = classifyTodo(todo);
+				const isValid = statesInMachine.has(category) || specialStates.has(category);
+				expect(isValid, `classifyTodo returned invalid state: ${category}`).toBe(true);
+			}
+		});
 	});
 });

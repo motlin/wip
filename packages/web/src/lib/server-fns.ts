@@ -1,5 +1,5 @@
 import {createServerFn} from '@tanstack/react-start';
-import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches, STATE_MACHINE, getTransitionsFrom, getCachedProjectList, setCachedProjectList} from '@wip/shared';
+import {clearExpiredSnoozes, discoverAllProjects, fetchAssignedIssues, fetchAllProjectItems, findIncompleteTodoTasks, getAllSnoozed, getBranchNames, getChildren, getChildCommits, getMiseEnv, getPrStatuses, getProjectsDirs, getRemoteBranchInfo, getSnoozedSet, getTestLogDir, getTestResultsForProject, invalidatePrCache, invalidateIssuesCache, invalidateProjectItemsCache, isSkippable, log, parseBranch, snoozeItem, suggestBranchNames, unsnoozeItem, getCachedUpstreamSha, getCachedMergeStatuses, cacheMergeStatus, invalidateMergeStatus, getNeedsRebaseBranches, STATE_MACHINE, getTransitionsFrom, getCachedProjectList, setCachedProjectList} from '@wip/shared';
 import type {ChildCommit, GitHubIssue, GitHubProjectItem, ProjectInfo, TodoTask, CommitItem, BranchItem, PullRequestItem, TodoItem as SharedTodoItem, IssueItem, ProjectBoardItem, Transition} from '@wip/shared';
 import {
 	type ActionResult,
@@ -78,21 +78,6 @@ export const getProjects = createServerFn({method: 'GET'}).handler(async () => {
 	return cachedProjects!;
 });
 
-async function applySuggestedBranchNames(items: Array<{sha: string; project: string; subject: string; suggestedBranch?: string}>, dir: string): Promise<void> {
-	if (items.length === 0) return;
-	const {getBranchNames} = await import('@wip/shared');
-	const keys = items.map((item) => ({sha: item.sha, project: item.project, subject: item.subject, dir}));
-	const cached = getBranchNames(keys);
-	for (const item of items) {
-		const suggestion = cached.get(`${item.project}:${item.sha}`);
-		if (suggestion) item.suggestedBranch = suggestion;
-	}
-	const uncachedCount = keys.filter((k) => !cached.has(`${k.project}:${k.sha}`)).length;
-	if (uncachedCount > 0) {
-		suggestBranchNames(keys).catch(() => {});
-	}
-}
-
 // Helper: validate that a transition is legal from the current state
 function canTransition(currentState: Category, requestedTransition: Transition): boolean {
 	const transitions = getTransitionsFrom(currentState);
@@ -137,6 +122,19 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 			return true;
 		});
 
+		// Collect all children that need branch name suggestions and fetch cached names up front
+		const defaultBranchPattern = /^(main|master)$/;
+		const namingKeys = allChildren
+			.filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
+			.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir}));
+		const cachedNames = namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
+
+		// Fire off background naming for any uncached items
+		const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
+		if (uncachedKeys.length > 0) {
+			suggestBranchNames(uncachedKeys).catch(() => {});
+		}
+
 		const commits: CommitItem[] = [];
 		const branches: BranchItem[] = [];
 		const pullRequests: PullRequestItem[] = [];
@@ -164,12 +162,13 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 			}
 
 			const ms = mergeStatusMap.get(child.sha);
+			const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
 
 			if (child.branch && child.prUrl && child.prNumber != null && child.reviewStatus !== 'no_pr') {
-				// Pull request
 				pullRequests.push({
 					...base,
 					branch: child.branch,
+					suggestedBranch: defaultBranchPattern.test(child.branch) ? suggestedBranch : undefined,
 					pushedToRemote: true as const,
 					localAhead: child.localAhead,
 					needsRebase: child.needsRebase,
@@ -185,36 +184,25 @@ export const getProjectChildren = createServerFn({method: 'GET'})
 					failedChecks: child.failedChecks,
 				});
 			} else if (child.branch) {
-				// Branch (with or without remote)
 				branches.push({
 					...base,
 					branch: child.branch,
+					suggestedBranch: defaultBranchPattern.test(child.branch) ? suggestedBranch : undefined,
 					pushedToRemote: child.pushedToRemote,
 					localAhead: child.localAhead,
 					needsRebase: child.needsRebase,
 					testStatus: child.testStatus,
 					failureTail,
 					blockReason: p.dirty ? `Working tree is dirty — commit changes in ${p.name} before testing` : undefined,
-				blockCommand: p.dirty ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit` : undefined,
+					blockCommand: p.dirty ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit` : undefined,
 					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
 					commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
 					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
 				});
 			} else {
-				// Bare commit (no branch)
-				commits.push({...base, testStatus: child.testStatus, failureTail, alreadyOnRemote: child.alreadyOnRemote});
+				commits.push({...base, suggestedBranch, testStatus: child.testStatus, failureTail, alreadyOnRemote: child.alreadyOnRemote});
 			}
 		}
-
-		// Apply cached branch name suggestions and queue generation for uncached ones
-		await applySuggestedBranchNames(commits, p.dir);
-
-		const defaultBranchPattern = /^(main|master)$/;
-		const itemsToSuggest = [
-			...branches.filter((b) => defaultBranchPattern.test(b.branch)),
-			...pullRequests.filter((pr) => defaultBranchPattern.test(pr.branch)),
-		];
-		await applySuggestedBranchNames(itemsToSuggest, p.dir);
 
 		return {commits, branches, pullRequests};
 	});

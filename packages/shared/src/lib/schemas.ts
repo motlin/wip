@@ -50,6 +50,7 @@ export const TransitionSchema = z.enum([
 	'run_test',
 	'test_pass',
 	'test_fail',
+	'cancel_test',
 	'rebase',
 	'resolve_conflicts',
 	'split',
@@ -98,11 +99,12 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: 'local_changes',     transition: 'commit',            to: 'ready_to_test'},
 
 	// Testing flow
-	{from: 'ready_to_test',     transition: 'run_test',          to: 'ready_to_test'},
-	{from: 'ready_to_test',     transition: 'test_pass',         to: 'ready_to_push'},
-	{from: 'ready_to_test',     transition: 'test_fail',         to: 'test_failed'},
-	{from: 'test_failed',       transition: 'run_test',          to: 'ready_to_test'},
-	{from: 'test_failed',       transition: 'test_pass',         to: 'ready_to_push'},
+	{from: 'ready_to_test',     transition: 'run_test',          to: 'test_running'},
+	{from: 'test_failed',       transition: 'run_test',          to: 'test_running'},
+	{from: 'test_running',      transition: 'test_pass',         to: 'ready_to_push'},
+	{from: 'test_running',      transition: 'test_fail',         to: 'test_failed'},
+	{from: 'test_running',      transition: 'cancel_test',       to: 'ready_to_test'},
+	{from: 'test_running',      transition: 'snooze',            to: 'snoozed'},
 
 	// Rebase flow
 	{from: 'needs_rebase',      transition: 'rebase',            to: 'ready_to_test'},
@@ -146,6 +148,11 @@ export function getTransitionsFrom(state: Category): StateTransition[] {
 
 export function getTransitionsTo(state: Category): StateTransition[] {
 	return STATE_MACHINE.filter((t) => t.to === state);
+}
+
+export function applyTransition(from: Category, transition: Transition): Category | undefined {
+	const match = STATE_MACHINE.find((t) => t.from === from && t.transition === transition);
+	return match?.to;
 }
 
 export const ProjectInfoSchema = z.object({

@@ -2,7 +2,7 @@ import {useQueryClient} from '@tanstack/react-query';
 import {Loader2, Clock, AlertTriangle, AlertCircle, Diff, X, GitBranch, Copy, Check, Cloud, HardDrive} from 'lucide-react';
 import {useRef, useEffect, useState} from 'react';
 import {Link} from '@tanstack/react-router';
-import type {BranchItem, Category} from '@wip/shared';
+import {applyTransition, type BranchItem, type Category} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
@@ -41,7 +41,7 @@ export function BranchCard({branch, category}: {branch: BranchItem; category: Ca
 		prevTestStatus.current = testJob?.status;
 	}, [testJob?.status, queryClient, branch.project, branch.sha]);
 
-	const effectiveCategory = (testJob?.status === 'running' || testJob?.status === 'queued') ? 'test_running' as const : category;
+	const effectiveCategory = testJob?.transition ? (applyTransition(category, testJob.transition) ?? category) : category;
 
 	const mergeStatus = useMergeStatus(branch.sha, branch.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? branch.commitsBehind;

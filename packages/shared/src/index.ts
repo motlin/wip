@@ -10,7 +10,7 @@ export {
 	TestStatusSchema, type TestStatus,
 	CategorySchema, type Category,
 	TransitionSchema, type Transition, type StateTransition,
-	STATE_MACHINE, getTransitionsFrom, getTransitionsTo,
+	STATE_MACHINE, getTransitionsFrom, getTransitionsTo, applyTransition,
 	ProjectInfoSchema, type ProjectInfo,
 	ChildCommitSchema, type ChildCommit,
 	CommitItemSchema, type CommitItem,

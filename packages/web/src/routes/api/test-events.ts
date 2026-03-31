@@ -52,7 +52,7 @@ export const Route = createFileRoute('/api/test-events')({
 					},
 				})
 
-				return new Response(stream, {
+				throw new Response(stream, {
 					headers: {
 						'Content-Type': 'text/event-stream',
 						'Cache-Control': 'no-cache',

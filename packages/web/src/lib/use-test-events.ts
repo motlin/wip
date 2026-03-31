@@ -1,5 +1,6 @@
 import {useState, useEffect, useCallback} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
+import type {Transition} from '@wip/shared';
 import type {ProjectChildrenResult} from './server-fns';
 
 export interface JobEvent {
@@ -10,6 +11,7 @@ export interface JobEvent {
 	subject: string;
 	branch?: string;
 	status: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
+	transition?: Transition;
 	message?: string;
 	type?: 'status' | 'log';
 	log?: string;

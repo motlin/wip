@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {CategorySchema, STATE_MACHINE, getTransitionsFrom, getTransitionsTo} from '@wip/shared';
+import {CategorySchema, STATE_MACHINE, getTransitionsFrom, getTransitionsTo, applyTransition} from '@wip/shared';
 
 describe('STATE_MACHINE', () => {
 	const allCategories = CategorySchema.options;
@@ -27,12 +27,7 @@ describe('STATE_MACHINE', () => {
 		for (const cat of allCategories) {
 			if (terminal.includes(cat)) continue;
 			const outgoing = getTransitionsFrom(cat);
-			if (outgoing.length === 0) {
-				// This is informational — states without transitions are classification-only
-				// (e.g. test_running is determined by SSE events, not user actions)
-				continue;
-			}
-			expect(outgoing.length).toBeGreaterThan(0);
+			expect(outgoing.length, `${cat} has no outgoing transitions`).toBeGreaterThan(0);
 		}
 	});
 
@@ -51,5 +46,39 @@ describe('STATE_MACHINE', () => {
 	it('snoozed state has unsnooze transition', () => {
 		const fromSnoozed = getTransitionsFrom('snoozed');
 		expect(fromSnoozed.some((t) => t.transition === 'unsnooze')).toBe(true);
+	});
+});
+
+describe('applyTransition', () => {
+	it('returns the target state for a valid transition', () => {
+		expect(applyTransition('ready_to_test', 'run_test')).toBe('test_running');
+	});
+
+	it('returns the target state for test_pass from test_running', () => {
+		expect(applyTransition('test_running', 'test_pass')).toBe('ready_to_push');
+	});
+
+	it('returns the target state for test_fail from test_running', () => {
+		expect(applyTransition('test_running', 'test_fail')).toBe('test_failed');
+	});
+
+	it('returns the target state for cancel_test from test_running', () => {
+		expect(applyTransition('test_running', 'cancel_test')).toBe('ready_to_test');
+	});
+
+	it('returns undefined for an invalid transition', () => {
+		expect(applyTransition('approved', 'run_test')).toBeUndefined();
+	});
+
+	it('returns undefined for a transition not valid from the given state', () => {
+		expect(applyTransition('ready_to_push', 'test_pass')).toBeUndefined();
+	});
+
+	it('returns the target state for snooze from test_running', () => {
+		expect(applyTransition('test_running', 'snooze')).toBe('snoozed');
+	});
+
+	it('returns the target state for rebase transition', () => {
+		expect(applyTransition('needs_rebase', 'rebase')).toBe('ready_to_test');
 	});
 });

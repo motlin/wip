@@ -708,7 +708,7 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
 					>
 						{testJob?.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : testJob?.status === 'queued' ? <Clock className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-						{testJob?.status === 'running' ? 'Testing...' : testJob?.status === 'queued' ? 'Queued' : 'Run Test'}
+						{testJob?.status === 'running' ? 'Testing...' : testJob?.status === 'queued' ? 'Queued' : (item.testStatus === 'failed' || testJob?.status === 'failed') ? 'Rerun Test' : 'Run Test'}
 					</button>
 				)}
 

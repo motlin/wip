@@ -1,5 +1,6 @@
 import {execa} from 'execa';
 import {getMiseEnv, getTestLogDir, log, recordTestResult} from '@wip/shared';
+import type {Transition} from '@wip/shared';
 import {EventEmitter} from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -29,6 +30,7 @@ export interface JobEvent {
 	subject: string;
 	branch?: string;
 	status: JobStatus;
+	transition?: Transition;
 	message?: string;
 	type?: 'status' | 'log';
 	log?: string;
@@ -43,8 +45,24 @@ const runningProcesses = new Map<string, {kill: () => void}>();
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
 
+// Map test job status changes to formal state machine transitions
+export function statusToTransition(status: JobStatus): Transition | undefined {
+	switch (status) {
+		case 'queued':
+		case 'running':
+			return 'run_test';
+		case 'passed':
+			return 'test_pass';
+		case 'failed':
+			return 'test_fail';
+		case 'cancelled':
+			return 'cancel_test';
+	}
+}
+
 function emit(job: TestJob): void {
-	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, message: job.message, type: 'status'};
+	const transition = statusToTransition(job.status);
+	const event: JobEvent = {id: job.id, sha: job.sha, project: job.project, shortSha: job.shortSha, subject: job.subject, branch: job.branch, status: job.status, transition, message: job.message, type: 'status'};
 	emitter.emit('job', event);
 }
 

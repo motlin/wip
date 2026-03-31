@@ -1,5 +1,6 @@
 import {useState, useEffect, useCallback} from 'react';
 import {useQueryClient} from '@tanstack/react-query';
+import type {Transition} from '@wip/shared';
 import type {ProjectChildrenResult} from './server-fns';
 
 export interface MergeStatusEvent {
@@ -8,6 +9,7 @@ export interface MergeStatusEvent {
 	commitsBehind: number;
 	commitsAhead: number;
 	rebaseable: boolean | null;
+	transition?: Transition;
 }
 
 const SUPPRESSION_MS = 5_000;

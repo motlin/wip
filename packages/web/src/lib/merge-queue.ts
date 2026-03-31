@@ -1,6 +1,6 @@
 import {EventEmitter} from 'node:events';
 import {discoverAllProjects, getProjectsDirs, fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from '@wip/shared';
-import type {ProjectInfo} from '@wip/shared';
+import type {ProjectInfo, Transition} from '@wip/shared';
 
 export interface MergeStatusEvent {
 	project: string;
@@ -8,10 +8,18 @@ export interface MergeStatusEvent {
 	commitsBehind: number;
 	commitsAhead: number;
 	rebaseable: boolean | null;
+	transition?: Transition;
 }
 
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
+
+// Map merge status data to formal state machine transitions
+export function mergeStatusToTransition(commitsBehind: number | undefined, rebaseable: boolean | null): Transition | undefined {
+	if (commitsBehind == null || commitsBehind === 0) return undefined;
+	if (rebaseable === false) return 'resolve_conflicts';
+	return 'rebase';
+}
 
 function emit(event: MergeStatusEvent): void {
 	emitter.emit('mergeStatus', event);
@@ -27,13 +35,13 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 	for (const sha of childShas) {
 		if (cached.has(sha)) {
 			const ms = cached.get(sha)!;
-			emit({project: p.name, sha, commitsBehind: ms.commitsBehind, commitsAhead: ms.commitsAhead, rebaseable: ms.rebaseable});
+			emit({project: p.name, sha, commitsBehind: ms.commitsBehind, commitsAhead: ms.commitsAhead, rebaseable: ms.rebaseable, transition: mergeStatusToTransition(ms.commitsBehind, ms.rebaseable)});
 			continue;
 		}
 
 		const ms = await computeMergeStatus(p.dir, sha, upstreamSha);
 		cacheMergeStatus(p.name, sha, upstreamSha, ms.commitsAhead, ms.commitsBehind, ms.rebaseable);
-		emit({project: p.name, sha, commitsBehind: ms.commitsBehind, commitsAhead: ms.commitsAhead, rebaseable: ms.rebaseable});
+		emit({project: p.name, sha, commitsBehind: ms.commitsBehind, commitsAhead: ms.commitsAhead, rebaseable: ms.rebaseable, transition: mergeStatusToTransition(ms.commitsBehind, ms.rebaseable)});
 	}
 }
 

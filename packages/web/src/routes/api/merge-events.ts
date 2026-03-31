@@ -28,8 +28,8 @@ export const Route = createFileRoute('/api/merge-events')({
 
 						// Trigger background computation on connect
 						checkAllProjects().catch((e) => {
-								console.error('[merge-events] checkAllProjects failed:', e instanceof Error ? e.message : e);
-							});
+							console.error('[merge-events] checkAllProjects failed:', e instanceof Error ? e.message : e);
+						});
 
 						const keepalive = setInterval(() => {
 							if (closed) return
@@ -50,7 +50,7 @@ export const Route = createFileRoute('/api/merge-events')({
 					},
 				})
 
-				return new Response(stream, {
+				throw new Response(stream, {
 					headers: {
 						'Content-Type': 'text/event-stream',
 						'Cache-Control': 'no-cache',

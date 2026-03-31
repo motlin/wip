@@ -10,6 +10,7 @@ import {DiffPanel} from '../components/diff-section';
 import {AnsiText} from '../components/ansi-text';
 import {childByShaQueryOptions, diffQueryOptions, workingTreeDiffQueryOptions, testLogQueryOptions, projectsQueryOptions, snoozedQueryOptions} from '../lib/queries';
 import {classifyCommit, classifyBranch, classifyPullRequest} from '../lib/classify';
+import {applyTransition} from '@wip/shared';
 import {CATEGORIES, CATEGORY_PRIORITY} from '../lib/category-actions';
 import {useSyncChildToCache} from '../lib/use-sync-child-to-cache';
 import {useTestJob, useTestLog} from '../lib/test-events-context';
@@ -90,14 +91,12 @@ function ItemDetail() {
 
 	const isPr = 'prUrl' in child && child.prUrl;
 	const isBranch = 'branch' in child;
-	const isTestRunning = testJob?.status === 'running' || testJob?.status === 'queued';
-	const category = isSnoozed
+	const baseCategory = isSnoozed
 		? 'snoozed' as const
-		: isTestRunning
-			? 'test_running' as const
-			: projectInfo
-				? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : classifyCommit(child as any, projectInfo)
-				: undefined;
+		: projectInfo
+			? isPr ? classifyPullRequest(child as any) : isBranch ? classifyBranch(child as any, projectInfo) : classifyCommit(child as any, projectInfo)
+			: undefined;
+	const category = baseCategory && testJob?.transition ? (applyTransition(baseCategory, testJob.transition) ?? baseCategory) : baseCategory;
 
 	const isLocalChanges = category === 'local_changes';
 	const {data: workingTreeDiff} = useQuery({

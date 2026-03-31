@@ -62,14 +62,20 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS branch_names_active_idx ON branch_names (sha, project, system_to)`);
 
+	// Migrate: drop test_results if exit_code/duration_ms are nullable (cache data is ephemeral)
+	const testCols = sqlite.prepare('PRAGMA table_info(test_results)').all() as Array<{name: string; notnull: number}>;
+	if (testCols.length > 0 && testCols.some((c) => c.name === 'exit_code' && c.notnull === 0)) {
+		sqlite.exec('DROP TABLE test_results');
+	}
+
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS test_results (
 			sha TEXT NOT NULL,
 			project TEXT NOT NULL,
 			test_name TEXT NOT NULL DEFAULT 'default',
 			status TEXT NOT NULL,
-			exit_code INTEGER,
-			duration_ms INTEGER,
+			exit_code INTEGER NOT NULL,
+			duration_ms INTEGER NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (sha, project, test_name, system_from)
@@ -78,8 +84,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS test_results_active_idx ON test_results (project, system_to)`);
 
 	// Migrate cache tables to temporal schema (drop and recreate — cache data is ephemeral)
-	const prCols = sqlite.prepare('PRAGMA table_info(pr_status_cache)').all() as Array<{name: string}>;
-	if (prCols.some((c) => c.name === 'cached_at')) {
+	const prCols = sqlite.prepare('PRAGMA table_info(pr_status_cache)').all() as Array<{name: string; notnull: number}>;
+	if (prCols.some((c) => c.name === 'cached_at') || prCols.some((c) => c.name === 'behind' && c.notnull === 0)) {
 		sqlite.exec('DROP TABLE pr_status_cache');
 	}
 	for (const table of ['report_cache', 'mise_env_cache', 'gh_login_cache', 'github_issues_cache', 'github_project_items_cache']) {
@@ -98,7 +104,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			pr_url TEXT,
 			pr_number INTEGER,
 			failed_checks TEXT,
-			behind INTEGER,
+			behind INTEGER NOT NULL DEFAULT 0,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (project, branch, system_from)
@@ -434,7 +440,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 					prUrl: s.prUrl,
 					prNumber: s.prNumber ?? null,
 					failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
-					behind: s.behind === undefined ? null : s.behind ? 1 : 0,
+					behind: s.behind === undefined ? undefined : s.behind ? 1 : 0,
 					systemFrom: timestamp,
 				})))
 				.run();

@@ -1,25 +1,35 @@
 import {execa} from 'execa';
+import {z} from 'zod';
 
 import type {Category} from './schemas.js';
 import {log} from '../services/logger.js';
 import {getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb} from './db.js';
 import {isGitHubRateLimited, markGitHubRateLimited} from './rate-limit.js';
 
-export interface GitHubProjectItem {
-	id: string;
-	title: string;
-	status: string;
-	type: 'ISSUE' | 'PULL_REQUEST' | 'DRAFT_ISSUE';
-	url?: string;
-	number?: number;
-	repository?: string;
-	labels: Array<{name: string; color: string}>;
-}
+export const GitHubProjectItemLabelSchema = z.object({
+	name: z.string().min(1),
+	color: z.string().regex(/^[0-9a-fA-F]{6}$/),
+});
 
-export interface GitHubProject {
-	number: number;
-	title: string;
-}
+export const GitHubProjectItemSchema = z.object({
+	id: z.string().min(1),
+	title: z.string().min(1),
+	status: z.string(),
+	type: z.enum(['ISSUE', 'PULL_REQUEST', 'DRAFT_ISSUE']),
+	url: z.string().url().optional(),
+	number: z.number().int().positive().optional(),
+	repository: z.string().min(1).optional(),
+	labels: z.array(GitHubProjectItemLabelSchema),
+});
+export type GitHubProjectItem = z.infer<typeof GitHubProjectItemSchema>;
+
+const GitHubProjectItemArraySchema = z.array(GitHubProjectItemSchema);
+
+export const GitHubProjectSchema = z.object({
+	number: z.number().int().positive(),
+	title: z.string().min(1),
+});
+export type GitHubProject = z.infer<typeof GitHubProjectSchema>;
 
 /**
  * Fetch GitHub Projects v2 owned by the authenticated user.
@@ -51,11 +61,19 @@ export async function fetchProjects(): Promise<GitHubProject[]> {
 		return [];
 	}
 
+	const FetchProjectsResponseSchema = z.object({
+		data: z.object({
+			viewer: z.object({
+				projectsV2: z.object({
+					nodes: z.array(GitHubProjectSchema),
+				}),
+			}),
+		}).optional(),
+		errors: z.array(z.object({type: z.string(), message: z.string()})).optional(),
+	});
+
 	try {
-		const data = JSON.parse(result.stdout) as {
-			data?: {viewer: {projectsV2: {nodes: Array<{number: number; title: string}>}}};
-			errors?: Array<{type: string; message: string}>;
-		};
+		const data = FetchProjectsResponseSchema.parse(JSON.parse(result.stdout));
 
 		if (data.errors && data.errors.length > 0) {
 			log.subprocess.debug({errors: data.errors}, 'gh projects GraphQL errors');
@@ -94,21 +112,23 @@ export async function fetchProjectItems(projectNumber: number, owner?: string): 
 		return [];
 	}
 
+	const FetchProjectItemsResponseSchema = z.object({
+		items: z.array(z.object({
+			id: z.string().min(1),
+			title: z.string().min(1),
+			status: z.string().optional(),
+			type: z.enum(['ISSUE', 'PULL_REQUEST', 'DRAFT_ISSUE']),
+			content: z.object({
+				url: z.string().url().optional(),
+				number: z.number().int().positive().optional(),
+				repository: z.string().min(1).optional(),
+				labels: z.array(GitHubProjectItemLabelSchema).optional(),
+			}).optional(),
+		})),
+	});
+
 	try {
-		const data = JSON.parse(result.stdout) as {
-			items: Array<{
-				id: string;
-				title: string;
-				status: string;
-				type: 'ISSUE' | 'PULL_REQUEST' | 'DRAFT_ISSUE';
-				content?: {
-					url?: string;
-					number?: number;
-					repository?: string;
-					labels?: Array<{name: string; color: string}>;
-				};
-			}>;
-		};
+		const data = FetchProjectItemsResponseSchema.parse(JSON.parse(result.stdout));
 
 		return (data.items ?? []).map((item) => ({
 			id: item.id,
@@ -167,12 +187,12 @@ export function invalidateProjectItemsCache(): void {
  */
 export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
 	const cached = getCachedProjectItems(PROJECT_ITEMS_CACHE_TTL_MS);
-	if (cached) return JSON.parse(cached) as GitHubProjectItem[];
+	if (cached) return GitHubProjectItemArraySchema.parse(JSON.parse(cached));
 
 	// If rate limited, return stale cache rather than calling API
 	if (isGitHubRateLimited()) {
 		const stale = getCachedProjectItems(PROJECT_ITEMS_STALE_TTL_MS);
-		if (stale) return JSON.parse(stale) as GitHubProjectItem[];
+		if (stale) return GitHubProjectItemArraySchema.parse(JSON.parse(stale));
 		return [];
 	}
 

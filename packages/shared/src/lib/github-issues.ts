@@ -1,16 +1,28 @@
 import {execa} from 'execa';
+import {z} from 'zod';
 
 import {log} from '../services/logger.js';
 import {getCachedIssues, cacheIssues, invalidateIssuesCacheDb} from './db.js';
 import {isGitHubRateLimited, markGitHubRateLimited} from './rate-limit.js';
 
-export interface GitHubIssue {
-	number: number;
-	title: string;
-	url: string;
-	labels: Array<{name: string; color: string}>;
-	repository: {name: string; nameWithOwner: string};
-}
+export const GitHubIssueLabelSchema = z.object({
+	name: z.string().min(1),
+	color: z.string().regex(/^[0-9a-fA-F]{6}$/),
+});
+
+export const GitHubIssueSchema = z.object({
+	number: z.number().int().positive(),
+	title: z.string().min(1),
+	url: z.string().url(),
+	labels: z.array(GitHubIssueLabelSchema),
+	repository: z.object({
+		name: z.string().min(1),
+		nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
+	}),
+});
+export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
+
+const GitHubIssueArraySchema = z.array(GitHubIssueSchema);
 
 const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // Return stale cached data that is up to 1 hour old when rate limited
@@ -24,12 +36,12 @@ export function invalidateIssuesCache(): void {
 
 export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
 	const cached = getCachedIssues(ISSUES_CACHE_TTL_MS);
-	if (cached) return JSON.parse(cached) as GitHubIssue[];
+	if (cached) return GitHubIssueArraySchema.parse(JSON.parse(cached));
 
 	// If rate limited, return stale cache rather than calling API
 	if (isGitHubRateLimited()) {
 		const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
-		if (stale) return JSON.parse(stale) as GitHubIssue[];
+		if (stale) return GitHubIssueArraySchema.parse(JSON.parse(stale));
 		return [];
 	}
 
@@ -67,11 +79,11 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
 		}
 		// Fall back to stale cache on failure
 		const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
-		if (stale) return JSON.parse(stale) as GitHubIssue[];
+		if (stale) return GitHubIssueArraySchema.parse(JSON.parse(stale));
 		return [];
 	}
 
-	const issues = JSON.parse(result.stdout) as GitHubIssue[];
+	const issues = GitHubIssueArraySchema.parse(JSON.parse(result.stdout));
 	cacheIssues(result.stdout);
 	return issues;
 }

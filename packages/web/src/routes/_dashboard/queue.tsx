@@ -191,7 +191,8 @@ function Queue() {
 					return (
 						<section key={category}>
 							<h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
-								{CATEGORIES[category].label}
+								<span className="font-mono text-xs text-text-500">{CATEGORY_PRIORITY.indexOf(category)}</span>
+								{' '}{CATEGORIES[category].label}
 								<span className="ml-2 font-normal text-text-500">{count}</span>
 							</h2>
 							<div className="flex flex-col gap-2">

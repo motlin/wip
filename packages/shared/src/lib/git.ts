@@ -1,12 +1,15 @@
 import {execa} from 'execa';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {z} from 'zod';
 
 import {log} from '../services/logger.js';
 import {nameBranch} from './branch-namer.js';
 import {cachePrStatuses, type CachedPrStatus, getCachedPrStatuses, getStalePrStatuses, getTestResultsForProject, getBranchName, setBranchName, getCachedMiseEnv, cacheMiseEnv, getCachedGhLogin, cacheGhLogin, getCachedUpstreamSha, cacheUpstreamSha, getCachedMergeStatuses, cacheMergeStatus} from './db.js';
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from './rate-limit.js';
 import type {CheckStatus, ChildCommit, ProjectInfo, ReviewStatus} from './schemas.js';
+
+const MiseEnvSchema = z.record(z.string(), z.string());
 
 // --- In-flight request deduplication ---
 // Prevents duplicate concurrent GraphQL calls for the same repository.
@@ -16,7 +19,7 @@ const SKIPPABLE_PATTERNS = ['[skip]', '[pass]', '[stop]', '[fail]'];
 
 export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 	const cached = getCachedMiseEnv(dir);
-	if (cached) return JSON.parse(cached) as Record<string, string>;
+	if (cached) return MiseEnvSchema.parse(JSON.parse(cached));
 
 	const start = performance.now();
 	const result = await execa('mise', ['env', '-C', dir, '--json'], {reject: false});
@@ -25,7 +28,7 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 
 	if (result.exitCode !== 0) return {};
 
-	const env = JSON.parse(result.stdout) as Record<string, string>;
+	const env = MiseEnvSchema.parse(JSON.parse(result.stdout));
 	cacheMiseEnv(dir, result.stdout);
 	return env;
 }
@@ -276,32 +279,59 @@ export function parseBranch(decoration: string): string | undefined {
 	return undefined;
 }
 
-interface CheckRunContext {
-	__typename: 'CheckRun';
-	name: string;
-	conclusion: string | null;
-	detailsUrl?: string;
-}
+const CheckRunContextSchema = z.object({
+	__typename: z.literal('CheckRun'),
+	name: z.string(),
+	conclusion: z.string().nullable(),
+	detailsUrl: z.string().optional(),
+});
 
-interface StatusContextItem {
-	__typename: 'StatusContext';
-	context: string;
-	state: string;
-	targetUrl?: string;
-}
+const StatusContextItemSchema = z.object({
+	__typename: z.literal('StatusContext'),
+	context: z.string(),
+	state: z.string(),
+	targetUrl: z.string().optional(),
+});
 
-type StatusCheckContext = CheckRunContext | StatusContextItem;
+const StatusCheckContextSchema = z.discriminatedUnion('__typename', [CheckRunContextSchema, StatusContextItemSchema]);
 
-interface GraphQLPrNode {
-	headRefName: string;
-	url: string;
-	number: number;
-	author: {login: string};
-	reviewDecision: string;
-	mergeStateStatus: string;
-	reviews: {nodes: Array<{state: string}>};
-	commits: {nodes: Array<{commit: {statusCheckRollup: {state: string | null; contexts: {nodes: StatusCheckContext[]}} | null}}>};
-}
+type CheckRunContext = z.infer<typeof CheckRunContextSchema>;
+type StatusContextItem = z.infer<typeof StatusContextItemSchema>;
+type StatusCheckContext = z.infer<typeof StatusCheckContextSchema>;
+
+const GraphQLPrNodeSchema = z.object({
+	headRefName: z.string(),
+	url: z.string(),
+	number: z.number(),
+	author: z.object({login: z.string()}),
+	reviewDecision: z.string(),
+	mergeStateStatus: z.string(),
+	reviews: z.object({nodes: z.array(z.object({state: z.string()}))}),
+	commits: z.object({
+		nodes: z.array(z.object({
+			commit: z.object({
+				statusCheckRollup: z.object({
+					state: z.string().nullable(),
+					contexts: z.object({
+						nodes: z.array(StatusCheckContextSchema),
+					}),
+				}).nullable(),
+			}),
+		})),
+	}),
+});
+
+type GraphQLPrNode = z.infer<typeof GraphQLPrNodeSchema>;
+
+const PrGraphQLResponseSchema = z.object({
+	data: z.object({
+		repository: z.object({
+			pullRequests: z.object({
+				nodes: z.array(GraphQLPrNodeSchema),
+			}),
+		}),
+	}).optional(),
+});
 
 export interface PrStatuses {
 	review: Map<string, ReviewStatus>;
@@ -487,7 +517,7 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
 		return emptyPrStatuses();
 	}
 
-	const response = JSON.parse(result.stdout) as {data?: {repository: {pullRequests: {nodes: GraphQLPrNode[]}}}};
+	const response = PrGraphQLResponseSchema.parse(JSON.parse(result.stdout));
 	const allPrs = response.data?.repository.pullRequests.nodes ?? [];
 	const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
 	const toCache: CachedPrStatus[] = [];

@@ -1,7 +1,6 @@
 import {createFileRoute} from '@tanstack/react-router';
 
 export const Route = createFileRoute('/api/merge-events')({
-	// @ts-expect-error TanStack Start server handlers not yet in published types
 	server: {
 		handlers: {
 			GET: async () => {
@@ -13,16 +12,16 @@ export const Route = createFileRoute('/api/merge-events')({
 						let closed = false;
 
 						function send(data: unknown) {
-							if (closed) return;
+							if (closed) return
 							try {
 								controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
 							} catch {
-								cleanup();
+								cleanup()
 							}
 						}
 
 						function onStatus(event: unknown) {
-							send(event);
+							send(event)
 						}
 
 						emitter.on('mergeStatus', onStatus);
@@ -33,23 +32,23 @@ export const Route = createFileRoute('/api/merge-events')({
 							});
 
 						const keepalive = setInterval(() => {
-							if (closed) return;
+							if (closed) return
 							try {
 								controller.enqueue(encoder.encode(': keepalive\n\n'));
 							} catch {
-								cleanup();
+								cleanup()
 							}
-						}, 15000);
+						}, 15000)
 
 						function cleanup() {
-							if (closed) return;
-							closed = true;
+							if (closed) return
+							closed = true
 							emitter.off('mergeStatus', onStatus);
 							clearInterval(keepalive);
 							try { controller.close(); } catch {}
 						}
 					},
-				});
+				})
 
 				return new Response(stream, {
 					headers: {
@@ -57,7 +56,7 @@ export const Route = createFileRoute('/api/merge-events')({
 						'Cache-Control': 'no-cache',
 						'Connection': 'keep-alive',
 					},
-				});
+				})
 			},
 		},
 	},

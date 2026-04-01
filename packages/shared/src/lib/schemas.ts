@@ -181,6 +181,13 @@ export function applyTransition(from: Category, transition: Transition): Categor
 	return match?.to;
 }
 
+// Reusable validated string schemas
+const shaSchema = z.string().regex(/^[a-f0-9]{40}$/);
+const shortShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/);
+const branchSchema = z.string().regex(/^[a-zA-Z0-9._\x2f-]+$/);
+const dateSchema = z.string().date();
+const hexColorSchema = z.string().regex(/^[0-9a-f]{6}$/);
+
 export const ProjectInfoSchema = z.object({
 	name: z.string(),
 	dir: z.string(),
@@ -196,11 +203,11 @@ export const ProjectInfoSchema = z.object({
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 
 export const ChildCommitSchema = z.object({
-	sha: z.string(),
-	shortSha: z.string(),
+	sha: shaSchema,
+	shortSha: shortShaSchema,
 	subject: z.string(),
-	date: z.string(),
-	branch: z.string().optional(),
+	date: dateSchema,
+	branch: branchSchema.optional(),
 	testStatus: TestStatusSchema,
 	checkStatus: CheckStatusSchema,
 	skippable: z.boolean(),
@@ -208,46 +215,46 @@ export const ChildCommitSchema = z.object({
 	localAhead: z.boolean().optional(),
 	needsRebase: z.boolean().optional(),
 	reviewStatus: ReviewStatusSchema,
-	prUrl: z.string().optional(),
+	prUrl: z.string().url().optional(),
 	prNumber: z.number().optional(),
-	failedChecks: z.array(z.object({name: z.string(), url: z.string().optional()})).optional(),
+	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})).optional(),
 	behind: z.boolean().optional(),
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
 	rebaseable: z.boolean().optional(),
-	alreadyOnRemote: z.object({branch: z.string()}).optional(),
+	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
 export const DeleteBranchInputSchema = z.object({
 	project: z.string(),
-	branch: z.string(),
+	branch: branchSchema,
 });
 export type DeleteBranchInput = z.infer<typeof DeleteBranchInputSchema>;
 
 export const ForcePushInputSchema = z.object({
 	project: z.string(),
-	branch: z.string(),
+	branch: branchSchema,
 });
 export type ForcePushInput = z.infer<typeof ForcePushInputSchema>;
 
 export const RenameBranchInputSchema = z.object({
 	project: z.string(),
-	oldBranch: z.string(),
-	newBranch: z.string(),
+	oldBranch: branchSchema,
+	newBranch: branchSchema,
 });
 export type RenameBranchInput = z.infer<typeof RenameBranchInputSchema>;
 
 export const ApplyFixesInputSchema = z.object({
 	project: z.string(),
-	branch: z.string(),
+	branch: branchSchema,
 	prNumber: z.number(),
 });
 export type ApplyFixesInput = z.infer<typeof ApplyFixesInputSchema>;
 
 export const RebaseLocalInputSchema = z.object({
 	project: z.string(),
-	branch: z.string(),
+	branch: branchSchema,
 });
 export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 
@@ -259,15 +266,15 @@ const FailedCheckSchema = z.object({name: z.string(), url: z.string().optional()
 export const CommitItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
-	sha: z.string(),
-	shortSha: z.string(),
+	sha: shaSchema,
+	shortSha: shortShaSchema,
 	subject: z.string(),
-	date: z.string(),
+	date: dateSchema,
 	skippable: z.boolean(),
-	suggestedBranch: z.string().optional(),
+	suggestedBranch: branchSchema.optional(),
 	testStatus: TestStatusSchema,
 	failureTail: z.string().optional(),
-	alreadyOnRemote: z.object({branch: z.string()}).optional(),
+	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
 });
 export type CommitItem = z.infer<typeof CommitItemSchema>;
 
@@ -275,12 +282,12 @@ export type CommitItem = z.infer<typeof CommitItemSchema>;
 export const BranchItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
-	sha: z.string(),
-	shortSha: z.string(),
+	sha: shaSchema,
+	shortSha: shortShaSchema,
 	subject: z.string(),
-	date: z.string(),
-	branch: z.string(),
-	suggestedBranch: z.string().optional(),
+	date: dateSchema,
+	branch: branchSchema,
+	suggestedBranch: branchSchema.optional(),
 	skippable: z.boolean(),
 	pushedToRemote: z.boolean(),
 	localAhead: z.boolean().optional(),
@@ -299,12 +306,12 @@ export type BranchItem = z.infer<typeof BranchItemSchema>;
 export const PullRequestItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
-	sha: z.string(),
-	shortSha: z.string(),
+	sha: shaSchema,
+	shortSha: shortShaSchema,
 	subject: z.string(),
-	date: z.string(),
-	branch: z.string(),
-	suggestedBranch: z.string().optional(),
+	date: dateSchema,
+	branch: branchSchema,
+	suggestedBranch: branchSchema.optional(),
 	skippable: z.boolean(),
 	pushedToRemote: z.literal(true),
 	localAhead: z.boolean().optional(),
@@ -314,7 +321,7 @@ export const PullRequestItemSchema = z.object({
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
 	rebaseable: z.boolean().optional(),
-	prUrl: z.string(),
+	prUrl: z.string().url(),
 	prNumber: z.number(),
 	reviewStatus: ReviewStatusSchema,
 	checkStatus: CheckStatusSchema,
@@ -322,7 +329,7 @@ export const PullRequestItemSchema = z.object({
 });
 export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
 
-const LabelSchema = z.object({name: z.string(), color: z.string()});
+const LabelSchema = z.object({name: z.string(), color: hexColorSchema});
 
 // A GitHub issue assigned to me
 export const PlanStatusSchema = z.enum(['none', 'unreviewed', 'approved']);
@@ -331,7 +338,7 @@ export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 export const IssueItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
-	url: z.string(),
+	url: z.string().url(),
 	number: z.number(),
 	title: z.string(),
 	labels: z.array(LabelSchema),
@@ -343,7 +350,7 @@ export type IssueItem = z.infer<typeof IssueItemSchema>;
 export const ProjectBoardItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
-	url: z.string().optional(),
+	url: z.string().url().optional(),
 	number: z.number().optional(),
 	title: z.string(),
 	status: z.string(),
@@ -368,42 +375,42 @@ export type GitItem = CommitItem | BranchItem | PullRequestItem;
 export const ActionResultSchema = z.object({
 	ok: z.boolean(),
 	message: z.string(),
-	compareUrl: z.string().optional(),
+	compareUrl: z.string().url().optional(),
 });
 export type ActionResult = z.infer<typeof ActionResultSchema>;
 
 export const SnoozedChildSchema = z.object({
-	sha: z.string(),
+	sha: shaSchema,
 	project: z.string(),
-	shortSha: z.string(),
+	shortSha: shortShaSchema,
 	subject: z.string(),
-	until: z.string().nullable(),
+	until: z.string().datetime().nullable(),
 });
 export type SnoozedChild = z.infer<typeof SnoozedChildSchema>;
 
 // Server function input schemas
 export const PushChildInputSchema = z.object({
 	project: z.string(),
-	sha: z.string(),
-	branch: z.string().optional(),
+	sha: shaSchema,
+	branch: branchSchema.optional(),
 });
 export type PushChildInput = z.infer<typeof PushChildInputSchema>;
 
 export const TestChildInputSchema = z.object({
 	project: z.string(),
-	sha: z.string(),
+	sha: shaSchema,
 });
 export type TestChildInput = z.infer<typeof TestChildInputSchema>;
 
 export const SnoozeChildInputSchema = z.object({
 	project: z.string(),
-	sha: z.string(),
-	until: z.string().nullable(),
+	sha: shaSchema,
+	until: z.string().datetime().nullable(),
 });
 export type SnoozeChildInput = z.infer<typeof SnoozeChildInputSchema>;
 
 export const UnsnoozeChildInputSchema = z.object({
-	sha: z.string(),
+	sha: shaSchema,
 	project: z.string(),
 });
 export type UnsnoozeChildInput = z.infer<typeof UnsnoozeChildInputSchema>;
@@ -415,7 +422,7 @@ export type CancelTestInput = z.infer<typeof CancelTestInputSchema>;
 
 export const CreatePrInputSchema = z.object({
 	project: z.string(),
-	branch: z.string(),
+	branch: branchSchema,
 	title: z.string(),
 	body: z.string().optional(),
 	draft: z.boolean().optional(),
@@ -424,14 +431,14 @@ export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;
 
 export const RefreshChildInputSchema = z.object({
 	project: z.string(),
-	sha: z.string(),
+	sha: shaSchema,
 });
 export type RefreshChildInput = z.infer<typeof RefreshChildInputSchema>;
 
 export const CreateBranchInputSchema = z.object({
 	project: z.string(),
-	sha: z.string(),
-	branchName: z.string(),
+	sha: shaSchema,
+	branchName: branchSchema,
 });
 export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
 

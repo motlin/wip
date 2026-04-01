@@ -3,5 +3,3 @@
 just = "1.48.1"
 node = "24.14.1"
 "npm:vite-plus" = "latest"
-# pnpm installed via pnpm/action-setup in CI (mise npm backend has known timeout issues in CI)
-# For local dev, install pnpm separately: npm install -g pnpm@10.33.0

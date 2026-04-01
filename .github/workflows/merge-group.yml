@@ -13,48 +13,53 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
-            - uses: actions/setup-python@v6
-              with:
-                python-version: "3.x"
-            - uses: actions/setup-node@v6
-            - uses: pnpm/action-setup@v5
-              with:
-                version: 10.33.0
             - uses: jdx/mise-action@v4
-            - run: pnpm install --frozen-lockfile
-            - uses: pre-commit/action@v3.0.1
+              with:
+                  cache: true
+            - uses: actions/cache@v5
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+            - run: just install
+            - run: pre-commit run --all-files
 
     typecheck:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
-            - uses: actions/setup-node@v6
-            - uses: pnpm/action-setup@v5
-              with:
-                version: 10.33.0
             - uses: jdx/mise-action@v4
+              with:
+                  cache: true
+            - uses: actions/cache@v5
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
             - run: just typecheck-ci
 
     build:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
-            - uses: actions/setup-node@v6
-            - uses: pnpm/action-setup@v5
-              with:
-                version: 10.33.0
             - uses: jdx/mise-action@v4
+              with:
+                  cache: true
+            - uses: actions/cache@v5
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
             - run: just build-ci
 
     test:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
-            - uses: actions/setup-node@v6
-            - uses: pnpm/action-setup@v5
-              with:
-                version: 10.33.0
             - uses: jdx/mise-action@v4
+              with:
+                  cache: true
+            - uses: actions/cache@v5
+              with:
+                  path: ~/.local/share/pnpm/store
+                  key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
             - run: just test-ci
 
     all-checks:

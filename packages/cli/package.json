@@ -1,36 +1,37 @@
 {
-	"name": "@wip/cli",
-	"description": "Work-in-progress inventory and prioritization CLI",
-	"version": "0.0.0",
-	"author": "Craig P. Motlin",
-	"type": "module",
-	"bin": {
-		"wip": "./bin/run.js"
-	},
-	"dependencies": {
-		"@oclif/core": "^4.10.5",
-		"@oclif/plugin-help": "^6.2.43",
-		"@wip/shared": "workspace:*",
-		"chalk": "^5.6.2",
-		"execa": "^9.6.1"
-	},
-	"devDependencies": {
-		"@types/node": "^25.5.2",
-		"typescript": "^6.0.2",
-		"vitest": "^4.1.2"
-	},
-	"oclif": {
-		"bin": "wip",
-		"dirname": "wip",
-		"commands": "./dist/commands",
-		"plugins": [
-			"@oclif/plugin-help"
-		],
-		"topicSeparator": " "
-	},
-	"scripts": {
-		"build": "tsc -b",
-		"test": "vitest run",
-		"typecheck": "tsc --noEmit"
-	}
+  "name": "@wip/cli",
+  "version": "0.0.0",
+  "description": "Work-in-progress inventory and prioritization CLI",
+  "author": "Craig P. Motlin",
+  "bin": {
+    "wip": "./bin/run.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@oclif/core": "^4.10.5",
+    "@oclif/plugin-help": "^6.2.43",
+    "@wip/shared": "workspace:*",
+    "chalk": "^5.6.2",
+    "execa": "^9.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  },
+  "oclif": {
+    "bin": "wip",
+    "commands": "./dist/commands",
+    "dirname": "wip",
+    "plugins": [
+      "@oclif/plugin-help"
+    ],
+    "topicSeparator": " "
+  }
 }

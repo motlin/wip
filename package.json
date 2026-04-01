@@ -1,20 +1,25 @@
 {
-	"name": "wip-monorepo",
-	"description": "Work-in-progress inventory and prioritization CLI",
-	"version": "0.0.0",
-	"private": true,
-	"type": "module",
-	"bin": {
-		"wip": "./packages/cli/bin/run.js"
-	},
-	"scripts": {
-		"build": "pnpm -r run build",
-		"typecheck": "pnpm -r run typecheck"
-	},
-	"pnpm": {
-		"onlyBuiltDependencies": ["better-sqlite3"]
-	},
-	"devDependencies": {
-		"typescript": "^6.0.2"
-	}
+  "name": "wip-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Work-in-progress inventory and prioritization CLI",
+  "bin": {
+    "wip": "./packages/cli/bin/run.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vite-plus": "catalog:"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  }
 }

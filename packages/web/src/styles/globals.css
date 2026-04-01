@@ -4,143 +4,144 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-	--font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-	--font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", monospace;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", monospace;
 
-	--color-bg-000: var(--bg-000);
-	--color-bg-100: var(--bg-100);
-	--color-bg-200: var(--bg-200);
-	--color-bg-300: var(--bg-300);
+  --color-bg-000: var(--bg-000);
+  --color-bg-100: var(--bg-100);
+  --color-bg-200: var(--bg-200);
+  --color-bg-300: var(--bg-300);
 
-	--color-text-000: var(--text-000);
-	--color-text-100: var(--text-100);
-	--color-text-300: var(--text-300);
-	--color-text-500: var(--text-500);
+  --color-text-000: var(--text-000);
+  --color-text-100: var(--text-100);
+  --color-text-300: var(--text-300);
+  --color-text-500: var(--text-500);
 
-	--color-border-300: var(--border-300);
+  --color-border-300: var(--border-300);
 
-	--color-green-column: var(--green-column);
-	--color-red-column: var(--red-column);
-	--color-yellow-column: var(--yellow-column);
-	--color-purple-column: var(--purple-column);
-	--color-blue-column: var(--blue-column);
-	--color-dim-column: var(--dim-column);
+  --color-green-column: var(--green-column);
+  --color-red-column: var(--red-column);
+  --color-yellow-column: var(--yellow-column);
+  --color-purple-column: var(--purple-column);
+  --color-blue-column: var(--blue-column);
+  --color-dim-column: var(--dim-column);
 
-	/* Card status tokens */
-	--color-card-passed-bg: var(--card-passed-bg);
-	--color-card-passed-border: var(--card-passed-border);
-	--color-card-passed-text: var(--card-passed-text);
-	--color-card-failed-bg: var(--card-failed-bg);
-	--color-card-failed-border: var(--card-failed-border);
-	--color-card-failed-text: var(--card-failed-text);
-	--color-card-running-bg: var(--card-running-bg);
-	--color-card-running-border: var(--card-running-border);
-	--color-card-running-text: var(--card-running-text);
+  /* Card status tokens */
+  --color-card-passed-bg: var(--card-passed-bg);
+  --color-card-passed-border: var(--card-passed-border);
+  --color-card-passed-text: var(--card-passed-text);
+  --color-card-failed-bg: var(--card-failed-bg);
+  --color-card-failed-border: var(--card-failed-border);
+  --color-card-failed-text: var(--card-failed-text);
+  --color-card-running-bg: var(--card-running-bg);
+  --color-card-running-border: var(--card-running-border);
+  --color-card-running-text: var(--card-running-text);
 
-	/* Action button tokens */
-	--color-btn-danger-bg: var(--btn-danger-bg);
-	--color-btn-danger-border: var(--btn-danger-border);
-	--color-btn-danger-text: var(--btn-danger-text);
-	--color-btn-success-bg: var(--btn-success-bg);
-	--color-btn-success-border: var(--btn-success-border);
-	--color-btn-success-text: var(--btn-success-text);
+  /* Action button tokens */
+  --color-btn-danger-bg: var(--btn-danger-bg);
+  --color-btn-danger-border: var(--btn-danger-border);
+  --color-btn-danger-text: var(--btn-danger-text);
+  --color-btn-success-bg: var(--btn-success-bg);
+  --color-btn-success-border: var(--btn-success-border);
+  --color-btn-success-text: var(--btn-success-text);
 
-	/* Status icon tokens */
-	--color-status-green: var(--status-green);
-	--color-status-red: var(--status-red);
-	--color-status-yellow: var(--status-yellow);
+  /* Status icon tokens */
+  --color-status-green: var(--status-green);
+  --color-status-red: var(--status-red);
+  --color-status-yellow: var(--status-yellow);
 }
 
 :root {
-	--bg-000: hsl(0 0% 100%);
-	--bg-100: hsl(210 20% 98%);
-	--bg-200: hsl(210 15% 95.5%);
-	--bg-300: hsl(210 12% 92%);
+  --bg-000: hsl(0 0% 100%);
+  --bg-100: hsl(210 20% 98%);
+  --bg-200: hsl(210 15% 95.5%);
+  --bg-300: hsl(210 12% 92%);
 
-	--text-000: hsl(210 15% 8%);
-	--text-100: hsl(210 12% 16%);
-	--text-300: hsl(210 8% 35%);
-	--text-500: hsl(210 6% 55%);
+  --text-000: hsl(210 15% 8%);
+  --text-100: hsl(210 12% 16%);
+  --text-300: hsl(210 8% 35%);
+  --text-500: hsl(210 6% 55%);
 
-	--border-300: hsl(210 10% 80%);
+  --border-300: hsl(210 10% 80%);
 
-	--green-column: hsl(142 60% 95%);
-	--red-column: hsl(0 60% 96%);
-	--yellow-column: hsl(45 70% 95%);
-	--purple-column: hsl(280 60% 96%);
-	--blue-column: hsl(210 60% 96%);
-	--dim-column: hsl(210 10% 97%);
+  --green-column: hsl(142 60% 95%);
+  --red-column: hsl(0 60% 96%);
+  --yellow-column: hsl(45 70% 95%);
+  --purple-column: hsl(280 60% 96%);
+  --blue-column: hsl(210 60% 96%);
+  --dim-column: hsl(210 10% 97%);
 
-	--card-passed-bg: hsl(142 50% 95%);
-	--card-passed-border: hsl(142 40% 78%);
-	--card-passed-text: hsl(142 45% 30%);
-	--card-failed-bg: hsl(0 50% 96%);
-	--card-failed-border: hsl(0 45% 78%);
-	--card-failed-text: hsl(0 50% 35%);
-	--card-running-bg: hsl(45 60% 95%);
-	--card-running-border: hsl(45 50% 72%);
-	--card-running-text: hsl(45 60% 30%);
+  --card-passed-bg: hsl(142 50% 95%);
+  --card-passed-border: hsl(142 40% 78%);
+  --card-passed-text: hsl(142 45% 30%);
+  --card-failed-bg: hsl(0 50% 96%);
+  --card-failed-border: hsl(0 45% 78%);
+  --card-failed-text: hsl(0 50% 35%);
+  --card-running-bg: hsl(45 60% 95%);
+  --card-running-border: hsl(45 50% 72%);
+  --card-running-text: hsl(45 60% 30%);
 
-	--btn-danger-bg: hsl(0 50% 96%);
-	--btn-danger-border: hsl(0 40% 78%);
-	--btn-danger-text: hsl(0 55% 38%);
-	--btn-success-bg: hsl(142 50% 95%);
-	--btn-success-border: hsl(142 40% 72%);
-	--btn-success-text: hsl(142 50% 28%);
+  --btn-danger-bg: hsl(0 50% 96%);
+  --btn-danger-border: hsl(0 40% 78%);
+  --btn-danger-text: hsl(0 55% 38%);
+  --btn-success-bg: hsl(142 50% 95%);
+  --btn-success-border: hsl(142 40% 72%);
+  --btn-success-text: hsl(142 50% 28%);
 
-	--status-green: hsl(142 55% 38%);
-	--status-red: hsl(0 60% 45%);
-	--status-yellow: hsl(45 70% 40%);
+  --status-green: hsl(142 55% 38%);
+  --status-red: hsl(0 60% 45%);
+  --status-yellow: hsl(45 70% 40%);
 }
 
 .dark {
-	--bg-000: hsl(220 15% 8%);
-	--bg-100: hsl(220 14% 11%);
-	--bg-200: hsl(220 13% 14%);
-	--bg-300: hsl(220 12% 18%);
+  --bg-000: hsl(220 15% 8%);
+  --bg-100: hsl(220 14% 11%);
+  --bg-200: hsl(220 13% 14%);
+  --bg-300: hsl(220 12% 18%);
 
-	--text-000: hsl(210 15% 95%);
-	--text-100: hsl(210 12% 88%);
-	--text-300: hsl(210 8% 62%);
-	--text-500: hsl(210 6% 45%);
+  --text-000: hsl(210 15% 95%);
+  --text-100: hsl(210 12% 88%);
+  --text-300: hsl(210 8% 62%);
+  --text-500: hsl(210 6% 45%);
 
-	--border-300: hsl(220 10% 25%);
+  --border-300: hsl(220 10% 25%);
 
-	--green-column: hsl(142 30% 12%);
-	--red-column: hsl(0 30% 13%);
-	--yellow-column: hsl(45 30% 12%);
-	--purple-column: hsl(280 30% 13%);
-	--blue-column: hsl(210 30% 13%);
-	--dim-column: hsl(220 12% 11%);
+  --green-column: hsl(142 30% 12%);
+  --red-column: hsl(0 30% 13%);
+  --yellow-column: hsl(45 30% 12%);
+  --purple-column: hsl(280 30% 13%);
+  --blue-column: hsl(210 30% 13%);
+  --dim-column: hsl(220 12% 11%);
 
-	--card-passed-bg: hsl(142 25% 12%);
-	--card-passed-border: hsl(142 30% 25%);
-	--card-passed-text: hsl(142 50% 65%);
-	--card-failed-bg: hsl(0 25% 13%);
-	--card-failed-border: hsl(0 30% 28%);
-	--card-failed-text: hsl(0 55% 68%);
-	--card-running-bg: hsl(45 25% 12%);
-	--card-running-border: hsl(45 30% 25%);
-	--card-running-text: hsl(45 55% 62%);
+  --card-passed-bg: hsl(142 25% 12%);
+  --card-passed-border: hsl(142 30% 25%);
+  --card-passed-text: hsl(142 50% 65%);
+  --card-failed-bg: hsl(0 25% 13%);
+  --card-failed-border: hsl(0 30% 28%);
+  --card-failed-text: hsl(0 55% 68%);
+  --card-running-bg: hsl(45 25% 12%);
+  --card-running-border: hsl(45 30% 25%);
+  --card-running-text: hsl(45 55% 62%);
 
-	--btn-danger-bg: hsl(0 30% 15%);
-	--btn-danger-border: hsl(0 35% 30%);
-	--btn-danger-text: hsl(0 55% 72%);
-	--btn-success-bg: hsl(142 30% 13%);
-	--btn-success-border: hsl(142 35% 28%);
-	--btn-success-text: hsl(142 50% 68%);
+  --btn-danger-bg: hsl(0 30% 15%);
+  --btn-danger-border: hsl(0 35% 30%);
+  --btn-danger-text: hsl(0 55% 72%);
+  --btn-success-bg: hsl(142 30% 13%);
+  --btn-success-border: hsl(142 35% 28%);
+  --btn-success-text: hsl(142 50% 68%);
 
-	--status-green: hsl(142 50% 55%);
-	--status-red: hsl(0 55% 58%);
-	--status-yellow: hsl(45 65% 55%);
+  --status-green: hsl(142 50% 55%);
+  --status-red: hsl(0 55% 58%);
+  --status-yellow: hsl(45 65% 55%);
 }
 
-html, body {
-	background: var(--bg-000);
+html,
+body {
+  background: var(--bg-000);
 }
 
 body {
-	font-family: var(--font-sans);
-	color: var(--text-000);
-	-webkit-font-smoothing: antialiased;
+  font-family: var(--font-sans);
+  color: var(--text-000);
+  -webkit-font-smoothing: antialiased;
 }

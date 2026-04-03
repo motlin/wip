@@ -11,8 +11,14 @@ import { useEffect, useRef } from "react";
 export function usePreserveScroll() {
   const savedY = useRef(0);
   const restoreUntil = useRef(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    const clearTimers = () => {
+      for (const t of timersRef.current) clearTimeout(t);
+      timersRef.current = [];
+    };
+
     const onScroll = () => {
       if (Date.now() < restoreUntil.current) return;
       savedY.current = window.scrollY;
@@ -27,16 +33,21 @@ export function usePreserveScroll() {
       const y = savedY.current;
       if (y <= 0) return;
 
+      clearTimers();
+
       restoreUntil.current = Date.now() + 2000;
       window.scrollTo(0, y);
 
       const timers = [50, 150, 300, 600, 1000].map((ms) =>
         setTimeout(() => window.scrollTo(0, y), ms),
       );
-      setTimeout(() => {
-        restoreUntil.current = 0;
-        for (const t of timers) clearTimeout(t);
-      }, 2000);
+      timers.push(
+        setTimeout(() => {
+          restoreUntil.current = 0;
+          clearTimers();
+        }, 2000),
+      );
+      timersRef.current = timers;
     };
 
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -45,6 +56,7 @@ export function usePreserveScroll() {
     return () => {
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearTimers();
     };
   }, []);
 }

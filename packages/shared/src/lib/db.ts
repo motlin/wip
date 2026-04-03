@@ -15,9 +15,9 @@ import {
   githubProjectItemsCache,
   mergeStatus,
   miseEnvCache,
+  prFailedChecks,
   prStatusCache,
   projectCache,
-  reportCache,
   snoozed,
   testResults,
   upstreamRefs,
@@ -114,12 +114,22 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   }>;
   if (
     prCols.some((c) => c.name === "cached_at") ||
-    prCols.some((c) => c.name === "behind" && c.notnull === 0)
+    prCols.some((c) => c.name === "behind" && c.notnull === 0) ||
+    prCols.some((c) => c.name === "failed_checks")
   ) {
     sqlite.exec("DROP TABLE pr_status_cache");
   }
+  // Drop report_cache unconditionally — it is dead code
+  {
+    const reportCols = sqlite.prepare("PRAGMA table_info('report_cache')").all() as Array<{
+      name: string;
+    }>;
+    if (reportCols.length > 0) {
+      sqlite.exec("DROP TABLE report_cache");
+    }
+  }
+
   for (const table of [
-    "report_cache",
     "mise_env_cache",
     "gh_login_cache",
     "github_issues_cache",
@@ -139,7 +149,6 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			check_status TEXT NOT NULL,
 			pr_url TEXT,
 			pr_number INTEGER,
-			failed_checks TEXT,
 			behind INTEGER NOT NULL DEFAULT 0,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
@@ -148,12 +157,14 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 
   sqlite.exec(`
-		CREATE TABLE IF NOT EXISTS report_cache (
-			id INTEGER NOT NULL DEFAULT 1,
-			data TEXT NOT NULL,
+		CREATE TABLE IF NOT EXISTS pr_failed_checks (
+			project TEXT NOT NULL,
+			branch TEXT NOT NULL,
 			system_from TEXT NOT NULL,
+			name TEXT NOT NULL,
+			url TEXT,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (id, system_from)
+			PRIMARY KEY (project, branch, system_from, name)
 		)
 	`);
 
@@ -482,23 +493,6 @@ export function recordTestResult(
 
 const PR_CACHE_TTL_MINUTES = 10;
 
-function parseFailedChecks(json: string): Array<{ name: string; url?: string }> {
-  try {
-    const parsed = JSON.parse(json) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item) => (typeof item === "string" ? { name: item } : item))
-      .filter(
-        (item): item is { name: string; url?: string } =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof (item as Record<string, unknown>).name === "string",
-      );
-  } catch {
-    return [];
-  }
-}
-
 export interface CachedPrStatus {
   branch: string;
   reviewStatus: ReviewStatus;
@@ -509,6 +503,58 @@ export interface CachedPrStatus {
   behind?: boolean;
 }
 
+function queryPrStatusesWithChecks(
+  d: BetterSQLite3Database<typeof schema>,
+  project: string,
+  extraConditions?: ReturnType<typeof sql>,
+): CachedPrStatus[] | null {
+  const conditions = [eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)];
+  if (extraConditions) conditions.push(extraConditions);
+
+  const rows = d
+    .select({
+      branch: prStatusCache.branch,
+      reviewStatus: prStatusCache.reviewStatus,
+      checkStatus: prStatusCache.checkStatus,
+      prUrl: prStatusCache.prUrl,
+      prNumber: prStatusCache.prNumber,
+      behind: prStatusCache.behind,
+      systemFrom: prStatusCache.systemFrom,
+    })
+    .from(prStatusCache)
+    .where(and(...conditions))
+    .all();
+
+  if (rows.length === 0) return null;
+
+  const checksRows = d
+    .select({
+      branch: prFailedChecks.branch,
+      name: prFailedChecks.name,
+      url: prFailedChecks.url,
+    })
+    .from(prFailedChecks)
+    .where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
+    .all();
+
+  const checksByBranch = new Map<string, Array<{ name: string; url?: string }>>();
+  for (const c of checksRows) {
+    const arr = checksByBranch.get(c.branch) ?? [];
+    arr.push({ name: c.name, url: c.url ?? undefined });
+    checksByBranch.set(c.branch, arr);
+  }
+
+  return rows.map((r) => ({
+    branch: r.branch,
+    reviewStatus: r.reviewStatus,
+    checkStatus: r.checkStatus,
+    prUrl: r.prUrl,
+    prNumber: r.prNumber ?? undefined,
+    failedChecks: checksByBranch.get(r.branch),
+    behind: r.behind ?? undefined,
+  }));
+}
+
 export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
   const d = getDb();
   const cutoff = new Date(Date.now() - PR_CACHE_TTL_MINUTES * 60 * 1000)
@@ -516,52 +562,12 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
     .replace("T", " ")
     .replace("Z", "");
 
-  const rows = d
-    .select()
-    .from(prStatusCache)
-    .where(
-      and(
-        eq(prStatusCache.project, project),
-        eq(prStatusCache.systemTo, FAR_FUTURE),
-        sql`${prStatusCache.systemFrom} > ${cutoff}`,
-      ),
-    )
-    .all();
-
-  if (rows.length === 0) return null;
-  return rows.map(mapPrStatusRow);
+  return queryPrStatusesWithChecks(d, project, sql`${prStatusCache.systemFrom} > ${cutoff}`);
 }
 
 export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
   const d = getDb();
-  const rows = d
-    .select()
-    .from(prStatusCache)
-    .where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
-    .all();
-
-  if (rows.length === 0) return null;
-  return rows.map(mapPrStatusRow);
-}
-
-function mapPrStatusRow(r: {
-  branch: string;
-  reviewStatus: string;
-  checkStatus: string;
-  prUrl: string | null;
-  prNumber: number | null;
-  failedChecks: string | null;
-  behind: boolean;
-}): CachedPrStatus {
-  return {
-    branch: r.branch,
-    reviewStatus: r.reviewStatus as CachedPrStatus["reviewStatus"],
-    checkStatus: r.checkStatus as CachedPrStatus["checkStatus"],
-    prUrl: r.prUrl,
-    prNumber: r.prNumber ?? undefined,
-    failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
-    behind: r.behind || undefined,
-  };
+  return queryPrStatusesWithChecks(d, project);
 }
 
 export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void {
@@ -569,67 +575,110 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
   const timestamp = now();
 
   d.transaction((tx) => {
-    tx.update(prStatusCache)
-      .set({ systemTo: timestamp })
+    // Fetch existing active parent rows for comparison
+    const existingRows = tx
+      .select()
+      .from(prStatusCache)
       .where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
+      .all();
+
+    const existingByBranch = new Map(existingRows.map((r) => [r.branch, r]));
+    const incomingBranches = new Set(statuses.map((s) => s.branch));
+
+    // Close parent rows for branches no longer present
+    for (const existing of existingRows) {
+      if (!incomingBranches.has(existing.branch)) {
+        tx.update(prStatusCache)
+          .set({ systemTo: timestamp })
+          .where(
+            and(
+              eq(prStatusCache.project, project),
+              eq(prStatusCache.branch, existing.branch),
+              eq(prStatusCache.systemTo, FAR_FUTURE),
+            ),
+          )
+          .run();
+      }
+    }
+
+    // Always close all old pr_failed_checks rows for this project
+    tx.update(prFailedChecks)
+      .set({ systemTo: timestamp })
+      .where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
       .run();
 
-    if (statuses.length > 0) {
-      tx.insert(prStatusCache)
-        .values(
-          statuses.map((s) => ({
+    for (const s of statuses) {
+      const existing = existingByBranch.get(s.branch);
+      const parentChanged =
+        !existing ||
+        existing.reviewStatus !== s.reviewStatus ||
+        existing.checkStatus !== s.checkStatus ||
+        existing.prUrl !== s.prUrl ||
+        (existing.prNumber ?? undefined) !== s.prNumber ||
+        (existing.behind ?? undefined) !== s.behind;
+
+      if (parentChanged) {
+        // Close old parent row if it exists
+        if (existing) {
+          tx.update(prStatusCache)
+            .set({ systemTo: timestamp })
+            .where(
+              and(
+                eq(prStatusCache.project, project),
+                eq(prStatusCache.branch, s.branch),
+                eq(prStatusCache.systemTo, FAR_FUTURE),
+              ),
+            )
+            .run();
+        }
+
+        tx.insert(prStatusCache)
+          .values({
             project,
             branch: s.branch,
             reviewStatus: s.reviewStatus,
             checkStatus: s.checkStatus,
             prUrl: s.prUrl,
             prNumber: s.prNumber ?? null,
-            failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
             behind: s.behind ?? false,
             systemFrom: timestamp,
-          })),
-        )
-        .run();
+          })
+          .run();
+      }
+
+      // Insert new failed checks rows
+      if (s.failedChecks && s.failedChecks.length > 0) {
+        // Use the parent's systemFrom for joining
+        const parentSystemFrom = parentChanged ? timestamp : existing!.systemFrom;
+        tx.insert(prFailedChecks)
+          .values(
+            s.failedChecks.map((fc) => ({
+              project,
+              branch: s.branch,
+              systemFrom: parentSystemFrom,
+              name: fc.name,
+              url: fc.url ?? null,
+            })),
+          )
+          .run();
+      }
     }
   });
 }
 
 export function invalidatePrCache(project: string): void {
   const d = getDb();
-  d.update(prStatusCache)
-    .set({ systemTo: now() })
-    .where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
-    .run();
-}
-
-// --- Report cache ---
-
-export function getCachedReport(ttlMs: number): string | null {
-  const d = getDb();
-  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-  const row = d
-    .select()
-    .from(reportCache)
-    .where(and(eq(reportCache.systemTo, FAR_FUTURE), sql`${reportCache.systemFrom} > ${cutoff}`))
-    .get();
-  return row?.data ?? null;
-}
-
-export function cacheReport(data: string): void {
-  const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(reportCache)
+    tx.update(prStatusCache)
       .set({ systemTo: timestamp })
-      .where(eq(reportCache.systemTo, FAR_FUTURE))
+      .where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
       .run();
-    tx.insert(reportCache).values({ data, systemFrom: timestamp }).run();
+    tx.update(prFailedChecks)
+      .set({ systemTo: timestamp })
+      .where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
+      .run();
   });
-}
-
-export function invalidateReportCache(): void {
-  const d = getDb();
-  d.update(reportCache).set({ systemTo: now() }).where(eq(reportCache.systemTo, FAR_FUTURE)).run();
 }
 
 // --- Mise env cache ---

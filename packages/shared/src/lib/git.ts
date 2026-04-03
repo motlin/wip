@@ -342,14 +342,14 @@ const CheckRunContextSchema = z.object({
   __typename: z.literal("CheckRun"),
   name: z.string(),
   conclusion: z.string().nullable(),
-  detailsUrl: z.string().optional(),
+  detailsUrl: z.string().nullish(),
 });
 
 const StatusContextItemSchema = z.object({
   __typename: z.literal("StatusContext"),
   context: z.string(),
   state: z.string(),
-  targetUrl: z.string().optional(),
+  targetUrl: z.string().nullish(),
 });
 
 const StatusCheckContextSchema = z.discriminatedUnion("__typename", [
@@ -366,7 +366,7 @@ const GraphQLPrNodeSchema = z.object({
   url: z.string(),
   number: z.number(),
   author: z.object({ login: z.string() }),
-  reviewDecision: z.string(),
+  reviewDecision: z.string().nullable(),
   mergeStateStatus: z.string(),
   reviews: z.object({ nodes: z.array(z.object({ state: z.string() })) }),
   commits: z.object({
@@ -436,13 +436,13 @@ function extractFailedChecks(
           c.conclusion === "CANCELLED" ||
           c.conclusion === "TIMED_OUT"),
     )
-    .map((c) => ({ name: c.name, url: c.detailsUrl }));
+    .map((c) => ({ name: c.name, url: c.detailsUrl ?? undefined }));
   const failedStatuses = contexts
     .filter(
       (c): c is StatusContextItem =>
         c.__typename === "StatusContext" && (c.state === "FAILURE" || c.state === "ERROR"),
     )
-    .map((c) => ({ name: c.context, url: c.targetUrl }));
+    .map((c) => ({ name: c.context, url: c.targetUrl ?? undefined }));
   return [...failedRuns, ...failedStatuses];
 }
 

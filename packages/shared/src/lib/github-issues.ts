@@ -4,17 +4,15 @@ import { z } from "zod";
 import { log } from "../services/logger.js";
 import { getCachedIssues, cacheIssues, invalidateIssuesCacheDb } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
+import { LabelSchema } from "./schemas.js";
 
-export const GitHubIssueLabelSchema = z.object({
-  name: z.string().min(1),
-  color: z.string().regex(/^[0-9a-fA-F]{6}$/),
-});
+export { LabelSchema as GitHubIssueLabelSchema };
 
 export const GitHubIssueSchema = z.object({
   number: z.number().int().positive(),
   title: z.string().min(1),
   url: z.string().url(),
-  labels: z.array(GitHubIssueLabelSchema),
+  labels: z.array(LabelSchema),
   repository: z.object({
     name: z.string().min(1),
     nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),

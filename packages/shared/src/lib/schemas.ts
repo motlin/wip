@@ -214,7 +214,8 @@ const shaSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const shortShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/);
 const branchSchema = z.string().regex(/^[a-zA-Z0-9._\x2f-]+$/);
 const dateSchema = z.string().date();
-const hexColorSchema = z.string().regex(/^[0-9a-f]{6}$/);
+const hexColorSchema = z.string().regex(/^[0-9a-fA-F]{6}$/);
+export const LabelSchema = z.object({ name: z.string().min(1), color: hexColorSchema });
 
 export const ProjectInfoSchema = z.object({
   name: z.string(),
@@ -358,8 +359,6 @@ export const PullRequestItemSchema = z.object({
   failedChecks: z.array(FailedCheckSchema).optional(),
 });
 export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
-
-const LabelSchema = z.object({ name: z.string(), color: hexColorSchema });
 
 // A GitHub issue assigned to me
 export const PlanStatusSchema = z.enum(["none", "unreviewed", "approved"]);

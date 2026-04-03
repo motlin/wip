@@ -100,6 +100,7 @@ export {
   mapProjectStatusToCategory,
 } from "./lib/github-projects.js";
 export {
+  LabelSchema,
   ReviewStatusSchema,
   type ReviewStatus,
   CheckStatusSchema,

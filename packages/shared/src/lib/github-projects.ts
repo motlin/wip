@@ -1,15 +1,12 @@
 import { execa } from "execa";
 import { z } from "zod";
 
-import type { Category } from "./schemas.js";
+import { type Category, LabelSchema } from "./schemas.js";
 import { log } from "../services/logger.js";
 import { getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 
-export const GitHubProjectItemLabelSchema = z.object({
-  name: z.string().min(1),
-  color: z.string().regex(/^[0-9a-fA-F]{6}$/),
-});
+export { LabelSchema as GitHubProjectItemLabelSchema };
 
 export const GitHubProjectItemSchema = z.object({
   id: z.string().min(1),
@@ -19,7 +16,7 @@ export const GitHubProjectItemSchema = z.object({
   url: z.string().url().optional(),
   number: z.number().int().positive().optional(),
   repository: z.string().min(1).optional(),
-  labels: z.array(GitHubProjectItemLabelSchema),
+  labels: z.array(LabelSchema),
 });
 export type GitHubProjectItem = z.infer<typeof GitHubProjectItemSchema>;
 
@@ -140,7 +137,7 @@ export async function fetchProjectItems(
             url: z.string().url().optional(),
             number: z.number().int().positive().optional(),
             repository: z.string().min(1).optional(),
-            labels: z.array(GitHubProjectItemLabelSchema).optional(),
+            labels: z.array(LabelSchema).optional(),
           })
           .optional(),
       }),

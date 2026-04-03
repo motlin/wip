@@ -213,7 +213,7 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard.writeText(branch.blockCommand!);
+                  void navigator.clipboard.writeText(branch.blockCommand!);
                   setCopied(true);
                 }}
                 className="shrink-0 rounded p-0.5 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-200"

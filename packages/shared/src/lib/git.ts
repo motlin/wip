@@ -19,8 +19,6 @@ import {
   cacheGhLogin,
   getCachedUpstreamSha,
   cacheUpstreamSha,
-  getCachedMergeStatuses,
-  cacheMergeStatus,
 } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError } from "./rate-limit.js";
 import type { CheckStatus, ChildCommit, ProjectInfo, ReviewStatus } from "./schemas.js";
@@ -386,8 +384,6 @@ const GraphQLPrNodeSchema = z.object({
     ),
   }),
 });
-
-type GraphQLPrNode = z.infer<typeof GraphQLPrNodeSchema>;
 
 const PrGraphQLResponseSchema = z.object({
   data: z

@@ -117,12 +117,14 @@ function Kanban() {
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
     await refreshAll();
-    queryClient.invalidateQueries({ queryKey: ["children"] });
-    queryClient.invalidateQueries({ queryKey: ["todos"] });
-    queryClient.invalidateQueries({ queryKey: ["issues"] });
-    queryClient.invalidateQueries({ queryKey: ["projectItems"] });
-    queryClient.invalidateQueries({ queryKey: ["projects"] });
-    queryClient.invalidateQueries({ queryKey: ["snoozed"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["children"] }),
+      queryClient.invalidateQueries({ queryKey: ["todos"] }),
+      queryClient.invalidateQueries({ queryKey: ["issues"] }),
+      queryClient.invalidateQueries({ queryKey: ["projectItems"] }),
+      queryClient.invalidateQueries({ queryKey: ["projects"] }),
+      queryClient.invalidateQueries({ queryKey: ["snoozed"] }),
+    ]);
     setRefreshingAll(false);
   };
 

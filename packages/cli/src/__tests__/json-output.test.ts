@@ -122,7 +122,7 @@ function captureConsoleLog(): { getOutput: () => string; restore: () => void } {
 }
 
 function parseJsonOutput(output: string): unknown {
-  const stripped = output.replace(/\x1b\[[0-9;]*m/g, "");
+  const stripped = output.replace(/\u001b\[[0-9;]*m/g, "");
   return JSON.parse(stripped);
 }
 

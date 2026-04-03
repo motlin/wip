@@ -294,7 +294,6 @@ function ItemDetail() {
             {Object.entries(child).map(([key, value]) => {
               if (key === "subject" || key === "failureTail") return null;
               const remoteName = "remote" in child ? (child as any).remote : undefined;
-              const branchName = "branch" in child ? (child as any).branch : undefined;
               const isRemote = "pushedToRemote" in child && (child as any).pushedToRemote;
               return (
                 <Fragment key={key}>

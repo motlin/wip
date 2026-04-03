@@ -1,12 +1,7 @@
 import { Args, Command, Flags } from "@oclif/core";
 import chalk from "chalk";
 
-import {
-  type ChildCommit,
-  discoverAllProjects,
-  getChildCommits,
-  getProjectsDirs,
-} from "@wip/shared";
+import { discoverAllProjects, getChildCommits, getProjectsDirs } from "@wip/shared";
 
 interface ResultEntry {
   project: string;

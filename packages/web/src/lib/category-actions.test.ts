@@ -7,7 +7,7 @@ import {
   getTransitionActions,
   SUPPLEMENTARY_ACTIONS,
 } from "./category-actions";
-import { CategorySchema, getTransitionsFrom, type Category } from "@wip/shared";
+import { CategorySchema, type Category } from "@wip/shared";
 
 describe("CATEGORIES", () => {
   it("has an entry for every category in CategorySchema", () => {

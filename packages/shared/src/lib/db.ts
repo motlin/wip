@@ -514,15 +514,7 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
     .all();
 
   if (rows.length === 0) return null;
-  return rows.map((r) => ({
-    branch: r.branch,
-    reviewStatus: r.reviewStatus,
-    checkStatus: r.checkStatus,
-    prUrl: r.prUrl,
-    prNumber: r.prNumber ?? undefined,
-    failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
-    behind: r.behind === null ? undefined : r.behind === 1,
-  }));
+  return rows.map(mapPrStatusRow);
 }
 
 export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
@@ -534,15 +526,27 @@ export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
     .all();
 
   if (rows.length === 0) return null;
-  return rows.map((r) => ({
+  return rows.map(mapPrStatusRow);
+}
+
+function mapPrStatusRow(r: {
+  branch: string;
+  reviewStatus: string;
+  checkStatus: string;
+  prUrl: string | null;
+  prNumber: number | null;
+  failedChecks: string | null;
+  behind: boolean;
+}): CachedPrStatus {
+  return {
     branch: r.branch,
-    reviewStatus: r.reviewStatus,
-    checkStatus: r.checkStatus,
+    reviewStatus: r.reviewStatus as CachedPrStatus["reviewStatus"],
+    checkStatus: r.checkStatus as CachedPrStatus["checkStatus"],
     prUrl: r.prUrl,
     prNumber: r.prNumber ?? undefined,
     failedChecks: r.failedChecks ? parseFailedChecks(r.failedChecks) : undefined,
-    behind: r.behind === null ? undefined : r.behind === 1,
-  }));
+    behind: r.behind || undefined,
+  };
 }
 
 export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void {
@@ -566,7 +570,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
             prUrl: s.prUrl,
             prNumber: s.prNumber ?? null,
             failedChecks: s.failedChecks ? JSON.stringify(s.failedChecks) : null,
-            behind: s.behind === undefined ? undefined : s.behind ? 1 : 0,
+            behind: s.behind ?? false,
             systemFrom: timestamp,
           })),
         )
@@ -785,7 +789,7 @@ export function getCachedMergeStatuses(project: string, upstreamSha: string): Ca
     upstreamSha: r.upstreamSha,
     commitsAhead: r.commitsAhead,
     commitsBehind: r.commitsBehind,
-    rebaseable: r.rebaseable === null ? null : r.rebaseable === 1,
+    rebaseable: r.rebaseable ?? null,
   }));
 }
 
@@ -817,7 +821,7 @@ export function cacheMergeStatus(
         upstreamSha,
         commitsAhead,
         commitsBehind,
-        rebaseable: rebaseable === null ? null : rebaseable ? 1 : 0,
+        rebaseable,
         systemFrom: timestamp,
       })
       .run();
@@ -845,9 +849,9 @@ export function getCachedProjectList(): ProjectInfo[] | null {
     upstreamRemote: row.upstreamRemote,
     upstreamBranch: row.upstreamBranch,
     upstreamRef: row.upstreamRef,
-    hasTestConfigured: Boolean(row.hasTestConfigured),
-    dirty: Boolean(row.dirty),
-    detachedHead: Boolean(row.detachedHead),
+    hasTestConfigured: row.hasTestConfigured,
+    dirty: row.dirty,
+    detachedHead: row.detachedHead,
     branchCount: row.branchCount,
   }));
 }
@@ -869,9 +873,9 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
           upstreamRemote: p.upstreamRemote,
           upstreamBranch: p.upstreamBranch,
           upstreamRef: p.upstreamRef,
-          hasTestConfigured: p.hasTestConfigured ? 1 : 0,
-          dirty: p.dirty ? 1 : 0,
-          detachedHead: p.detachedHead ? 1 : 0,
+          hasTestConfigured: p.hasTestConfigured,
+          dirty: p.dirty,
+          detachedHead: p.detachedHead,
           branchCount: p.branchCount,
           systemFrom: timestamp,
         })

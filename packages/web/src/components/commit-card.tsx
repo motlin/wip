@@ -17,37 +17,42 @@ export function CommitCard({ commit, category }: { commit: CommitItem; category?
     if (!branchName.trim()) return;
     setCreating(true);
     setError(null);
-    const result = await createBranch({
-      data: { project: commit.project, sha: commit.sha, branchName: branchName.trim() },
-    });
-    setCreating(false);
-    if (result.ok) {
-      queryClient.setQueryData<import("../lib/server-fns").ProjectChildrenResult>(
-        ["children", commit.project],
-        (old) => {
-          if (!old) return old;
-          const c = old.commits.find((x) => x.sha === commit.sha);
-          if (!c) return old;
-          return {
-            commits: old.commits.filter((x) => x.sha !== commit.sha),
-            branches: [
-              ...old.branches,
-              {
-                ...c,
-                branch: branchName.trim(),
-                pushedToRemote: false,
-                needsRebase: false,
-                commitsBehind: 0,
-                commitsAhead: 1,
-                rebaseable: undefined,
-              },
-            ],
-            pullRequests: old.pullRequests,
-          };
-        },
-      );
-    } else {
-      setError(result.message);
+    try {
+      const result = await createBranch({
+        data: { project: commit.project, sha: commit.sha, branchName: branchName.trim() },
+      });
+      if (result.ok) {
+        queryClient.setQueryData<import("../lib/server-fns").ProjectChildrenResult>(
+          ["children", commit.project],
+          (old) => {
+            if (!old) return old;
+            const c = old.commits.find((x) => x.sha === commit.sha);
+            if (!c) return old;
+            return {
+              commits: old.commits.filter((x) => x.sha !== commit.sha),
+              branches: [
+                ...old.branches,
+                {
+                  ...c,
+                  branch: branchName.trim(),
+                  pushedToRemote: false,
+                  needsRebase: false,
+                  commitsBehind: 0,
+                  commitsAhead: 1,
+                  rebaseable: undefined,
+                },
+              ],
+              pullRequests: old.pullRequests,
+            };
+          },
+        );
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create branch");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -113,7 +118,7 @@ export function CommitCard({ commit, category }: { commit: CommitItem; category?
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateBranch();
+                if (e.key === "Enter") void handleCreateBranch();
               }}
               placeholder="branch-name"
               className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"

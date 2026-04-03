@@ -121,9 +121,9 @@ function SnoozedCard({ item }: { item: SnoozedChild }) {
         <span className="text-xs font-medium text-text-300">{item.project}</span>
         <button
           type="button"
-          onClick={(e) => {
+          onClick={async (e) => {
             e.preventDefault();
-            handleUnsnooze();
+            await handleUnsnooze();
           }}
           disabled={waking}
           className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${

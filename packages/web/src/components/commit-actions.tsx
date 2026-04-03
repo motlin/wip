@@ -239,22 +239,27 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const handlePush = async () => {
     setLoading(true);
     setError(null);
-    const result = await pushChild({
-      data: {
-        project: item.project,
-        sha: item.sha,
-        branch: item.branch,
-      },
-    });
-    setLoading(false);
-    if (result.ok) {
-      setPushResult({ message: result.message, compareUrl: result.compareUrl });
-      cache.updateItem(item.sha, (i) => ({ ...i, pushedToRemote: true, localAhead: false }));
-      if (result.compareUrl) {
-        window.open(result.compareUrl, "_blank");
+    try {
+      const result = await pushChild({
+        data: {
+          project: item.project,
+          sha: item.sha,
+          branch: item.branch,
+        },
+      });
+      if (result.ok) {
+        setPushResult({ message: result.message, compareUrl: result.compareUrl });
+        cache.updateItem(item.sha, (i) => ({ ...i, pushedToRemote: true, localAhead: false }));
+        if (result.compareUrl) {
+          window.open(result.compareUrl, "_blank");
+        }
+      } else {
+        setError(result.message);
       }
-    } else {
-      setError(result.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to push");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -288,49 +293,62 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     setError(null);
     const until =
       hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
-    const result = await snoozeChildFn({ data: { project: item.project, sha: item.sha, until } });
-    if (result.ok) {
-      cache.removeItem(item.sha);
-      queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) => [
-        ...(old ?? []),
-        {
-          sha: item.sha,
-          project: item.project,
-          shortSha: item.shortSha,
-          subject: item.subject,
-          until,
-        },
-      ]);
-    } else {
-      setError(result.message);
+    try {
+      const result = await snoozeChildFn({ data: { project: item.project, sha: item.sha, until } });
+      if (result.ok) {
+        cache.removeItem(item.sha);
+        queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) => [
+          ...(old ?? []),
+          {
+            sha: item.sha,
+            project: item.project,
+            shortSha: item.shortSha,
+            subject: item.subject,
+            until,
+          },
+        ]);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to snooze");
     }
   };
 
   const handleUnsnooze = async () => {
     setSnoozeOpen(false);
     setError(null);
-    const result = await unsnoozeChildFn({ data: { project: item.project, sha: item.sha } });
-    if (result.ok) {
-      queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) =>
-        (old ?? []).filter((s) => !(s.project === item.project && s.sha === item.sha)),
-      );
-      const fresh = await getProjectChildren({ data: { project: item.project } });
-      queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
-    } else {
-      setError(result.message);
+    try {
+      const result = await unsnoozeChildFn({ data: { project: item.project, sha: item.sha } });
+      if (result.ok) {
+        queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) =>
+          (old ?? []).filter((s) => !(s.project === item.project && s.sha === item.sha)),
+        );
+        const fresh = await getProjectChildren({ data: { project: item.project } });
+        queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to unsnooze");
     }
   };
 
   const handleCommit = async () => {
     setCommitting(true);
     setError(null);
-    const result = await commitWorkingTree({ data: { project: item.project } });
-    setCommitting(false);
-    if (result.ok) {
-      const fresh = await getProjectChildren({ data: { project: item.project } });
-      queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
-    } else {
-      setError(result.message);
+    try {
+      const result = await commitWorkingTree({ data: { project: item.project } });
+      if (result.ok) {
+        const fresh = await getProjectChildren({ data: { project: item.project } });
+        queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to commit");
+    } finally {
+      setCommitting(false);
     }
   };
 
@@ -338,52 +356,67 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const handleCreatePr = async () => {
     setCreatingPr(true);
     setError(null);
-    const result = await createPr({
-      data: {
-        project: item.project,
-        branch: item.branch,
-        title: item.subject,
-        draft: true,
-      },
-    });
-    setCreatingPr(false);
-    if (result.ok) {
-      const prUrl = result.compareUrl ?? "";
-      const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
-      const prNumber = prNumberMatch ? Number(prNumberMatch[1]) : 0;
-      cache.promoteToPr(item.sha, prUrl, prNumber);
-    } else {
-      setError(result.message);
+    try {
+      const result = await createPr({
+        data: {
+          project: item.project,
+          branch: item.branch,
+          title: item.subject,
+          draft: true,
+        },
+      });
+      if (result.ok) {
+        const prUrl = result.compareUrl ?? "";
+        const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
+        const prNumber = prNumberMatch ? Number(prNumberMatch[1]) : 0;
+        cache.promoteToPr(item.sha, prUrl, prNumber);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create PR");
+    } finally {
+      setCreatingPr(false);
     }
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
     setError(null);
-    const result = await refreshChild({ data: { project: item.project, sha: item.sha } });
-    if (result.ok) {
-      const fresh = await getProjectChildren({ data: { project: item.project } });
-      queryClient.setQueryData(["children", item.project], fresh);
-    } else {
-      setError(result.message);
+    try {
+      const result = await refreshChild({ data: { project: item.project, sha: item.sha } });
+      if (result.ok) {
+        const fresh = await getProjectChildren({ data: { project: item.project } });
+        queryClient.setQueryData(["children", item.project], fresh);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to refresh");
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
   };
 
   const handleForcePush = async () => {
     setForcePushing(true);
     setError(null);
-    const result = await forcePush({
-      data: {
-        project: item.project,
-        branch: item.branch,
-      },
-    });
-    setForcePushing(false);
-    if (result.ok) {
-      cache.updateItem(item.sha, (i) => ({ ...i, localAhead: false }));
-    } else {
-      setError(result.message);
+    try {
+      const result = await forcePush({
+        data: {
+          project: item.project,
+          branch: item.branch,
+        },
+      });
+      if (result.ok) {
+        cache.updateItem(item.sha, (i) => ({ ...i, localAhead: false }));
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to force push");
+    } finally {
+      setForcePushing(false);
     }
   };
 
@@ -391,19 +424,24 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     if (!newBranchName.trim() || newBranchName === item.branch) return;
     setRenaming(true);
     setError(null);
-    const result = await renameBranch({
-      data: {
-        project: item.project,
-        oldBranch: item.branch,
-        newBranch: newBranchName.trim(),
-      },
-    });
-    setRenaming(false);
-    if (result.ok) {
-      setRenameOpen(false);
-      cache.updateItem(item.sha, (i) => ({ ...i, branch: newBranchName.trim() }));
-    } else {
-      setError(result.message);
+    try {
+      const result = await renameBranch({
+        data: {
+          project: item.project,
+          oldBranch: item.branch,
+          newBranch: newBranchName.trim(),
+        },
+      });
+      if (result.ok) {
+        setRenameOpen(false);
+        cache.updateItem(item.sha, (i) => ({ ...i, branch: newBranchName.trim() }));
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to rename branch");
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -411,40 +449,50 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     if (!pr) return;
     setApplyingFixes(true);
     setError(null);
-    const result = await applyFixes({
-      data: {
-        project: item.project,
-        branch: item.branch,
-        prNumber: pr.prNumber,
-      },
-    });
-    setApplyingFixes(false);
-    if (result.ok) {
-      cache.updateItem(item.sha, (i) => ({
-        ...i,
-        checkStatus: "pending" as const,
-        failedChecks: undefined,
-      }));
-    } else {
-      setError(result.message);
+    try {
+      const result = await applyFixes({
+        data: {
+          project: item.project,
+          branch: item.branch,
+          prNumber: pr.prNumber,
+        },
+      });
+      if (result.ok) {
+        cache.updateItem(item.sha, (i) => ({
+          ...i,
+          checkStatus: "pending" as const,
+          failedChecks: undefined,
+        }));
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply fixes");
+    } finally {
+      setApplyingFixes(false);
     }
   };
 
   const handleRebaseLocal = async () => {
     setRebasingLocal(true);
     setError(null);
-    const result = await rebaseLocal({
-      data: {
-        project: item.project,
-        branch: item.branch,
-      },
-    });
-    setRebasingLocal(false);
-    if (result.ok) {
-      suppressMergeUpdates(item.project, item.sha);
-      cache.updateItem(item.sha, (i) => ({ ...i, needsRebase: false, commitsBehind: 0 }));
-    } else {
-      setError(result.message);
+    try {
+      const result = await rebaseLocal({
+        data: {
+          project: item.project,
+          branch: item.branch,
+        },
+      });
+      if (result.ok) {
+        suppressMergeUpdates(item.project, item.sha);
+        cache.updateItem(item.sha, (i) => ({ ...i, needsRebase: false, commitsBehind: 0 }));
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to rebase locally");
+    } finally {
+      setRebasingLocal(false);
     }
   };
 
@@ -509,18 +557,23 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const handleDeleteBranch = async () => {
     setDeleteLoading(true);
     setError(null);
-    const result = await deleteBranch({
-      data: {
-        project: item.project,
-        branch: item.branch,
-      },
-    });
-    setDeleteLoading(false);
-    if (result.ok) {
-      setDeleteConfirmOpen(false);
-      cache.removeItem(item.sha);
-    } else {
-      setError(result.message);
+    try {
+      const result = await deleteBranch({
+        data: {
+          project: item.project,
+          branch: item.branch,
+        },
+      });
+      if (result.ok) {
+        setDeleteConfirmOpen(false);
+        cache.removeItem(item.sha);
+      } else {
+        setError(result.message);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete branch");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -684,9 +737,9 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
                     <div className="flex gap-1.5">
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           setFixesConfirmOpen(false);
-                          handleApplyFixes();
+                          await handleApplyFixes();
                         }}
                         disabled={applyingFixes}
                         className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
@@ -746,7 +799,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
               value={newBranchName}
               onChange={(e) => setNewBranchName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleRenameBranch();
+                if (e.key === "Enter") void handleRenameBranch();
               }}
               placeholder="branch-name"
               className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"

@@ -58,6 +58,21 @@ export const prStatusCache = sqliteTable(
   }),
 );
 
+export const prFailedChecks = sqliteTable(
+  "pr_failed_checks",
+  {
+    project: text("project").notNull(),
+    branch: text("branch").notNull(),
+    systemFrom: text("system_from").notNull(),
+    name: text("name").notNull(),
+    url: text("url"),
+    systemTo: text("system_to").notNull().default(FAR_FUTURE),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.project, table.branch, table.systemFrom, table.name] }),
+  }),
+);
+
 export const reportCache = sqliteTable(
   "report_cache",
   {
@@ -68,6 +83,20 @@ export const reportCache = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.id, table.systemFrom] }),
+  }),
+);
+
+export const miseEnvVars = sqliteTable(
+  "mise_env_vars",
+  {
+    dir: text("dir").notNull(),
+    systemFrom: text("system_from").notNull(),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    systemTo: text("system_to").notNull().default(FAR_FUTURE),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.dir, table.systemFrom, table.key] }),
   }),
 );
 
@@ -97,6 +126,38 @@ export const ghLoginCache = sqliteTable(
   }),
 );
 
+export const githubIssues = sqliteTable(
+  "github_issues",
+  {
+    systemFrom: text("system_from").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    url: text("url").notNull(),
+    repoName: text("repo_name").notNull(),
+    repoNameWithOwner: text("repo_name_with_owner").notNull(),
+    systemTo: text("system_to").notNull().default(FAR_FUTURE),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.systemFrom, table.number, table.repoNameWithOwner] }),
+  }),
+);
+
+export const githubIssueLabels = sqliteTable(
+  "github_issue_labels",
+  {
+    systemFrom: text("system_from").notNull(),
+    issueNumber: integer("issue_number").notNull(),
+    repoNameWithOwner: text("repo_name_with_owner").notNull(),
+    labelName: text("label_name").notNull(),
+    labelColor: text("label_color").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.systemFrom, table.issueNumber, table.repoNameWithOwner, table.labelName],
+    }),
+  }),
+);
+
 export const githubIssuesCache = sqliteTable(
   "github_issues_cache",
   {
@@ -107,6 +168,37 @@ export const githubIssuesCache = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.id, table.systemFrom] }),
+  }),
+);
+
+export const githubProjectItems = sqliteTable(
+  "github_project_items",
+  {
+    systemFrom: text("system_from").notNull(),
+    itemId: text("item_id").notNull(),
+    title: text("title").notNull(),
+    status: text("status").notNull(),
+    type: text("type").notNull(),
+    url: text("url"),
+    number: integer("number"),
+    repository: text("repository"),
+    systemTo: text("system_to").notNull().default(FAR_FUTURE),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.systemFrom, table.itemId] }),
+  }),
+);
+
+export const githubProjectItemLabels = sqliteTable(
+  "github_project_item_labels",
+  {
+    systemFrom: text("system_from").notNull(),
+    itemId: text("item_id").notNull(),
+    labelName: text("label_name").notNull(),
+    labelColor: text("label_color").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.systemFrom, table.itemId, table.labelName] }),
   }),
 );
 

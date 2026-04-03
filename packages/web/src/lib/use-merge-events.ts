@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Transition } from "@wip/shared";
+import type { GitChildResult, Transition } from "@wip/shared";
 import type { ProjectChildrenResult } from "./server-fns";
 
 export interface MergeStatusEvent {
@@ -49,25 +49,17 @@ export function useMergeEvents() {
 
       queryClient.setQueryData<ProjectChildrenResult>(["children", data.project], (old) => {
         if (!old) return old;
-        const update = (i: {
-          sha: string;
-          commitsBehind?: number;
-          commitsAhead?: number;
-          rebaseable?: boolean | null;
-        }) =>
-          i.sha === data.sha
-            ? {
-                ...i,
-                commitsBehind: data.commitsBehind,
-                commitsAhead: data.commitsAhead,
-                rebaseable: data.rebaseable,
-              }
-            : i;
-        return {
-          commits: old.commits,
-          branches: old.branches.map(update) as typeof old.branches,
-          pullRequests: old.pullRequests.map(update) as typeof old.pullRequests,
-        };
+        return old.map(
+          (c): GitChildResult =>
+            c.sha === data.sha
+              ? {
+                  ...c,
+                  commitsBehind: data.commitsBehind,
+                  commitsAhead: data.commitsAhead,
+                  rebaseable: data.rebaseable ?? undefined,
+                }
+              : c,
+        );
       });
     };
 

@@ -1,37 +1,36 @@
-import type {
-  Category,
-  CommitItem,
-  BranchItem,
-  PullRequestItem,
-  IssueResult,
-  TodoItem,
-  ProjectInfo,
-} from "@wip/shared";
+import type { Category, GitChildResult, IssueResult, TodoItem, ProjectInfo } from "@wip/shared";
+import { isGitChildPullRequest, isGitChildBranch } from "./git-child-discriminators";
 
-export function classifyCommit(commit: CommitItem, project: ProjectInfo): Category {
-  if (commit.skippable) return "skippable";
-  if (commit.testStatus === "running") return "test_running";
-  if (commit.testStatus === "failed") return "test_failed";
-  if (commit.testStatus === "passed") return "ready_to_push";
+export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {
+  if (isGitChildPullRequest(child)) return classifyPullRequest(child, project);
+  if (isGitChildBranch(child)) return classifyBranch(child, project);
+  return classifyCommit(child, project);
+}
+
+export function classifyCommit(child: GitChildResult, project: ProjectInfo): Category {
+  if (child.skippable) return "skippable";
+  if (child.testStatus === "running") return "test_running";
+  if (child.testStatus === "failed") return "test_failed";
+  if (child.testStatus === "passed") return "ready_to_push";
   if (project.detachedHead) return "detached_head";
   if (project.dirty) return "local_changes";
   if (!project.hasTestConfigured) return "no_test";
   return "ready_to_test";
 }
 
-export function classifyBranch(branch: BranchItem, project: ProjectInfo): Category {
-  if (branch.skippable) return "skippable";
-  if (branch.testStatus === "running") return "test_running";
-  if (branch.testStatus === "failed") return "test_failed";
-  if (branch.needsRebase && branch.rebaseable === false) return "rebase_conflicts";
-  if (branch.needsRebase) return "needs_rebase";
-  if (branch.pushedToRemote && !branch.localAhead && branch.branch !== project.upstreamBranch)
+export function classifyBranch(child: GitChildResult, project: ProjectInfo): Category {
+  if (child.skippable) return "skippable";
+  if (child.testStatus === "running") return "test_running";
+  if (child.testStatus === "failed") return "test_failed";
+  if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
+  if (child.needsRebase) return "needs_rebase";
+  if (child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
     return "pushed_no_pr";
-  if (branch.pushedToRemote && branch.localAhead) return "ready_to_push";
+  if (child.pushedToRemote && child.localAhead) return "ready_to_push";
   if (project.dirty) return "local_changes";
   if (!project.hasTestConfigured) return "no_test";
-  if (branch.testStatus === "passed" && (branch.commitsAhead ?? 1) > 1) return "needs_split";
-  if (branch.testStatus === "passed") return "ready_to_push";
+  if (child.testStatus === "passed" && (child.commitsAhead ?? 1) > 1) return "needs_split";
+  if (child.testStatus === "passed") return "ready_to_push";
   return "ready_to_test";
 }
 
@@ -51,18 +50,18 @@ export function classifyTodo(todo: TodoItem): Category {
   return classifyPlanStatus(todo.planStatus) ?? "triaged";
 }
 
-export function classifyPullRequest(pr: PullRequestItem): Category {
-  if (pr.skippable) return "skippable";
-  if (pr.testStatus === "running") return "test_running";
-  if (pr.needsRebase && pr.rebaseable === false) return "rebase_conflicts";
-  if (pr.needsRebase) return "needs_rebase";
-  if (pr.checkStatus === "failed" && pr.localAhead) return "ready_to_push";
-  if (pr.checkStatus === "failed") return "checks_failed";
-  if (pr.checkStatus === "running" || pr.checkStatus === "pending") return "checks_running";
-  if (pr.reviewStatus === "approved" && pr.checkStatus === "passed") return "approved";
-  if (pr.reviewStatus === "changes_requested") return "changes_requested";
-  if (pr.reviewStatus === "commented") return "review_comments";
-  if (pr.checkStatus === "passed") return "checks_passed";
-  if (pr.checkStatus === "unknown" || pr.checkStatus === "none") return "checks_unknown";
+export function classifyPullRequest(child: GitChildResult, _project?: ProjectInfo): Category {
+  if (child.skippable) return "skippable";
+  if (child.testStatus === "running") return "test_running";
+  if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
+  if (child.needsRebase) return "needs_rebase";
+  if (child.checkStatus === "failed" && child.localAhead) return "ready_to_push";
+  if (child.checkStatus === "failed") return "checks_failed";
+  if (child.checkStatus === "running" || child.checkStatus === "pending") return "checks_running";
+  if (child.reviewStatus === "approved" && child.checkStatus === "passed") return "approved";
+  if (child.reviewStatus === "changes_requested") return "changes_requested";
+  if (child.reviewStatus === "commented") return "review_comments";
+  if (child.checkStatus === "passed") return "checks_passed";
+  if (child.checkStatus === "unknown" || child.checkStatus === "none") return "checks_unknown";
   return "checks_running";
 }

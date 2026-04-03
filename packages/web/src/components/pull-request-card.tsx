@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Clock, Diff, X, GitBranch, AlertCircle, XCircle } from "lucide-react";
 import { useRef, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
-import { applyTransition, type PullRequestItem, type Category } from "@wip/shared";
+import { applyTransition, type GitChildResult, type Category } from "@wip/shared";
 import { cancelTestFn } from "../lib/server-fns";
 import { useTestJob } from "../lib/test-events-context";
 import { useMergeStatus } from "../lib/merge-events-context";
@@ -24,7 +24,7 @@ function relativeTime(dateStr: string): string {
   return `${Math.floor(diffDays / 365)} years ago`;
 }
 
-export function PullRequestCard({ pr, category }: { pr: PullRequestItem; category: Category }) {
+export function PullRequestCard({ pr, category }: { pr: GitChildResult; category: Category }) {
   const queryClient = useQueryClient();
   const testJob = useTestJob(pr.sha, pr.project);
   const prevTestStatus = useRef(testJob?.status);
@@ -40,12 +40,7 @@ export function PullRequestCard({ pr, category }: { pr: PullRequestItem; categor
           ["children", pr.project],
           (old) => {
             if (!old) return old;
-            return {
-              ...old,
-              pullRequests: old.pullRequests.map((p) =>
-                p.sha === pr.sha ? { ...p, testStatus } : p,
-              ),
-            };
+            return old.map((c) => (c.sha === pr.sha ? { ...c, testStatus } : c));
           },
         );
       }

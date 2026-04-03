@@ -8,9 +8,7 @@ import {
 } from "./queries";
 import type {
   ProjectInfo,
-  CommitItem,
-  BranchItem,
-  PullRequestItem,
+  GitChildResult,
   IssueResult,
   ProjectItemResult,
   TodoItem,
@@ -21,18 +19,14 @@ import { mapProjectStatusToCategory } from "@wip/shared";
 import type { ProjectChildrenResult } from "./server-fns";
 
 export interface WorkItems {
-  commits: CommitItem[];
-  branches: BranchItem[];
-  pullRequests: PullRequestItem[];
+  gitChildren: GitChildResult[];
   issues: IssueResult[];
   projectItems: ProjectItemResult[];
   todos: TodoItem[];
 }
 
 export interface WorkItemCounts {
-  commits: number;
-  branches: number;
-  pullRequests: number;
+  gitChildren: number;
   issues: number;
   projectItems: number;
   todos: number;
@@ -44,16 +38,12 @@ export function useWorkItemCounts(projects: ProjectInfo[]): WorkItemCounts {
   const workItems = useWorkItems(projects);
   return useMemo(
     () => ({
-      commits: workItems.commits.length,
-      branches: workItems.branches.length,
-      pullRequests: workItems.pullRequests.length,
+      gitChildren: workItems.gitChildren.length,
       issues: workItems.issues.length,
       projectItems: workItems.projectItems.length,
       todos: workItems.todos.length,
       total:
-        workItems.commits.length +
-        workItems.branches.length +
-        workItems.pullRequests.length +
+        workItems.gitChildren.length +
         workItems.issues.length +
         workItems.projectItems.length +
         workItems.todos.length,
@@ -93,33 +83,19 @@ function buildWorkItems(
   rawProjectItems: GitHubProjectItem[],
   projects: ProjectInfo[],
 ): WorkItems & { projectCount: number } {
-  const commits: CommitItem[] = [];
-  const branches: BranchItem[] = [];
-  const pullRequests: PullRequestItem[] = [];
+  const gitChildren: GitChildResult[] = [];
 
   const allSubjects = new Set<string>();
   const allPrUrls = new Set<string>();
   const seenShas = new Set<string>();
 
   for (const data of childrenData) {
-    for (const c of data.commits) {
-      if (seenShas.has(c.sha)) continue;
-      seenShas.add(c.sha);
-      commits.push(c);
-      allSubjects.add(c.subject.toLowerCase());
-    }
-    for (const b of data.branches) {
-      if (seenShas.has(b.sha)) continue;
-      seenShas.add(b.sha);
-      branches.push(b);
-      allSubjects.add(b.subject.toLowerCase());
-    }
-    for (const pr of data.pullRequests) {
-      if (seenShas.has(pr.sha)) continue;
-      seenShas.add(pr.sha);
-      pullRequests.push(pr);
-      allSubjects.add(pr.subject.toLowerCase());
-      allPrUrls.add(pr.prUrl);
+    for (const child of data) {
+      if (seenShas.has(child.sha)) continue;
+      seenShas.add(child.sha);
+      gitChildren.push(child);
+      allSubjects.add(child.subject.toLowerCase());
+      if (child.prUrl) allPrUrls.add(child.prUrl);
     }
   }
 
@@ -165,9 +141,7 @@ function buildWorkItems(
   }
 
   return {
-    commits,
-    branches,
-    pullRequests,
+    gitChildren,
     issues,
     projectItems,
     todos,

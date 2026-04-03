@@ -5,17 +5,16 @@ import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { testAllChildren, rebaseAllBranches, getProjectChildren } from "../../lib/server-fns";
 import type { ProjectChildrenResult } from "../../lib/server-fns";
+import {
+  isGitChildPullRequest,
+  isGitChildBranch,
+  isGitChildCommit,
+} from "../../lib/git-child-discriminators";
 import { useHasActiveTests } from "../../lib/test-events-context";
 import { projectsQueryOptions } from "../../lib/queries";
 import { useWorkItems } from "../../lib/use-work-items";
 import type { ColumnItems } from "../../components/kanban-column";
-import {
-  classifyCommit,
-  classifyBranch,
-  classifyIssue,
-  classifyPullRequest,
-  classifyTodo,
-} from "../../lib/classify";
+import { classifyGitChild, classifyIssue, classifyTodo } from "../../lib/classify";
 import { CommitCard } from "../../components/commit-card";
 import { BranchCard } from "../../components/branch-card";
 import { PullRequestCard } from "../../components/pull-request-card";
@@ -31,9 +30,7 @@ import {
 
 function bucketCount(items: ColumnItems): number {
   return (
-    (items.commits?.length ?? 0) +
-    (items.branches?.length ?? 0) +
-    (items.pullRequests?.length ?? 0) +
+    (items.gitChildren?.length ?? 0) +
     (items.issues?.length ?? 0) +
     (items.projectItems?.length ?? 0) +
     (items.todos?.length ?? 0)
@@ -87,26 +84,12 @@ function Queue() {
 
     const projectMap = new Map(projects.map((p) => [p.name, p]));
 
-    for (const commit of workItems.commits) {
-      const p = projectMap.get(commit.project);
+    for (const child of workItems.gitChildren) {
+      const p = projectMap.get(child.project);
       if (!p) continue;
-      const cat = classifyCommit(commit, p);
-      g[cat].commits = g[cat].commits ?? [];
-      g[cat].commits.push(commit);
-    }
-
-    for (const branch of workItems.branches) {
-      const p = projectMap.get(branch.project);
-      if (!p) continue;
-      const cat = classifyBranch(branch, p);
-      g[cat].branches = g[cat].branches ?? [];
-      g[cat].branches.push(branch);
-    }
-
-    for (const pr of workItems.pullRequests) {
-      const cat = classifyPullRequest(pr);
-      g[cat].pullRequests = g[cat].pullRequests ?? [];
-      g[cat].pullRequests.push(pr);
+      const cat = classifyGitChild(child, p);
+      g[cat].gitChildren = g[cat].gitChildren ?? [];
+      g[cat].gitChildren.push(child);
     }
 
     // Issues are classified by plan status (triaged, plan_unreviewed, plan_approved).
@@ -131,9 +114,8 @@ function Queue() {
       total += bucketCount(g[cat]);
     }
 
-    const rtCount =
-      (g.ready_to_test.commits?.length ?? 0) + (g.ready_to_test.branches?.length ?? 0);
-    const nrCount = g.needs_rebase.branches?.length ?? 0;
+    const rtCount = g.ready_to_test.gitChildren?.length ?? 0;
+    const nrCount = g.needs_rebase.gitChildren?.filter((c) => c.branch !== undefined)?.length ?? 0;
 
     return { grouped: g, totalCount: total, readyToTestCount: rtCount, needsRebaseCount: nrCount };
   }, [workItems, projects]);
@@ -242,19 +224,23 @@ function Queue() {
                 <span className="ml-2 font-normal text-text-500">{count}</span>
               </h2>
               <div className="flex flex-col gap-2">
-                {items.pullRequests?.map((pr) => (
-                  <PullRequestCard key={pr.sha} pr={pr} category={category} />
-                ))}
-                {items.branches
-                  ?.filter((b) => b.commitsAhead === 1)
+                {items.gitChildren
+                  ?.filter((c) => isGitChildPullRequest(c))
+                  .map((pr) => (
+                    <PullRequestCard key={pr.sha} pr={pr} category={category} />
+                  ))}
+                {items.gitChildren
+                  ?.filter((c) => isGitChildBranch(c) && c.commitsAhead === 1)
                   .map((b) => (
                     <BranchCard key={b.sha} branch={b} category={category} />
                   ))}
-                {items.commits?.map((c) => (
-                  <CommitCard key={c.sha} commit={c} category={category} />
-                ))}
-                {items.branches
-                  ?.filter((b) => b.commitsAhead !== 1)
+                {items.gitChildren
+                  ?.filter((c) => isGitChildCommit(c))
+                  .map((c) => (
+                    <CommitCard key={c.sha} commit={c} category={category} />
+                  ))}
+                {items.gitChildren
+                  ?.filter((c) => isGitChildBranch(c) && c.commitsAhead !== 1)
                   .map((b) => (
                     <BranchCard key={b.sha} branch={b} category={category} />
                   ))}

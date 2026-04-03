@@ -40,7 +40,7 @@ import {
 import { snoozedQueryOptions } from "../lib/queries";
 import { useMergeStatus } from "../lib/merge-events-context";
 import { suppressMergeUpdates } from "../lib/use-merge-events";
-import type { BranchItem, PullRequestItem, SnoozedChild, Category } from "@wip/shared";
+import type { GitChildResult, SnoozedChild, Category } from "@wip/shared";
 import type { ProjectChildrenResult } from "../lib/server-fns";
 import { CATEGORIES } from "../lib/category-actions";
 import { GitHubIcon } from "./github-icon";
@@ -54,7 +54,7 @@ const SNOOZE_PRESETS = [
   { label: "On Hold", hours: null },
 ] as const;
 
-type ActionableItem = BranchItem | PullRequestItem;
+type ActionableItem = GitChildResult;
 
 interface ItemActionsProps {
   item: ActionableItem;
@@ -62,8 +62,8 @@ interface ItemActionsProps {
   layout?: "row" | "column";
 }
 
-function isPullRequest(item: ActionableItem): item is PullRequestItem {
-  return "prUrl" in item && item.prUrl !== undefined;
+function isPullRequest(item: ActionableItem): boolean {
+  return item.prUrl !== undefined;
 }
 
 function useChildrenCache(project: string) {
@@ -76,52 +76,41 @@ function useChildrenCache(project: string) {
     updateItem(sha: string, updater: (item: ActionableItem) => ActionableItem) {
       queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
         if (!old) return old;
-        return {
-          commits: old.commits,
-          branches: old.branches.map((b) => (b.sha === sha ? (updater(b) as BranchItem) : b)),
-          pullRequests: old.pullRequests.map((p) =>
-            p.sha === sha ? (updater(p) as PullRequestItem) : p,
-          ),
-        };
+        return old.map((c) => (c.sha === sha ? updater(c) : c));
       });
     },
     /** Remove an item from the cache by SHA */
     removeItem(sha: string) {
       queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
         if (!old) return old;
-        return {
-          commits: old.commits.filter((c) => c.sha !== sha),
-          branches: old.branches.filter((b) => b.sha !== sha),
-          pullRequests: old.pullRequests.filter((p) => p.sha !== sha),
-        };
+        return old.filter((c) => c.sha !== sha);
       });
     },
-    /** Move a branch to the pullRequests list */
+    /** Promote a branch to a PR by updating its fields */
     promoteToPr(sha: string, prUrl: string, prNumber: number) {
       queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
         if (!old) return old;
-        const branch = old.branches.find((b) => b.sha === sha);
-        if (!branch) return old;
-        const pr: PullRequestItem = {
-          ...branch,
-          pushedToRemote: true,
-          prUrl,
-          prNumber,
-          reviewStatus: "no_pr" as const,
-          checkStatus: "pending" as const,
-          failedChecks: undefined,
-        };
-        return {
-          commits: old.commits,
-          branches: old.branches.filter((b) => b.sha !== sha),
-          pullRequests: [...old.pullRequests, pr],
-        };
+        return old.map((c) =>
+          c.sha === sha
+            ? {
+                ...c,
+                pushedToRemote: true,
+                prUrl,
+                prNumber,
+                reviewStatus: "no_pr" as const,
+                checkStatus: "pending" as const,
+                failedChecks: undefined,
+              }
+            : c,
+        );
       });
     },
   };
 }
 
 function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
+  // branch is always present when this component is rendered (branches and PRs)
+  const branch = item.branch ?? "";
   const queryClient = useQueryClient();
   const cache = useChildrenCache(item.project);
   const { data: snoozedItems } = useQuery(snoozedQueryOptions());
@@ -146,9 +135,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const [forcePushing, setForcePushing] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [newBranchName, setNewBranchName] = useState(
-    /^(main|master)$/.test(item.branch) && item.suggestedBranch
-      ? item.suggestedBranch
-      : item.branch,
+    /^(main|master)$/.test(branch) && item.suggestedBranch ? item.suggestedBranch : branch,
   );
   const renameButtonRef = useRef<HTMLButtonElement>(null);
   const renameFormRef = useRef<HTMLDivElement>(null);
@@ -243,7 +230,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         data: {
           project: item.project,
           sha: item.sha,
-          branch: item.branch,
+          branch,
         },
       });
       if (result.ok) {
@@ -359,7 +346,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       const result = await createPr({
         data: {
           project: item.project,
-          branch: item.branch,
+          branch,
           title: item.subject,
           draft: true,
         },
@@ -404,7 +391,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       const result = await forcePush({
         data: {
           project: item.project,
-          branch: item.branch,
+          branch,
         },
       });
       if (result.ok) {
@@ -420,20 +407,21 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   };
 
   const handleRenameBranch = async () => {
-    if (!newBranchName.trim() || newBranchName === item.branch) return;
+    if (!newBranchName.trim() || newBranchName === branch) return;
     setRenaming(true);
     setError(null);
     try {
       const result = await renameBranch({
         data: {
           project: item.project,
-          oldBranch: item.branch,
+          oldBranch: branch,
           newBranch: newBranchName.trim(),
         },
       });
       if (result.ok) {
         setRenameOpen(false);
         cache.updateItem(item.sha, (i) => ({ ...i, branch: newBranchName.trim() }));
+        // Note: branch local variable won't update until re-render
       } else {
         setError(result.message);
       }
@@ -452,7 +440,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       const result = await applyFixes({
         data: {
           project: item.project,
-          branch: item.branch,
+          branch: branch,
           prNumber: pr.prNumber,
         },
       });
@@ -479,7 +467,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       const result = await rebaseLocal({
         data: {
           project: item.project,
-          branch: item.branch,
+          branch: branch,
         },
       });
       if (result.ok) {
@@ -560,7 +548,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       const result = await deleteBranch({
         data: {
           project: item.project,
-          branch: item.branch,
+          branch: branch,
         },
       });
       if (result.ok) {
@@ -577,7 +565,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   };
 
   const actions = new Set(CATEGORIES[category].actions);
-  const isDefaultBranch = /^(main|master)$/.test(item.branch);
+  const isDefaultBranch = /^(main|master)$/.test(branch);
 
   const isRow = layout === "row";
 
@@ -645,7 +633,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
             type="button"
             onClick={handleRebaseLocal}
             disabled={rebasingLocal}
-            title={`Rebase ${item.branch} onto upstream${commitsBehind ? ` (${commitsBehind} commit${commitsBehind > 1 ? "s" : ""} behind)` : ""}`}
+            title={`Rebase ${branch} onto upstream${commitsBehind ? ` (${commitsBehind} commit${commitsBehind > 1 ? "s" : ""} behind)` : ""}`}
             className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
               rebasingLocal
                 ? "cursor-not-allowed opacity-60 text-text-300"
@@ -806,9 +794,9 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
             <button
               type="button"
               onClick={handleRenameBranch}
-              disabled={renaming || !newBranchName.trim() || newBranchName === item.branch}
+              disabled={renaming || !newBranchName.trim() || newBranchName === branch}
               className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
-                renaming || !newBranchName.trim() || newBranchName === item.branch
+                renaming || !newBranchName.trim() || newBranchName === branch
                   ? "cursor-not-allowed opacity-60 text-text-400"
                   : "bg-blue-600 hover:bg-blue-700 text-white"
               }`}
@@ -858,9 +846,9 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
                   <button
                     type="button"
                     onClick={handleRenameBranch}
-                    disabled={renaming || !newBranchName.trim() || newBranchName === item.branch}
+                    disabled={renaming || !newBranchName.trim() || newBranchName === branch}
                     className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-                      renaming || !newBranchName.trim() || newBranchName === item.branch
+                      renaming || !newBranchName.trim() || newBranchName === branch
                         ? "cursor-not-allowed opacity-60"
                         : "bg-blue-600 hover:bg-blue-700 text-white"
                     }`}
@@ -1089,7 +1077,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
               >
                 <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
                   <AlertCircle className="h-3.5 w-3.5" />
-                  Delete branch &ldquo;{item.branch}&rdquo;?
+                  Delete branch &ldquo;{branch}&rdquo;?
                 </div>
                 {deleteDiffLoading && (
                   <div className="flex items-center gap-1.5 py-2 text-xs text-text-400">
@@ -1170,7 +1158,7 @@ export function BranchActions({
   category,
   layout,
 }: {
-  item: BranchItem;
+  item: GitChildResult;
   category: Category;
   layout?: "row" | "column";
 }) {
@@ -1182,7 +1170,7 @@ export function PullRequestActions({
   category,
   layout,
 }: {
-  item: PullRequestItem;
+  item: GitChildResult;
   category: Category;
   layout?: "row" | "column";
 }) {

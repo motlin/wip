@@ -319,6 +319,21 @@ export function getAllSnoozed(): SnoozedItem[] {
   return d.select().from(snoozed).where(eq(snoozed.systemTo, FAR_FUTURE)).all();
 }
 
+export function getAllSnoozedForDisplay() {
+  const d = getDb();
+  return d
+    .select({
+      sha: snoozed.sha,
+      project: snoozed.project,
+      shortSha: snoozed.shortSha,
+      subject: snoozed.subject,
+      until: snoozed.until,
+    })
+    .from(snoozed)
+    .where(eq(snoozed.systemTo, FAR_FUTURE))
+    .all();
+}
+
 export function clearExpiredSnoozes(): number {
   const d = getDb();
   const timestamp = now();

@@ -1,12 +1,15 @@
 import type {
   Category,
-  CommitItem,
-  BranchItem,
-  PullRequestItem,
+  GitChildResult,
   IssueResult,
   ProjectItemResult,
   TodoItem,
 } from "@wip/shared";
+import {
+  isGitChildPullRequest,
+  isGitChildBranch,
+  isGitChildCommit,
+} from "../lib/git-child-discriminators";
 import { CATEGORIES } from "../lib/category-actions";
 import { CommitCard } from "./commit-card";
 import { BranchCard } from "./branch-card";
@@ -16,9 +19,7 @@ import { ProjectBoardItemCard } from "./project-board-item-card";
 import { TodoCard } from "./todo-card";
 
 export interface ColumnItems {
-  commits?: CommitItem[];
-  branches?: BranchItem[];
-  pullRequests?: PullRequestItem[];
+  gitChildren?: GitChildResult[];
   issues?: IssueResult[];
   projectItems?: ProjectItemResult[];
   todos?: TodoItem[];
@@ -33,6 +34,10 @@ interface KanbanColumnProps {
 export function KanbanColumn({ category, items, count }: KanbanColumnProps) {
   const config = CATEGORIES[category];
 
+  const pullRequests = items.gitChildren?.filter(isGitChildPullRequest) ?? [];
+  const branches = items.gitChildren?.filter(isGitChildBranch) ?? [];
+  const commits = items.gitChildren?.filter(isGitChildCommit) ?? [];
+
   return (
     <div className={`flex min-w-0 flex-col rounded-xl ${config.columnBg} p-3`}>
       <div className="mb-3 flex items-center justify-between">
@@ -44,19 +49,19 @@ export function KanbanColumn({ category, items, count }: KanbanColumnProps) {
         </span>
       </div>
       <div className="flex flex-col gap-2 overflow-y-auto">
-        {items.pullRequests?.map((pr) => (
+        {pullRequests.map((pr) => (
           <PullRequestCard key={pr.sha} pr={pr} category={category} />
         ))}
-        {items.branches
-          ?.filter((b) => b.commitsAhead === 1)
+        {branches
+          .filter((b) => b.commitsAhead === 1)
           .map((b) => (
             <BranchCard key={b.sha} branch={b} category={category} />
           ))}
-        {items.commits?.map((c) => (
+        {commits.map((c) => (
           <CommitCard key={c.sha} commit={c} />
         ))}
-        {items.branches
-          ?.filter((b) => b.commitsAhead !== 1)
+        {branches
+          .filter((b) => b.commitsAhead !== 1)
           .map((b) => (
             <BranchCard key={b.sha} branch={b} category={category} />
           ))}

@@ -5,7 +5,7 @@ import {
   fetchAssignedIssues,
   fetchAllProjectItems,
   findIncompleteTodoTasks,
-  getAllSnoozed,
+  getAllSnoozedForDisplay,
   getBranchNames,
   getChildren,
   getChildCommits,
@@ -35,9 +35,7 @@ import {
 } from "@wip/shared";
 import type {
   ProjectInfo,
-  CommitItem,
-  BranchItem,
-  PullRequestItem,
+  GitChildResult,
   TodoItem as SharedTodoItem,
   IssueResult,
   ProjectItemResult,
@@ -66,13 +64,9 @@ import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type { ActionResult, Category, SnoozedChild, CommitItem, BranchItem, PullRequestItem };
+export type { ActionResult, Category, SnoozedChild, GitChildResult };
 
-export interface ProjectChildrenResult {
-  commits: CommitItem[];
-  branches: BranchItem[];
-  pullRequests: PullRequestItem[];
-}
+export type ProjectChildrenResult = GitChildResult[];
 
 let cachedProjects: ProjectInfo[] | null = null;
 let cachedProjectsTime = 0;
@@ -126,7 +120,7 @@ export const getProjectChildren = createServerFn({ method: "GET" })
       p = await resolveProject(data.project);
     } catch (error: unknown) {
       log.general.error({ project: data.project, error }, "Project resolution failed");
-      return { commits: [], branches: [], pullRequests: [] };
+      return [];
     }
 
     const prStatuses = await getPrStatuses(p.dir, p.name);
@@ -196,21 +190,7 @@ export const getProjectChildren = createServerFn({ method: "GET" })
       await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
     ).stdout.trim();
 
-    const commits: CommitItem[] = [];
-    const branches: BranchItem[] = [];
-    const pullRequests: PullRequestItem[] = [];
-
-    for (const child of allChildren) {
-      const base = {
-        project: p.name,
-        remote: p.remote,
-        sha: child.sha,
-        shortSha: child.shortSha,
-        subject: child.subject,
-        date: child.date,
-        skippable: child.skippable,
-      };
-
+    const results: GitChildResult[] = allChildren.map((child) => {
       // Read failure tail for failed tests
       let failureTail: string | undefined;
       if (child.testStatus === "failed") {
@@ -225,61 +205,44 @@ export const getProjectChildren = createServerFn({ method: "GET" })
       const ms = mergeStatusMap.get(child.sha);
       const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
 
-      if (child.branch && child.prUrl && child.prNumber != null && child.reviewStatus !== "no_pr") {
-        pullRequests.push({
-          ...base,
-          branch: child.branch,
-          suggestedBranch: defaultBranchPattern.test(child.branch) ? suggestedBranch : undefined,
-          pushedToRemote: true as const,
-          localAhead: child.localAhead,
-          needsRebase: child.needsRebase,
-          testStatus: child.testStatus,
-          failureTail,
-          commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
-          commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
-          rebaseable:
-            ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
-          prUrl: child.prUrl,
-          prNumber: child.prNumber,
-          reviewStatus: child.reviewStatus,
-          checkStatus: child.checkStatus,
-          failedChecks: child.failedChecks,
-        });
-      } else if (child.branch) {
-        branches.push({
-          ...base,
-          branch: child.branch,
-          suggestedBranch: defaultBranchPattern.test(child.branch) ? suggestedBranch : undefined,
-          pushedToRemote: child.pushedToRemote,
-          localAhead: child.localAhead,
-          needsRebase: child.needsRebase,
-          testStatus: child.testStatus,
-          failureTail,
-          blockReason:
-            p.dirty && child.sha === headSha
-              ? `Working tree is dirty — commit changes in ${p.name} before testing`
-              : undefined,
-          blockCommand:
-            p.dirty && child.sha === headSha
-              ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
-              : undefined,
-          commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
-          commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
-          rebaseable:
-            ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
-        });
-      } else {
-        commits.push({
-          ...base,
-          suggestedBranch,
-          testStatus: child.testStatus,
-          failureTail,
-          alreadyOnRemote: child.alreadyOnRemote,
-        });
-      }
-    }
+      return {
+        project: p.name,
+        remote: p.remote,
+        sha: child.sha,
+        shortSha: child.shortSha,
+        subject: child.subject,
+        date: child.date,
+        branch: child.branch,
+        testStatus: child.testStatus,
+        checkStatus: child.checkStatus,
+        skippable: child.skippable,
+        pushedToRemote: child.pushedToRemote,
+        localAhead: child.localAhead,
+        needsRebase: child.needsRebase,
+        reviewStatus: child.reviewStatus,
+        prUrl: child.prUrl,
+        prNumber: child.prNumber,
+        failedChecks: child.failedChecks,
+        commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
+        commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
+        rebaseable:
+          ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+        alreadyOnRemote: child.alreadyOnRemote,
+        failureTail,
+        suggestedBranch:
+          child.branch && !defaultBranchPattern.test(child.branch) ? undefined : suggestedBranch,
+        blockReason:
+          child.branch && p.dirty && child.sha === headSha
+            ? `Working tree is dirty — commit changes in ${p.name} before testing`
+            : undefined,
+        blockCommand:
+          child.branch && p.dirty && child.sha === headSha
+            ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
+            : undefined,
+      };
+    });
 
-    return { commits, branches, pullRequests };
+    return results;
   });
 
 export const getProjectTodos = createServerFn({ method: "GET" })
@@ -787,14 +750,7 @@ export const unsnoozeChildFn = createServerFn({ method: "POST" })
 export const getSnoozedList = createServerFn({ method: "GET" }).handler(
   async (): Promise<SnoozedChild[]> => {
     clearExpiredSnoozes();
-    const all = getAllSnoozed();
-    return all.map(({ sha, project, shortSha, subject, until }) => ({
-      sha,
-      project,
-      shortSha,
-      subject,
-      until,
-    }));
+    return getAllSnoozedForDisplay();
   },
 );
 
@@ -847,13 +803,11 @@ export const refreshChild = createServerFn({ method: "POST" })
     return { ok: true, message: `Refreshed ${data.project}` };
   });
 
-export type GitItemResult = CommitItem | BranchItem | PullRequestItem;
-
 export const getChildBySha = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) =>
     z.object({ project: z.string(), sha: z.string() }).parse(input),
   )
-  .handler(async ({ data }): Promise<GitItemResult | null> => {
+  .handler(async ({ data }): Promise<GitChildResult | null> => {
     let p: ProjectInfo;
     try {
       p = await resolveProject(data.project);
@@ -883,64 +837,61 @@ export const getChildBySha = createServerFn({ method: "GET" })
       ? getCachedMergeStatuses(p.name, upstreamSha).find((s) => s.sha === sha)
       : undefined;
 
-    const base = { project: p.name, remote: p.remote, sha, shortSha, subject, date, skippable };
-
     const branch = parseBranch(decorations ?? "");
 
-    if (!branch) {
-      return { ...base, testStatus };
-    }
-
-    const [prStatuses, remoteBranchInfo] = await Promise.all([
-      getPrStatuses(p.dir, p.name),
-      getRemoteBranchInfo(p.dir),
-    ]);
-    const prUrl = prStatuses.urls.get(branch);
-    const prNumber = prStatuses.prNumbers.get(branch);
-    const pushedToRemote = remoteBranchInfo.remoteBranches.has(branch);
-    const failedChecks = prStatuses.failedChecks.get(branch);
-
-    // Detect if local branch is ahead of remote tracking branch
+    let pushedToRemote = false;
     let localAhead: boolean | undefined;
-    if (pushedToRemote) {
-      const remoteRef = remoteBranchInfo.remoteBranchRefs.get(branch);
-      if (remoteRef) {
-        const remoteSha = await execa("git", ["-C", p.dir, "rev-parse", remoteRef], {
-          reject: false,
-        });
-        localAhead =
-          remoteSha.exitCode === 0 &&
-          remoteSha.stdout.trim() !== "" &&
-          remoteSha.stdout.trim() !== sha;
+    let prUrl: string | undefined;
+    let prNumber: number | undefined;
+    let reviewStatus: import("@wip/shared").ReviewStatus = "no_pr";
+    let checkStatus: import("@wip/shared").CheckStatus = "none";
+    let failedChecks: Array<{ name: string; url?: string }> | undefined;
+
+    if (branch) {
+      const [prStatuses, remoteBranchInfo] = await Promise.all([
+        getPrStatuses(p.dir, p.name),
+        getRemoteBranchInfo(p.dir),
+      ]);
+      prUrl = prStatuses.urls.get(branch);
+      prNumber = prStatuses.prNumbers.get(branch);
+      pushedToRemote = remoteBranchInfo.remoteBranches.has(branch);
+      failedChecks = prStatuses.failedChecks.get(branch);
+      reviewStatus = prStatuses.review.get(branch) ?? "no_pr";
+      checkStatus = prStatuses.checks.get(branch) ?? "none";
+
+      // Detect if local branch is ahead of remote tracking branch
+      if (pushedToRemote) {
+        const remoteRef = remoteBranchInfo.remoteBranchRefs.get(branch);
+        if (remoteRef) {
+          const remoteSha = await execa("git", ["-C", p.dir, "rev-parse", remoteRef], {
+            reject: false,
+          });
+          localAhead =
+            remoteSha.exitCode === 0 &&
+            remoteSha.stdout.trim() !== "" &&
+            remoteSha.stdout.trim() !== sha;
+        }
       }
     }
 
-    if (prUrl && prNumber != null) {
-      return {
-        ...base,
-        branch,
-        pushedToRemote: true as const,
-        localAhead,
-        needsRebase: ms ? ms.commitsBehind > 0 : false,
-        testStatus,
-        commitsBehind: ms?.commitsBehind,
-        commitsAhead: ms?.commitsAhead,
-        rebaseable: ms?.rebaseable ?? undefined,
-        prUrl,
-        prNumber,
-        reviewStatus: prStatuses.review.get(branch) ?? ("no_pr" as const),
-        checkStatus: prStatuses.checks.get(branch) ?? ("unknown" as const),
-        failedChecks,
-      };
-    }
-
     return {
-      ...base,
+      project: p.name,
+      remote: p.remote,
+      sha,
+      shortSha,
+      subject,
+      date,
       branch,
+      skippable,
+      testStatus,
+      checkStatus,
       pushedToRemote,
       localAhead,
       needsRebase: ms ? ms.commitsBehind > 0 : false,
-      testStatus,
+      reviewStatus,
+      prUrl,
+      prNumber,
+      failedChecks,
       commitsBehind: ms?.commitsBehind,
       commitsAhead: ms?.commitsAhead,
       rebaseable: ms?.rebaseable ?? undefined,

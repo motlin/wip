@@ -1,13 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import type { CommitItem, Category } from "@wip/shared";
+import type { GitChildResult, Category } from "@wip/shared";
 import { Diff, GitBranch, Loader2, Info } from "lucide-react";
 import { createBranch } from "../lib/server-fns";
 import { AnsiText } from "./ansi-text";
 import { CategoryBadge } from "./category-badge";
 
-export function CommitCard({ commit, category }: { commit: CommitItem; category?: Category }) {
+export function CommitCard({ commit, category }: { commit: GitChildResult; category?: Category }) {
   const queryClient = useQueryClient();
   const [branchName, setBranchName] = useState(commit.suggestedBranch ?? "");
   const [creating, setCreating] = useState(false);
@@ -26,24 +26,19 @@ export function CommitCard({ commit, category }: { commit: CommitItem; category?
           ["children", commit.project],
           (old) => {
             if (!old) return old;
-            const c = old.commits.find((x) => x.sha === commit.sha);
-            if (!c) return old;
-            return {
-              commits: old.commits.filter((x) => x.sha !== commit.sha),
-              branches: [
-                ...old.branches,
-                {
-                  ...c,
-                  branch: branchName.trim(),
-                  pushedToRemote: false,
-                  needsRebase: false,
-                  commitsBehind: 0,
-                  commitsAhead: 1,
-                  rebaseable: undefined,
-                },
-              ],
-              pullRequests: old.pullRequests,
-            };
+            return old.map((c) =>
+              c.sha === commit.sha
+                ? {
+                    ...c,
+                    branch: branchName.trim(),
+                    pushedToRemote: false,
+                    needsRebase: false,
+                    commitsBehind: 0,
+                    commitsAhead: 1,
+                    rebaseable: undefined,
+                  }
+                : c,
+            );
           },
         );
       } else {

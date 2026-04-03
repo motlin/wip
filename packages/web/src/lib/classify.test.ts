@@ -1,13 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import type {
-  BranchItem,
-  CommitItem,
-  IssueResult,
-  ProjectInfo,
-  PullRequestItem,
-  TodoItem,
-} from "@wip/shared";
+import type { GitChildResult, IssueResult, ProjectInfo, TodoItem } from "@wip/shared";
 import { STATE_MACHINE, CategorySchema } from "@wip/shared";
 
 import {
@@ -18,7 +11,7 @@ import {
   classifyTodo,
 } from "./classify";
 
-function makePR(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
+function makePR(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "test",
     remote: "origin",
@@ -54,7 +47,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
   };
 }
 
-function makeBranch(overrides: Partial<BranchItem> = {}): BranchItem {
+function makeBranch(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "test",
     remote: "origin",
@@ -66,11 +59,13 @@ function makeBranch(overrides: Partial<BranchItem> = {}): BranchItem {
     skippable: false,
     pushedToRemote: false,
     testStatus: "unknown",
+    reviewStatus: "no_pr",
+    checkStatus: "none",
     ...overrides,
   };
 }
 
-function makeCommit(overrides: Partial<CommitItem> = {}): CommitItem {
+function makeCommit(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "test",
     remote: "origin",
@@ -80,6 +75,9 @@ function makeCommit(overrides: Partial<CommitItem> = {}): CommitItem {
     date: "2026-01-01",
     skippable: false,
     testStatus: "unknown",
+    pushedToRemote: false,
+    reviewStatus: "no_pr",
+    checkStatus: "none",
     ...overrides,
   };
 }

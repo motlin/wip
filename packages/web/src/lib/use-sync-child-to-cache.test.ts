@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vite-plus/test";
 import { QueryClient } from "@tanstack/react-query";
 import { syncChildToCache } from "./use-sync-child-to-cache";
-import type { CommitItem, BranchItem, PullRequestItem } from "@wip/shared";
+import type { GitChildResult } from "@wip/shared";
 import type { ProjectChildrenResult } from "./server-fns";
 
-function makeCommit(overrides: Partial<CommitItem> = {}): CommitItem {
+function makeCommit(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "myproject",
     remote: "org/repo",
@@ -14,11 +14,14 @@ function makeCommit(overrides: Partial<CommitItem> = {}): CommitItem {
     date: "2026-01-01",
     skippable: false,
     testStatus: "unknown",
+    pushedToRemote: false,
+    reviewStatus: "no_pr",
+    checkStatus: "none",
     ...overrides,
   };
 }
 
-function makeBranch(overrides: Partial<BranchItem> = {}): BranchItem {
+function makeBranch(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "myproject",
     remote: "org/repo",
@@ -33,11 +36,13 @@ function makeBranch(overrides: Partial<BranchItem> = {}): BranchItem {
     testStatus: "unknown",
     commitsBehind: 0,
     commitsAhead: 1,
+    reviewStatus: "no_pr",
+    checkStatus: "none",
     ...overrides,
   };
 }
 
-function makePullRequest(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
+function makePullRequest(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "myproject",
     remote: "org/repo",
@@ -47,7 +52,7 @@ function makePullRequest(overrides: Partial<PullRequestItem> = {}): PullRequestI
     date: "2026-01-01",
     branch: "feature/y",
     skippable: false,
-    pushedToRemote: true as const,
+    pushedToRemote: true,
     needsRebase: false,
     testStatus: "unknown",
     commitsBehind: 0,
@@ -60,52 +65,47 @@ function makePullRequest(overrides: Partial<PullRequestItem> = {}): PullRequestI
   };
 }
 
-function makeChildren(overrides: Partial<ProjectChildrenResult> = {}): ProjectChildrenResult {
-  return {
-    commits: [],
-    branches: [],
-    pullRequests: [],
-    ...overrides,
-  };
+function makeChildren(items: GitChildResult[] = []): ProjectChildrenResult {
+  return items;
 }
 
 describe("syncChildToCache", () => {
   it("updates a commit in the children cache when testStatus changes", () => {
     const qc = new QueryClient();
     const oldCommit = makeCommit({ testStatus: "unknown" });
-    qc.setQueryData(["children", "myproject"], makeChildren({ commits: [oldCommit] }));
+    qc.setQueryData(["children", "myproject"], makeChildren([oldCommit]));
 
     const freshCommit = makeCommit({ testStatus: "passed" });
     syncChildToCache(qc, "myproject", freshCommit);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.commits[0].testStatus).toBe("passed");
+    expect(cached?.[0].testStatus).toBe("passed");
   });
 
   it("updates a branch in the children cache", () => {
     const qc = new QueryClient();
     const oldBranch = makeBranch({ testStatus: "unknown", needsRebase: false });
-    qc.setQueryData(["children", "myproject"], makeChildren({ branches: [oldBranch] }));
+    qc.setQueryData(["children", "myproject"], makeChildren([oldBranch]));
 
     const freshBranch = makeBranch({ testStatus: "passed", needsRebase: true });
     syncChildToCache(qc, "myproject", freshBranch);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.branches[0].testStatus).toBe("passed");
-    expect(cached?.branches[0].needsRebase).toBe(true);
+    expect(cached?.[0].testStatus).toBe("passed");
+    expect(cached?.[0].needsRebase).toBe(true);
   });
 
   it("updates a pull request in the children cache", () => {
     const qc = new QueryClient();
     const oldPr = makePullRequest({ checkStatus: "running" });
-    qc.setQueryData(["children", "myproject"], makeChildren({ pullRequests: [oldPr] }));
+    qc.setQueryData(["children", "myproject"], makeChildren([oldPr]));
 
     const freshPr = makePullRequest({ checkStatus: "passed", reviewStatus: "approved" });
     syncChildToCache(qc, "myproject", freshPr);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.pullRequests[0].checkStatus).toBe("passed");
-    expect(cached?.pullRequests[0].reviewStatus).toBe("approved");
+    expect(cached?.[0].checkStatus).toBe("passed");
+    expect(cached?.[0].reviewStatus).toBe("approved");
   });
 
   it("does nothing when children cache does not exist", () => {
@@ -122,12 +122,12 @@ describe("syncChildToCache", () => {
   it("does nothing when child is null", () => {
     const qc = new QueryClient();
     const oldCommit = makeCommit();
-    qc.setQueryData(["children", "myproject"], makeChildren({ commits: [oldCommit] }));
+    qc.setQueryData(["children", "myproject"], makeChildren([oldCommit]));
 
     syncChildToCache(qc, "myproject", null);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.commits[0]).toEqual(oldCommit);
+    expect(cached?.[0]).toEqual(oldCommit);
   });
 
   it("preserves other items in the cache when updating one", () => {
@@ -135,49 +135,40 @@ describe("syncChildToCache", () => {
     const commit1 = makeCommit({ sha: "aaa111", testStatus: "unknown" });
     const commit2 = makeCommit({ sha: "bbb222", testStatus: "failed" });
     const branch1 = makeBranch({ sha: "ccc333" });
-    qc.setQueryData(
-      ["children", "myproject"],
-      makeChildren({
-        commits: [commit1, commit2],
-        branches: [branch1],
-      }),
-    );
+    qc.setQueryData(["children", "myproject"], makeChildren([commit1, commit2, branch1]));
 
     const freshCommit = makeCommit({ sha: "aaa111", testStatus: "passed" });
     syncChildToCache(qc, "myproject", freshCommit);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.commits).toHaveLength(2);
-    expect(cached?.commits[0].testStatus).toBe("passed");
-    expect(cached?.commits[1].testStatus).toBe("failed");
-    expect(cached?.branches).toHaveLength(1);
+    expect(cached).toHaveLength(3);
+    expect(cached?.[0].testStatus).toBe("passed");
+    expect(cached?.[1].testStatus).toBe("failed");
   });
 
   it("promotes a commit to a branch when the fresh item has a branch field", () => {
     const qc = new QueryClient();
     const oldCommit = makeCommit({ sha: "aaa111" });
-    qc.setQueryData(["children", "myproject"], makeChildren({ commits: [oldCommit] }));
+    qc.setQueryData(["children", "myproject"], makeChildren([oldCommit]));
 
     const freshBranch = makeBranch({ sha: "aaa111", branch: "feature/new" });
     syncChildToCache(qc, "myproject", freshBranch);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.commits).toHaveLength(0);
-    expect(cached?.branches).toHaveLength(1);
-    expect(cached?.branches[0].branch).toBe("feature/new");
+    expect(cached).toHaveLength(1);
+    expect(cached?.[0].branch).toBe("feature/new");
   });
 
   it("promotes a branch to a pull request when the fresh item has a prUrl", () => {
     const qc = new QueryClient();
     const oldBranch = makeBranch({ sha: "bbb222" });
-    qc.setQueryData(["children", "myproject"], makeChildren({ branches: [oldBranch] }));
+    qc.setQueryData(["children", "myproject"], makeChildren([oldBranch]));
 
     const freshPr = makePullRequest({ sha: "bbb222" });
     syncChildToCache(qc, "myproject", freshPr);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.branches).toHaveLength(0);
-    expect(cached?.pullRequests).toHaveLength(1);
-    expect(cached?.pullRequests[0].prUrl).toBe("https://github.com/org/repo/pull/1");
+    expect(cached).toHaveLength(1);
+    expect(cached?.[0].prUrl).toBe("https://github.com/org/repo/pull/1");
   });
 });

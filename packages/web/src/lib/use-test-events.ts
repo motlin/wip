@@ -28,11 +28,7 @@ function updateTestStatus(
   const testStatus = status as "passed" | "failed" | "unknown";
   queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
     if (!old) return old;
-    return {
-      commits: old.commits.map((c) => (c.sha === sha ? { ...c, testStatus } : c)),
-      branches: old.branches.map((b) => (b.sha === sha ? { ...b, testStatus } : b)),
-      pullRequests: old.pullRequests,
-    };
+    return old.map((c) => (c.sha === sha ? { ...c, testStatus } : c));
   });
   queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
     if (!old) return old;

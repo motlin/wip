@@ -295,74 +295,38 @@ export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 
 // --- Work item types (each represents a distinct kind of work) ---
 
-const FailedCheckSchema = z.object({ name: z.string(), url: z.string().optional() });
-
-// A bare commit with no branch (detached HEAD situations)
-export const CommitItemSchema = z.object({
+// Flat git child result: all fields from ChildCommit (minus `behind`) plus server-computed fields.
+// Client discriminates by checking child.branch and child.prUrl.
+export const GitChildResultSchema = z.object({
   project: z.string(),
   remote: z.string(),
   sha: shaSchema,
   shortSha: shortShaSchema,
   subject: z.string(),
   date: dateSchema,
-  skippable: z.boolean(),
-  suggestedBranch: branchSchema.optional(),
+  branch: branchSchema.optional(),
   testStatus: TestStatusSchema,
-  failureTail: z.string().optional(),
-  alreadyOnRemote: z.object({ branch: branchSchema }).optional(),
-});
-export type CommitItem = z.infer<typeof CommitItemSchema>;
-
-// A named branch pointing at a commit (may be local-only or pushed to remote)
-export const BranchItemSchema = z.object({
-  project: z.string(),
-  remote: z.string(),
-  sha: shaSchema,
-  shortSha: shortShaSchema,
-  subject: z.string(),
-  date: dateSchema,
-  branch: branchSchema,
-  suggestedBranch: branchSchema.optional(),
+  checkStatus: CheckStatusSchema,
   skippable: z.boolean(),
   pushedToRemote: z.boolean(),
   localAhead: z.boolean().optional(),
   needsRebase: z.boolean().optional(),
-  testStatus: TestStatusSchema,
+  reviewStatus: ReviewStatusSchema,
+  prUrl: z.string().url().optional(),
+  prNumber: z.number().optional(),
+  failedChecks: z
+    .array(z.object({ name: z.string(), url: z.string().url().optional() }))
+    .optional(),
+  commitsBehind: z.number().optional(),
+  commitsAhead: z.number().optional(),
+  rebaseable: z.boolean().optional(),
+  alreadyOnRemote: z.object({ branch: branchSchema }).optional(),
   failureTail: z.string().optional(),
+  suggestedBranch: branchSchema.optional(),
   blockReason: z.string().optional(),
   blockCommand: z.string().optional(),
-  commitsBehind: z.number().optional(),
-  commitsAhead: z.number().optional(),
-  rebaseable: z.boolean().optional(),
 });
-export type BranchItem = z.infer<typeof BranchItemSchema>;
-
-// A branch with an open pull request on GitHub
-export const PullRequestItemSchema = z.object({
-  project: z.string(),
-  remote: z.string(),
-  sha: shaSchema,
-  shortSha: shortShaSchema,
-  subject: z.string(),
-  date: dateSchema,
-  branch: branchSchema,
-  suggestedBranch: branchSchema.optional(),
-  skippable: z.boolean(),
-  pushedToRemote: z.literal(true),
-  localAhead: z.boolean().optional(),
-  needsRebase: z.boolean().optional(),
-  testStatus: TestStatusSchema,
-  failureTail: z.string().optional(),
-  commitsBehind: z.number().optional(),
-  commitsAhead: z.number().optional(),
-  rebaseable: z.boolean().optional(),
-  prUrl: z.string().url(),
-  prNumber: z.number(),
-  reviewStatus: ReviewStatusSchema,
-  checkStatus: CheckStatusSchema,
-  failedChecks: z.array(FailedCheckSchema).optional(),
-});
-export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
+export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 
 // A GitHub issue assigned to me
 export const PlanStatusSchema = z.enum(["none", "unreviewed", "approved"]);
@@ -387,9 +351,6 @@ export const TodoItemSchema = z.object({
   planStatus: PlanStatusSchema.optional(),
 });
 export type TodoItem = z.infer<typeof TodoItemSchema>;
-
-// Git item union (commit, branch, or PR — used for classification)
-export type GitItem = CommitItem | BranchItem | PullRequestItem;
 
 export const ActionResultSchema = z.object({
   ok: z.boolean(),

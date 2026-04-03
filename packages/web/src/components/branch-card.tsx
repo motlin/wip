@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useRef, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { applyTransition, type BranchItem, type Category } from "@wip/shared";
+import { applyTransition, type GitChildResult, type Category } from "@wip/shared";
 import { cancelTestFn } from "../lib/server-fns";
 import { useTestJob } from "../lib/test-events-context";
 import { useMergeStatus } from "../lib/merge-events-context";
@@ -35,7 +35,7 @@ function relativeTime(dateStr: string): string {
   return `${Math.floor(diffDays / 365)} years ago`;
 }
 
-export function BranchCard({ branch, category }: { branch: BranchItem; category: Category }) {
+export function BranchCard({ branch, category }: { branch: GitChildResult; category: Category }) {
   const queryClient = useQueryClient();
   const testJob = useTestJob(branch.sha, branch.project);
   const prevTestStatus = useRef(testJob?.status);
@@ -52,10 +52,7 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
           ["children", branch.project],
           (old) => {
             if (!old) return old;
-            return {
-              ...old,
-              branches: old.branches.map((b) => (b.sha === branch.sha ? { ...b, testStatus } : b)),
-            };
+            return old.map((c) => (c.sha === branch.sha ? { ...c, testStatus } : c));
           },
         );
       }

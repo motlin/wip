@@ -33,7 +33,7 @@ const SKIPPABLE_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
 
 export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
   const cached = getCachedMiseEnv(dir);
-  if (cached) return MiseEnvSchema.parse(JSON.parse(cached));
+  if (cached) return MiseEnvSchema.parse(cached);
 
   const start = performance.now();
   const result = await execa("mise", ["env", "-C", dir, "--json"], { reject: false });
@@ -46,7 +46,7 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
   if (result.exitCode !== 0) return {};
 
   const env = MiseEnvSchema.parse(JSON.parse(result.stdout));
-  cacheMiseEnv(dir, result.stdout);
+  cacheMiseEnv(dir, env);
   return env;
 }
 

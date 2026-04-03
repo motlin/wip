@@ -683,25 +683,27 @@ export function invalidatePrCache(project: string): void {
 
 // --- Mise env cache ---
 
-export function getCachedMiseEnv(dir: string): string | null {
+export function getCachedMiseEnv(dir: string): Record<string, string> | null {
   const d = getDb();
   const row = d
     .select()
     .from(miseEnvCache)
     .where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
     .get();
-  return row?.env ?? null;
+  if (!row) return null;
+  return JSON.parse(row.env) as Record<string, string>;
 }
 
-export function cacheMiseEnv(dir: string, env: string): void {
+export function cacheMiseEnv(dir: string, env: Record<string, string>): void {
   const d = getDb();
   const timestamp = now();
+  const serialized = JSON.stringify(env);
   d.transaction((tx) => {
     tx.update(miseEnvCache)
       .set({ systemTo: timestamp })
       .where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
       .run();
-    tx.insert(miseEnvCache).values({ dir, env, systemFrom: timestamp }).run();
+    tx.insert(miseEnvCache).values({ dir, env: serialized, systemFrom: timestamp }).run();
   });
 }
 

@@ -33,4 +33,5 @@ const baseLogger = createLogger();
 export const log = {
   subprocess: baseLogger.child({ category: "subprocess" }),
   progress: baseLogger.child({ category: "progress" }),
+  general: baseLogger.child({ category: "general" }),
 };

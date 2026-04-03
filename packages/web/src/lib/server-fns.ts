@@ -30,24 +30,17 @@ import {
   cacheMergeStatus,
   invalidateMergeStatus,
   getNeedsRebaseBranches,
-  STATE_MACHINE,
-  getTransitionsFrom,
   getCachedProjectList,
   setCachedProjectList,
 } from "@wip/shared";
 import type {
-  ChildCommit,
-  GitHubIssue,
-  GitHubProjectItem,
   ProjectInfo,
-  TodoTask,
   CommitItem,
   BranchItem,
   PullRequestItem,
   TodoItem as SharedTodoItem,
   IssueItem,
   ProjectBoardItem,
-  Transition,
 } from "@wip/shared";
 import {
   type ActionResult,
@@ -72,7 +65,6 @@ import {
 import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { classifyCommit, classifyBranch, classifyPullRequest } from "./classify.js";
 
 export type { ActionResult, Category, SnoozedChild, CommitItem, BranchItem, PullRequestItem };
 
@@ -126,19 +118,14 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   return cachedProjects!;
 });
 
-// Helper: validate that a transition is legal from the current state
-function canTransition(currentState: Category, requestedTransition: Transition): boolean {
-  const transitions = getTransitionsFrom(currentState);
-  return transitions.some((t) => t.transition === requestedTransition);
-}
-
 export const getProjectChildren = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
   .handler(async ({ data }): Promise<ProjectChildrenResult> => {
     let p: ProjectInfo;
     try {
       p = await resolveProject(data.project);
-    } catch {
+    } catch (error: unknown) {
+      log.general.error({ project: data.project, error }, "Project resolution failed");
       return { commits: [], branches: [], pullRequests: [] };
     }
 
@@ -294,7 +281,8 @@ export const getProjectTodos = createServerFn({ method: "GET" })
     let p: ProjectInfo;
     try {
       p = await resolveProject(data.project);
-    } catch {
+    } catch (error: unknown) {
+      log.general.error({ project: data.project, error }, "Project resolution failed");
       return [];
     }
 
@@ -577,7 +565,8 @@ export const getProjectDir = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<string | null> => {
     try {
       return (await resolveProject(data.project)).dir;
-    } catch {
+    } catch (error: unknown) {
+      log.general.error({ project: data.project, error }, "Project resolution failed");
       return null;
     }
   });
@@ -863,7 +852,8 @@ export const getChildBySha = createServerFn({ method: "GET" })
     let p: ProjectInfo;
     try {
       p = await resolveProject(data.project);
-    } catch {
+    } catch (error: unknown) {
+      log.general.error({ project: data.project, error }, "Project resolution failed");
       return null;
     }
 

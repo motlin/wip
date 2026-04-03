@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import type { CheckStatus, ProjectInfo, ReviewStatus } from "./schemas.js";
 import * as schema from "./schema.js";
+import { log } from "../services/logger.js";
 import {
   branchNames,
   FAR_FUTURE,
@@ -46,7 +47,6 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   // Migrate from old schema if needed
   const tableInfo = sqlite.prepare("PRAGMA table_info('snoozed')").all() as Array<{ name: string }>;
   const hasOldSchema =
-    tableInfo.length > 0 &&
     tableInfo.some((c) => c.name === "created_at") &&
     !tableInfo.some((c) => c.name === "system_from");
   if (hasOldSchema) {
@@ -86,7 +86,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
     name: string;
     notnull: number;
   }>;
-  if (testCols.length > 0 && testCols.some((c) => c.name === "exit_code" && c.notnull === 0)) {
+  if (testCols.some((c) => c.name === "exit_code" && c.notnull === 0)) {
     sqlite.exec("DROP TABLE test_results");
   }
 
@@ -126,7 +126,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
     "github_project_items_cache",
   ]) {
     const cols = sqlite.prepare(`PRAGMA table_info('${table}')`).all() as Array<{ name: string }>;
-    if (cols.length > 0 && cols.some((c) => c.name === "cached_at")) {
+    if (cols.some((c) => c.name === "cached_at")) {
       sqlite.exec(`DROP TABLE ${table}`);
     }
   }
@@ -245,7 +245,10 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   // Migrate: add pr_number column if missing on existing databases
   try {
     db.run(sql`ALTER TABLE pr_status_cache ADD COLUMN pr_number INTEGER`);
-  } catch {}
+  } catch (error: unknown) {
+    // Column already exists — expected on subsequent runs
+    log.general.debug({ error }, "Failed to add pr_number column to pr_status_cache");
+  }
 
   return db;
 }

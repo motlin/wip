@@ -19,3 +19,11 @@ repos:
       - id: detect-private-key
       - id: mixed-line-ending
         args: ["--fix=lf"]
+
+  - repo: local
+    hooks:
+      - id: vp-staged
+        name: vp staged
+        entry: vp staged
+        language: system
+        types: [file]

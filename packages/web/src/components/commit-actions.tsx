@@ -25,7 +25,6 @@ import {
   unsnoozeChildFn,
   cancelTestFn,
   refreshChild,
-  createBranch,
   deleteBranch,
   forcePush,
   renameBranch,
@@ -36,6 +35,7 @@ import {
   commitWorkingTree,
   getProjectChildren,
   mergePr,
+  createBranch,
 } from "../lib/server-fns";
 import { snoozedQueryOptions } from "../lib/queries";
 import { useMergeStatus } from "../lib/merge-events-context";

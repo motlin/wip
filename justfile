@@ -3,30 +3,22 @@ set allow-duplicate-recipes
 
 wip := "./packages/cli/bin/run.js"
 
+ci := env("CI", "")
+
 # List available recipes
 [no-exit-message]
 [group('default')]
 default:
     @just --list --unsorted
 
-# Install pnpm dependencies
+# Install dependencies
 [group('setup')]
 install:
-    pnpm install
-
-# Install pnpm dependencies (CI, frozen lockfile)
-[group('setup')]
-install-ci:
-    pnpm install --frozen-lockfile
+    vp install
 
 # Build all packages
 [group('build')]
 build: install
-    pnpm run build
-
-# Build all packages (CI)
-[group('build')]
-build-ci: install-ci
     pnpm run build
 
 # Build the shared package only
@@ -34,19 +26,24 @@ build-ci: install-ci
 build-shared: install
     pnpm --filter @wip/shared build
 
-# Build the shared package only (CI)
+# Run linter
 [group('build')]
-build-shared-ci: install-ci
-    pnpm --filter @wip/shared build
+lint: install
+    vp lint {{ if ci != "" { "--format github" } else { "--fix" } }}
+
+# Run formatter
+[group('build')]
+format: install
+    vp fmt {{ if ci != "" { "--check" } else { "" } }}
+
+# Run checks (format + lint + typecheck)
+[group('build')]
+check: install
+    vp check {{ if ci != "" { "" } else { "--fix" } }}
 
 # Typecheck all packages
 [group('build')]
 typecheck: install
-    pnpm run typecheck
-
-# Typecheck all packages (CI, builds first to generate routeTree.gen.ts)
-[group('build')]
-typecheck-ci: build-ci
     pnpm run typecheck
 
 # Run tests
@@ -54,14 +51,9 @@ typecheck-ci: build-ci
 test: build
     pnpm -r run test
 
-# Run tests (CI)
-[group('test')]
-test-ci: build-ci
-    pnpm -r run test
-
 # Run all pre-commit checks
 [group('build')]
-precommit: build typecheck test
+precommit: check build typecheck test
     @echo "All pre-commit checks passed!"
 
 # Start web dashboard dev server

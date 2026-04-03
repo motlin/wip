@@ -1,3 +1,4 @@
+import "@wip/shared/services/telemetry.js";
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
 export default createServerEntry({

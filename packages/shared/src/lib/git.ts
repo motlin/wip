@@ -1,9 +1,9 @@
-import { execa } from "execa";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 
 import { log } from "../services/logger.js";
+import { tracedExeca } from "../services/traced-execa.js";
 import { nameBranch } from "./branch-namer.js";
 import {
   cachePrStatuses,
@@ -36,7 +36,7 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
   if (cached) return MiseEnvSchema.parse(cached);
 
   const start = performance.now();
-  const result = await execa("mise", ["env", "-C", dir, "--json"], { reject: false });
+  const result = await tracedExeca("mise", ["env", "-C", dir, "--json"], { reject: false });
   const duration = Math.round(performance.now() - start);
   log.subprocess.debug(
     { cmd: "mise", args: ["env", "-C", dir, "--json"], duration },
@@ -68,7 +68,7 @@ function parseEnvrc(dir: string): { upstreamRemote: string; upstreamBranch: stri
 
 async function git(dir: string, ...args: string[]): Promise<string> {
   const start = performance.now();
-  const result = await execa("git", ["-C", dir, ...args], { reject: false });
+  const result = await tracedExeca("git", ["-C", dir, ...args], { reject: false });
   const duration = Math.round(performance.now() - start);
   log.subprocess.debug(
     { cmd: "git", args: ["-C", dir, ...args], duration },
@@ -84,9 +84,11 @@ export function isSkippable(message: string): boolean {
 
 async function getPatchId(dir: string, sha: string): Promise<string> {
   const start = performance.now();
-  const formatPatch = await execa("git", ["-C", dir, "diff-tree", "-p", sha], { reject: false });
+  const formatPatch = await tracedExeca("git", ["-C", dir, "diff-tree", "-p", sha], {
+    reject: false,
+  });
   if (formatPatch.exitCode !== 0 || !formatPatch.stdout) return "";
-  const patchId = await execa("git", ["-C", dir, "patch-id", "--stable"], {
+  const patchId = await tracedExeca("git", ["-C", dir, "patch-id", "--stable"], {
     input: formatPatch.stdout,
     reject: false,
   });
@@ -133,7 +135,9 @@ async function findRemoteBranchByPatchId(
 
 export async function isDirty(dir: string): Promise<boolean> {
   const diffStart = performance.now();
-  const diffResult = await execa("git", ["-C", dir, "diff", "--quiet", "HEAD"], { reject: false });
+  const diffResult = await tracedExeca("git", ["-C", dir, "diff", "--quiet", "HEAD"], {
+    reject: false,
+  });
   const diffDuration = Math.round(performance.now() - diffStart);
   log.subprocess.debug(
     { cmd: "git", args: ["-C", dir, "diff", "--quiet", "HEAD"], duration: diffDuration },
@@ -147,7 +151,9 @@ export async function isDirty(dir: string): Promise<boolean> {
 
 export async function isDetachedHead(dir: string): Promise<boolean> {
   const start = performance.now();
-  const result = await execa("git", ["-C", dir, "symbolic-ref", "-q", "HEAD"], { reject: false });
+  const result = await tracedExeca("git", ["-C", dir, "symbolic-ref", "-q", "HEAD"], {
+    reject: false,
+  });
   const duration = Math.round(performance.now() - start);
   log.subprocess.debug(
     { cmd: "git", args: ["-C", dir, "symbolic-ref", "-q", "HEAD"], duration },
@@ -158,7 +164,9 @@ export async function isDetachedHead(dir: string): Promise<boolean> {
 
 export async function hasUpstreamRef(dir: string, ref: string): Promise<boolean> {
   const start = performance.now();
-  const result = await execa("git", ["-C", dir, "rev-parse", "--verify", ref], { reject: false });
+  const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", ref], {
+    reject: false,
+  });
   const duration = Math.round(performance.now() - start);
   log.subprocess.debug(
     { cmd: "git", args: ["-C", dir, "rev-parse", "--verify", ref], duration },
@@ -169,7 +177,7 @@ export async function hasUpstreamRef(dir: string, ref: string): Promise<boolean>
 
 export async function hasTestConfigured(dir: string): Promise<boolean> {
   const start = performance.now();
-  const result = await execa("git", ["-C", dir, "config", "--get-regexp", "^test\\."], {
+  const result = await tracedExeca("git", ["-C", dir, "config", "--get-regexp", "^test\\."], {
     reject: false,
   });
   const duration = Math.round(performance.now() - start);
@@ -221,7 +229,7 @@ export async function getNeedsRebaseBranches(
   const format = "%H%x00%h%x00%s%x00%B%x00%ai";
 
   for (const branch of nonMainBranches) {
-    const logResult = await execa(
+    const logResult = await tracedExeca(
       "git",
       ["-C", dir, "log", "-1", `--format=${format}`, `refs/heads/${branch}`],
       {
@@ -479,7 +487,7 @@ query($owner: String!, $name: String!) {
 async function getGhLogin(): Promise<string> {
   const cached = getCachedGhLogin();
   if (cached) return cached;
-  const result = await execa("gh", ["api", "user", "--jq", ".login"], { reject: false });
+  const result = await tracedExeca("gh", ["api", "user", "--jq", ".login"], { reject: false });
   if (result.exitCode === 0 && result.stdout.trim()) {
     const login = result.stdout.trim();
     cacheGhLogin(login);
@@ -577,7 +585,7 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
   const ghLogin = await getGhLogin();
 
   const start = performance.now();
-  const result = await execa(
+  const result = await tracedExeca(
     "gh",
     [
       "api",
@@ -687,7 +695,7 @@ export async function fetchUpstreamRef(
   const branch = parts.slice(1).join("/");
   const env = await getMiseEnv(dir);
 
-  await execa("git", ["-C", dir, "fetch", remote, branch], { reject: false, env });
+  await tracedExeca("git", ["-C", dir, "fetch", remote, branch], { reject: false, env });
 
   const result = await git(dir, "rev-parse", upstreamRef);
   const newSha = result.trim();
@@ -712,7 +720,7 @@ export async function computeMergeStatus(
 
   let rebaseable: boolean | null = null;
   if (commitsBehind > 0) {
-    const mergeTree = await execa(
+    const mergeTree = await tracedExeca(
       "git",
       ["-C", dir, "merge-tree", "--quiet", "--write-tree", upstreamSha, sha],
       { reject: false },
@@ -744,7 +752,7 @@ export async function getChildCommits(
   const start = performance.now();
   const format = "%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x00%ae%x1e";
   const [logResult, remoteBranchOutput, userEmail] = await Promise.all([
-    execa(
+    tracedExeca(
       "git",
       [
         "-C",
@@ -873,7 +881,7 @@ export async function createBranchForChild(
 
   const cached = getBranchName(child.sha, project);
   if (cached) {
-    await execa("git", ["-C", dir, "branch", cached, child.sha], { reject: false });
+    await tracedExeca("git", ["-C", dir, "branch", cached, child.sha], { reject: false });
     return cached;
   }
 
@@ -883,7 +891,7 @@ export async function createBranchForChild(
   }
 
   setBranchName(child.sha, project, branchName);
-  await execa("git", ["-C", dir, "branch", branchName, child.sha], { reject: false });
+  await tracedExeca("git", ["-C", dir, "branch", branchName, child.sha], { reject: false });
   return branchName;
 }
 
@@ -903,7 +911,7 @@ export async function testBranch(
   testArgs.push(`${upstreamRef}..${branch}`);
 
   const start = performance.now();
-  const result = await execa("git", ["-C", dir, ...testArgs], { reject: false, env });
+  const result = await tracedExeca("git", ["-C", dir, ...testArgs], { reject: false, env });
   const duration = Math.round(performance.now() - start);
   log.subprocess.debug(
     { cmd: "git", args: ["-C", dir, ...testArgs], duration },
@@ -915,19 +923,23 @@ export async function testBranch(
 }
 
 export async function hasLocalModifications(dir: string): Promise<boolean> {
-  const diffResult = await execa("git", ["-C", dir, "diff", "--ignore-submodules", "--quiet"], {
-    reject: false,
-  });
+  const diffResult = await tracedExeca(
+    "git",
+    ["-C", dir, "diff", "--ignore-submodules", "--quiet"],
+    {
+      reject: false,
+    },
+  );
   if (diffResult.exitCode !== 0) return true;
 
-  const stagedResult = await execa(
+  const stagedResult = await tracedExeca(
     "git",
     ["-C", dir, "diff", "--ignore-submodules", "--staged", "--quiet"],
     { reject: false },
   );
   if (stagedResult.exitCode !== 0) return true;
 
-  const untrackedResult = await execa(
+  const untrackedResult = await tracedExeca(
     "git",
     ["-C", dir, "status", "--porcelain", "--ignore-submodules"],
     { reject: false },
@@ -945,15 +957,15 @@ export async function testFix(
   opts?: { force?: boolean },
 ): Promise<{ ok: boolean; message: string }> {
   // 1. Stage modified tracked files
-  await execa("git", ["-C", dir, "add", "--update"], { reject: false });
+  await tracedExeca("git", ["-C", dir, "add", "--update"], { reject: false });
 
   // 2. Run pre-commit hooks on staged files (allow failure — hooks may auto-format)
-  const cachedFiles = await execa("git", ["-C", dir, "diff", "--cached", "--name-only"], {
+  const cachedFiles = await tracedExeca("git", ["-C", dir, "diff", "--cached", "--name-only"], {
     reject: false,
   });
   if (cachedFiles.stdout.trim()) {
     const files = cachedFiles.stdout.trim().split("\n").join(" ");
-    await execa("uv", ["tool", "run", "pre-commit", "run", "--files", ...files.split(" ")], {
+    await tracedExeca("uv", ["tool", "run", "pre-commit", "run", "--files", ...files.split(" ")], {
       cwd: dir,
       reject: false,
       env,
@@ -961,10 +973,10 @@ export async function testFix(
   }
 
   // 3. Re-stage after pre-commit modifications
-  await execa("git", ["-C", dir, "add", "--update"], { reject: false });
+  await tracedExeca("git", ["-C", dir, "add", "--update"], { reject: false });
 
   // 4. Create fixup commit
-  const commitResult = await execa(
+  const commitResult = await tracedExeca(
     "git",
     ["-C", dir, "commit", "--quiet", "--fixup", "HEAD", "--no-verify"],
     { reject: false },
@@ -979,7 +991,7 @@ export async function testFix(
   }
 
   // 6. Rebase onto HEAD to include fixup, then checkout branch
-  const rebaseOnto = await execa(
+  const rebaseOnto = await tracedExeca(
     "git",
     ["-C", dir, "rebase", "--quiet", "--onto", "HEAD", "HEAD^", branch],
     { reject: false },
@@ -988,10 +1000,10 @@ export async function testFix(
     return { ok: false, message: `rebase --onto failed: ${rebaseOnto.stderr}` };
   }
 
-  await execa("git", ["-C", dir, "checkout", "--quiet", branch], { reject: false });
+  await tracedExeca("git", ["-C", dir, "checkout", "--quiet", branch], { reject: false });
 
   // 7. Autosquash rebase
-  const autosquash = await execa(
+  const autosquash = await tracedExeca(
     "git",
     ["-C", dir, "rebase", "--autosquash", "--rebase-merges", "--update-refs", upstreamRef],
     { reject: false, env: { ...env, GIT_SEQUENCE_EDITOR: "true" } },

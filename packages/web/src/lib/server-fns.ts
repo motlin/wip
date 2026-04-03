@@ -62,6 +62,7 @@ import {
   type TestQueueJob,
 } from "@wip/shared";
 
+import { tracedExeca } from "@wip/shared/services/traced-execa.js";
 import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -187,9 +188,8 @@ export const getProjectChildren = createServerFn({ method: "GET" })
       suggestBranchNames(uncachedKeys).catch(() => {});
     }
 
-    const { execa } = await import("execa");
     const headSha = (
-      await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
     ).stdout.trim();
 
     const results: GitChildResult[] = allChildren.map((child) => {
@@ -325,12 +325,11 @@ export const pushChild = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => PushChildInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
 
     // Validate transition: push can be done from ready_to_push or no_test
     // Only check dirty state if operating on HEAD
     const headSha = (
-      await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
     ).stdout.trim();
     if (p.dirty && data.sha === headSha) {
       log.subprocess.debug(
@@ -340,7 +339,7 @@ export const pushChild = createServerFn({ method: "POST" })
     }
 
     // Resolve shortSha and subject from git
-    const logResult = await execa(
+    const logResult = await tracedExeca(
       "git",
       ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
       { reject: false },
@@ -357,7 +356,7 @@ export const pushChild = createServerFn({ method: "POST" })
         .replace(/^-|-$/g, "");
 
     if (!data.branch) {
-      const branchResult = await execa("git", ["-C", p.dir, "branch", branchName, data.sha], {
+      const branchResult = await tracedExeca("git", ["-C", p.dir, "branch", branchName, data.sha], {
         reject: false,
       });
       if (branchResult.exitCode !== 0) {
@@ -365,7 +364,7 @@ export const pushChild = createServerFn({ method: "POST" })
       }
     }
 
-    const pushResult = await execa(
+    const pushResult = await tracedExeca(
       "git",
       ["-C", p.dir, "push", "-u", p.upstreamRemote, `${branchName}:refs/heads/${branchName}`],
       { reject: false },
@@ -384,11 +383,10 @@ export const createPr = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
 
     let headRef = data.branch;
     if (p.upstreamRemote !== "origin") {
-      const originUrl = await execa("git", ["-C", p.dir, "remote", "get-url", "origin"], {
+      const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
         reject: false,
       });
       if (originUrl.exitCode === 0) {
@@ -411,7 +409,7 @@ export const createPr = createServerFn({ method: "POST" })
     ];
     if (data.draft !== false) args.push("--draft");
 
-    const result = await execa("gh", args, { cwd: p.dir, reject: false });
+    const result = await tracedExeca("gh", args, { cwd: p.dir, reject: false });
 
     if (result.exitCode === 0) {
       invalidatePrCache(data.project);
@@ -432,8 +430,8 @@ export const testChild = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TestChildInputSchema.parse(input))
   .handler(async ({ data }): Promise<TestJobStatus> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const logResult = await execa(
+
+    const logResult = await tracedExeca(
       "git",
       ["-C", p.dir, "log", "-1", "--format=%h%x00%s%x00%D", data.sha],
       { reject: false },
@@ -449,7 +447,7 @@ export const testChild = createServerFn({ method: "POST" })
     // We can't fully classify without more data, so we check the basic conditions
     // Only check dirty state if operating on HEAD
     const headSha = (
-      await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
     ).stdout.trim();
     if (p.dirty && data.sha === headSha) {
       log.subprocess.debug(
@@ -476,7 +474,7 @@ export const testChild = createServerFn({ method: "POST" })
 export const testAllChildren = createServerFn({ method: "POST" }).handler(
   async (): Promise<TestJobStatus[]> => {
     const { enqueueTest } = await import("./test-queue.js");
-    const { execa } = await import("execa");
+
     const projectsDirs = getProjectsDirs();
     const projects = await discoverAllProjects(projectsDirs);
 
@@ -490,7 +488,9 @@ export const testAllChildren = createServerFn({ method: "POST" }).handler(
       if (!p.hasTestConfigured) continue;
 
       const headSha = p.dirty
-        ? (await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })).stdout.trim()
+        ? (
+            await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+          ).stdout.trim()
         : undefined;
 
       const childShas = await getChildren(p.dir, p.upstreamRef);
@@ -506,7 +506,7 @@ export const testAllChildren = createServerFn({ method: "POST" }).handler(
       });
       if (untested.length === 0) continue;
 
-      const logResult = await execa(
+      const logResult = await tracedExeca(
         "git",
         ["-C", p.dir, "log", "--stdin", "--no-walk", "--format=%H%x00%h%x00%s%x00%B%x00%D%x1e"],
         { input: untested.join("\n"), reject: false },
@@ -555,16 +555,20 @@ export const getCommitDiff = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }): Promise<{ files: FileDiff[]; stat: string; subject: string }> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
+
     // Use -m --first-parent so merge commits produce a standard diff instead of combined format
     const [diffResult, statResult, subjectResult] = await Promise.all([
-      execa("git", ["-C", p.dir, "show", "-m", "--first-parent", "--format=", data.sha], {
+      tracedExeca("git", ["-C", p.dir, "show", "-m", "--first-parent", "--format=", data.sha], {
         reject: false,
       }),
-      execa("git", ["-C", p.dir, "show", "-m", "--first-parent", "--stat", "--format=", data.sha], {
-        reject: false,
-      }),
-      execa("git", ["-C", p.dir, "log", "-1", "--format=%s", data.sha], { reject: false }),
+      tracedExeca(
+        "git",
+        ["-C", p.dir, "show", "-m", "--first-parent", "--stat", "--format=", data.sha],
+        {
+          reject: false,
+        },
+      ),
+      tracedExeca("git", ["-C", p.dir, "log", "-1", "--format=%s", data.sha], { reject: false }),
     ]);
 
     if (diffResult.exitCode !== 0) {
@@ -594,13 +598,13 @@ export const getCommitDiff = createServerFn({ method: "GET" })
       const [oldResult, newResult] = await Promise.all([
         isNewFile
           ? { exitCode: 0, stdout: "" }
-          : execa("git", ["-C", p.dir, "show", `${data.sha}^:${oldFileName}`], {
+          : tracedExeca("git", ["-C", p.dir, "show", `${data.sha}^:${oldFileName}`], {
               reject: false,
               stripFinalNewline: false,
             }),
         isDeletedFile
           ? { exitCode: 0, stdout: "" }
-          : execa("git", ["-C", p.dir, "show", `${data.sha}:${newFileName}`], {
+          : tracedExeca("git", ["-C", p.dir, "show", `${data.sha}:${newFileName}`], {
               reject: false,
               stripFinalNewline: false,
             }),
@@ -626,11 +630,11 @@ export const getWorkingTreeDiff = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
   .handler(async ({ data }): Promise<{ files: FileDiff[]; stat: string }> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
+
     // Show all uncommitted changes (staged + unstaged) relative to HEAD
     const [diffResult, statResult] = await Promise.all([
-      execa("git", ["-C", p.dir, "diff", "HEAD"], { reject: false }),
-      execa("git", ["-C", p.dir, "diff", "HEAD", "--stat"], { reject: false }),
+      tracedExeca("git", ["-C", p.dir, "diff", "HEAD"], { reject: false }),
+      tracedExeca("git", ["-C", p.dir, "diff", "HEAD", "--stat"], { reject: false }),
     ]);
 
     if (diffResult.exitCode !== 0) {
@@ -652,19 +656,19 @@ export const getWorkingTreeDiff = createServerFn({ method: "GET" })
       const [oldResult, newResult] = await Promise.all([
         isNewFile
           ? { exitCode: 0, stdout: "" }
-          : execa("git", ["-C", p.dir, "show", `HEAD:${oldFileName}`], {
+          : tracedExeca("git", ["-C", p.dir, "show", `HEAD:${oldFileName}`], {
               reject: false,
               stripFinalNewline: false,
             }),
         isDeletedFile
           ? { exitCode: 0, stdout: "" }
-          : execa("git", ["-C", p.dir, "cat-file", "-p", `:${newFileName}`], {
+          : tracedExeca("git", ["-C", p.dir, "cat-file", "-p", `:${newFileName}`], {
               reject: false,
               stripFinalNewline: false,
             }).then((r) =>
               r.exitCode === 0
                 ? r
-                : execa("git", ["-C", p.dir, "show", `HEAD:${newFileName}`], {
+                : tracedExeca("git", ["-C", p.dir, "show", `HEAD:${newFileName}`], {
                     reject: false,
                     stripFinalNewline: false,
                   }),
@@ -690,8 +694,8 @@ export const commitWorkingTree = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const result = await execa("claude", ["-p", "/git:commit"], {
+
+    const result = await tracedExeca("claude", ["-p", "/git:commit"], {
       cwd: p.dir,
       reject: false,
       timeout: 120_000,
@@ -725,8 +729,8 @@ export const snoozeChildFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const logResult = await execa(
+
+    const logResult = await tracedExeca(
       "git",
       ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
       { reject: false },
@@ -792,8 +796,7 @@ export const getChildBySha = createServerFn({ method: "GET" })
       return null;
     }
 
-    const { execa } = await import("execa");
-    const logResult = await execa(
+    const logResult = await tracedExeca(
       "git",
       ["-C", p.dir, "log", "-1", "--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D", data.sha],
       { reject: false },
@@ -839,7 +842,7 @@ export const getChildBySha = createServerFn({ method: "GET" })
       if (pushedToRemote) {
         const remoteRef = remoteBranchInfo.remoteBranchRefs.get(branch);
         if (remoteRef) {
-          const remoteSha = await execa("git", ["-C", p.dir, "rev-parse", remoteRef], {
+          const remoteSha = await tracedExeca("git", ["-C", p.dir, "rev-parse", remoteRef], {
             reject: false,
           });
           localAhead =
@@ -878,10 +881,14 @@ export const createBranch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const result = await execa("git", ["-C", p.dir, "checkout", "-b", data.branchName, data.sha], {
-      reject: false,
-    });
+
+    const result = await tracedExeca(
+      "git",
+      ["-C", p.dir, "checkout", "-b", data.branchName, data.sha],
+      {
+        reject: false,
+      },
+    );
 
     if (result.exitCode === 0) {
       return { ok: true, message: `Created branch ${data.branchName}` };
@@ -894,8 +901,8 @@ export const deleteBranch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const result = await execa("git", ["-C", p.dir, "branch", "-D", data.branch], {
+
+    const result = await tracedExeca("git", ["-C", p.dir, "branch", "-D", data.branch], {
       reject: false,
     });
 
@@ -911,8 +918,8 @@ export const forcePush = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ForcePushInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const result = await execa(
+
+    const result = await tracedExeca(
       "git",
       [
         "-C",
@@ -958,8 +965,8 @@ export const renameBranch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RenameBranchInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const result = await execa(
+
+    const result = await tracedExeca(
       "git",
       ["-C", p.dir, "branch", "-m", data.oldBranch, data.newBranch],
       { reject: false },
@@ -977,12 +984,12 @@ export const applyFixes = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ApplyFixesInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
+
     const env = await getMiseEnv(p.dir);
 
-    await execa("git", ["-C", p.dir, "fetch", "origin"], { reject: false, env });
+    await tracedExeca("git", ["-C", p.dir, "fetch", "origin"], { reject: false, env });
 
-    const branchListResult = await execa(
+    const branchListResult = await tracedExeca(
       "git",
       ["-C", p.dir, "branch", "-r", "--list", `origin/fix-${data.prNumber}-*`],
       { reject: false, env },
@@ -999,7 +1006,7 @@ export const applyFixes = createServerFn({ method: "POST" })
       return { ok: false, message: `No fix branches found for PR #${data.prNumber}` };
     }
 
-    const checkout = await execa("git", ["-C", p.dir, "checkout", data.branch], {
+    const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", data.branch], {
       reject: false,
       env,
     });
@@ -1009,13 +1016,13 @@ export const applyFixes = createServerFn({ method: "POST" })
 
     const appliedFixes: string[] = [];
     for (const fixBranch of fixBranches) {
-      const cp = await execa("git", ["-C", p.dir, "cherry-pick", "--no-commit", fixBranch], {
+      const cp = await tracedExeca("git", ["-C", p.dir, "cherry-pick", "--no-commit", fixBranch], {
         reject: false,
         env,
       });
       if (cp.exitCode !== 0) {
-        await execa("git", ["-C", p.dir, "cherry-pick", "--abort"], { reject: false, env });
-        await execa("git", ["-C", p.dir, "reset", "--hard", "HEAD"], { reject: false, env });
+        await tracedExeca("git", ["-C", p.dir, "cherry-pick", "--abort"], { reject: false, env });
+        await tracedExeca("git", ["-C", p.dir, "reset", "--hard", "HEAD"], { reject: false, env });
         continue;
       }
       appliedFixes.push(fixBranch.replace("origin/", ""));
@@ -1028,7 +1035,7 @@ export const applyFixes = createServerFn({ method: "POST" })
       };
     }
 
-    const diffIndex = await execa("git", ["-C", p.dir, "diff", "--cached", "--quiet"], {
+    const diffIndex = await tracedExeca("git", ["-C", p.dir, "diff", "--cached", "--quiet"], {
       reject: false,
       env,
     });
@@ -1036,7 +1043,7 @@ export const applyFixes = createServerFn({ method: "POST" })
       return { ok: false, message: "Fix branches had no changes to apply" };
     }
 
-    const amend = await execa("git", ["-C", p.dir, "commit", "--amend", "--no-edit"], {
+    const amend = await tracedExeca("git", ["-C", p.dir, "commit", "--amend", "--no-edit"], {
       reject: false,
       env,
     });
@@ -1044,7 +1051,7 @@ export const applyFixes = createServerFn({ method: "POST" })
       return { ok: false, message: `Failed to amend commit: ${amend.stderr}` };
     }
 
-    const push = await execa(
+    const push = await tracedExeca(
       "git",
       ["-C", p.dir, "push", "origin", `${data.branch}:${data.branch}`, "--force-with-lease"],
       { reject: false, env },
@@ -1064,10 +1071,10 @@ export const rebaseLocal = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
   .handler(async ({ data }): Promise<ActionResult> => {
     const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
+
     const env = await getMiseEnv(p.dir);
 
-    await execa("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch ?? "main"], {
+    await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch ?? "main"], {
       reject: false,
       env,
     });
@@ -1081,7 +1088,7 @@ export const rebaseLocal = createServerFn({ method: "POST" })
       );
     }
 
-    const checkout = await execa("git", ["-C", p.dir, "checkout", data.branch], {
+    const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", data.branch], {
       reject: false,
       env,
     });
@@ -1090,14 +1097,14 @@ export const rebaseLocal = createServerFn({ method: "POST" })
     }
 
     const branchSha = (
-      await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
     ).stdout.trim();
-    const rebase = await execa("git", ["-C", p.dir, "rebase", p.upstreamRef], {
+    const rebase = await tracedExeca("git", ["-C", p.dir, "rebase", p.upstreamRef], {
       reject: false,
       env,
     });
     if (rebase.exitCode !== 0) {
-      await execa("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
+      await tracedExeca("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
       const upstreamSha = getCachedUpstreamSha(data.project);
       if (upstreamSha && branchSha) {
         cacheMergeStatus(data.project, branchSha, upstreamSha, 0, 1, false);
@@ -1105,7 +1112,7 @@ export const rebaseLocal = createServerFn({ method: "POST" })
       return { ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}` };
     }
 
-    const push = await execa(
+    const push = await tracedExeca(
       "git",
       ["-C", p.dir, "push", p.remote, `${data.branch}:${data.branch}`, "--force-with-lease"],
       { reject: false, env },
@@ -1123,7 +1130,6 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
   async (): Promise<ActionResult> => {
     const projectsDirs = getProjectsDirs();
     const projects = await discoverAllProjects(projectsDirs);
-    const { execa } = await import("execa");
 
     const results: string[] = [];
     const errors: string[] = [];
@@ -1132,9 +1138,9 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
       if (p.dirty || !p.hasTestConfigured) continue;
       const env = await getMiseEnv(p.dir);
 
-      await execa("git", ["-C", p.dir, "fetch", p.upstreamRemote], { reject: false, env });
+      await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote], { reject: false, env });
 
-      const branchList = await execa(
+      const branchList = await tracedExeca(
         "git",
         [
           "-C",
@@ -1155,22 +1161,22 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
         .filter((b) => !/^(main|master)$/.test(b));
 
       for (const branch of branches) {
-        const checkout = await execa("git", ["-C", p.dir, "checkout", branch], {
+        const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", branch], {
           reject: false,
           env,
         });
         if (checkout.exitCode !== 0) continue;
 
         const branchSha = (
-          await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
+          await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
         ).stdout.trim();
-        const rebase = await execa(
+        const rebase = await tracedExeca(
           "git",
           ["-C", p.dir, "rebase", "--rebase-merges", "--update-refs", p.upstreamRef],
           { reject: false, env },
         );
         if (rebase.exitCode !== 0) {
-          await execa("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
+          await tracedExeca("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
           const upstreamSha = getCachedUpstreamSha(p.name);
           if (upstreamSha && branchSha) {
             cacheMergeStatus(p.name, branchSha, upstreamSha, 0, 1, false);
@@ -1179,7 +1185,7 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
           continue;
         }
 
-        const push = await execa(
+        const push = await tracedExeca(
           "git",
           ["-C", p.dir, "push", p.remote, `${branch}:${branch}`, "--force-with-lease"],
           { reject: false, env },
@@ -1192,7 +1198,7 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
         results.push(`${p.name}/${branch}`);
       }
 
-      await execa("git", ["-C", p.dir, "checkout", p.upstreamBranch ?? "main"], {
+      await tracedExeca("git", ["-C", p.dir, "checkout", p.upstreamBranch ?? "main"], {
         reject: false,
         env,
       });

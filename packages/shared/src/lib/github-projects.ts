@@ -33,8 +33,6 @@ export const ProjectItemResultSchema = GitHubProjectItemSchema.pick({
 });
 export type ProjectItemResult = z.infer<typeof ProjectItemResultSchema>;
 
-const GitHubProjectItemArraySchema = z.array(GitHubProjectItemSchema);
-
 export const GitHubProjectSchema = z.object({
   number: z.number().int().positive(),
   title: z.string().min(1),

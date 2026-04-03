@@ -1,18 +1,18 @@
 import { LayoutGrid } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import type { ProjectBoardItem } from "@wip/shared";
+import type { ProjectItemResult } from "@wip/shared";
 
-export function ProjectBoardItemCard({ item }: { item: ProjectBoardItem }) {
+export function ProjectBoardItemCard({ item }: { item: ProjectItemResult }) {
   return (
     <div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center gap-1.5">
         <a
-          href={`https://github.com/${item.remote}`}
+          href={`https://github.com/${item.repository}`}
           target="_blank"
           rel="noopener noreferrer"
           className="truncate text-xs font-medium text-text-300 hover:text-text-100 transition-colors"
         >
-          {item.remote}
+          {item.repository}
         </a>
         {item.url && item.number && (
           <a

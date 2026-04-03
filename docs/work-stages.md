@@ -348,12 +348,12 @@ CommitItem now has `testStatus`, so states #9 and #10 are reachable. The `detach
 
 ### Idea items (not classified — added directly in useWorkItems)
 
-| Source           | DFA # | DFA state                  |
-| ---------------- | ----- | -------------------------- |
-| TodoItem         | 3     | Not started (todo)         |
-| IssueItem        | 4     | Not started (issue)        |
-| ProjectBoardItem | 5     | Not started (project item) |
-| SnoozedChild     | 1     | Snoozed                    |
+| Source            | DFA # | DFA state                  |
+| ----------------- | ----- | -------------------------- |
+| TodoItem          | 3     | Not started (todo)         |
+| IssueItem         | 4     | Not started (issue)        |
+| ProjectItemResult | 5     | Not started (project item) |
+| SnoozedChild      | 1     | Snoozed                    |
 
 ### Summary: DFA states reachable in current code
 

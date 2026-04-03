@@ -12,7 +12,7 @@ import type {
   BranchItem,
   PullRequestItem,
   IssueResult,
-  ProjectBoardItem,
+  ProjectItemResult,
   TodoItem,
   GitHubIssue,
   GitHubProjectItem,
@@ -25,7 +25,7 @@ export interface WorkItems {
   branches: BranchItem[];
   pullRequests: PullRequestItem[];
   issues: IssueResult[];
-  projectItems: ProjectBoardItem[];
+  projectItems: ProjectItemResult[];
   todos: TodoItem[];
 }
 
@@ -134,7 +134,7 @@ function buildWorkItems(
     allSubjects.add(issue.title.toLowerCase());
   }
 
-  const projectItems: ProjectBoardItem[] = [];
+  const projectItems: ProjectItemResult[] = [];
   for (const item of rawProjectItems) {
     if (item.url && allUrls.has(item.url)) continue;
     if (allSubjects.has(item.title.toLowerCase())) continue;
@@ -144,7 +144,7 @@ function buildWorkItems(
     const matchedProject = projects.find((p) => p.remote.toLowerCase() === repoName.toLowerCase());
     projectItems.push({
       project: matchedProject?.name ?? repoName.split("/").pop() ?? repoName,
-      remote: repoName,
+      repository: repoName,
       url: item.url,
       number: item.number,
       title: item.title,

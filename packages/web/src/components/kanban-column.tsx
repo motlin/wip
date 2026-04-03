@@ -4,7 +4,7 @@ import type {
   BranchItem,
   PullRequestItem,
   IssueResult,
-  ProjectBoardItem,
+  ProjectItemResult,
   TodoItem,
 } from "@wip/shared";
 import { CATEGORIES } from "../lib/category-actions";
@@ -20,7 +20,7 @@ export interface ColumnItems {
   branches?: BranchItem[];
   pullRequests?: PullRequestItem[];
   issues?: IssueResult[];
-  projectItems?: ProjectBoardItem[];
+  projectItems?: ProjectItemResult[];
   todos?: TodoItem[];
 }
 

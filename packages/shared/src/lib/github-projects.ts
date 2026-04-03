@@ -20,6 +20,19 @@ export const GitHubProjectItemSchema = z.object({
 });
 export type GitHubProjectItem = z.infer<typeof GitHubProjectItemSchema>;
 
+export const ProjectItemResultSchema = GitHubProjectItemSchema.pick({
+  title: true,
+  status: true,
+  type: true,
+  url: true,
+  number: true,
+  repository: true,
+  labels: true,
+}).extend({
+  project: z.string(),
+});
+export type ProjectItemResult = z.infer<typeof ProjectItemResultSchema>;
+
 const GitHubProjectItemArraySchema = z.array(GitHubProjectItemSchema);
 
 export const GitHubProjectSchema = z.object({

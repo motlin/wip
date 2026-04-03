@@ -40,7 +40,7 @@ import type {
   PullRequestItem,
   TodoItem as SharedTodoItem,
   IssueResult,
-  ProjectBoardItem,
+  ProjectItemResult,
 } from "@wip/shared";
 import {
   type ActionResult,
@@ -331,7 +331,7 @@ export const getProjectItemByNumber = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) =>
     z.object({ project: z.string(), number: z.number() }).parse(input),
   )
-  .handler(async ({ data }): Promise<ProjectBoardItem | null> => {
+  .handler(async ({ data }): Promise<ProjectItemResult | null> => {
     const items = await fetchAllProjectItems();
     for (const item of items) {
       if (item.number !== data.number) continue;
@@ -343,7 +343,7 @@ export const getProjectItemByNumber = createServerFn({ method: "GET" })
       if (projectName === data.project) {
         return {
           project: projectName,
-          remote: repoName,
+          repository: repoName,
           url: item.url,
           number: item.number,
           title: item.title,

@@ -42,12 +42,12 @@ function BoardItemDetail() {
       <div className="rounded-lg border border-border-300/30 bg-bg-000 p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <a
-            href={`https://github.com/${item.remote}`}
+            href={`https://github.com/${item.repository}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm font-medium text-text-300 hover:text-text-100 transition-colors"
           >
-            {item.remote}
+            {item.repository}
           </a>
           {item.number && (
             <span className="inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 font-mono text-sm text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">

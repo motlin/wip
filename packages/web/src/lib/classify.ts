@@ -22,12 +22,12 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
   if (child.skippable) return "skippable";
   if (child.testStatus === "running") return "test_running";
   if (child.testStatus === "failed") return "test_failed";
+  if (project.dirty) return "local_changes";
   if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
   if (child.needsRebase) return "needs_rebase";
   if (child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
     return "pushed_no_pr";
   if (child.pushedToRemote && child.localAhead) return "ready_to_push";
-  if (project.dirty) return "local_changes";
   if (!project.hasTestConfigured) return "no_test";
   if (child.testStatus === "passed" && (child.commitsAhead ?? 1) > 1) return "needs_split";
   if (child.testStatus === "passed") return "ready_to_push";

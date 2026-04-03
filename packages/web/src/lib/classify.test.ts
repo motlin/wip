@@ -257,6 +257,12 @@ describe("classifyBranch", () => {
     expect(classifyBranch(makeBranch(), makeProject({ dirty: true }))).toBe("local_changes");
   });
 
+  it("returns local_changes when project dirty even if needsRebase", () => {
+    expect(classifyBranch(makeBranch({ needsRebase: true }), makeProject({ dirty: true }))).toBe(
+      "local_changes",
+    );
+  });
+
   it("returns no_test when no test configured", () => {
     expect(classifyBranch(makeBranch(), makeProject({ hasTestConfigured: false }))).toBe("no_test");
   });

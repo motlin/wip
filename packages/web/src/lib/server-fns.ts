@@ -191,6 +191,11 @@ export const getProjectChildren = createServerFn({ method: "GET" })
       suggestBranchNames(uncachedKeys).catch(() => {});
     }
 
+    const { execa } = await import("execa");
+    const headSha = (
+      await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+    ).stdout.trim();
+
     const commits: CommitItem[] = [];
     const branches: BranchItem[] = [];
     const pullRequests: PullRequestItem[] = [];
@@ -250,12 +255,14 @@ export const getProjectChildren = createServerFn({ method: "GET" })
           needsRebase: child.needsRebase,
           testStatus: child.testStatus,
           failureTail,
-          blockReason: p.dirty
-            ? `Working tree is dirty — commit changes in ${p.name} before testing`
-            : undefined,
-          blockCommand: p.dirty
-            ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
-            : undefined,
+          blockReason:
+            p.dirty && child.sha === headSha
+              ? `Working tree is dirty — commit changes in ${p.name} before testing`
+              : undefined,
+          blockCommand:
+            p.dirty && child.sha === headSha
+              ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
+              : undefined,
           commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
           commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
           rebaseable:
@@ -522,7 +529,11 @@ export const testAllChildren = createServerFn({ method: "POST" }).handler(
     const queued: TestJobStatus[] = [];
 
     for (const p of projects) {
-      if (!p.hasTestConfigured || p.dirty) continue;
+      if (!p.hasTestConfigured) continue;
+
+      const headSha = p.dirty
+        ? (await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })).stdout.trim()
+        : undefined;
 
       const childShas = await getChildren(p.dir, p.upstreamRef);
       if (childShas.length === 0) continue;
@@ -532,6 +543,7 @@ export const testAllChildren = createServerFn({ method: "POST" }).handler(
       const untested = childShas.filter((sha) => {
         if (testResults.has(sha)) return false;
         if (snoozedSet.has(`${p.name}:${sha}`)) return false;
+        if (p.dirty && sha === headSha) return false;
         return true;
       });
       if (untested.length === 0) continue;

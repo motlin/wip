@@ -71,9 +71,10 @@ export function CommitCard({ commit, category }: { commit: CommitItem; category?
             target="_blank"
             rel="noopener noreferrer"
             title="View diff"
+            aria-label="View diff"
             className="rounded p-0.5 text-text-500 transition-colors hover:text-text-200 hover:bg-bg-200"
           >
-            <Diff className="h-3.5 w-3.5" />
+            <Diff className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
           {commit.date && <span className="text-xs text-text-500">{commit.date}</span>}
         </div>

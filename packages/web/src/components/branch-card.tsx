@@ -105,9 +105,10 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
             target="_blank"
             rel="noopener noreferrer"
             title="View diff"
+            aria-label="View diff"
             className="rounded p-0.5 text-text-500 transition-colors hover:text-text-200 hover:bg-bg-200"
           >
-            <Diff className="h-3.5 w-3.5" />
+            <Diff className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
           {branch.date && (
             <span
@@ -217,11 +218,12 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
                 }}
                 className="shrink-0 rounded p-0.5 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-200"
                 title="Copy command"
+                aria-label="Copy command"
               >
                 {copied ? (
-                  <Check className="h-3 w-3 text-green-500" />
+                  <Check className="h-3 w-3 text-green-500" aria-hidden="true" />
                 ) : (
-                  <Copy className="h-3 w-3" />
+                  <Copy className="h-3 w-3" aria-hidden="true" />
                 )}
               </button>
             </div>
@@ -233,27 +235,29 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
         <div className="flex items-center gap-1">
           {testJob?.status === "running" && (
             <span className="flex items-center gap-1" title="Test running">
-              <Loader2 className="h-3 w-3 animate-spin text-yellow-500" />
+              <Loader2 className="h-3 w-3 animate-spin text-yellow-500" aria-hidden="true" />
               <button
                 type="button"
                 onClick={handleCancelTest}
                 className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
                 title="Cancel test"
+                aria-label="Cancel test"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3" aria-hidden="true" />
               </button>
             </span>
           )}
           {testJob?.status === "queued" && (
             <span className="flex items-center gap-1" title="Test queued">
-              <Clock className="h-3 w-3 text-yellow-500" />
+              <Clock className="h-3 w-3 text-yellow-500" aria-hidden="true" />
               <button
                 type="button"
                 onClick={handleCancelTest}
                 className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
                 title="Cancel test"
+                aria-label="Cancel test"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3" aria-hidden="true" />
               </button>
             </span>
           )}

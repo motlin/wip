@@ -98,9 +98,10 @@ export function PullRequestCard({ pr, category }: { pr: PullRequestItem; categor
             target="_blank"
             rel="noopener noreferrer"
             title="View diff"
+            aria-label="View diff"
             className="rounded p-0.5 text-text-500 transition-colors hover:text-text-200 hover:bg-bg-200"
           >
-            <Diff className="h-3.5 w-3.5" />
+            <Diff className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
           {pr.date && (
             <span
@@ -194,27 +195,29 @@ export function PullRequestCard({ pr, category }: { pr: PullRequestItem; categor
         <div className="flex items-center gap-1">
           {testJob?.status === "running" && (
             <span className="flex items-center gap-1" title="Test running">
-              <Loader2 className="h-3 w-3 animate-spin text-yellow-500" />
+              <Loader2 className="h-3 w-3 animate-spin text-yellow-500" aria-hidden="true" />
               <button
                 type="button"
                 onClick={handleCancelTest}
                 className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
                 title="Cancel test"
+                aria-label="Cancel test"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3" aria-hidden="true" />
               </button>
             </span>
           )}
           {testJob?.status === "queued" && (
             <span className="flex items-center gap-1" title="Test queued">
-              <Clock className="h-3 w-3 text-yellow-500" />
+              <Clock className="h-3 w-3 text-yellow-500" aria-hidden="true" />
               <button
                 type="button"
                 onClick={handleCancelTest}
                 className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
                 title="Cancel test"
+                aria-label="Cancel test"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3" aria-hidden="true" />
               </button>
             </span>
           )}

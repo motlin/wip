@@ -63,6 +63,12 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
     prevTestStatus.current = testJob?.status;
   }, [testJob?.status, queryClient, branch.project, branch.sha]);
 
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const effectiveCategory = testJob?.transition
     ? (applyTransition(category, testJob.transition) ?? category)
     : category;
@@ -208,7 +214,6 @@ export function BranchCard({ branch, category }: { branch: BranchItem; category:
                 onClick={() => {
                   navigator.clipboard.writeText(branch.blockCommand!);
                   setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
                 }}
                 className="shrink-0 rounded p-0.5 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-200"
                 title="Copy command"

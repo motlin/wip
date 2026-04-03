@@ -11,6 +11,8 @@ import {
   ExternalLink,
   AlertCircle,
   Check,
+  SearchX,
+  XCircle,
 } from "lucide-react";
 import "@git-diff-view/react/styles/diff-view.css";
 import { CommitCard } from "../components/commit-card";
@@ -46,7 +48,35 @@ export const Route = createFileRoute("/item/$project/$sha")({
     meta: [{ title: `${params.project} / ${params.sha.slice(0, 7)}` }],
   }),
   component: ItemDetail,
+  errorComponent: ItemDetailError,
 });
+
+function ItemDetailError({ error }: { error: unknown }) {
+  return (
+    <div className="p-6">
+      <Link
+        to="/queue"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </Link>
+      <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-red-500/30 bg-bg-100 p-8">
+        <XCircle className="h-8 w-8 text-red-400" />
+        <h2 className="text-sm font-semibold text-red-400">Failed to load item</h2>
+        <pre className="max-w-full overflow-auto rounded bg-bg-200 p-3 font-mono text-xs text-text-300">
+          {error instanceof Error ? error.message : String(error)}
+        </pre>
+        <Link
+          to="/queue"
+          className="mt-2 inline-flex items-center gap-1 rounded bg-bg-200 px-3 py-1.5 text-xs font-medium text-text-200 transition-colors hover:bg-bg-300"
+        >
+          Back to Queue
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function ItemDetail() {
   const { project, sha } = Route.useParams();
@@ -116,9 +146,27 @@ function ItemDetail() {
     }
     return (
       <div className="p-6">
-        <p className="text-sm text-text-500">
-          Item not found: {project} / {sha.slice(0, 7)}
-        </p>
+        <Link
+          to="/queue"
+          className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Link>
+        <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-border-300/30 bg-bg-100 p-8">
+          <SearchX className="h-8 w-8 text-text-500" />
+          <h2 className="text-sm font-semibold text-text-200">Item not found</h2>
+          <p className="text-xs text-text-400">
+            {project} / {sha.slice(0, 7)} could not be located. The branch may have been rebased or
+            deleted.
+          </p>
+          <Link
+            to="/queue"
+            className="mt-2 inline-flex items-center gap-1 rounded bg-bg-200 px-3 py-1.5 text-xs font-medium text-text-200 transition-colors hover:bg-bg-300"
+          >
+            Back to Queue
+          </Link>
+        </div>
       </div>
     );
   }

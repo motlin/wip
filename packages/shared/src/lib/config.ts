@@ -59,7 +59,7 @@ export function unsetConfigValue(key: string): boolean {
 export function getProjectsDir(flagValue?: string): string {
   if (flagValue) return flagValue;
   const value = getConfigValue("projectsDir");
-  if (Array.isArray(value)) return value[0];
+  if (Array.isArray(value)) return value[0] ?? `${process.env.HOME}/projects`;
   return value ?? `${process.env.HOME}/projects`;
 }
 

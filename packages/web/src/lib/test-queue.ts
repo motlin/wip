@@ -99,6 +99,7 @@ function processQueue(project: string): void {
   if (!queue || queue.length === 0) return;
 
   const jobId = queue[0];
+  if (!jobId) return;
   const job = jobs.get(jobId);
   if (!job) {
     queue.shift();

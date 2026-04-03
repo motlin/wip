@@ -153,7 +153,6 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const testJob = useTestJob(item.sha, item.project);
   const mergeStatus = useMergeStatus(item.sha, item.project);
   const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
-
   const pr = isPullRequest(item) ? item : null;
 
   useEffect(() => {

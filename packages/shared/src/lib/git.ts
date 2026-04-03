@@ -59,8 +59,8 @@ function parseEnvrc(dir: string): { upstreamRemote: string; upstreamBranch: stri
     const content = fs.readFileSync(envrcPath, "utf-8");
     const remoteMatch = content.match(/^export UPSTREAM_REMOTE=(\S+)/m);
     const branchMatch = content.match(/^export UPSTREAM_BRANCH=(\S+)/m);
-    if (remoteMatch) upstreamRemote = remoteMatch[1];
-    if (branchMatch) upstreamBranch = branchMatch[1];
+    if (remoteMatch?.[1]) upstreamRemote = remoteMatch[1];
+    if (branchMatch?.[1]) upstreamBranch = branchMatch[1];
   }
 
   return { upstreamRemote, upstreamBranch };
@@ -196,7 +196,7 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 
 export async function getNeedsRebaseBranches(
   dir: string,
-  upstreamRef: string,
+  _upstreamRef: string,
   descendantShas: Set<string>,
   projectName?: string,
   prStatuses?: PrStatuses,
@@ -242,8 +242,12 @@ export async function getNeedsRebaseBranches(
     const fields = logResult.stdout.trim().split("\0");
     if (fields.length < 5) continue;
 
-    const [sha, shortSha, subject, fullMessage, rawDate] = fields;
-    const date = rawDate.trim().split(" ")[0];
+    const sha = fields[0] ?? "";
+    const shortSha = fields[1] ?? "";
+    const subject = fields[2] ?? "";
+    const fullMessage = fields[3] ?? "";
+    const rawDate = fields[4] ?? "";
+    const date = rawDate.trim().split(" ")[0] ?? "";
 
     // Only include branches that are NOT descendants of upstream
     if (!descendantShas.has(sha)) {
@@ -691,7 +695,7 @@ export async function fetchUpstreamRef(
   projectName: string,
 ): Promise<{ changed: boolean; sha: string }> {
   const parts = upstreamRef.split("/");
-  const remote = parts[0];
+  const remote = parts[0] ?? "";
   const branch = parts.slice(1).join("/");
   const env = await getMiseEnv(dir);
 
@@ -797,11 +801,17 @@ export async function getChildCommits(
     const fields = trimmedRecord.split("\0");
     if (fields.length < 7) continue;
 
-    const [sha, shortSha, subject, fullMessage, rawDate, decoration, authorEmail] = fields;
+    const sha = fields[0] ?? "";
+    const shortSha = fields[1] ?? "";
+    const subject = fields[2] ?? "";
+    const fullMessage = fields[3] ?? "";
+    const rawDate = fields[4] ?? "";
+    const decoration = fields[5] ?? "";
+    const authorEmail = fields[6] ?? "";
 
     // Filter out commits from other authors (e.g. dependabot, renovate)
     if (userEmail && authorEmail.trim() !== userEmail) continue;
-    const date = rawDate.trim().split(" ")[0];
+    const date = rawDate.trim().split(" ")[0] ?? "";
     const skippable = isSkippable(fullMessage);
     const branch = parseBranch(decoration);
     const testStatus = skippable ? "unknown" : (testStatusMap.get(sha) ?? "unknown");

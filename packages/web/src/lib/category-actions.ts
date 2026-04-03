@@ -285,7 +285,7 @@ const COLUMN_ORDER: Category[][] = [
 
 function columnIndex(cat: Category): number {
   for (let i = 0; i < COLUMN_ORDER.length; i++) {
-    const row = COLUMN_ORDER[i].indexOf(cat);
+    const row = COLUMN_ORDER[i]!.indexOf(cat);
     if (row >= 0) return i * 100 + row;
   }
   return 9999;

@@ -79,7 +79,7 @@ describe("syncChildToCache", () => {
     syncChildToCache(qc, "myproject", freshCommit);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.[0].testStatus).toBe("passed");
+    expect(cached?.[0]?.testStatus).toBe("passed");
   });
 
   it("updates a branch in the children cache", () => {
@@ -91,8 +91,8 @@ describe("syncChildToCache", () => {
     syncChildToCache(qc, "myproject", freshBranch);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.[0].testStatus).toBe("passed");
-    expect(cached?.[0].needsRebase).toBe(true);
+    expect(cached?.[0]?.testStatus).toBe("passed");
+    expect(cached?.[0]?.needsRebase).toBe(true);
   });
 
   it("updates a pull request in the children cache", () => {
@@ -104,8 +104,8 @@ describe("syncChildToCache", () => {
     syncChildToCache(qc, "myproject", freshPr);
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
-    expect(cached?.[0].checkStatus).toBe("passed");
-    expect(cached?.[0].reviewStatus).toBe("approved");
+    expect(cached?.[0]?.checkStatus).toBe("passed");
+    expect(cached?.[0]?.reviewStatus).toBe("approved");
   });
 
   it("does nothing when children cache does not exist", () => {
@@ -142,8 +142,8 @@ describe("syncChildToCache", () => {
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
     expect(cached).toHaveLength(3);
-    expect(cached?.[0].testStatus).toBe("passed");
-    expect(cached?.[1].testStatus).toBe("failed");
+    expect(cached?.[0]?.testStatus).toBe("passed");
+    expect(cached?.[1]?.testStatus).toBe("failed");
   });
 
   it("promotes a commit to a branch when the fresh item has a branch field", () => {
@@ -156,7 +156,7 @@ describe("syncChildToCache", () => {
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
     expect(cached).toHaveLength(1);
-    expect(cached?.[0].branch).toBe("feature/new");
+    expect(cached?.[0]?.branch).toBe("feature/new");
   });
 
   it("promotes a branch to a pull request when the fresh item has a prUrl", () => {
@@ -169,6 +169,6 @@ describe("syncChildToCache", () => {
 
     const cached = qc.getQueryData<ProjectChildrenResult>(["children", "myproject"]);
     expect(cached).toHaveLength(1);
-    expect(cached?.[0].prUrl).toBe("https://github.com/org/repo/pull/1");
+    expect(cached?.[0]?.prUrl).toBe("https://github.com/org/repo/pull/1");
   });
 });

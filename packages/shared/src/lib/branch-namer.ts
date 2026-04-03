@@ -38,7 +38,9 @@ Then output a single descriptive kebab-case branch name (3-6 words) that capture
     .trim()
     .split("\n")
     .filter((l) => l.trim());
-  const name = lines[lines.length - 1].trim();
+  const lastLine = lines[lines.length - 1];
+  if (!lastLine) return null;
+  const name = lastLine.trim();
   return name;
 }
 
@@ -66,10 +68,11 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
     const names = await Promise.all(batch.map((req) => nameBranch(req)));
     for (let j = 0; j < batch.length; j++) {
       const name = names[j];
-      if (name) {
-        const key = `${batch[j].project}:${batch[j].sha}`;
+      const batchItem = batch[j];
+      if (name && batchItem) {
+        const key = `${batchItem.project}:${batchItem.sha}`;
         result.set(key, name);
-        setBranchName(batch[j].sha, batch[j].project, name);
+        setBranchName(batchItem.sha, batchItem.project, name);
       }
     }
   }

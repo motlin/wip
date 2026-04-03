@@ -52,11 +52,11 @@ function computePositions(): Record<Category, NodePos> {
   const padTop = 20;
 
   for (let col = 0; col < COLUMNS.length; col++) {
-    const states = COLUMNS[col];
+    const states = COLUMNS[col]!;
     const colX = padLeft + col * (NODE_W + COL_GAP);
     for (let row = 0; row < states.length; row++) {
       const rowY = padTop + row * (NODE_H + ROW_GAP);
-      positions[states[row]] = { x: colX, y: rowY };
+      positions[states[row]!] = { x: colX, y: rowY };
     }
   }
 

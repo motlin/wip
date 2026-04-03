@@ -36,7 +36,7 @@ export function parseTodoContent(content: string, sourceFile: string): TodoTask[
     if (match) {
       if (current) tasks.push(current);
       current = {
-        text: match[2],
+        text: match[2] ?? "",
         completed: match[1] === "x",
         sourceFile,
         contextLines: [],

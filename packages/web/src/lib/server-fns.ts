@@ -378,7 +378,9 @@ export const pushChild = createServerFn({ method: "POST" })
           ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
           { reject: false },
         );
-        const [shortSha, subject] = logResult.stdout.split("\0");
+        const logFields = logResult.stdout.split("\0");
+        const shortSha = logFields[0] ?? "";
+        const subject = logFields[1] ?? "";
 
         const { getBranchName } = await import("@wip/shared");
         const branchName =
@@ -562,10 +564,15 @@ export const testAllChildren = createServerFn({ method: "POST" }).handler(
         for (const record of logResult.stdout.split("\x1e")) {
           const trimmed = record.replace(/^\n+/, "");
           if (!trimmed) continue;
-          const [sha, shortSha, subject, fullMessage, decoration] = trimmed.split("\0");
+          const splitFields = trimmed.split("\0");
+          const sha = splitFields[0] ?? "";
+          const shortSha = splitFields[1] ?? "";
+          const subject = splitFields[2] ?? "";
+          const fullMessage = splitFields[3] ?? "";
+          const decoration = splitFields[4] ?? "";
           if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
 
-          const branchMatch = decoration?.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
+          const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
           const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
 
           const job = enqueueTest(p.name, p.dir, sha, shortSha, subject, branch);
@@ -636,8 +643,8 @@ export const getCommitDiff = createServerFn({ method: "GET" })
         for (const chunk of fileDiffs) {
           const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
           if (!headerMatch) continue;
-          const oldFileName = headerMatch[1];
-          const newFileName = headerMatch[2];
+          const oldFileName = headerMatch[1] ?? "";
+          const newFileName = headerMatch[2] ?? "";
 
           // Pass full chunk including diff --git header — @git-diff-view/core needs it
           const hunks = chunk;
@@ -704,8 +711,8 @@ export const getWorkingTreeDiff = createServerFn({ method: "GET" })
         for (const chunk of fileDiffs) {
           const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
           if (!headerMatch) continue;
-          const oldFileName = headerMatch[1];
-          const newFileName = headerMatch[2];
+          const oldFileName = headerMatch[1] ?? "";
+          const newFileName = headerMatch[2] ?? "";
           const isNewFile = /^--- \/dev\/null$/m.test(chunk);
           const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
 
@@ -800,8 +807,10 @@ export const snoozeChildFn = createServerFn({ method: "POST" })
           ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
           { reject: false },
         );
-        const [shortSha, subject] =
+        const snoozeFields =
           logResult.exitCode === 0 ? logResult.stdout.split("\0") : [data.sha.slice(0, 7), ""];
+        const shortSha = snoozeFields[0] ?? data.sha.slice(0, 7);
+        const subject = snoozeFields[1] ?? "";
 
         // Validate transition: snooze is allowed from many states (ready_to_test, test_failed, ready_to_push, etc.)
         // We just log to ensure this was intended
@@ -882,8 +891,13 @@ export const getChildBySha = createServerFn({ method: "GET" })
         );
         if (logResult.exitCode !== 0) return null;
 
-        const [sha, shortSha, subject, fullMessage, date, decorations] =
-          logResult.stdout.split("\0");
+        const childFields = logResult.stdout.split("\0");
+        const sha = childFields[0] ?? "";
+        const shortSha = childFields[1] ?? "";
+        const subject = childFields[2] ?? "";
+        const fullMessage = childFields[3] ?? "";
+        const date = childFields[4] ?? "";
+        const decorations = childFields[5] ?? "";
         const skippable = isSkippable(fullMessage);
 
         const testResults = p.hasTestConfigured ? getTestResultsForProject(p.name) : new Map();
@@ -896,7 +910,7 @@ export const getChildBySha = createServerFn({ method: "GET" })
           ? getCachedMergeStatuses(p.name, upstreamSha).find((s) => s.sha === sha)
           : undefined;
 
-        const branch = parseBranch(decorations ?? "");
+        const branch = parseBranch(decorations);
 
         let pushedToRemote = false;
         let localAhead: boolean | undefined;

@@ -5,13 +5,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { CheckStatus, ProjectInfo, ReviewStatus } from "./schemas.js";
+import type { GitHubIssue } from "./github-issues.js";
 import * as schema from "./schema.js";
 import { log } from "../services/logger.js";
 import {
   branchNames,
   FAR_FUTURE,
   ghLoginCache,
-  githubIssuesCache,
+  githubIssues,
+  githubIssueLabels,
   githubProjectItemsCache,
   mergeStatus,
   miseEnvCache,
@@ -129,15 +131,20 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
     }
   }
 
-  for (const table of [
-    "mise_env_cache",
-    "gh_login_cache",
-    "github_issues_cache",
-    "github_project_items_cache",
-  ]) {
+  for (const table of ["mise_env_cache", "gh_login_cache", "github_project_items_cache"]) {
     const cols = sqlite.prepare(`PRAGMA table_info('${table}')`).all() as Array<{ name: string }>;
     if (cols.some((c) => c.name === "cached_at")) {
       sqlite.exec(`DROP TABLE ${table}`);
+    }
+  }
+
+  // Migrate github_issues_cache JSON blob to normalized tables
+  {
+    const issuesCacheCols = sqlite
+      .prepare("PRAGMA table_info('github_issues_cache')")
+      .all() as Array<{ name: string }>;
+    if (issuesCacheCols.length > 0) {
+      sqlite.exec("DROP TABLE github_issues_cache");
     }
   }
 
@@ -189,12 +196,26 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 
   sqlite.exec(`
-		CREATE TABLE IF NOT EXISTS github_issues_cache (
-			id INTEGER NOT NULL DEFAULT 1,
-			data TEXT NOT NULL,
+		CREATE TABLE IF NOT EXISTS github_issues (
 			system_from TEXT NOT NULL,
+			number INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			url TEXT NOT NULL,
+			repo_name TEXT NOT NULL,
+			repo_name_with_owner TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (id, system_from)
+			PRIMARY KEY (system_from, number, repo_name_with_owner)
+		)
+	`);
+
+  sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS github_issue_labels (
+			system_from TEXT NOT NULL,
+			issue_number INTEGER NOT NULL,
+			repo_name_with_owner TEXT NOT NULL,
+			label_name TEXT NOT NULL,
+			label_color TEXT NOT NULL,
+			PRIMARY KEY (system_from, issue_number, repo_name_with_owner, label_name)
 		)
 	`);
 
@@ -729,39 +750,92 @@ export function cacheGhLogin(login: string): void {
 
 // --- GitHub issues cache ---
 
-export function getCachedIssues(ttlMs: number): string | null {
+export function getCachedIssues(ttlMs: number): GitHubIssue[] | null {
   const d = getDb();
   const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-  const row = d
-    .select()
-    .from(githubIssuesCache)
-    .where(
-      and(
-        eq(githubIssuesCache.systemTo, FAR_FUTURE),
-        sql`${githubIssuesCache.systemFrom} > ${cutoff}`,
-      ),
-    )
+
+  // Check if any active rows exist within the TTL
+  const sample = d
+    .select({ systemFrom: githubIssues.systemFrom })
+    .from(githubIssues)
+    .where(and(eq(githubIssues.systemTo, FAR_FUTURE), sql`${githubIssues.systemFrom} > ${cutoff}`))
+    .limit(1)
     .get();
-  return row?.data ?? null;
+  if (!sample) return null;
+
+  const rows = d.select().from(githubIssues).where(eq(githubIssues.systemTo, FAR_FUTURE)).all();
+
+  const labelRows = d
+    .select()
+    .from(githubIssueLabels)
+    .where(eq(githubIssueLabels.systemFrom, sample.systemFrom))
+    .all();
+
+  const labelsByKey = new Map<string, Array<{ name: string; color: string }>>();
+  for (const l of labelRows) {
+    const key = `${l.repoNameWithOwner}:${l.issueNumber}`;
+    const arr = labelsByKey.get(key) ?? [];
+    arr.push({ name: l.labelName, color: l.labelColor });
+    labelsByKey.set(key, arr);
+  }
+
+  return rows.map((r) => ({
+    number: r.number,
+    title: r.title,
+    url: r.url,
+    labels: labelsByKey.get(`${r.repoNameWithOwner}:${r.number}`) ?? [],
+    repository: {
+      name: r.repoName,
+      nameWithOwner: r.repoNameWithOwner,
+    },
+  }));
 }
 
-export function cacheIssues(data: string): void {
+export function cacheIssues(issues: GitHubIssue[]): void {
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(githubIssuesCache)
+    // Close old issue rows
+    tx.update(githubIssues)
       .set({ systemTo: timestamp })
-      .where(eq(githubIssuesCache.systemTo, FAR_FUTURE))
+      .where(eq(githubIssues.systemTo, FAR_FUTURE))
       .run();
-    tx.insert(githubIssuesCache).values({ data, systemFrom: timestamp }).run();
+
+    // Insert new issue rows
+    for (const issue of issues) {
+      tx.insert(githubIssues)
+        .values({
+          systemFrom: timestamp,
+          number: issue.number,
+          title: issue.title,
+          url: issue.url,
+          repoName: issue.repository.name,
+          repoNameWithOwner: issue.repository.nameWithOwner,
+        })
+        .run();
+
+      // Insert label rows
+      for (const label of issue.labels) {
+        tx.insert(githubIssueLabels)
+          .values({
+            systemFrom: timestamp,
+            issueNumber: issue.number,
+            repoNameWithOwner: issue.repository.nameWithOwner,
+            labelName: label.name,
+            labelColor: label.color,
+          })
+          .run();
+      }
+    }
   });
 }
 
 export function invalidateIssuesCacheDb(): void {
   const d = getDb();
-  d.update(githubIssuesCache)
-    .set({ systemTo: now() })
-    .where(eq(githubIssuesCache.systemTo, FAR_FUTURE))
+  const timestamp = now();
+  d.update(githubIssues)
+    .set({ systemTo: timestamp })
+    .where(eq(githubIssues.systemTo, FAR_FUTURE))
     .run();
 }
 

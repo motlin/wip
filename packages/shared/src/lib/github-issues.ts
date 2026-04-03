@@ -31,12 +31,12 @@ export function invalidateIssuesCache(): void {
 
 export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
   const cached = getCachedIssues(ISSUES_CACHE_TTL_MS);
-  if (cached) return GitHubIssueArraySchema.parse(JSON.parse(cached));
+  if (cached) return cached;
 
   // If rate limited, return stale cache rather than calling API
   if (isGitHubRateLimited()) {
     const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
-    if (stale) return GitHubIssueArraySchema.parse(JSON.parse(stale));
+    if (stale) return stale;
     return [];
   }
 
@@ -83,11 +83,11 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
     }
     // Fall back to stale cache on failure
     const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
-    if (stale) return GitHubIssueArraySchema.parse(JSON.parse(stale));
+    if (stale) return stale;
     return [];
   }
 
   const issues = GitHubIssueArraySchema.parse(JSON.parse(result.stdout));
-  cacheIssues(result.stdout);
+  cacheIssues(issues);
   return issues;
 }

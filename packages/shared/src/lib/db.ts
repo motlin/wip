@@ -763,18 +763,16 @@ export function cacheUpstreamSha(project: string, ref: string, sha: string): voi
 
 // --- Merge status ---
 
-export interface CachedMergeStatus {
-  sha: string;
-  upstreamSha: string;
-  commitsAhead: number;
-  commitsBehind: number;
-  rebaseable: boolean | null;
-}
-
-export function getCachedMergeStatuses(project: string, upstreamSha: string): CachedMergeStatus[] {
+export function getCachedMergeStatuses(project: string, upstreamSha: string) {
   const d = getDb();
-  const rows = d
-    .select()
+  return d
+    .select({
+      sha: mergeStatus.sha,
+      upstreamSha: mergeStatus.upstreamSha,
+      commitsAhead: mergeStatus.commitsAhead,
+      commitsBehind: mergeStatus.commitsBehind,
+      rebaseable: mergeStatus.rebaseable,
+    })
     .from(mergeStatus)
     .where(
       and(
@@ -784,13 +782,6 @@ export function getCachedMergeStatuses(project: string, upstreamSha: string): Ca
       ),
     )
     .all();
-  return rows.map((r) => ({
-    sha: r.sha,
-    upstreamSha: r.upstreamSha,
-    commitsAhead: r.commitsAhead,
-    commitsBehind: r.commitsBehind,
-    rebaseable: r.rebaseable ?? null,
-  }));
 }
 
 export function cacheMergeStatus(

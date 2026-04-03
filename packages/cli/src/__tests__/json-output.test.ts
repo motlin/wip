@@ -122,6 +122,7 @@ function captureConsoleLog(): { getOutput: () => string; restore: () => void } {
 }
 
 function parseJsonOutput(output: string): unknown {
+  // eslint-disable-next-line no-control-regex
   const stripped = output.replace(/\u001b\[[0-9;]*m/g, "");
   return JSON.parse(stripped);
 }

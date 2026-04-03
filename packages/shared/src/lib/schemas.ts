@@ -378,19 +378,6 @@ export const IssueResultSchema = z.object({
 });
 export type IssueResult = z.infer<typeof IssueResultSchema>;
 
-// An item from a GitHub Project board
-export const ProjectBoardItemSchema = z.object({
-  project: z.string(),
-  remote: z.string(),
-  url: z.string().url().optional(),
-  number: z.number().optional(),
-  title: z.string(),
-  status: z.string(),
-  type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
-  labels: z.array(LabelSchema),
-});
-export type ProjectBoardItem = z.infer<typeof ProjectBoardItemSchema>;
-
 // A task from a todo.md file
 export const TodoItemSchema = z.object({
   project: z.string(),
@@ -410,6 +397,18 @@ export const ActionResultSchema = z.object({
   compareUrl: z.string().url().optional(),
 });
 export type ActionResult = z.infer<typeof ActionResultSchema>;
+
+export const ProjectBoardItemSchema = z.object({
+  project: z.string(),
+  remote: z.string(),
+  url: z.string().url().optional(),
+  number: z.number().int().positive().optional(),
+  title: z.string(),
+  status: z.string(),
+  type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
+  labels: z.array(LabelSchema),
+});
+export type ProjectBoardItem = z.infer<typeof ProjectBoardItemSchema>;
 
 export const SnoozedChildSchema = z.object({
   sha: shaSchema,

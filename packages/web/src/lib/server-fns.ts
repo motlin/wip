@@ -58,13 +58,15 @@ import {
   ApplyFixesInputSchema,
   RebaseLocalInputSchema,
   MergePrInputSchema,
+  TestQueueJobSchema,
+  type TestQueueJob,
 } from "@wip/shared";
 
 import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type { ActionResult, Category, SnoozedChild, GitChildResult };
+export type { ActionResult, Category, SnoozedChild, GitChildResult, TestQueueJob };
 
 export type ProjectChildrenResult = GitChildResult[];
 
@@ -754,37 +756,11 @@ export const getSnoozedList = createServerFn({ method: "GET" }).handler(
   },
 );
 
-export interface TestQueueJob {
-  id: string;
-  project: string;
-  sha: string;
-  shortSha: string;
-  subject: string;
-  branch?: string;
-  status: "queued" | "running" | "passed" | "failed" | "cancelled";
-  message?: string;
-  queuedAt: number;
-  startedAt?: number;
-  finishedAt?: number;
-}
-
 export const getTestQueue = createServerFn({ method: "GET" }).handler(
   async (): Promise<TestQueueJob[]> => {
     const { getAllJobs } = await import("./test-queue.js");
     const jobs = getAllJobs();
-    return Array.from(jobs.values()).map((j) => ({
-      id: j.id,
-      project: j.project,
-      sha: j.sha,
-      shortSha: j.shortSha,
-      subject: j.subject,
-      branch: j.branch,
-      status: j.status,
-      message: j.message,
-      queuedAt: j.queuedAt,
-      startedAt: j.startedAt,
-      finishedAt: j.finishedAt,
-    }));
+    return Array.from(jobs.values()).map((j) => TestQueueJobSchema.parse(j));
   },
 );
 

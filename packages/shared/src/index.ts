@@ -124,6 +124,8 @@ export {
   type ChildCommit,
   GitChildResultSchema,
   type GitChildResult,
+  TestQueueJobSchema,
+  type TestQueueJob,
   PlanStatusSchema,
   type PlanStatus,
   IssueResultSchema,

@@ -439,3 +439,18 @@ export const MergePrInputSchema = z.object({
   prNumber: z.number(),
 });
 export type MergePrInput = z.infer<typeof MergePrInputSchema>;
+
+export const TestQueueJobSchema = z.object({
+  id: z.string(),
+  project: z.string(),
+  sha: z.string(),
+  shortSha: z.string(),
+  subject: z.string(),
+  branch: z.string().optional(),
+  status: z.enum(["queued", "running", "passed", "failed", "cancelled"]),
+  message: z.string().optional(),
+  queuedAt: z.number(),
+  startedAt: z.number().optional(),
+  finishedAt: z.number().optional(),
+});
+export type TestQueueJob = z.infer<typeof TestQueueJobSchema>;

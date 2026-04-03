@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import type { CheckStatus, ProjectInfo, ReviewStatus } from "./schemas.js";
 import type { GitHubIssue } from "./github-issues.js";
+import type { GitHubProjectItem } from "./github-projects.js";
 import * as schema from "./schema.js";
 import { log } from "../services/logger.js";
 import {
@@ -14,7 +15,8 @@ import {
   ghLoginCache,
   githubIssues,
   githubIssueLabels,
-  githubProjectItemsCache,
+  githubProjectItems,
+  githubProjectItemLabels,
   mergeStatus,
   miseEnvCache,
   prFailedChecks,
@@ -148,6 +150,16 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
     }
   }
 
+  // Migrate github_project_items_cache JSON blob to normalized tables
+  {
+    const projectItemsCacheCols = sqlite
+      .prepare("PRAGMA table_info('github_project_items_cache')")
+      .all() as Array<{ name: string }>;
+    if (projectItemsCacheCols.length > 0) {
+      sqlite.exec("DROP TABLE github_project_items_cache");
+    }
+  }
+
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS pr_status_cache (
 			project TEXT NOT NULL,
@@ -220,12 +232,27 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 
   sqlite.exec(`
-		CREATE TABLE IF NOT EXISTS github_project_items_cache (
-			id INTEGER NOT NULL DEFAULT 1,
-			data TEXT NOT NULL,
+		CREATE TABLE IF NOT EXISTS github_project_items (
 			system_from TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			status TEXT NOT NULL,
+			type TEXT NOT NULL,
+			url TEXT,
+			number INTEGER,
+			repository TEXT,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (id, system_from)
+			PRIMARY KEY (system_from, item_id)
+		)
+	`);
+
+  sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS github_project_item_labels (
+			system_from TEXT NOT NULL,
+			item_id TEXT NOT NULL,
+			label_name TEXT NOT NULL,
+			label_color TEXT NOT NULL,
+			PRIMARY KEY (system_from, item_id, label_name)
 		)
 	`);
 
@@ -841,39 +868,100 @@ export function invalidateIssuesCacheDb(): void {
 
 // --- GitHub project items cache ---
 
-export function getCachedProjectItems(ttlMs: number): string | null {
+export function getCachedProjectItems(ttlMs: number): GitHubProjectItem[] | null {
   const d = getDb();
   const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-  const row = d
-    .select()
-    .from(githubProjectItemsCache)
+
+  // Check if any active rows exist within the TTL
+  const sample = d
+    .select({ systemFrom: githubProjectItems.systemFrom })
+    .from(githubProjectItems)
     .where(
       and(
-        eq(githubProjectItemsCache.systemTo, FAR_FUTURE),
-        sql`${githubProjectItemsCache.systemFrom} > ${cutoff}`,
+        eq(githubProjectItems.systemTo, FAR_FUTURE),
+        sql`${githubProjectItems.systemFrom} > ${cutoff}`,
       ),
     )
+    .limit(1)
     .get();
-  return row?.data ?? null;
+  if (!sample) return null;
+
+  const rows = d
+    .select()
+    .from(githubProjectItems)
+    .where(eq(githubProjectItems.systemTo, FAR_FUTURE))
+    .all();
+
+  const labelRows = d
+    .select()
+    .from(githubProjectItemLabels)
+    .where(eq(githubProjectItemLabels.systemFrom, sample.systemFrom))
+    .all();
+
+  const labelsByItemId = new Map<string, Array<{ name: string; color: string }>>();
+  for (const l of labelRows) {
+    const arr = labelsByItemId.get(l.itemId) ?? [];
+    arr.push({ name: l.labelName, color: l.labelColor });
+    labelsByItemId.set(l.itemId, arr);
+  }
+
+  return rows.map((r) => ({
+    id: r.itemId,
+    title: r.title,
+    status: r.status,
+    type: r.type as "ISSUE" | "PULL_REQUEST" | "DRAFT_ISSUE",
+    url: r.url ?? undefined,
+    number: r.number ?? undefined,
+    repository: r.repository ?? undefined,
+    labels: labelsByItemId.get(r.itemId) ?? [],
+  }));
 }
 
-export function cacheProjectItems(data: string): void {
+export function cacheProjectItems(items: GitHubProjectItem[]): void {
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(githubProjectItemsCache)
+    // Close old project item rows
+    tx.update(githubProjectItems)
       .set({ systemTo: timestamp })
-      .where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE))
+      .where(eq(githubProjectItems.systemTo, FAR_FUTURE))
       .run();
-    tx.insert(githubProjectItemsCache).values({ data, systemFrom: timestamp }).run();
+
+    // Insert new project item rows
+    for (const item of items) {
+      tx.insert(githubProjectItems)
+        .values({
+          systemFrom: timestamp,
+          itemId: item.id,
+          title: item.title,
+          status: item.status,
+          type: item.type,
+          url: item.url ?? null,
+          number: item.number ?? null,
+          repository: item.repository ?? null,
+        })
+        .run();
+
+      // Insert label rows
+      for (const label of item.labels) {
+        tx.insert(githubProjectItemLabels)
+          .values({
+            systemFrom: timestamp,
+            itemId: item.id,
+            labelName: label.name,
+            labelColor: label.color,
+          })
+          .run();
+      }
+    }
   });
 }
 
 export function invalidateProjectItemsCacheDb(): void {
   const d = getDb();
-  d.update(githubProjectItemsCache)
+  d.update(githubProjectItems)
     .set({ systemTo: now() })
-    .where(eq(githubProjectItemsCache.systemTo, FAR_FUTURE))
+    .where(eq(githubProjectItems.systemTo, FAR_FUTURE))
     .run();
 }
 

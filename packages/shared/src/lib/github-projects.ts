@@ -228,12 +228,12 @@ export function invalidateProjectItemsCache(): void {
  */
 export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
   const cached = getCachedProjectItems(PROJECT_ITEMS_CACHE_TTL_MS);
-  if (cached) return GitHubProjectItemArraySchema.parse(JSON.parse(cached));
+  if (cached) return cached;
 
   // If rate limited, return stale cache rather than calling API
   if (isGitHubRateLimited()) {
     const stale = getCachedProjectItems(PROJECT_ITEMS_STALE_TTL_MS);
-    if (stale) return GitHubProjectItemArraySchema.parse(JSON.parse(stale));
+    if (stale) return stale;
     return [];
   }
 
@@ -256,6 +256,6 @@ async function fetchAllProjectItemsFromApi(): Promise<GitHubProjectItem[]> {
   const allItems = await Promise.all(projects.map((p) => fetchProjectItems(p.number)));
 
   const result = allItems.flat();
-  cacheProjectItems(JSON.stringify(result));
+  cacheProjectItems(result);
   return result;
 }

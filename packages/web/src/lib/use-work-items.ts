@@ -11,7 +11,7 @@ import type {
   CommitItem,
   BranchItem,
   PullRequestItem,
-  IssueItem,
+  IssueResult,
   ProjectBoardItem,
   TodoItem,
   GitHubIssue,
@@ -24,7 +24,7 @@ export interface WorkItems {
   commits: CommitItem[];
   branches: BranchItem[];
   pullRequests: PullRequestItem[];
-  issues: IssueItem[];
+  issues: IssueResult[];
   projectItems: ProjectBoardItem[];
   todos: TodoItem[];
 }
@@ -125,20 +125,11 @@ function buildWorkItems(
 
   const allUrls = new Set(allPrUrls);
 
-  const issues: IssueItem[] = [];
+  const issues: IssueResult[] = [];
   for (const issue of rawIssues) {
     if (allPrUrls.has(issue.url)) continue;
     if (allSubjects.has(issue.title.toLowerCase())) continue;
-    const repoKey = issue.repository.nameWithOwner.toLowerCase();
-    const matchedProject = projects.find((p) => p.remote.toLowerCase() === repoKey);
-    issues.push({
-      project: matchedProject?.name ?? issue.repository.name,
-      remote: issue.repository.nameWithOwner,
-      url: issue.url,
-      number: issue.number,
-      title: issue.title,
-      labels: issue.labels.map((l) => ({ name: l.name, color: l.color })),
-    });
+    issues.push(issue);
     allUrls.add(issue.url);
     allSubjects.add(issue.title.toLowerCase());
   }

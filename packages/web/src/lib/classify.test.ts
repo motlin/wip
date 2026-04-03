@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import type {
   BranchItem,
   CommitItem,
-  IssueItem,
+  IssueResult,
   ProjectInfo,
   PullRequestItem,
   TodoItem,
@@ -382,14 +382,13 @@ describe("classifyPullRequest", () => {
   });
 });
 
-function makeIssue(overrides: Partial<IssueItem> = {}): IssueItem {
+function makeIssue(overrides: Partial<IssueResult> = {}): IssueResult {
   return {
-    project: "test",
-    remote: "origin",
     url: "https://github.com/test/test/issues/1",
     number: 1,
     title: "Test issue",
     labels: [],
+    repository: { name: "test", nameWithOwner: "test/test" },
     ...overrides,
   };
 }

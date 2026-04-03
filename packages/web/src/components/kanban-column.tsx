@@ -3,7 +3,7 @@ import type {
   CommitItem,
   BranchItem,
   PullRequestItem,
-  IssueItem,
+  IssueResult,
   ProjectBoardItem,
   TodoItem,
 } from "@wip/shared";
@@ -19,7 +19,7 @@ export interface ColumnItems {
   commits?: CommitItem[];
   branches?: BranchItem[];
   pullRequests?: PullRequestItem[];
-  issues?: IssueItem[];
+  issues?: IssueResult[];
   projectItems?: ProjectBoardItem[];
   todos?: TodoItem[];
 }

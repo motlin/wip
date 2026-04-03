@@ -3,7 +3,7 @@ import type {
   CommitItem,
   BranchItem,
   PullRequestItem,
-  IssueItem,
+  IssueResult,
   TodoItem,
   ProjectInfo,
 } from "@wip/shared";
@@ -43,7 +43,7 @@ function classifyPlanStatus(
   return null;
 }
 
-export function classifyIssue(issue: IssueItem): Category {
+export function classifyIssue(issue: IssueResult): Category {
   return classifyPlanStatus(issue.planStatus) ?? "triaged";
 }
 

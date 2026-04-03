@@ -1,19 +1,19 @@
 import { CircleDot } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import type { IssueItem, Category } from "@wip/shared";
+import type { IssueResult, Category } from "@wip/shared";
 import { CategoryBadge } from "./category-badge";
 
-export function IssueCard({ issue, category }: { issue: IssueItem; category?: Category }) {
+export function IssueCard({ issue, category }: { issue: IssueResult; category?: Category }) {
   return (
     <div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center gap-1.5">
         <a
-          href={`https://github.com/${issue.remote}`}
+          href={`https://github.com/${issue.repository.nameWithOwner}`}
           target="_blank"
           rel="noopener noreferrer"
           className="truncate text-xs font-medium text-text-300 hover:text-text-100 transition-colors"
         >
-          {issue.remote}
+          {issue.repository.nameWithOwner}
         </a>
         {category && <CategoryBadge category={category} />}
         <a
@@ -27,7 +27,7 @@ export function IssueCard({ issue, category }: { issue: IssueItem; category?: Ca
       </div>
       <Link
         to="/issue/$project/$number"
-        params={{ project: issue.project, number: String(issue.number) }}
+        params={{ project: issue.repository.name, number: String(issue.number) }}
         className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors"
       >
         {issue.title}

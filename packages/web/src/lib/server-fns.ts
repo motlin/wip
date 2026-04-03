@@ -39,7 +39,7 @@ import type {
   BranchItem,
   PullRequestItem,
   TodoItem as SharedTodoItem,
-  IssueItem,
+  IssueResult,
   ProjectBoardItem,
 } from "@wip/shared";
 import {
@@ -314,21 +314,14 @@ export const getIssueByNumber = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) =>
     z.object({ project: z.string(), number: z.number() }).parse(input),
   )
-  .handler(async ({ data }): Promise<IssueItem | null> => {
+  .handler(async ({ data }): Promise<IssueResult | null> => {
     const issues = await fetchAssignedIssues();
     const p = cachedProjects?.find((proj) => proj.name === data.project);
     for (const issue of issues) {
       if (issue.number !== data.number) continue;
       const repoKey = issue.repository.nameWithOwner.toLowerCase();
       if ((p && p.remote.toLowerCase() === repoKey) || issue.repository.name === data.project) {
-        return {
-          project: p?.name ?? issue.repository.name,
-          remote: issue.repository.nameWithOwner,
-          url: issue.url,
-          number: issue.number,
-          title: issue.title,
-          labels: issue.labels.map((l) => ({ name: l.name, color: l.color })),
-        };
+        return issue;
       }
     }
     return null;

@@ -40,12 +40,12 @@ function IssueDetail() {
       <div className="rounded-lg border border-border-300/30 bg-bg-000 p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <a
-            href={`https://github.com/${issue.remote}`}
+            href={`https://github.com/${issue.repository.nameWithOwner}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm font-medium text-text-300 hover:text-text-100 transition-colors"
           >
-            {issue.remote}
+            {issue.repository.nameWithOwner}
           </a>
           <span className="inline-flex items-center gap-1 rounded bg-purple-100 px-2 py-0.5 font-mono text-sm text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
             <CircleDot className="h-3.5 w-3.5" />#{issue.number}

@@ -216,6 +216,10 @@ const branchSchema = z.string().regex(/^[a-zA-Z0-9._\x2f-]+$/);
 const dateSchema = z.string().date();
 const hexColorSchema = z.string().regex(/^[0-9a-fA-F]{6}$/);
 export const LabelSchema = z.object({ name: z.string().min(1), color: hexColorSchema });
+export const RepositorySchema = z.object({
+  name: z.string().min(1),
+  nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
+});
 
 export const ProjectInfoSchema = z.object({
   name: z.string(),
@@ -364,16 +368,15 @@ export type PullRequestItem = z.infer<typeof PullRequestItemSchema>;
 export const PlanStatusSchema = z.enum(["none", "unreviewed", "approved"]);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 
-export const IssueItemSchema = z.object({
-  project: z.string(),
-  remote: z.string(),
+export const IssueResultSchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string().min(1),
   url: z.string().url(),
-  number: z.number(),
-  title: z.string(),
   labels: z.array(LabelSchema),
+  repository: RepositorySchema,
   planStatus: PlanStatusSchema.optional(),
 });
-export type IssueItem = z.infer<typeof IssueItemSchema>;
+export type IssueResult = z.infer<typeof IssueResultSchema>;
 
 // An item from a GitHub Project board
 export const ProjectBoardItemSchema = z.object({

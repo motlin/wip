@@ -54,7 +54,6 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    exclude: ["e2e/**", "node_modules/**"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts", "src/**/*.tsx"],

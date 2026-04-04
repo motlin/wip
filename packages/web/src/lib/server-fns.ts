@@ -45,6 +45,7 @@ import {
   type Category,
   type SnoozedChild,
   PushChildInputSchema,
+  type PushChildInput,
   TestChildInputSchema,
   SnoozeChildInputSchema,
   UnsnoozeChildInputSchema,
@@ -58,6 +59,7 @@ import {
   ApplyFixesInputSchema,
   RebaseLocalInputSchema,
   MergePrInputSchema,
+  type RebaseLocalInput,
   TestQueueJobSchema,
   type TestQueueJob,
 } from "@wip/shared";
@@ -143,142 +145,141 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   }),
 );
 
+export async function getProjectChildrenHandler(project: string): Promise<ProjectChildrenResult> {
+  return traced("getProjectChildren", async () => {
+    let p: ProjectInfo;
+    try {
+      p = await resolveProject(project);
+    } catch (error: unknown) {
+      log.general.error({ project, error }, "Project resolution failed");
+      return [];
+    }
+
+    const prStatuses = await getPrStatuses(p.dir, p.name);
+
+    const upstreamSha = getCachedUpstreamSha(p.name);
+    const mergeStatusMap = new Map<
+      string,
+      { commitsAhead: number; commitsBehind: number; rebaseable: boolean | null }
+    >();
+    if (upstreamSha) {
+      for (const ms of getCachedMergeStatuses(p.name, upstreamSha)) {
+        mergeStatusMap.set(ms.sha, ms);
+      }
+    }
+
+    const [children, remoteBranchInfo] = await Promise.all([
+      getChildCommits(
+        p.dir,
+        p.upstreamRef,
+        p.hasTestConfigured,
+        prStatuses,
+        p.name,
+        mergeStatusMap,
+      ),
+      getRemoteBranchInfo(p.dir),
+    ]);
+
+    // Discover branches that need rebase (not descendants of upstream)
+    const descendantShas = new Set(children.map((c) => c.sha));
+    const needsRebaseBranches = await getNeedsRebaseBranches(
+      p.dir,
+      p.upstreamRef,
+      descendantShas,
+      p.name,
+      prStatuses,
+      remoteBranchInfo.remoteBranches,
+      remoteBranchInfo.remoteBranchRefs,
+      mergeStatusMap,
+    );
+
+    clearExpiredSnoozes();
+    const snoozedSet = getSnoozedSet();
+    const seen = new Set<string>();
+    const allChildren = [...children, ...needsRebaseBranches].filter((c) => {
+      if (snoozedSet.has(`${p.name}:${c.sha}`)) return false;
+      if (seen.has(c.sha)) return false;
+      seen.add(c.sha);
+      return true;
+    });
+
+    // Collect all children that need branch name suggestions and fetch cached names up front
+    const defaultBranchPattern = /^(main|master)$/;
+    const namingKeys = allChildren
+      .filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
+      .map((c) => ({ sha: c.sha, project: p.name, subject: c.subject, dir: p.dir }));
+    const cachedNames =
+      namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
+
+    // Fire off background naming for any uncached items
+    const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
+    if (uncachedKeys.length > 0) {
+      suggestBranchNames(uncachedKeys).catch(() => {});
+    }
+
+    const headSha = (
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+    ).stdout.trim();
+
+    const results: GitChildResult[] = allChildren.map((child) => {
+      // Read failure tail for failed tests
+      let failureTail: string | undefined;
+      if (child.testStatus === "failed") {
+        const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
+        if (fs.existsSync(logPath)) {
+          const content = fs.readFileSync(logPath, "utf-8").trimEnd();
+          const lines = content.split("\n");
+          failureTail = lines.slice(-5).join("\n");
+        }
+      }
+
+      const ms = mergeStatusMap.get(child.sha);
+      const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
+
+      return {
+        project: p.name,
+        remote: p.remote,
+        sha: child.sha,
+        shortSha: child.shortSha,
+        subject: child.subject,
+        date: child.date,
+        branch: child.branch,
+        testStatus: child.testStatus,
+        checkStatus: child.checkStatus,
+        skippable: child.skippable,
+        pushedToRemote: child.pushedToRemote,
+        localAhead: child.localAhead,
+        needsRebase: child.needsRebase,
+        reviewStatus: child.reviewStatus,
+        prUrl: child.prUrl,
+        prNumber: child.prNumber,
+        failedChecks: child.failedChecks,
+        commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
+        commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
+        rebaseable:
+          ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+        alreadyOnRemote: child.alreadyOnRemote,
+        failureTail,
+        suggestedBranch:
+          child.branch && !defaultBranchPattern.test(child.branch) ? undefined : suggestedBranch,
+        blockReason:
+          child.branch && p.dirty && child.sha === headSha
+            ? `Working tree is dirty — commit changes in ${p.name} before testing`
+            : undefined,
+        blockCommand:
+          child.branch && p.dirty && child.sha === headSha
+            ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
+            : undefined,
+      };
+    });
+
+    return results;
+  });
+}
+
 export const getProjectChildren = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
-  .handler(
-    async ({ data }): Promise<ProjectChildrenResult> =>
-      traced("getProjectChildren", async () => {
-        let p: ProjectInfo;
-        try {
-          p = await resolveProject(data.project);
-        } catch (error: unknown) {
-          log.general.error({ project: data.project, error }, "Project resolution failed");
-          return [];
-        }
-
-        const prStatuses = await getPrStatuses(p.dir, p.name);
-
-        const upstreamSha = getCachedUpstreamSha(p.name);
-        const mergeStatusMap = new Map<
-          string,
-          { commitsAhead: number; commitsBehind: number; rebaseable: boolean | null }
-        >();
-        if (upstreamSha) {
-          for (const ms of getCachedMergeStatuses(p.name, upstreamSha)) {
-            mergeStatusMap.set(ms.sha, ms);
-          }
-        }
-
-        const [children, remoteBranchInfo] = await Promise.all([
-          getChildCommits(
-            p.dir,
-            p.upstreamRef,
-            p.hasTestConfigured,
-            prStatuses,
-            p.name,
-            mergeStatusMap,
-          ),
-          getRemoteBranchInfo(p.dir),
-        ]);
-
-        // Discover branches that need rebase (not descendants of upstream)
-        const descendantShas = new Set(children.map((c) => c.sha));
-        const needsRebaseBranches = await getNeedsRebaseBranches(
-          p.dir,
-          p.upstreamRef,
-          descendantShas,
-          p.name,
-          prStatuses,
-          remoteBranchInfo.remoteBranches,
-          remoteBranchInfo.remoteBranchRefs,
-          mergeStatusMap,
-        );
-
-        clearExpiredSnoozes();
-        const snoozedSet = getSnoozedSet();
-        const seen = new Set<string>();
-        const allChildren = [...children, ...needsRebaseBranches].filter((c) => {
-          if (snoozedSet.has(`${p.name}:${c.sha}`)) return false;
-          if (seen.has(c.sha)) return false;
-          seen.add(c.sha);
-          return true;
-        });
-
-        // Collect all children that need branch name suggestions and fetch cached names up front
-        const defaultBranchPattern = /^(main|master)$/;
-        const namingKeys = allChildren
-          .filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
-          .map((c) => ({ sha: c.sha, project: p.name, subject: c.subject, dir: p.dir }));
-        const cachedNames =
-          namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
-
-        // Fire off background naming for any uncached items
-        const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
-        if (uncachedKeys.length > 0) {
-          suggestBranchNames(uncachedKeys).catch(() => {});
-        }
-
-        const headSha = (
-          await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
-        ).stdout.trim();
-
-        const results: GitChildResult[] = allChildren.map((child) => {
-          // Read failure tail for failed tests
-          let failureTail: string | undefined;
-          if (child.testStatus === "failed") {
-            const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
-            if (fs.existsSync(logPath)) {
-              const content = fs.readFileSync(logPath, "utf-8").trimEnd();
-              const lines = content.split("\n");
-              failureTail = lines.slice(-5).join("\n");
-            }
-          }
-
-          const ms = mergeStatusMap.get(child.sha);
-          const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
-
-          return {
-            project: p.name,
-            remote: p.remote,
-            sha: child.sha,
-            shortSha: child.shortSha,
-            subject: child.subject,
-            date: child.date,
-            branch: child.branch,
-            testStatus: child.testStatus,
-            checkStatus: child.checkStatus,
-            skippable: child.skippable,
-            pushedToRemote: child.pushedToRemote,
-            localAhead: child.localAhead,
-            needsRebase: child.needsRebase,
-            reviewStatus: child.reviewStatus,
-            prUrl: child.prUrl,
-            prNumber: child.prNumber,
-            failedChecks: child.failedChecks,
-            commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
-            commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
-            rebaseable:
-              ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
-            alreadyOnRemote: child.alreadyOnRemote,
-            failureTail,
-            suggestedBranch:
-              child.branch && !defaultBranchPattern.test(child.branch)
-                ? undefined
-                : suggestedBranch,
-            blockReason:
-              child.branch && p.dirty && child.sha === headSha
-                ? `Working tree is dirty — commit changes in ${p.name} before testing`
-                : undefined,
-            blockCommand:
-              child.branch && p.dirty && child.sha === headSha
-                ? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
-                : undefined,
-          };
-        });
-
-        return results;
-      }),
-  );
+  .handler(async ({ data }) => getProjectChildrenHandler(data.project));
 
 export const getProjectTodos = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
@@ -367,72 +368,69 @@ export const getProjectItemByNumber = createServerFn({ method: "GET" })
       }),
   );
 
+export async function pushChildHandler(data: PushChildInput): Promise<ActionResult> {
+  return traced("pushChild", async () => {
+    const p = await resolveProject(data.project);
+
+    // Validate transition: push can be done from ready_to_push or no_test
+    // Only check dirty state if operating on HEAD
+    const headSha = (
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+    ).stdout.trim();
+    if (p.dirty && data.sha === headSha) {
+      log.subprocess.debug(
+        { project: data.project, sha: data.sha },
+        "Pushing HEAD from dirty project state",
+      );
+    }
+
+    // Resolve shortSha and subject from git
+    const logResult = await tracedExeca(
+      "git",
+      ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
+      { reject: false },
+    );
+    const logFields = logResult.stdout.split("\0");
+    const shortSha = logFields[0] ?? "";
+    const subject = logFields[1] ?? "";
+
+    const { getBranchName } = await import("@wip/shared");
+    const branchName =
+      data.branch ??
+      getBranchName(data.sha, p.name) ??
+      subject
+        .toLowerCase()
+        .replaceAll(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+    if (!data.branch) {
+      const branchResult = await tracedExeca("git", ["-C", p.dir, "branch", branchName, data.sha], {
+        reject: false,
+      });
+      if (branchResult.exitCode !== 0) {
+        return { ok: false, message: `Failed to create branch: ${branchResult.stderr}` };
+      }
+    }
+
+    const pushResult = await tracedExeca(
+      "git",
+      ["-C", p.dir, "push", "-u", p.upstreamRemote, `${branchName}:refs/heads/${branchName}`],
+      { reject: false },
+    );
+
+    if (pushResult.exitCode === 0) {
+      invalidatePrCache(data.project);
+      const compareUrl = `https://github.com/${p.remote}/compare/${branchName}?expand=1`;
+      return { ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl };
+    }
+
+    return { ok: false, message: `Failed to push: ${pushResult.stderr}` };
+  });
+}
+
 export const pushChild = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => PushChildInputSchema.parse(input))
-  .handler(
-    async ({ data }): Promise<ActionResult> =>
-      traced("pushChild", async () => {
-        const p = await resolveProject(data.project);
-
-        // Validate transition: push can be done from ready_to_push or no_test
-        // Only check dirty state if operating on HEAD
-        const headSha = (
-          await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
-        ).stdout.trim();
-        if (p.dirty && data.sha === headSha) {
-          log.subprocess.debug(
-            { project: data.project, sha: data.sha },
-            "Pushing HEAD from dirty project state",
-          );
-        }
-
-        // Resolve shortSha and subject from git
-        const logResult = await tracedExeca(
-          "git",
-          ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
-          { reject: false },
-        );
-        const logFields = logResult.stdout.split("\0");
-        const shortSha = logFields[0] ?? "";
-        const subject = logFields[1] ?? "";
-
-        const { getBranchName } = await import("@wip/shared");
-        const branchName =
-          data.branch ??
-          getBranchName(data.sha, p.name) ??
-          subject
-            .toLowerCase()
-            .replaceAll(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, "");
-
-        if (!data.branch) {
-          const branchResult = await tracedExeca(
-            "git",
-            ["-C", p.dir, "branch", branchName, data.sha],
-            {
-              reject: false,
-            },
-          );
-          if (branchResult.exitCode !== 0) {
-            return { ok: false, message: `Failed to create branch: ${branchResult.stderr}` };
-          }
-        }
-
-        const pushResult = await tracedExeca(
-          "git",
-          ["-C", p.dir, "push", "-u", p.upstreamRemote, `${branchName}:refs/heads/${branchName}`],
-          { reject: false },
-        );
-
-        if (pushResult.exitCode === 0) {
-          invalidatePrCache(data.project);
-          const compareUrl = `https://github.com/${p.remote}/compare/${branchName}?expand=1`;
-          return { ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl };
-        }
-
-        return { ok: false, message: `Failed to push: ${pushResult.stderr}` };
-      }),
-  );
+  .handler(async ({ data }) => pushChildHandler(data));
 
 export const createPr = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
@@ -532,69 +530,72 @@ export const testChild = createServerFn({ method: "POST" })
       }),
   );
 
-export const testAllChildren = createServerFn({ method: "POST" }).handler(
-  async (): Promise<TestJobStatus[]> =>
-    traced("testAllChildren", async () => {
-      const { enqueueTest } = await import("./test-queue.js");
+export async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
+  return traced("testAllChildren", async () => {
+    const { enqueueTest } = await import("./test-queue.js");
 
-      const projectsDirs = getProjectsDirs();
-      const projects = await discoverAllProjects(projectsDirs);
+    const projectsDirs = getProjectsDirs();
+    const projects = await discoverAllProjects(projectsDirs);
 
-      clearExpiredSnoozes();
-      const snoozedSet = getSnoozedSet();
+    clearExpiredSnoozes();
+    const snoozedSet = getSnoozedSet();
 
-      const SKIP_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
-      const queued: TestJobStatus[] = [];
+    const SKIP_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
+    const queued: TestJobStatus[] = [];
 
-      for (const p of projects) {
-        if (!p.hasTestConfigured) continue;
+    for (const p of projects) {
+      if (!p.hasTestConfigured) continue;
 
-        const headSha = p.dirty
-          ? (
-              await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
-            ).stdout.trim()
-          : undefined;
+      const headSha = p.dirty
+        ? (
+            await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
+          ).stdout.trim()
+        : undefined;
 
-        const childShas = await getChildren(p.dir, p.upstreamRef);
-        if (childShas.length === 0) continue;
+      const childShas = await getChildren(p.dir, p.upstreamRef);
+      if (childShas.length === 0) continue;
 
-        const testResults = getTestResultsForProject(p.name);
+      const testResults = getTestResultsForProject(p.name);
 
-        const untested = childShas.filter((sha) => {
-          if (testResults.has(sha)) return false;
-          if (snoozedSet.has(`${p.name}:${sha}`)) return false;
-          if (p.dirty && sha === headSha) return false;
-          return true;
-        });
-        if (untested.length === 0) continue;
+      const untested = childShas.filter((sha) => {
+        if (testResults.has(sha)) return false;
+        if (snoozedSet.has(`${p.name}:${sha}`)) return false;
+        if (p.dirty && sha === headSha) return false;
+        return true;
+      });
+      if (untested.length === 0) continue;
 
-        const logResult = await tracedExeca(
-          "git",
-          ["-C", p.dir, "log", "--stdin", "--no-walk", "--format=%H%x00%h%x00%s%x00%B%x00%D%x1e"],
-          { input: untested.join("\n"), reject: false },
-        );
-        if (logResult.exitCode !== 0) continue;
+      const logResult = await tracedExeca(
+        "git",
+        ["-C", p.dir, "log", "--stdin", "--no-walk", "--format=%H%x00%h%x00%s%x00%B%x00%D%x1e"],
+        { input: untested.join("\n"), reject: false },
+      );
+      if (logResult.exitCode !== 0) continue;
 
-        for (const record of logResult.stdout.split("\x1e")) {
-          const trimmed = record.replace(/^\n+/, "");
-          if (!trimmed) continue;
-          const splitFields = trimmed.split("\0");
-          const sha = splitFields[0] ?? "";
-          const shortSha = splitFields[1] ?? "";
-          const subject = splitFields[2] ?? "";
-          const fullMessage = splitFields[3] ?? "";
-          const decoration = splitFields[4] ?? "";
-          if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
+      for (const record of logResult.stdout.split("\x1e")) {
+        const trimmed = record.replace(/^\n+/, "");
+        if (!trimmed) continue;
+        const splitFields = trimmed.split("\0");
+        const sha = splitFields[0] ?? "";
+        const shortSha = splitFields[1] ?? "";
+        const subject = splitFields[2] ?? "";
+        const fullMessage = splitFields[3] ?? "";
+        const decoration = splitFields[4] ?? "";
+        if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
 
-          const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
-          const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
+        const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
+        const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
 
-          const job = enqueueTest(p.name, p.dir, sha, shortSha, subject, branch);
-          queued.push({ id: job.id, status: job.status, message: job.message });
-        }
+        const job = enqueueTest(p.name, p.dir, sha, shortSha, subject, branch);
+        queued.push({ id: job.id, status: job.status, message: job.message });
       }
-      return queued;
-    }),
+    }
+    return queued;
+  });
+}
+
+export const testAllChildren = createServerFn({ method: "POST" }).handler(async () =>
+  testAllChildrenHandler(),
 );
 
 export const getProjectDir = createServerFn({ method: "GET" })
@@ -1201,68 +1202,68 @@ export const applyFixes = createServerFn({ method: "POST" })
       }),
   );
 
+export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<ActionResult> {
+  return traced("rebaseLocal", async () => {
+    const p = await resolveProject(data.project);
+
+    const env = await getMiseEnv(p.dir);
+
+    await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch ?? "main"], {
+      reject: false,
+      env,
+    });
+
+    // Validate transition: rebase is allowed from needs_rebase state
+    // Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
+    if (p.dirty) {
+      log.subprocess.debug(
+        { project: data.project, branch: data.branch },
+        "Warning: rebasing with dirty working directory",
+      );
+    }
+
+    const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", data.branch], {
+      reject: false,
+      env,
+    });
+    if (checkout.exitCode !== 0) {
+      return { ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}` };
+    }
+
+    const branchSha = (
+      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
+    ).stdout.trim();
+    const rebase = await tracedExeca("git", ["-C", p.dir, "rebase", p.upstreamRef], {
+      reject: false,
+      env,
+    });
+    if (rebase.exitCode !== 0) {
+      await tracedExeca("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
+      const upstreamSha = getCachedUpstreamSha(data.project);
+      if (upstreamSha && branchSha) {
+        cacheMergeStatus(data.project, branchSha, upstreamSha, 0, 1, false);
+      }
+      return { ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}` };
+    }
+
+    const push = await tracedExeca(
+      "git",
+      ["-C", p.dir, "push", p.remote, `${data.branch}:${data.branch}`, "--force-with-lease"],
+      { reject: false, env },
+    );
+    if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
+      return { ok: false, message: `Rebased but failed to push: ${push.stderr}` };
+    }
+
+    invalidatePrCache(data.project);
+    invalidateMergeStatus(data.project);
+    return { ok: true, message: `Rebased ${data.branch} onto ${p.upstreamRef}` };
+  });
+}
+
 export const rebaseLocal = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
-  .handler(
-    async ({ data }): Promise<ActionResult> =>
-      traced("rebaseLocal", async () => {
-        const p = await resolveProject(data.project);
-
-        const env = await getMiseEnv(p.dir);
-
-        await tracedExeca(
-          "git",
-          ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch ?? "main"],
-          { reject: false, env },
-        );
-
-        // Validate transition: rebase is allowed from needs_rebase state
-        // Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
-        if (p.dirty) {
-          log.subprocess.debug(
-            { project: data.project, branch: data.branch },
-            "Warning: rebasing with dirty working directory",
-          );
-        }
-
-        const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", data.branch], {
-          reject: false,
-          env,
-        });
-        if (checkout.exitCode !== 0) {
-          return { ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}` };
-        }
-
-        const branchSha = (
-          await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
-        ).stdout.trim();
-        const rebase = await tracedExeca("git", ["-C", p.dir, "rebase", p.upstreamRef], {
-          reject: false,
-          env,
-        });
-        if (rebase.exitCode !== 0) {
-          await tracedExeca("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
-          const upstreamSha = getCachedUpstreamSha(data.project);
-          if (upstreamSha && branchSha) {
-            cacheMergeStatus(data.project, branchSha, upstreamSha, 0, 1, false);
-          }
-          return { ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}` };
-        }
-
-        const push = await tracedExeca(
-          "git",
-          ["-C", p.dir, "push", p.remote, `${data.branch}:${data.branch}`, "--force-with-lease"],
-          { reject: false, env },
-        );
-        if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
-          return { ok: false, message: `Rebased but failed to push: ${push.stderr}` };
-        }
-
-        invalidatePrCache(data.project);
-        invalidateMergeStatus(data.project);
-        return { ok: true, message: `Rebased ${data.branch} onto ${p.upstreamRef}` };
-      }),
-  );
+  .handler(async ({ data }) => rebaseLocalHandler(data));
 
 export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
   async (): Promise<ActionResult> =>
@@ -1360,18 +1361,21 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
     }),
 );
 
-export const refreshAll = createServerFn({ method: "POST" }).handler(
-  async (): Promise<ActionResult> =>
-    traced("refreshAll", async () => {
-      cachedProjects = null;
-      cachedProjectsTime = 0;
-      invalidateIssuesCache();
-      invalidateProjectItemsCache();
-      // Re-populate the project cache and invalidate PR caches
-      const projects = await refreshProjectCache();
-      for (const p of projects) {
-        invalidatePrCache(p.name);
-      }
-      return { ok: true, message: "All caches invalidated" };
-    }),
+export async function refreshAllHandler(): Promise<ActionResult> {
+  return traced("refreshAll", async () => {
+    cachedProjects = null;
+    cachedProjectsTime = 0;
+    invalidateIssuesCache();
+    invalidateProjectItemsCache();
+    // Re-populate the project cache and invalidate PR caches
+    const projects = await refreshProjectCache();
+    for (const p of projects) {
+      invalidatePrCache(p.name);
+    }
+    return { ok: true, message: "All caches invalidated" };
+  });
+}
+
+export const refreshAll = createServerFn({ method: "POST" }).handler(async () =>
+  refreshAllHandler(),
 );

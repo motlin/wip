@@ -240,6 +240,10 @@ export async function fetchProjectItems(
 
 let cachedViewerLogin: string | undefined;
 
+export function resetViewerLoginCache(): void {
+  cachedViewerLogin = undefined;
+}
+
 async function fetchViewerLogin(): Promise<string | undefined> {
   if (cachedViewerLogin) return cachedViewerLogin;
 

@@ -23,6 +23,10 @@ export function markGitHubRateLimited(): void {
   );
 }
 
+export function resetGitHubRateLimit(): void {
+  rateLimitUntil = 0;
+}
+
 export function detectRateLimitError(stderr: string, stdout: string): boolean {
   return (
     stderr.includes("API rate limit") ||

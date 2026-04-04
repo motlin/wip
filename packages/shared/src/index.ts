@@ -171,6 +171,7 @@ export {
 export {
   isGitHubRateLimited,
   markGitHubRateLimited,
+  resetGitHubRateLimit,
   detectRateLimitError,
 } from "./lib/rate-limit.js";
 export { log } from "./services/logger.js";

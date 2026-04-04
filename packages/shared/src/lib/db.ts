@@ -696,14 +696,19 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 
       // Insert new failed checks rows
       if (s.failedChecks && s.failedChecks.length > 0) {
-        // Use the parent's systemFrom for joining
-        const parentSystemFrom = parentChanged ? timestamp : existing!.systemFrom;
+        // Deduplicate by name — a PR can report the same check multiple times
+        const seen = new Set<string>();
+        const uniqueChecks = s.failedChecks.filter((fc) => {
+          if (seen.has(fc.name)) return false;
+          seen.add(fc.name);
+          return true;
+        });
         tx.insert(prFailedChecks)
           .values(
-            s.failedChecks.map((fc) => ({
+            uniqueChecks.map((fc) => ({
               project,
               branch: s.branch,
-              systemFrom: parentSystemFrom,
+              systemFrom: timestamp,
               name: fc.name,
               url: fc.url ?? null,
             })),

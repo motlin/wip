@@ -37,6 +37,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@pollyjs/adapter-fetch": "^6.0.7",
+    "@pollyjs/core": "^6.0.6",
+    "@pollyjs/persister-fs": "^6.0.6",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.2",
     "pino-pretty": "^13.1.3",

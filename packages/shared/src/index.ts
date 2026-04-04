@@ -173,3 +173,10 @@ export {
   detectRateLimitError,
 } from "./lib/rate-limit.js";
 export { log } from "./services/logger.js";
+export {
+  type GitHubClient,
+  createTestClient,
+  getGitHubClient,
+  setGitHubClient,
+  resetGitHubClient,
+} from "./services/github-client.js";

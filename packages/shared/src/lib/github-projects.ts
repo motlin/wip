@@ -1,8 +1,8 @@
-import { execa } from "execa";
 import { z } from "zod";
 
-import { type Category, LabelSchema } from "./schemas.js";
+import { getGitHubClient } from "../services/github-client.js";
 import { log } from "../services/logger.js";
+import { type Category, LabelSchema } from "./schemas.js";
 import { getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 
@@ -39,54 +39,38 @@ export const GitHubProjectSchema = z.object({
 });
 export type GitHubProject = z.infer<typeof GitHubProjectSchema>;
 
+const FETCH_PROJECTS_QUERY = `
+  query {
+    viewer {
+      projectsV2(first: 20) {
+        nodes { number title }
+      }
+    }
+  }
+`;
+
+const FetchProjectsResponseSchema = z.object({
+  data: z
+    .object({
+      viewer: z.object({
+        projectsV2: z.object({
+          nodes: z.array(GitHubProjectSchema),
+        }),
+      }),
+    })
+    .optional(),
+  errors: z.array(z.object({ type: z.string(), message: z.string() })).optional(),
+});
+
 /**
  * Fetch GitHub Projects v2 owned by the authenticated user.
  * Requires the `read:project` OAuth scope.
  * Returns an empty array on auth/scope errors.
  */
 export async function fetchProjects(): Promise<GitHubProject[]> {
-  const start = performance.now();
-  const query = `{
-		viewer {
-			projectsV2(first: 20) {
-				nodes { number title }
-			}
-		}
-	}`;
-
-  const result = await execa("gh", ["api", "graphql", "-f", `query=${query}`], { reject: false });
-  const duration = Math.round(performance.now() - start);
-  log.subprocess.debug(
-    { cmd: "gh", args: ["api", "graphql", "viewer.projectsV2"], duration },
-    `gh api graphql viewer.projectsV2 (${duration}ms)`,
-  );
-
-  if (result.exitCode !== 0 || !result.stdout) {
-    log.subprocess.debug(
-      { stderr: result.stderr },
-      "gh projects fetch failed (likely missing read:project scope)",
-    );
-    if (result.stderr?.includes("rate limit") || result.stderr?.includes("API rate limit")) {
-      markGitHubRateLimited();
-    }
-    return [];
-  }
-
-  const FetchProjectsResponseSchema = z.object({
-    data: z
-      .object({
-        viewer: z.object({
-          projectsV2: z.object({
-            nodes: z.array(GitHubProjectSchema),
-          }),
-        }),
-      })
-      .optional(),
-    errors: z.array(z.object({ type: z.string(), message: z.string() })).optional(),
-  });
-
   try {
-    const data = FetchProjectsResponseSchema.parse(JSON.parse(result.stdout));
+    const raw = await getGitHubClient().graphql(FETCH_PROJECTS_QUERY);
+    const data = FetchProjectsResponseSchema.parse(raw);
 
     if (data.errors && data.errors.length > 0) {
       log.subprocess.debug({ errors: data.errors }, "gh projects GraphQL errors");
@@ -94,82 +78,186 @@ export async function fetchProjects(): Promise<GitHubProject[]> {
     }
 
     return data.data?.viewer.projectsV2.nodes ?? [];
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.subprocess.debug({ error: message }, "GitHub projects GraphQL request failed");
+
+    if (message.includes("rate limit") || message.includes("403")) {
+      markGitHubRateLimited();
+    }
+
     return [];
   }
 }
 
+const FETCH_PROJECT_ITEMS_QUERY = `
+  query($login: String!, $projectNumber: Int!, $cursor: String) {
+    user(login: $login) {
+      projectV2(number: $projectNumber) {
+        items(first: 100, after: $cursor) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            type
+            fieldValueByName(name: "Status") {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+              }
+            }
+            content {
+              ... on Issue {
+                title
+                number
+                url
+                repository {
+                  nameWithOwner
+                }
+                labels(first: 100) {
+                  nodes {
+                    name
+                    color
+                  }
+                }
+              }
+              ... on PullRequest {
+                title
+                number
+                url
+                repository {
+                  nameWithOwner
+                }
+                labels(first: 100) {
+                  nodes {
+                    name
+                    color
+                  }
+                }
+              }
+              ... on DraftIssue {
+                title
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const ProjectItemNodeSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
+  fieldValueByName: z
+    .object({
+      name: z.string(),
+    })
+    .nullable()
+    .optional(),
+  content: z.object({
+    title: z.string().min(1),
+    number: z.number().int().positive().optional(),
+    url: z.string().url().optional(),
+    repository: z.object({ nameWithOwner: z.string().min(1) }).optional(),
+    labels: z.object({ nodes: z.array(LabelSchema) }).optional(),
+  }),
+});
+
+const FetchProjectItemsPageSchema = z.object({
+  data: z.object({
+    user: z.object({
+      projectV2: z.object({
+        items: z.object({
+          pageInfo: z.object({
+            hasNextPage: z.boolean(),
+            endCursor: z.string().nullable(),
+          }),
+          nodes: z.array(ProjectItemNodeSchema),
+        }),
+      }),
+    }),
+  }),
+});
+
 /**
- * Fetch items from a GitHub Project v2.
- * Uses `gh project item-list` which outputs JSON with items and their status field values.
+ * Fetch items from a GitHub Project v2 using GraphQL with cursor-based pagination.
  * Returns an empty array on errors.
  */
 export async function fetchProjectItems(
   projectNumber: number,
   owner?: string,
 ): Promise<GitHubProjectItem[]> {
-  const start = performance.now();
-  const args = [
-    "project",
-    "item-list",
-    String(projectNumber),
-    "--format",
-    "json",
-    "--limit",
-    "100",
-  ];
-  if (owner) {
-    args.push("--owner", owner);
-  } else {
-    args.push("--owner", "@me");
-  }
+  try {
+    const login = owner ?? (await fetchViewerLogin());
+    if (!login) return [];
 
-  const result = await execa("gh", args, { reject: false });
-  const duration = Math.round(performance.now() - start);
-  log.subprocess.debug(
-    { cmd: "gh", args: ["project", "item-list", String(projectNumber)], duration },
-    `gh project item-list ${projectNumber} (${duration}ms)`,
-  );
+    const allItems: GitHubProjectItem[] = [];
+    let cursor: string | null = null;
 
-  if (result.exitCode !== 0 || !result.stdout) {
-    log.subprocess.debug({ stderr: result.stderr }, `gh project item-list ${projectNumber} failed`);
+    do {
+      const raw = await getGitHubClient().graphql(FETCH_PROJECT_ITEMS_QUERY, {
+        login,
+        projectNumber,
+        cursor,
+      });
+
+      const page = FetchProjectItemsPageSchema.parse(raw);
+      const items = page.data.user.projectV2.items;
+
+      for (const node of items.nodes) {
+        allItems.push({
+          id: node.id,
+          title: node.content.title,
+          status: node.fieldValueByName?.name ?? "",
+          type: node.type,
+          url: node.content.url,
+          number: node.content.number,
+          repository: node.content.repository?.nameWithOwner,
+          labels: node.content.labels?.nodes ?? [],
+        });
+      }
+
+      cursor = items.pageInfo.hasNextPage ? items.pageInfo.endCursor : null;
+    } while (cursor);
+
+    return allItems;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.subprocess.debug(
+      { error: message },
+      `GitHub project items ${projectNumber} GraphQL request failed`,
+    );
+
+    if (message.includes("rate limit") || message.includes("403")) {
+      markGitHubRateLimited();
+    }
+
     return [];
   }
+}
 
-  const FetchProjectItemsResponseSchema = z.object({
-    items: z.array(
-      z.object({
-        id: z.string().min(1),
-        title: z.string().min(1),
-        status: z.string().optional(),
-        type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
-        content: z
-          .object({
-            url: z.string().url().optional(),
-            number: z.number().int().positive().optional(),
-            repository: z.string().min(1).optional(),
-            labels: z.array(LabelSchema).optional(),
-          })
-          .optional(),
-      }),
-    ),
-  });
+let cachedViewerLogin: string | undefined;
+
+async function fetchViewerLogin(): Promise<string | undefined> {
+  if (cachedViewerLogin) return cachedViewerLogin;
 
   try {
-    const data = FetchProjectItemsResponseSchema.parse(JSON.parse(result.stdout));
-
-    return (data.items ?? []).map((item) => ({
-      id: item.id,
-      title: item.title,
-      status: item.status ?? "",
-      type: item.type,
-      url: item.content?.url,
-      number: item.content?.number,
-      repository: item.content?.repository,
-      labels: item.content?.labels ?? [],
-    }));
+    const raw = await getGitHubClient().graphql("{ viewer { login } }");
+    const response = z
+      .object({
+        data: z.object({
+          viewer: z.object({
+            login: z.string().min(1),
+          }),
+        }),
+      })
+      .parse(raw);
+    cachedViewerLogin = response.data.viewer.login;
+    return cachedViewerLogin;
   } catch {
-    return [];
+    return undefined;
   }
 }
 

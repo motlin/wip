@@ -21,7 +21,7 @@ export function getRouter() {
   // Persist query cache to localStorage (client-side only)
   if (typeof window !== "undefined") {
     const persister = createSyncStoragePersister({ storage: window.localStorage });
-    void persistQueryClient({ queryClient, persister });
+    void persistQueryClient({ queryClient, persister, buster: "v2-flat-children" });
   }
 
   return routerWithQueryClient(

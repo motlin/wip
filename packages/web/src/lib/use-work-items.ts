@@ -90,6 +90,7 @@ function buildWorkItems(
   const seenShas = new Set<string>();
 
   for (const data of childrenData) {
+    if (!Array.isArray(data)) continue;
     for (const child of data) {
       if (seenShas.has(child.sha)) continue;
       seenShas.add(child.sha);

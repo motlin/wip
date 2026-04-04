@@ -31,11 +31,22 @@
 - **GitHubClient test mode**: Call `setGitHubClient(createTestClient())` to use a client with no auth. Polly.js intercepts fetch at the network level and replays from recordings.
 - **Server function tests**: Import functions directly, seed the DB and project cache. No HTTP server needed.
 
+### Git Fixture System
+
+- **Recording/replay for git subprocesses**: `setupGitFixtures(testName)` in `packages/shared/src/test/git-fixtures.ts` intercepts `tracedExeca` calls and returns recorded output. Fixtures are stored in `packages/shared/src/__fixtures__/git/`.
+- **Recording mode**: Set `GIT_FIXTURE_RECORD=true` to capture new git CLI output as JSON fixture files (hashed by command + args + stdin).
+- **createTestGitRepo helper**: Creates a temporary git repo with `git init`, user config, and a remote. Used in `git.test.ts` for tests that need a real git repository (e.g., `isDirty`, `isDetachedHead`, `getChildren`).
+
+### Handler Extraction Pattern
+
+- **Testing createServerFn wrappers**: Extract the handler logic into a standalone exported `async function` (e.g., `getProjectChildrenHandler`, `pushChildHandler`) and have the `createServerFn().handler()` delegate to it. Tests import and call the handler directly, avoiding the TanStack Start framework wrapper.
+
 ### Running Tests
 
 - `just test` -- runs all tests with in-memory SQLite and Polly replay
 - `TEST_DB_FILE=/tmp/debug.db just test` -- persists DB to file for inspection
 - `POLLY_RECORD=true just test` -- re-records GitHub API fixtures (requires valid `gh auth` or `GITHUB_TOKEN`)
+- `GIT_FIXTURE_RECORD=true just test` -- re-records git subprocess fixtures
 
 ## Code Style
 

@@ -75,6 +75,8 @@ export {
   GitHubIssueSchema,
   GitHubIssueLabelSchema,
   type GitHubIssue,
+  IssueResultSchema,
+  type IssueResult,
   fetchAssignedIssues,
   invalidateIssuesCache,
 } from "./lib/github-issues.js";
@@ -119,8 +121,6 @@ export {
   type TestQueueJob,
   PlanStatusSchema,
   type PlanStatus,
-  IssueResultSchema,
-  type IssueResult,
   TodoItemSchema,
   type TodoItem,
   ActionResultSchema,

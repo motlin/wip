@@ -332,15 +332,7 @@ export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 export const PlanStatusSchema = z.enum(["none", "unreviewed", "approved"]);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 
-export const IssueResultSchema = z.object({
-  number: z.number().int().positive(),
-  title: z.string().min(1),
-  url: z.string().url(),
-  labels: z.array(LabelSchema),
-  repository: RepositorySchema,
-  planStatus: PlanStatusSchema.optional(),
-});
-export type IssueResult = z.infer<typeof IssueResultSchema>;
+// IssueResultSchema is defined in github-issues.ts to avoid circular imports
 
 // A task from a todo.md file
 export const TodoItemSchema = z.object({

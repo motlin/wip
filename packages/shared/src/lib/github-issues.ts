@@ -4,7 +4,7 @@ import { z } from "zod";
 import { log } from "../services/logger.js";
 import { getCachedIssues, cacheIssues, invalidateIssuesCacheDb } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
-import { LabelSchema, RepositorySchema } from "./schemas.js";
+import { LabelSchema, PlanStatusSchema, RepositorySchema } from "./schemas.js";
 
 export { LabelSchema as GitHubIssueLabelSchema };
 
@@ -16,6 +16,17 @@ export const GitHubIssueSchema = z.object({
   repository: RepositorySchema,
 });
 export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
+
+export const IssueResultSchema = GitHubIssueSchema.pick({
+  number: true,
+  title: true,
+  url: true,
+  labels: true,
+  repository: true,
+}).extend({
+  planStatus: PlanStatusSchema.optional(),
+});
+export type IssueResult = z.infer<typeof IssueResultSchema>;
 
 const GitHubIssueArraySchema = z.array(GitHubIssueSchema);
 

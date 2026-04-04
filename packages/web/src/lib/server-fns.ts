@@ -88,6 +88,20 @@ let cachedProjectsTime = 0;
 const PROJECT_CACHE_TTL = 5 * 60 * 1000;
 let discoverInFlight: Promise<ProjectInfo[]> | null = null;
 
+/** Test-only: populate the in-memory project cache so resolveProject() works without filesystem discovery. */
+export function seedProjectCache(projects: ProjectInfo[]): void {
+  cachedProjects = projects;
+  cachedProjectsTime = Date.now();
+  discoverInFlight = null;
+}
+
+/** Test-only: clear the in-memory project cache. */
+export function resetProjectCache(): void {
+  cachedProjects = null;
+  cachedProjectsTime = 0;
+  discoverInFlight = null;
+}
+
 async function refreshProjectCache(): Promise<ProjectInfo[]> {
   if (discoverInFlight) return discoverInFlight;
   const projectsDirs = getProjectsDirs();

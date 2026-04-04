@@ -96,6 +96,7 @@ export {
   fetchAllProjectItems,
   invalidateProjectItemsCache,
   mapProjectStatusToCategory,
+  resetViewerLoginCache,
 } from "./lib/github-projects.js";
 export {
   LabelSchema,

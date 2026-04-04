@@ -1,6 +1,6 @@
-import { execa } from "execa";
 import { z } from "zod";
 
+import { getGitHubClient } from "../services/github-client.js";
 import { log } from "../services/logger.js";
 import { getCachedIssues, cacheIssues, invalidateIssuesCacheDb } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
@@ -63,42 +63,84 @@ export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
   }
 }
 
-async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
-  const start = performance.now();
-  const result = await execa(
-    "gh",
-    [
-      "search",
-      "issues",
-      "--assignee",
-      "@me",
-      "--state",
-      "open",
-      "--limit",
-      "100",
-      "--json",
-      "number,title,url,labels,repository",
-    ],
-    { reject: false },
-  );
-  const duration = Math.round(performance.now() - start);
-  log.subprocess.debug(
-    { cmd: "gh", args: ["search", "issues", "--assignee", "@me", "--state", "open"], duration },
-    `gh search issues --assignee @me (${duration}ms)`,
-  );
+const SEARCH_ISSUES_QUERY = `
+  query {
+    search(query: "assignee:@me state:open", type: ISSUE, first: 100) {
+      nodes {
+        ... on Issue {
+          number
+          title
+          url
+          labels(first: 100) {
+            nodes {
+              name
+              color
+            }
+          }
+          repository {
+            name
+            nameWithOwner
+          }
+        }
+      }
+    }
+  }
+`;
 
-  if (result.exitCode !== 0 || !result.stdout) {
-    log.subprocess.debug({ stderr: result.stderr }, "gh search issues failed");
-    if (result.stderr?.includes("rate limit") || result.stderr?.includes("API rate limit")) {
+const SearchIssuesResponseSchema = z.object({
+  data: z.object({
+    search: z.object({
+      nodes: z.array(
+        z.object({
+          number: z.number(),
+          title: z.string(),
+          url: z.string(),
+          labels: z.object({
+            nodes: z.array(
+              z.object({
+                name: z.string(),
+                color: z.string(),
+              }),
+            ),
+          }),
+          repository: z.object({
+            name: z.string(),
+            nameWithOwner: z.string(),
+          }),
+        }),
+      ),
+    }),
+  }),
+});
+
+async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
+  try {
+    const raw = await getGitHubClient().graphql(SEARCH_ISSUES_QUERY);
+    const response = SearchIssuesResponseSchema.parse(raw);
+
+    const issues = GitHubIssueArraySchema.parse(
+      response.data.search.nodes.map((node) => ({
+        number: node.number,
+        title: node.title,
+        url: node.url,
+        labels: node.labels.nodes,
+        repository: node.repository,
+      })),
+    );
+
+    cacheIssues(issues);
+    return issues;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.subprocess.debug({ error: message }, "GitHub issues GraphQL request failed");
+
+    if (message.includes("rate limit") || message.includes("403")) {
       markGitHubRateLimited();
     }
+
     // Fall back to stale cache on failure
     const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
     if (stale) return stale;
     return [];
   }
-
-  const issues = GitHubIssueArraySchema.parse(JSON.parse(result.stdout));
-  cacheIssues(issues);
-  return issues;
 }

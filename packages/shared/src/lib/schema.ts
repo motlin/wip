@@ -48,7 +48,6 @@ export const prStatusCache = sqliteTable(
     }).notNull(),
     prUrl: text("pr_url"),
     prNumber: integer("pr_number"),
-    failedChecks: text("failed_checks"),
     behind: integer("behind", { mode: "boolean" }).notNull().default(false),
     systemFrom: text("system_from").notNull(),
     systemTo: text("system_to").notNull().default(FAR_FUTURE),

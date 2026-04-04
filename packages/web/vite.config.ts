@@ -52,5 +52,13 @@ export default defineConfig({
     noExternal: ["@wip/shared"],
     external: ["better-sqlite3", "execa"],
   },
+  test: {
+    globals: true,
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+      exclude: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/routeTree.gen.ts"],
+    },
+  },
   plugins: [stubServerModules(), tailwindcss(), tanstackStart(), viteReact()],
 });

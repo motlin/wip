@@ -1,10 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 
-import { getPrStatuses, getRepoOwnerAndName } from "./git.js";
+import {
+  getPrStatuses,
+  getRepoOwnerAndName,
+  isDirty,
+  isDetachedHead,
+  hasUpstreamRef,
+  hasTestConfigured,
+  isSkippable,
+  parseBranch,
+  parseRemoteBranchOutput,
+  computeMergeStatus,
+  getChildren,
+} from "./git.js";
 import { initDb, resetDb } from "./db.js";
 import { setGitHubClient, resetGitHubClient, createTestClient } from "../services/github-client.js";
 import { setupPolly } from "../test/setup-polly.js";
@@ -283,5 +295,330 @@ describe("getPrStatuses", () => {
     const statuses = await getPrStatuses(tempDir, "test-project-403");
     expect(statuses.review.size).toBe(0);
     expect(statuses.checks.size).toBe(0);
+  });
+});
+
+describe("isSkippable", () => {
+  it("returns true for messages containing [skip]", () => {
+    expect(isSkippable("Fix typo [skip]")).toBe(true);
+  });
+
+  it("returns true for messages containing [pass]", () => {
+    expect(isSkippable("Bump version [pass]")).toBe(true);
+  });
+
+  it("returns true for messages containing [stop]", () => {
+    expect(isSkippable("[stop] Do not process")).toBe(true);
+  });
+
+  it("returns true for messages containing [fail]", () => {
+    expect(isSkippable("Known failure [fail]")).toBe(true);
+  });
+
+  it("returns false for normal messages", () => {
+    expect(isSkippable("Add new feature")).toBe(false);
+  });
+});
+
+describe("parseBranch", () => {
+  it("extracts branch name from HEAD -> branch decoration", () => {
+    expect(parseBranch("HEAD -> feature-branch")).toBe("feature-branch");
+  });
+
+  it("extracts branch name from plain decoration", () => {
+    expect(parseBranch("my-branch")).toBe("my-branch");
+  });
+
+  it("returns undefined for HEAD-only decoration", () => {
+    expect(parseBranch("HEAD")).toBeUndefined();
+  });
+
+  it("returns undefined for empty decoration", () => {
+    expect(parseBranch("")).toBeUndefined();
+  });
+
+  it("extracts first non-HEAD branch from multiple decorations", () => {
+    expect(parseBranch("HEAD -> main, origin/main")).toBe("main");
+  });
+});
+
+describe("parseRemoteBranchOutput", () => {
+  it("parses remote branch list with default branch pointer", () => {
+    const output = [
+      "  origin/HEAD -> origin/main",
+      "  origin/main",
+      "  origin/feature-a",
+      "  origin/feature-b",
+    ].join("\n");
+
+    const result = parseRemoteBranchOutput(output);
+    expect(result.defaultBranch).toBe("main");
+    expect(result.remoteBranches).toStrictEqual(new Set(["main", "feature-a", "feature-b"]));
+    expect(result.remoteBranchRefs.get("main")).toBe("origin/main");
+    expect(result.remoteBranchRefs.get("feature-a")).toBe("origin/feature-a");
+  });
+
+  it("returns empty sets for empty output", () => {
+    const result = parseRemoteBranchOutput("");
+    expect(result.defaultBranch).toBeUndefined();
+    expect(result.remoteBranches.size).toBe(0);
+    expect(result.remoteBranchRefs.size).toBe(0);
+  });
+
+  it("parses output without a default branch pointer", () => {
+    const output = "  origin/feature-x\n  origin/feature-y";
+    const result = parseRemoteBranchOutput(output);
+    expect(result.defaultBranch).toBeUndefined();
+    expect(result.remoteBranches).toStrictEqual(new Set(["feature-x", "feature-y"]));
+  });
+});
+
+describe("isDirty", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  it("returns false for a clean repo", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    expect(await isDirty(tempDir)).toBe(false);
+  });
+
+  it("returns true when a tracked file is modified", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "file.txt"), "changed");
+    expect(await isDirty(tempDir)).toBe(true);
+  });
+
+  it("returns true when an untracked file exists", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "untracked.txt"), "new file");
+    expect(await isDirty(tempDir)).toBe(true);
+  });
+});
+
+describe("isDetachedHead", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  it("returns false when on a branch", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    expect(await isDetachedHead(tempDir)).toBe(false);
+  });
+
+  it("returns true when HEAD is detached", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    const sha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+    execSync(`git checkout ${sha}`, { cwd: tempDir, stdio: "ignore" });
+    expect(await isDetachedHead(tempDir)).toBe(true);
+  });
+});
+
+describe("hasUpstreamRef", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  it("returns true for an existing ref", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    expect(await hasUpstreamRef(tempDir, "HEAD")).toBe(true);
+  });
+
+  it("returns false for a nonexistent ref", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    expect(await hasUpstreamRef(tempDir, "origin/nonexistent")).toBe(false);
+  });
+});
+
+describe("hasTestConfigured", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  it("returns false when no test config exists", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    expect(await hasTestConfigured(tempDir)).toBe(false);
+  });
+
+  it("returns true when test config is set", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    execSync("git config test.cmd 'npm test'", { cwd: tempDir, stdio: "ignore" });
+    expect(await hasTestConfigured(tempDir)).toBe(true);
+  });
+});
+
+describe("computeMergeStatus", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  it("returns zero ahead/behind for identical refs", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    const sha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+    const result = await computeMergeStatus(tempDir, sha, sha);
+    expect(result.commitsAhead).toBe(0);
+    expect(result.commitsBehind).toBe(0);
+    expect(result.rebaseable).toBeNull();
+  });
+
+  it("returns correct ahead/behind counts for diverged branches", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+
+    // Create a branch with one commit ahead
+    execSync("git checkout -b feature", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "feature.txt"), "feature");
+    execSync("git add . && git commit -m 'feature commit'", { cwd: tempDir, stdio: "ignore" });
+    const featureSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    // Go back to main and add a commit (so feature is 1 behind)
+    execSync("git checkout main", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "main.txt"), "main update");
+    execSync("git add . && git commit -m 'main commit'", { cwd: tempDir, stdio: "ignore" });
+    const mainSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    const result = await computeMergeStatus(tempDir, featureSha, mainSha);
+    expect(result.commitsAhead).toBe(1);
+    expect(result.commitsBehind).toBe(1);
+    expect(result.rebaseable).toBe(true);
+  });
+
+  it("detects non-rebaseable when there are conflicts", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "original");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+
+    // Create feature branch that modifies the same file
+    execSync("git checkout -b feature", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "file.txt"), "feature change");
+    execSync("git add . && git commit -m 'feature change'", { cwd: tempDir, stdio: "ignore" });
+    const featureSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    // Go back to main and make a conflicting change
+    execSync("git checkout main", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "file.txt"), "main change");
+    execSync("git add . && git commit -m 'main change'", { cwd: tempDir, stdio: "ignore" });
+    const mainSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    const result = await computeMergeStatus(tempDir, featureSha, mainSha);
+    expect(result.commitsAhead).toBe(1);
+    expect(result.commitsBehind).toBe(1);
+    expect(result.rebaseable).toBe(false);
+  });
+});
+
+describe("getChildren", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  function setupChildrenAlias(dir: string): void {
+    // Use execFileSync to avoid shell escaping issues with the awk script
+    const aliasValue =
+      "!PARENT=$(git rev-parse ${1:-HEAD}); git rev-list --all --parents" +
+      " | awk -v p=\"$PARENT\" 'NF==2 && $2==p {print $1}'; :";
+    execFileSync("git", ["config", "alias.children", aliasValue], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+  }
+
+  it("returns empty array when there are no children", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    setupChildrenAlias(tempDir);
+    const result = await getChildren(tempDir, "HEAD");
+    expect(result).toStrictEqual([]);
+  });
+
+  it("returns child SHAs for commits ahead of upstream", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    setupChildrenAlias(tempDir);
+    const parentSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    writeFileSync(join(tempDir, "child.txt"), "child");
+    execSync("git add . && git commit -m 'child commit'", { cwd: tempDir, stdio: "ignore" });
+    const childSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    const result = await getChildren(tempDir, parentSha);
+    expect(result).toStrictEqual([childSha]);
+  });
+
+  it("returns multiple children", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    setupChildrenAlias(tempDir);
+    const parentSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    // Create first child on a branch
+    execSync("git checkout -b branch-a", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "a.txt"), "a");
+    execSync("git add . && git commit -m 'child a'", { cwd: tempDir, stdio: "ignore" });
+    const childA = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    // Create second child on another branch from the same parent
+    execSync(`git checkout ${parentSha}`, { cwd: tempDir, stdio: "ignore" });
+    execSync("git checkout -b branch-b", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "b.txt"), "b");
+    execSync("git add . && git commit -m 'child b'", { cwd: tempDir, stdio: "ignore" });
+    const childB = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    const result = await getChildren(tempDir, parentSha);
+    expect(result.sort()).toStrictEqual([childA, childB].sort());
   });
 });

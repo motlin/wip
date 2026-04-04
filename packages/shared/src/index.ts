@@ -177,6 +177,11 @@ export {
 } from "./lib/rate-limit.js";
 export { log } from "./services/logger.js";
 export {
+  type CreatePrParams,
+  createPullRequest,
+  resetRepositoryIdCache,
+} from "./lib/github-prs.js";
+export {
   type GitHubClient,
   createTestClient,
   getGitHubClient,

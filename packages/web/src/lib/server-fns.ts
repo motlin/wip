@@ -439,7 +439,7 @@ export const createPr = createServerFn({ method: "POST" })
       traced("createPr", async () => {
         const p = await resolveProject(data.project);
 
-        let headRef = data.branch;
+        let headRefName = data.branch;
         if (p.upstreamRemote !== "origin") {
           const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
             reject: false,
@@ -447,32 +447,33 @@ export const createPr = createServerFn({ method: "POST" })
           if (originUrl.exitCode === 0) {
             const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
             if (match) {
-              headRef = `${match[1]}:${data.branch}`;
+              headRefName = `${match[1]}:${data.branch}`;
             }
           }
         }
 
-        const args = [
-          "pr",
-          "create",
-          "--head",
-          headRef,
-          "--title",
-          data.title,
-          "--body",
-          data.body ?? "",
-        ];
-        if (data.draft !== false) args.push("--draft");
-
-        const result = await tracedExeca("gh", args, { cwd: p.dir, reject: false });
-
-        if (result.exitCode === 0) {
-          invalidatePrCache(data.project);
-          const prUrl = result.stdout.trim();
-          return { ok: true, message: `Created PR: ${prUrl}`, compareUrl: prUrl };
+        const [owner, name] = p.remote.split("/");
+        if (!owner || !name) {
+          return { ok: false, message: `Could not parse owner/repo from remote: ${p.remote}` };
         }
 
-        return { ok: false, message: `Failed to create PR: ${result.stderr}` };
+        const { createPullRequest } = await import("@wip/shared");
+        const result = await createPullRequest({
+          owner,
+          name,
+          baseRefName: p.upstreamBranch,
+          headRefName,
+          title: data.title,
+          body: data.body ?? "",
+          draft: data.draft !== false,
+        });
+
+        if (result.ok) {
+          invalidatePrCache(data.project);
+          return { ok: true, message: `Created PR: ${result.prUrl}`, compareUrl: result.prUrl };
+        }
+
+        return { ok: false, message: result.message };
       }),
   );
 

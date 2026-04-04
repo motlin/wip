@@ -41,11 +41,26 @@ function now(): string {
 }
 
 let db: BetterSQLite3Database<typeof schema> | undefined;
+let customDbPath: string | undefined;
+
+export function initDb(dbPath: string): void {
+  if (db) {
+    throw new Error("initDb() must be called before the first getDb() call");
+  }
+  // When TEST_DB_FILE is set, use that path instead (allows inspecting the DB after a test)
+  customDbPath = process.env.TEST_DB_FILE ?? dbPath;
+}
+
+export function resetDb(): void {
+  db = undefined;
+  customDbPath = undefined;
+}
 
 export function getDb(): BetterSQLite3Database<typeof schema> {
   if (db) return db;
 
-  const sqlite = new DatabaseConstructor(getDbPath());
+  const dbPath = customDbPath ?? getDbPath();
+  const sqlite = new DatabaseConstructor(dbPath);
   sqlite.pragma("journal_mode = WAL");
 
   // Migrate from old schema if needed

@@ -40,6 +40,8 @@ export {
   type BranchNameItem,
   type TestResultItem,
   type CachedPrStatus,
+  initDb,
+  resetDb,
   getDb,
   snoozeItem,
   unsnoozeItem,

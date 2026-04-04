@@ -34,6 +34,7 @@ export {
   parseBranch,
   parseRemoteBranchOutput,
   getRemoteBranchInfo,
+  getRepoOwnerAndName,
 } from "./lib/git.js";
 export {
   type SnoozedItem,

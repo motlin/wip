@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { z } from "zod";
 
 import { log } from "../services/logger.js";
+import { getGitHubClient } from "../services/github-client.js";
 import { tracedExeca } from "../services/traced-execa.js";
 import { nameBranch } from "./branch-namer.js";
 import {
@@ -488,16 +489,40 @@ query($owner: String!, $name: String!) {
 }
 `;
 
+const ViewerLoginResponseSchema = z.object({
+  data: z.object({
+    viewer: z.object({
+      login: z.string(),
+    }),
+  }),
+});
+
 async function getGhLogin(): Promise<string> {
   const cached = getCachedGhLogin();
   if (cached) return cached;
-  const result = await tracedExeca("gh", ["api", "user", "--jq", ".login"], { reject: false });
-  if (result.exitCode === 0 && result.stdout.trim()) {
-    const login = result.stdout.trim();
+  try {
+    const client = getGitHubClient();
+    const raw = await client.graphql("{ viewer { login } }");
+    const response = ViewerLoginResponseSchema.parse(raw);
+    const login = response.data.viewer.login;
     cacheGhLogin(login);
     return login;
+  } catch {
+    return "";
   }
-  return "";
+}
+
+/**
+ * Parse owner and repo name from a git remote URL.
+ * Supports formats: git@host:owner/repo.git, https://host/owner/repo.git
+ */
+export async function getRepoOwnerAndName(dir: string): Promise<{ owner: string; name: string }> {
+  const remoteUrl = await git(dir, "remote", "get-url", "origin");
+  const match = remoteUrl.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
+  if (!match?.[1] || !match[2]) {
+    throw new Error(`Could not parse owner/repo from remote URL: ${remoteUrl}`);
+  }
+  return { owner: match[1], name: match[2] };
 }
 
 function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
@@ -588,30 +613,16 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
 async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promise<PrStatuses> {
   const ghLogin = await getGhLogin();
 
-  const start = performance.now();
-  const result = await tracedExeca(
-    "gh",
-    [
-      "api",
-      "graphql",
-      "-F",
-      "owner={owner}",
-      "-F",
-      "name={repo}",
-      "-f",
-      `query=${PR_GRAPHQL_QUERY}`,
-    ],
-    { cwd: dir, reject: false },
-  );
-  const duration = Math.round(performance.now() - start);
-  log.subprocess.debug(
-    { cmd: "gh", args: ["api", "graphql", "pullRequests"], duration },
-    `gh api graphql pullRequests (${duration}ms)`,
-  );
-
-  if (result.exitCode !== 0 || !result.stdout) {
+  let response: z.infer<typeof PrGraphQLResponseSchema>;
+  try {
+    const { owner, name } = await getRepoOwnerAndName(dir);
+    const client = getGitHubClient();
+    const raw = await client.graphql(PR_GRAPHQL_QUERY, { owner, name });
+    response = PrGraphQLResponseSchema.parse(raw);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     // Detect rate limiting and activate cooldown to prevent further calls
-    if (detectRateLimitError(result.stderr, result.stdout ?? "")) {
+    if (detectRateLimitError(errorMessage, "")) {
       markGitHubRateLimited();
     }
     // API call failed — fall back to stale cache
@@ -621,8 +632,6 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
     }
     return emptyPrStatuses();
   }
-
-  const response = PrGraphQLResponseSchema.parse(JSON.parse(result.stdout));
   const allPrs = response.data?.repository.pullRequests.nodes ?? [];
   const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
   const toCache: CachedPrStatus[] = [];

@@ -256,7 +256,7 @@ function StateTable({ activeState }: { activeState: string | undefined }) {
             <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">#</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">State</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">Label</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">Actions</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">UI Buttons</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">LLM Command</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-text-400">
               Transitions Out

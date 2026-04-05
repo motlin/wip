@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   CATEGORIES,
-  type CategoryConfig,
   CATEGORY_PRIORITY,
+  type CategoryConfig,
   TRANSITION_TO_ACTION,
   getTransitionActions,
   SUPPLEMENTARY_ACTIONS,

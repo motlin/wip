@@ -622,7 +622,7 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     // Detect rate limiting and activate cooldown to prevent further calls
-    if (detectRateLimitError(errorMessage, "")) {
+    if (detectRateLimitError(errorMessage)) {
       markGitHubRateLimited();
     }
     // API call failed — fall back to stale cache

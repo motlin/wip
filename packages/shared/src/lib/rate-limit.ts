@@ -27,10 +27,8 @@ export function resetGitHubRateLimit(): void {
   rateLimitUntil = 0;
 }
 
-export function detectRateLimitError(stderr: string, stdout: string): boolean {
+export function detectRateLimitError(message: string): boolean {
   return (
-    stderr.includes("API rate limit") ||
-    stderr.includes("rate limit") ||
-    stdout.includes("API rate limit")
+    message.includes("API rate limit") || message.includes("rate limit") || message.includes("403")
   );
 }

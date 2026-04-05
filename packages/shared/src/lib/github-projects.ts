@@ -4,7 +4,7 @@ import { getGitHubClient } from "../services/github-client.js";
 import { log } from "../services/logger.js";
 import { type Category, LabelSchema } from "./schemas.js";
 import { getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb } from "./db.js";
-import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
+import { detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 
 export { LabelSchema as GitHubProjectItemLabelSchema };
 
@@ -82,7 +82,7 @@ export async function fetchProjects(): Promise<GitHubProject[]> {
     const message = error instanceof Error ? error.message : String(error);
     log.subprocess.debug({ error: message }, "GitHub projects GraphQL request failed");
 
-    if (message.includes("rate limit") || message.includes("403")) {
+    if (detectRateLimitError(message)) {
       markGitHubRateLimited();
     }
 
@@ -230,7 +230,7 @@ export async function fetchProjectItems(
       `GitHub project items ${projectNumber} GraphQL request failed`,
     );
 
-    if (message.includes("rate limit") || message.includes("403")) {
+    if (detectRateLimitError(message)) {
       markGitHubRateLimited();
     }
 

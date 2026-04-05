@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getGitHubClient } from "../services/github-client.js";
 import { log } from "../services/logger.js";
 import { getCachedIssues, cacheIssues, invalidateIssuesCacheDb } from "./db.js";
-import { isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
+import { detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 import { LabelSchema, PlanStatusSchema, RepositorySchema } from "./schemas.js";
 
 export { LabelSchema as GitHubIssueLabelSchema };
@@ -27,8 +27,6 @@ export const IssueResultSchema = GitHubIssueSchema.pick({
   planStatus: PlanStatusSchema.optional(),
 });
 export type IssueResult = z.infer<typeof IssueResultSchema>;
-
-const GitHubIssueArraySchema = z.array(GitHubIssueSchema);
 
 const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // Return stale cached data that is up to 1 hour old when rate limited
@@ -87,28 +85,23 @@ const SEARCH_ISSUES_QUERY = `
   }
 `;
 
+const SearchIssueNodeSchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string().min(1),
+  url: z.string().url(),
+  labels: z.object({
+    nodes: z.array(LabelSchema),
+  }),
+  repository: z.object({
+    name: z.string().min(1),
+    nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
+  }),
+});
+
 const SearchIssuesResponseSchema = z.object({
   data: z.object({
     search: z.object({
-      nodes: z.array(
-        z.object({
-          number: z.number(),
-          title: z.string(),
-          url: z.string(),
-          labels: z.object({
-            nodes: z.array(
-              z.object({
-                name: z.string(),
-                color: z.string(),
-              }),
-            ),
-          }),
-          repository: z.object({
-            name: z.string(),
-            nameWithOwner: z.string(),
-          }),
-        }),
-      ),
+      nodes: z.array(SearchIssueNodeSchema),
     }),
   }),
 });
@@ -118,15 +111,13 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
     const raw = await getGitHubClient().graphql(SEARCH_ISSUES_QUERY);
     const response = SearchIssuesResponseSchema.parse(raw);
 
-    const issues = GitHubIssueArraySchema.parse(
-      response.data.search.nodes.map((node) => ({
-        number: node.number,
-        title: node.title,
-        url: node.url,
-        labels: node.labels.nodes,
-        repository: node.repository,
-      })),
-    );
+    const issues: GitHubIssue[] = response.data.search.nodes.map((node) => ({
+      number: node.number,
+      title: node.title,
+      url: node.url,
+      labels: node.labels.nodes,
+      repository: node.repository,
+    }));
 
     cacheIssues(issues);
     return issues;
@@ -134,7 +125,7 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
     const message = error instanceof Error ? error.message : String(error);
     log.subprocess.debug({ error: message }, "GitHub issues GraphQL request failed");
 
-    if (message.includes("rate limit") || message.includes("403")) {
+    if (detectRateLimitError(message)) {
       markGitHubRateLimited();
     }
 

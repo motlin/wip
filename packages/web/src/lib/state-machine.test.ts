@@ -47,6 +47,15 @@ describe('STATE_MACHINE', () => {
 		const fromSnoozed = getTransitionsFrom('snoozed');
 		expect(fromSnoozed.some((t) => t.transition === 'unsnooze')).toBe(true);
 	});
+
+	it('every transition has a valid kind (active or passive)', () => {
+		for (const t of STATE_MACHINE) {
+			expect(
+				['active', 'passive'],
+				`${t.from} --${t.transition}--> ${t.to} missing valid kind, got "${t.kind}"`,
+			).toContain(t.kind);
+		}
+	});
 });
 
 describe('applyTransition', () => {

@@ -63,6 +63,8 @@ export const TransitionSchema = z.enum([
 	'review_comment',
 	'request_changes',
 	'approve',
+	'dismiss_review',
+	'merge',
 	'refresh',
 ]);
 export type Transition = z.infer<typeof TransitionSchema>;
@@ -71,70 +73,83 @@ export interface StateTransition {
 	from: Category;
 	transition: Transition;
 	to: Category;
+	kind: 'active' | 'passive';
 }
 
 // Formal state machine: every valid (from, action, to) triple.
 // States are nouns/adjectives (what the item IS); transitions are verbs (what HAPPENS).
 export const STATE_MACHINE: readonly StateTransition[] = [
 	// Snooze/unsnooze — available from most states
-	{from: 'ready_to_test',     transition: 'snooze',            to: 'snoozed'},
-	{from: 'test_failed',       transition: 'snooze',            to: 'snoozed'},
-	{from: 'ready_to_push',     transition: 'snooze',            to: 'snoozed'},
-	{from: 'needs_rebase',      transition: 'snooze',            to: 'snoozed'},
-	{from: 'needs_split',       transition: 'snooze',            to: 'snoozed'},
-	{from: 'pushed_no_pr',      transition: 'snooze',            to: 'snoozed'},
-	{from: 'checks_passed',     transition: 'snooze',            to: 'snoozed'},
-	{from: 'checks_failed',     transition: 'snooze',            to: 'snoozed'},
-	{from: 'snoozed',           transition: 'unsnooze',          to: 'ready_to_test'},
+	{from: 'ready_to_test',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'test_failed',       transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'ready_to_push',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'needs_rebase',      transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'needs_split',       transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'pushed_no_pr',      transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'checks_passed',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'checks_failed',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'snoozed',           transition: 'unsnooze',          to: 'ready_to_test',     kind: 'active'},
 
 	// Plan flow
-	{from: 'triaged',           transition: 'generate_plan',     to: 'plan_unreviewed'},
-	{from: 'plan_unreviewed',   transition: 'approve_plan',      to: 'plan_approved'},
-	{from: 'plan_approved',     transition: 'create_branch',     to: 'ready_to_test'},
+	{from: 'triaged',           transition: 'generate_plan',     to: 'plan_unreviewed',   kind: 'active'},
+	{from: 'plan_unreviewed',   transition: 'approve_plan',      to: 'plan_approved',     kind: 'active'},
+	{from: 'plan_approved',     transition: 'create_branch',     to: 'ready_to_test',     kind: 'active'},
 
 	// Local development flow
-	{from: 'triaged',           transition: 'create_branch',     to: 'ready_to_test'},
-	{from: 'untriaged',         transition: 'create_branch',     to: 'ready_to_test'},
-	{from: 'detached_head',     transition: 'create_branch',     to: 'ready_to_test'},
-	{from: 'local_changes',     transition: 'commit',            to: 'ready_to_test'},
+	{from: 'triaged',           transition: 'create_branch',     to: 'ready_to_test',     kind: 'active'},
+	{from: 'untriaged',         transition: 'create_branch',     to: 'ready_to_test',     kind: 'active'},
+	{from: 'detached_head',     transition: 'create_branch',     to: 'ready_to_test',     kind: 'active'},
+	{from: 'local_changes',     transition: 'commit',            to: 'ready_to_test',     kind: 'active'},
 
 	// Testing flow
-	{from: 'ready_to_test',     transition: 'run_test',          to: 'test_running'},
-	{from: 'test_failed',       transition: 'run_test',          to: 'test_running'},
-	{from: 'test_running',      transition: 'test_pass',         to: 'ready_to_push'},
-	{from: 'test_running',      transition: 'test_fail',         to: 'test_failed'},
-	{from: 'test_running',      transition: 'cancel_test',       to: 'ready_to_test'},
-	{from: 'test_running',      transition: 'snooze',            to: 'snoozed'},
+	{from: 'no_test',           transition: 'run_test',          to: 'test_running',      kind: 'active'},
+	{from: 'ready_to_test',     transition: 'run_test',          to: 'test_running',      kind: 'active'},
+	{from: 'test_failed',       transition: 'run_test',          to: 'test_running',      kind: 'active'},
+	{from: 'test_running',      transition: 'test_pass',         to: 'ready_to_push',     kind: 'passive'},
+	{from: 'test_running',      transition: 'test_fail',         to: 'test_failed',       kind: 'passive'},
+	{from: 'test_running',      transition: 'cancel_test',       to: 'ready_to_test',     kind: 'active'},
+	{from: 'test_running',      transition: 'snooze',            to: 'snoozed',           kind: 'active'},
 
 	// Rebase flow
-	{from: 'needs_rebase',      transition: 'rebase',            to: 'ready_to_test'},
-	{from: 'needs_rebase',      transition: 'rebase',            to: 'rebase_conflicts'},
-	{from: 'rebase_conflicts',  transition: 'resolve_conflicts', to: 'ready_to_test'},
+	{from: 'needs_rebase',      transition: 'rebase',            to: 'ready_to_test',     kind: 'active'},
+	{from: 'needs_rebase',      transition: 'rebase',            to: 'rebase_conflicts',  kind: 'active'},
+	{from: 'rebase_conflicts',  transition: 'resolve_conflicts', to: 'ready_to_test',     kind: 'active'},
 
 	// Split flow (multi-commit branches)
-	{from: 'needs_split',       transition: 'split',             to: 'ready_to_push'},
+	{from: 'needs_split',       transition: 'split',             to: 'ready_to_push',     kind: 'active'},
 
 	// Push flow
-	{from: 'ready_to_push',     transition: 'push',              to: 'pushed_no_pr'},
-	{from: 'ready_to_push',     transition: 'force_push',        to: 'pushed_no_pr'},
-	{from: 'no_test',           transition: 'push',              to: 'pushed_no_pr'},
+	{from: 'ready_to_push',     transition: 'push',              to: 'pushed_no_pr',      kind: 'active'},
+	{from: 'ready_to_push',     transition: 'force_push',        to: 'pushed_no_pr',      kind: 'active'},
+	{from: 'no_test',           transition: 'push',              to: 'pushed_no_pr',      kind: 'active'},
 
 	// PR creation
-	{from: 'pushed_no_pr',      transition: 'create_pr',         to: 'checks_unknown'},
+	{from: 'pushed_no_pr',      transition: 'create_pr',         to: 'checks_unknown',    kind: 'active'},
 
 	// CI checks flow
-	{from: 'checks_unknown',    transition: 'checks_start',      to: 'checks_running'},
-	{from: 'checks_running',    transition: 'checks_pass',       to: 'checks_passed'},
-	{from: 'checks_running',    transition: 'checks_fail',       to: 'checks_failed'},
-	{from: 'checks_failed',     transition: 'force_push',        to: 'checks_running'},
+	{from: 'checks_unknown',    transition: 'checks_start',      to: 'checks_running',    kind: 'passive'},
+	{from: 'checks_unknown',    transition: 'checks_pass',       to: 'checks_passed',     kind: 'passive'},
+	{from: 'checks_unknown',    transition: 'checks_fail',       to: 'checks_failed',     kind: 'passive'},
+	{from: 'checks_running',    transition: 'checks_pass',       to: 'checks_passed',     kind: 'passive'},
+	{from: 'checks_running',    transition: 'checks_fail',       to: 'checks_failed',     kind: 'passive'},
+	{from: 'checks_failed',     transition: 'force_push',        to: 'checks_running',    kind: 'active'},
 
 	// Code review flow
-	{from: 'checks_passed',     transition: 'review_comment',    to: 'review_comments'},
-	{from: 'checks_passed',     transition: 'request_changes',   to: 'changes_requested'},
-	{from: 'checks_passed',     transition: 'approve',           to: 'approved'},
-	{from: 'review_comments',   transition: 'approve',           to: 'approved'},
-	{from: 'changes_requested', transition: 'force_push',        to: 'checks_running'},
-	{from: 'review_comments',   transition: 'force_push',        to: 'checks_running'},
+	{from: 'checks_passed',     transition: 'review_comment',    to: 'review_comments',   kind: 'passive'},
+	{from: 'checks_passed',     transition: 'request_changes',   to: 'changes_requested', kind: 'passive'},
+	{from: 'checks_passed',     transition: 'approve',           to: 'approved',           kind: 'passive'},
+	{from: 'review_comments',   transition: 'approve',           to: 'approved',           kind: 'passive'},
+	{from: 'review_comments',   transition: 'request_changes',   to: 'changes_requested', kind: 'passive'},
+	{from: 'changes_requested', transition: 'dismiss_review',    to: 'checks_passed',     kind: 'passive'},
+	{from: 'review_comments',   transition: 'dismiss_review',    to: 'checks_passed',     kind: 'passive'},
+	{from: 'approved',          transition: 'request_changes',   to: 'changes_requested', kind: 'passive'},
+	{from: 'approved',          transition: 'dismiss_review',    to: 'checks_passed',     kind: 'passive'},
+	{from: 'changes_requested', transition: 'approve',           to: 'approved',           kind: 'passive'},
+	{from: 'changes_requested', transition: 'force_push',        to: 'checks_running',    kind: 'active'},
+	{from: 'review_comments',   transition: 'force_push',        to: 'checks_running',    kind: 'active'},
+
+	// Merge
+	{from: 'approved',          transition: 'merge',             to: 'approved',           kind: 'active'},
 
 	// Skippable — orthogonal state (no incoming transitions; derived from item.skippable flag)
 	// Skippable items are terminal and cannot transition to other states via actions

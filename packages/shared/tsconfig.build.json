@@ -6,9 +6,5 @@
 		"declaration": true
 	},
 	"include": ["src/**/*"],
-	"references": [
-		{
-			"path": "../shared/tsconfig.build.json"
-		}
-	]
+	"exclude": ["src/**/*.test.ts"]
 }

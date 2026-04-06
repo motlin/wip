@@ -32,6 +32,14 @@ import {
   getNeedsRebaseBranches,
   getCachedProjectList,
   setCachedProjectList,
+  getCachedChildren,
+  getStaleChildren,
+  cacheChildren,
+  invalidateChildrenCache,
+  getCachedTodos,
+  getStaleTodos,
+  cacheTodos,
+  invalidateTodosCache,
 } from "@wip/shared";
 import type {
   ProjectInfo,
@@ -145,13 +153,18 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
   }),
 );
 
-export async function getProjectChildrenHandler(project: string): Promise<ProjectChildrenResult> {
-  return traced("getProjectChildren", async () => {
+const inflightChildrenRefresh = new Map<string, Promise<ProjectChildrenResult>>();
+
+async function refreshProjectChildren(projectName: string): Promise<ProjectChildrenResult> {
+  const existing = inflightChildrenRefresh.get(projectName);
+  if (existing) return existing;
+
+  const promise = traced("refreshProjectChildren", async () => {
     let p: ProjectInfo;
     try {
-      p = await resolveProject(project);
+      p = await resolveProject(projectName);
     } catch (error: unknown) {
-      log.general.error({ project, error }, "Project resolution failed");
+      log.general.error({ project: projectName, error }, "Project resolution failed");
       return [];
     }
 
@@ -273,7 +286,30 @@ export async function getProjectChildrenHandler(project: string): Promise<Projec
       };
     });
 
+    cacheChildren(projectName, results);
     return results;
+  });
+
+  inflightChildrenRefresh.set(projectName, promise);
+  try {
+    return await promise;
+  } finally {
+    inflightChildrenRefresh.delete(projectName);
+  }
+}
+
+export async function getProjectChildrenHandler(project: string): Promise<ProjectChildrenResult> {
+  return traced("getProjectChildren", async () => {
+    const cached = getCachedChildren(project);
+    if (cached) return cached;
+
+    const stale = getStaleChildren(project);
+    if (stale) {
+      refreshProjectChildren(project).catch(() => {});
+      return stale;
+    }
+
+    return refreshProjectChildren(project);
   });
 }
 
@@ -281,28 +317,82 @@ export const getProjectChildren = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
   .handler(async ({ data }) => getProjectChildrenHandler(data.project));
 
+const inflightTodosRefresh = new Map<string, Promise<SharedTodoItem[]>>();
+
+async function refreshProjectTodos(projectName: string): Promise<SharedTodoItem[]> {
+  const existing = inflightTodosRefresh.get(projectName);
+  if (existing) return existing;
+
+  const promise = traced("refreshProjectTodos", async () => {
+    let p: ProjectInfo;
+    try {
+      p = await resolveProject(projectName);
+    } catch (error: unknown) {
+      log.general.error({ project: projectName, error }, "Project resolution failed");
+      return [];
+    }
+
+    const tasks = findIncompleteTodoTasks(p.dir);
+    const todos = tasks.map((task) => ({
+      project: p.name,
+      title: task.text,
+      sourceFile: task.sourceFile,
+      sourceLabel: path.relative(p.dir, task.sourceFile),
+    }));
+    cacheTodos(projectName, todos);
+    return todos;
+  });
+
+  inflightTodosRefresh.set(projectName, promise);
+  try {
+    return await promise;
+  } finally {
+    inflightTodosRefresh.delete(projectName);
+  }
+}
+
 export const getProjectTodos = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
   .handler(
     async ({ data }): Promise<SharedTodoItem[]> =>
       traced("getProjectTodos", async () => {
-        let p: ProjectInfo;
-        try {
-          p = await resolveProject(data.project);
-        } catch (error: unknown) {
-          log.general.error({ project: data.project, error }, "Project resolution failed");
-          return [];
+        const cached = getCachedTodos(data.project);
+        if (cached) return cached;
+
+        const stale = getStaleTodos(data.project);
+        if (stale) {
+          refreshProjectTodos(data.project).catch(() => {});
+          return stale;
         }
 
-        const tasks = findIncompleteTodoTasks(p.dir);
-        return tasks.map((task) => ({
-          project: p.name,
-          title: task.text,
-          sourceFile: task.sourceFile,
-          sourceLabel: path.relative(p.dir, task.sourceFile),
-        }));
+        return refreshProjectTodos(data.project);
       }),
   );
+
+let inflightRefreshAll: Promise<void> | null = null;
+
+export async function refreshAllCaches(): Promise<void> {
+  if (inflightRefreshAll) return inflightRefreshAll;
+
+  inflightRefreshAll = (async () => {
+    await ensureProjects();
+    const projects = cachedProjects!;
+    for (const p of projects) {
+      try {
+        await refreshProjectChildren(p.name);
+        await refreshProjectTodos(p.name);
+      } catch (e) {
+        log.general.error({ project: p.name, error: e }, "Background cache refresh failed");
+      }
+    }
+  })();
+
+  try {
+    await inflightRefreshAll;
+  } finally {
+    inflightRefreshAll = null;
+  }
+}
 
 export const getIssues = createServerFn({ method: "GET" }).handler(async () =>
   traced("getIssues", async () => {
@@ -420,6 +510,7 @@ export async function pushChildHandler(data: PushChildInput): Promise<ActionResu
 
     if (pushResult.exitCode === 0) {
       invalidatePrCache(data.project);
+      invalidateChildrenCache(data.project);
       const compareUrl = `https://github.com/${p.remote}/compare/${branchName}?expand=1`;
       return { ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl };
     }
@@ -470,6 +561,7 @@ export const createPr = createServerFn({ method: "POST" })
 
         if (result.ok) {
           invalidatePrCache(data.project);
+          invalidateChildrenCache(data.project);
           return { ok: true, message: `Created PR: ${result.prUrl}`, compareUrl: result.prUrl };
         }
 
@@ -881,6 +973,7 @@ export const refreshChild = createServerFn({ method: "POST" })
     async ({ data }): Promise<ActionResult> =>
       traced("refreshChild", async () => {
         invalidatePrCache(data.project);
+        invalidateChildrenCache(data.project);
         return { ok: true, message: `Refreshed ${data.project}` };
       }),
   );
@@ -1024,6 +1117,7 @@ export const deleteBranch = createServerFn({ method: "POST" })
 
         if (result.exitCode === 0) {
           invalidatePrCache(data.project);
+          invalidateChildrenCache(data.project);
           return { ok: true, message: `Deleted branch ${data.branch}` };
         }
 
@@ -1053,6 +1147,7 @@ export const forcePush = createServerFn({ method: "POST" })
 
         if (result.exitCode === 0) {
           invalidatePrCache(data.project);
+          invalidateChildrenCache(data.project);
           return { ok: true, message: `Force-pushed to ${data.branch}` };
         }
 
@@ -1096,6 +1191,7 @@ export const renameBranch = createServerFn({ method: "POST" })
 
         if (result.exitCode === 0) {
           invalidatePrCache(data.project);
+          invalidateChildrenCache(data.project);
           return { ok: true, message: `Renamed ${data.oldBranch} → ${data.newBranch}` };
         }
 
@@ -1196,6 +1292,7 @@ export const applyFixes = createServerFn({ method: "POST" })
         }
 
         invalidatePrCache(data.project);
+        invalidateChildrenCache(data.project);
         return {
           ok: true,
           message: `Applied fixes from ${appliedFixes.join(", ")} and force-pushed to ${data.branch}`,
@@ -1347,6 +1444,7 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
           env,
         });
         invalidatePrCache(p.name);
+        invalidateChildrenCache(p.name);
         invalidateMergeStatus(p.name);
       }
 
@@ -1372,6 +1470,8 @@ export async function refreshAllHandler(): Promise<ActionResult> {
     const projects = await refreshProjectCache();
     for (const p of projects) {
       invalidatePrCache(p.name);
+      invalidateChildrenCache(p.name);
+      invalidateTodosCache(p.name);
     }
     return { ok: true, message: "All caches invalidated" };
   });

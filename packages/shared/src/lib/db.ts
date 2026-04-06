@@ -4,13 +4,20 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { CheckStatus, ProjectInfo, ReviewStatus } from "./schemas.js";
+import type {
+  CheckStatus,
+  GitChildResult,
+  ProjectInfo,
+  ReviewStatus,
+  TodoItem,
+} from "./schemas.js";
 import type { GitHubIssue } from "./github-issues.js";
 import type { GitHubProjectItem } from "./github-projects.js";
 import * as schema from "./schema.js";
 import { log } from "../services/logger.js";
 import {
   branchNames,
+  childrenCache,
   FAR_FUTURE,
   ghLoginCache,
   githubIssues,
@@ -24,6 +31,7 @@ import {
   projectCache,
   snoozed,
   testResults,
+  todosCache,
   upstreamRefs,
 } from "./schema.js";
 
@@ -313,6 +321,32 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (name, system_from)
 		)
 	`);
+
+  sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS children_cache (
+			project TEXT NOT NULL,
+			children_json TEXT NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, system_from)
+		)
+	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS children_cache_active_idx ON children_cache (project, system_to)`,
+  );
+
+  sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS todos_cache (
+			project TEXT NOT NULL,
+			todos_json TEXT NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, system_from)
+		)
+	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS todos_cache_active_idx ON todos_cache (project, system_to)`,
+  );
 
   db = drizzle(sqlite, { schema });
 
@@ -1121,4 +1155,119 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
         .run();
     }
   });
+}
+
+// --- Children cache ---
+
+const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
+
+export function getCachedChildren(
+  project: string,
+  ttlMs = CHILDREN_CACHE_TTL_MS,
+): GitChildResult[] | null {
+  const d = getDb();
+  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
+  const row = d
+    .select()
+    .from(childrenCache)
+    .where(
+      and(
+        eq(childrenCache.project, project),
+        eq(childrenCache.systemTo, FAR_FUTURE),
+        gte(childrenCache.systemFrom, cutoff),
+      ),
+    )
+    .get();
+  if (!row) return null;
+  return JSON.parse(row.childrenJson) as GitChildResult[];
+}
+
+export function getStaleChildren(project: string): GitChildResult[] | null {
+  const d = getDb();
+  const row = d
+    .select()
+    .from(childrenCache)
+    .where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
+    .get();
+  if (!row) return null;
+  return JSON.parse(row.childrenJson) as GitChildResult[];
+}
+
+export function cacheChildren(project: string, children: GitChildResult[]): void {
+  const d = getDb();
+  const timestamp = now();
+  const serialized = JSON.stringify(children);
+  d.transaction((tx) => {
+    tx.update(childrenCache)
+      .set({ systemTo: timestamp })
+      .where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
+      .run();
+    tx.insert(childrenCache)
+      .values({ project, childrenJson: serialized, systemFrom: timestamp })
+      .run();
+  });
+}
+
+export function invalidateChildrenCache(project: string): void {
+  const d = getDb();
+  const timestamp = now();
+  d.update(childrenCache)
+    .set({ systemTo: timestamp })
+    .where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
+    .run();
+}
+
+// --- Todos cache ---
+
+const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
+
+export function getCachedTodos(project: string, ttlMs = TODOS_CACHE_TTL_MS): TodoItem[] | null {
+  const d = getDb();
+  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
+  const row = d
+    .select()
+    .from(todosCache)
+    .where(
+      and(
+        eq(todosCache.project, project),
+        eq(todosCache.systemTo, FAR_FUTURE),
+        gte(todosCache.systemFrom, cutoff),
+      ),
+    )
+    .get();
+  if (!row) return null;
+  return JSON.parse(row.todosJson) as TodoItem[];
+}
+
+export function getStaleTodos(project: string): TodoItem[] | null {
+  const d = getDb();
+  const row = d
+    .select()
+    .from(todosCache)
+    .where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
+    .get();
+  if (!row) return null;
+  return JSON.parse(row.todosJson) as TodoItem[];
+}
+
+export function cacheTodos(project: string, todos: TodoItem[]): void {
+  const d = getDb();
+  const timestamp = now();
+  const serialized = JSON.stringify(todos);
+  d.transaction((tx) => {
+    tx.update(todosCache)
+      .set({ systemTo: timestamp })
+      .where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
+      .run();
+    tx.insert(todosCache).values({ project, todosJson: serialized, systemFrom: timestamp }).run();
+  });
+}
+
+export function invalidateTodosCache(project: string): void {
+  const d = getDb();
+  const timestamp = now();
+  d.update(todosCache)
+    .set({ systemTo: timestamp })
+    .where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
+    .run();
 }

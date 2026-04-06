@@ -72,6 +72,14 @@ export {
   invalidateMergeStatus,
   getCachedProjectList,
   setCachedProjectList,
+  getCachedChildren,
+  getStaleChildren,
+  cacheChildren,
+  invalidateChildrenCache,
+  getCachedTodos,
+  getStaleTodos,
+  cacheTodos,
+  invalidateTodosCache,
 } from "./lib/db.js";
 export { suggestBranchNames } from "./lib/branch-namer.js";
 export {

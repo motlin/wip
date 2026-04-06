@@ -261,6 +261,34 @@ export const snoozed = sqliteTable(
   }),
 );
 
+export const childrenCache = sqliteTable(
+  "children_cache",
+  {
+    project: text("project").notNull(),
+    childrenJson: text("children_json").notNull(),
+    systemFrom: text("system_from").notNull(),
+    systemTo: text("system_to").notNull().default(FAR_FUTURE),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.project, table.systemFrom] }),
+    activeIdx: index("children_cache_active_idx").on(table.project, table.systemTo),
+  }),
+);
+
+export const todosCache = sqliteTable(
+  "todos_cache",
+  {
+    project: text("project").notNull(),
+    todosJson: text("todos_json").notNull(),
+    systemFrom: text("system_from").notNull(),
+    systemTo: text("system_to").notNull().default(FAR_FUTURE),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.project, table.systemFrom] }),
+    activeIdx: index("todos_cache_active_idx").on(table.project, table.systemTo),
+  }),
+);
+
 export const projectCache = sqliteTable(
   "project_cache",
   {

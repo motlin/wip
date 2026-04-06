@@ -34,6 +34,15 @@ export const Route = createFileRoute("/api/merge-events")({
               );
             });
 
+            void import("../../lib/server-fns.js").then(({ refreshAllCaches }) =>
+              refreshAllCaches().catch((e) => {
+                console.error(
+                  "[merge-events] refreshAllCaches failed:",
+                  e instanceof Error ? e.message : e,
+                );
+              }),
+            );
+
             const keepalive = setInterval(() => {
               if (closed) return;
               try {

@@ -18,6 +18,16 @@ import {
 } from "./db.js";
 import { cacheIssues, getCachedIssues } from "./db.js";
 import { cacheProjectItems, getCachedProjectItems } from "./db.js";
+import {
+  cacheChildren,
+  getCachedChildren,
+  getStaleChildren,
+  invalidateChildrenCache,
+  cacheTodos,
+  getCachedTodos,
+  getStaleTodos,
+  invalidateTodosCache,
+} from "./db.js";
 import type { GitHubIssue } from "./github-issues.js";
 import type { GitHubProjectItem } from "./github-projects.js";
 
@@ -406,5 +416,104 @@ describe("Migration: old schema to new", () => {
     expect(cached).toHaveLength(1);
     expect(cached![0]!.failedChecks).toHaveLength(2);
     expect(cached![0]!.behind).toBe(true);
+  });
+});
+
+describe("Children cache", () => {
+  const sampleChildren = [
+    {
+      project: "test-project",
+      remote: "owner/repo",
+      sha: "abc123",
+      shortSha: "abc",
+      subject: "Fix bug",
+      date: "2024-01-01",
+      testStatus: "passed" as const,
+      checkStatus: "passed" as const,
+      skippable: false,
+      pushedToRemote: true,
+      needsRebase: false,
+      reviewStatus: "approved" as const,
+    },
+  ];
+
+  it("returns null on empty cache", () => {
+    expect(getCachedChildren("test-project")).toBeNull();
+  });
+
+  it("caches and retrieves children", () => {
+    cacheChildren("test-project", sampleChildren);
+    const cached = getCachedChildren("test-project");
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.sha).toBe("abc123");
+  });
+
+  it("returns null when cache is expired", () => {
+    cacheChildren("test-project", sampleChildren);
+    // TTL of -1 ensures the cutoff is in the future, so the cache is always expired
+    expect(getCachedChildren("test-project", -1)).toBeNull();
+  });
+
+  it("returns stale data regardless of TTL", () => {
+    cacheChildren("test-project", sampleChildren);
+    expect(getStaleChildren("test-project")).toHaveLength(1);
+  });
+
+  it("invalidates cache", () => {
+    cacheChildren("test-project", sampleChildren);
+    invalidateChildrenCache("test-project");
+    expect(getCachedChildren("test-project")).toBeNull();
+    expect(getStaleChildren("test-project")).toBeNull();
+  });
+
+  it("overwrites previous cache entry after invalidation", async () => {
+    cacheChildren("test-project", sampleChildren);
+    // Ensure different timestamp for next write
+    await new Promise((r) => setTimeout(r, 2));
+    invalidateChildrenCache("test-project");
+    const updated = [{ ...sampleChildren[0]!, sha: "def456" }];
+    cacheChildren("test-project", updated);
+    const cached = getCachedChildren("test-project");
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.sha).toBe("def456");
+  });
+});
+
+describe("Todos cache", () => {
+  const sampleTodos = [
+    {
+      project: "test-project",
+      title: "Fix the thing",
+      sourceFile: "/path/to/todo.md",
+      sourceLabel: "todo.md",
+    },
+  ];
+
+  it("returns null on empty cache", () => {
+    expect(getCachedTodos("test-project")).toBeNull();
+  });
+
+  it("caches and retrieves todos", () => {
+    cacheTodos("test-project", sampleTodos);
+    const cached = getCachedTodos("test-project");
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.title).toBe("Fix the thing");
+  });
+
+  it("returns null when cache is expired", () => {
+    cacheTodos("test-project", sampleTodos);
+    expect(getCachedTodos("test-project", -1)).toBeNull();
+  });
+
+  it("returns stale data regardless of TTL", () => {
+    cacheTodos("test-project", sampleTodos);
+    expect(getStaleTodos("test-project")).toHaveLength(1);
+  });
+
+  it("invalidates cache", () => {
+    cacheTodos("test-project", sampleTodos);
+    invalidateTodosCache("test-project");
+    expect(getCachedTodos("test-project")).toBeNull();
+    expect(getStaleTodos("test-project")).toBeNull();
   });
 });

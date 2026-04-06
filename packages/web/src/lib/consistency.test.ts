@@ -66,9 +66,9 @@ function makePR(overrides: Partial<PullRequestItem> = {}): PullRequestItem {
 describe('classifyBranch priority order with combined properties', () => {
 	const project = makeProject();
 
-	it('a needs-rebase branch with localAhead classifies as ready_to_push', () => {
+	it('a needs-rebase branch with localAhead classifies as needs_rebase (rebase before push)', () => {
 		const branch = makeBranch({needsRebase: true, pushedToRemote: true, localAhead: true});
-		expect(classifyBranch(branch, project)).toBe('ready_to_push');
+		expect(classifyBranch(branch, project)).toBe('needs_rebase');
 	});
 
 	it('a needs-rebase branch that is pushed but not ahead classifies as needs_rebase', () => {
@@ -125,12 +125,13 @@ describe('ChildCommit from getNeedsRebaseBranches should carry correct propertie
 		expect(childWithPr.prNumber).toBeDefined();
 
 		// And classifyPullRequest should produce a meaningful result
+		// With needsRebase=true, rebase takes priority over check/review status
 		const pr = makePR({
 			checkStatus: childWithPr.checkStatus,
 			reviewStatus: childWithPr.reviewStatus,
 			needsRebase: childWithPr.needsRebase,
 		});
-		expect(classifyPullRequest(pr)).toBe('checks_failed');
+		expect(classifyPullRequest(pr)).toBe('needs_rebase');
 
 		// Without prUrl (as getNeedsRebaseBranches currently does), it becomes a
 		// BranchItem and classifies differently
@@ -154,8 +155,8 @@ describe('ChildCommit from getNeedsRebaseBranches should carry correct propertie
 			localAhead: true,
 			needsRebase: true,
 		});
-		// With correct data: ready_to_push (localAhead takes priority)
-		expect(classifyBranch(branch, makeProject())).toBe('ready_to_push');
+		// With correct data: needs_rebase (rebase takes priority over localAhead)
+		expect(classifyBranch(branch, makeProject())).toBe('needs_rebase');
 
 		// With hardcoded pushedToRemote=false (old behavior): needs_rebase
 		const branchWrong = makeBranch({

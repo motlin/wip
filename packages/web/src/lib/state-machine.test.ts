@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {CategorySchema, STATE_MACHINE, getTransitionsFrom, getTransitionsTo, applyTransition} from '@wip/shared';
+import {CategorySchema, TransitionSchema, STATE_MACHINE, getTransitionsFrom, getTransitionsTo, applyTransition} from '@wip/shared';
 
 describe('STATE_MACHINE', () => {
 	const allCategories = CategorySchema.options;
@@ -23,7 +23,7 @@ describe('STATE_MACHINE', () => {
 	});
 
 	it('every non-terminal state has at least one outgoing transition', () => {
-		const terminal = ['approved', 'skippable'];
+		const terminal = ['skippable'];
 		for (const cat of allCategories) {
 			if (terminal.includes(cat)) continue;
 			const outgoing = getTransitionsFrom(cat);
@@ -46,6 +46,38 @@ describe('STATE_MACHINE', () => {
 	it('snoozed state has unsnooze transition', () => {
 		const fromSnoozed = getTransitionsFrom('snoozed');
 		expect(fromSnoozed.some((t) => t.transition === 'unsnooze')).toBe(true);
+	});
+
+	it('unsnooze is a self-transition on snoozed (actual state derived at runtime)', () => {
+		const unsnooze = STATE_MACHINE.find((t) => t.transition === 'unsnooze');
+		expect(unsnooze).toBeDefined();
+		expect(unsnooze!.from).toBe('snoozed');
+		expect(unsnooze!.to).toBe('snoozed');
+	});
+
+	it('every non-terminal, non-snoozed state can be snoozed', () => {
+		const terminal = ['skippable', 'snoozed'];
+		for (const cat of allCategories) {
+			if (terminal.includes(cat)) continue;
+			const transitions = getTransitionsFrom(cat);
+			expect(
+				transitions.some((t) => t.transition === 'snooze'),
+				`${cat} should have a snooze transition`,
+			).toBe(true);
+		}
+	});
+
+	it('all snooze transitions are active', () => {
+		const snoozeTransitions = STATE_MACHINE.filter((t) => t.transition === 'snooze');
+		for (const t of snoozeTransitions) {
+			expect(t.kind, `snooze from ${t.from} should be active`).toBe('active');
+		}
+	});
+
+	it('TransitionSchema does not include edit_code or refresh', () => {
+		const transitions = TransitionSchema.options;
+		expect(transitions).not.toContain('edit_code');
+		expect(transitions).not.toContain('refresh');
 	});
 
 	it('every transition has a valid kind (active or passive)', () => {

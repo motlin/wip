@@ -6,7 +6,7 @@ export type ReviewStatus = z.infer<typeof ReviewStatusSchema>;
 export const CheckStatusSchema = z.enum(['pending', 'running', 'passed', 'failed', 'none', 'unknown']);
 export type CheckStatus = z.infer<typeof CheckStatusSchema>;
 
-export const TestStatusSchema = z.enum(['passed', 'failed', 'unknown']);
+export const TestStatusSchema = z.enum(['passed', 'failed', 'running', 'unknown']);
 export type TestStatus = z.infer<typeof TestStatusSchema>;
 
 // Kanban left-to-right: full SDLC flow
@@ -45,7 +45,6 @@ export const TransitionSchema = z.enum([
 	'generate_plan',
 	'approve_plan',
 	'create_branch',
-	'edit_code',
 	'commit',
 	'run_test',
 	'test_pass',
@@ -65,7 +64,6 @@ export const TransitionSchema = z.enum([
 	'approve',
 	'dismiss_review',
 	'merge',
-	'refresh',
 ]);
 export type Transition = z.infer<typeof TransitionSchema>;
 
@@ -88,7 +86,20 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: 'pushed_no_pr',      transition: 'snooze',            to: 'snoozed',           kind: 'active'},
 	{from: 'checks_passed',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
 	{from: 'checks_failed',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
-	{from: 'snoozed',           transition: 'unsnooze',          to: 'ready_to_test',     kind: 'active'},
+	{from: 'untriaged',         transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'triaged',           transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'plan_unreviewed',   transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'plan_approved',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'no_test',           transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'detached_head',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'local_changes',     transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'rebase_conflicts',  transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'checks_unknown',    transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'checks_running',    transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'review_comments',   transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'changes_requested', transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'approved',          transition: 'snooze',            to: 'snoozed',           kind: 'active'},
+	{from: 'snoozed',           transition: 'unsnooze',          to: 'snoozed',           kind: 'active'},
 
 	// Plan flow
 	{from: 'triaged',           transition: 'generate_plan',     to: 'plan_unreviewed',   kind: 'active'},

@@ -2,6 +2,7 @@ import type {Category, CommitItem, BranchItem, PullRequestItem, IssueItem, TodoI
 
 export function classifyCommit(commit: CommitItem, project: ProjectInfo): Category {
 	if (commit.skippable) return 'skippable';
+	if (commit.testStatus === 'running') return 'test_running';
 	if (commit.testStatus === 'failed') return 'test_failed';
 	if (commit.testStatus === 'passed') return 'ready_to_push';
 	if (project.detachedHead) return 'detached_head';
@@ -12,15 +13,16 @@ export function classifyCommit(commit: CommitItem, project: ProjectInfo): Catego
 
 export function classifyBranch(branch: BranchItem, project: ProjectInfo): Category {
 	if (branch.skippable) return 'skippable';
+	if (branch.testStatus === 'running') return 'test_running';
 	if (branch.testStatus === 'failed') return 'test_failed';
-	if (branch.pushedToRemote && branch.localAhead) return 'ready_to_push';
 	if (branch.needsRebase && branch.rebaseable === false) return 'rebase_conflicts';
 	if (branch.needsRebase) return 'needs_rebase';
+	if (branch.pushedToRemote && !branch.localAhead && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
+	if (branch.pushedToRemote && branch.localAhead) return 'ready_to_push';
 	if (project.dirty) return 'local_changes';
 	if (!project.hasTestConfigured) return 'no_test';
 	if (branch.testStatus === 'passed' && (branch.commitsAhead ?? 1) > 1) return 'needs_split';
 	if (branch.testStatus === 'passed') return 'ready_to_push';
-	if (branch.pushedToRemote && branch.branch !== project.upstreamBranch) return 'pushed_no_pr';
 	return 'ready_to_test';
 }
 
@@ -40,6 +42,9 @@ export function classifyTodo(todo: TodoItem): Category {
 
 export function classifyPullRequest(pr: PullRequestItem): Category {
 	if (pr.skippable) return 'skippable';
+	if (pr.testStatus === 'running') return 'test_running';
+	if (pr.needsRebase && pr.rebaseable === false) return 'rebase_conflicts';
+	if (pr.needsRebase) return 'needs_rebase';
 	if (pr.checkStatus === 'failed' && pr.localAhead) return 'ready_to_push';
 	if (pr.checkStatus === 'failed') return 'checks_failed';
 	if (pr.checkStatus === 'running' || pr.checkStatus === 'pending') return 'checks_running';

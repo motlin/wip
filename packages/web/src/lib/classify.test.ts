@@ -96,8 +96,18 @@ describe('classifyCommit', () => {
 		expect(classifyCommit(makeCommit(), makeProject({hasTestConfigured: false}))).toBe('no_test');
 	});
 
+	it('returns test_running when test is running', () => {
+		expect(classifyCommit(makeCommit({testStatus: 'running'}), makeProject())).toBe('test_running');
+	});
+
 	it('returns ready_to_test for default untested commit', () => {
 		expect(classifyCommit(makeCommit(), makeProject())).toBe('ready_to_test');
+	});
+
+	it('prioritizes test_running over detached_head', () => {
+		expect(classifyCommit(makeCommit({testStatus: 'running'}), makeProject({detachedHead: true}))).toBe(
+			'test_running',
+		);
 	});
 
 	it('prioritizes test_failed over detached_head', () => {
@@ -160,6 +170,31 @@ describe('classifyBranch', () => {
 
 	it('returns test_failed when test failed even with dirty project', () => {
 		expect(classifyBranch(makeBranch({testStatus: 'failed'}), makeProject({dirty: true}))).toBe('test_failed');
+	});
+
+	it('returns test_running when test is running', () => {
+		expect(classifyBranch(makeBranch({testStatus: 'running'}), makeProject())).toBe('test_running');
+	});
+
+	it('prioritizes needsRebase over pushedToRemote+localAhead', () => {
+		expect(
+			classifyBranch(makeBranch({pushedToRemote: true, localAhead: true, needsRebase: true}), makeProject()),
+		).toBe('needs_rebase');
+	});
+
+	it('returns rebase_conflicts when pushed+localAhead+needsRebase and not rebaseable', () => {
+		expect(
+			classifyBranch(
+				makeBranch({pushedToRemote: true, localAhead: true, needsRebase: true, rebaseable: false}),
+				makeProject(),
+			),
+		).toBe('rebase_conflicts');
+	});
+
+	it('returns pushed_no_pr when pushed, in sync, and test passed', () => {
+		expect(
+			classifyBranch(makeBranch({pushedToRemote: true, localAhead: false, testStatus: 'passed'}), makeProject()),
+		).toBe('pushed_no_pr');
 	});
 
 	it('returns local_changes when project dirty and no other flags', () => {
@@ -239,6 +274,26 @@ describe('classifyPullRequest', () => {
 	it('returns checks_failed when checks failed and localAhead is undefined', () => {
 		expect(classifyPullRequest(makePR({checkStatus: 'failed'}))).toBe('checks_failed');
 	});
+
+	it('returns test_running when test is running', () => {
+		expect(classifyPullRequest(makePR({testStatus: 'running'}))).toBe('test_running');
+	});
+
+	it('returns needs_rebase when PR needs rebase', () => {
+		expect(classifyPullRequest(makePR({needsRebase: true, checkStatus: 'passed'}))).toBe('needs_rebase');
+	});
+
+	it('returns rebase_conflicts when PR needs rebase and is not rebaseable', () => {
+		expect(classifyPullRequest(makePR({needsRebase: true, rebaseable: false, checkStatus: 'passed'}))).toBe(
+			'rebase_conflicts',
+		);
+	});
+
+	it('prioritizes needsRebase over check/review status', () => {
+		expect(
+			classifyPullRequest(makePR({needsRebase: true, checkStatus: 'passed', reviewStatus: 'approved'})),
+		).toBe('needs_rebase');
+	});
 });
 
 function makeIssue(overrides: Partial<IssueItem> = {}): IssueItem {
@@ -312,8 +367,7 @@ describe('State machine consistency', () => {
 
 	// Special states that are orthogonal/transient and not part of the formal state machine
 	// - skippable: derived from item.skippable flag, no transitions in/out (yet)
-	// - test_running: transient override while test job is active (formalized in task 6)
-	const specialStates = new Set(['skippable', 'test_running']);
+	const specialStates = new Set(['skippable']);
 
 	it('every non-special category in schema appears in STATE_MACHINE as from or to state', () => {
 		const missingStates = validCategories.filter((cat) => !statesInMachine.has(cat) && !specialStates.has(cat));

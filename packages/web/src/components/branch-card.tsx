@@ -6,8 +6,8 @@ import {applyTransition, type BranchItem, type Category} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
-import {CATEGORIES} from '../lib/category-actions';
 import {AnsiText} from './ansi-text';
+import {CategoryBadge} from './category-badge';
 import {BranchActions} from './commit-actions';
 
 function relativeTime(dateStr: string): string {
@@ -68,9 +68,7 @@ export function BranchCard({branch, category}: {branch: BranchItem; category: Ca
 					>
 						{branch.remote}
 					</a>
-					<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[effectiveCategory].color}`}>
-						{CATEGORIES[effectiveCategory].label}
-					</span>
+					<CategoryBadge category={effectiveCategory} />
 				</div>
 				<div className="flex items-center gap-1.5 shrink-0">
 					<a

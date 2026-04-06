@@ -207,3 +207,4 @@ function deriveCategoryPriority(): Category[] {
 }
 
 export const CATEGORY_PRIORITY: Category[] = deriveCategoryPriority();
+export const CATEGORY_PRIORITY_REVERSED: Category[] = [...CATEGORY_PRIORITY].reverse();

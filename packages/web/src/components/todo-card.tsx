@@ -1,5 +1,5 @@
 import type {TodoItem, Category} from '@wip/shared';
-import {CATEGORIES} from '../lib/category-actions';
+import {CategoryBadge} from './category-badge';
 
 export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}) {
 	return (
@@ -8,11 +8,7 @@ export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}
 				<span className="truncate text-xs font-medium text-text-300">{todo.project}</span>
 				<span className="text-xs text-text-300">·</span>
 				<span className="truncate text-xs text-text-300">{todo.sourceLabel}</span>
-				{category && (
-					<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[category].color}`}>
-						{CATEGORIES[category].label}
-					</span>
-				)}
+				{category && <CategoryBadge category={category} />}
 			</div>
 			<p className="mt-1.5 text-sm leading-snug text-text-100">{todo.title}</p>
 		</div>

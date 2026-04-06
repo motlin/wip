@@ -1,7 +1,7 @@
 import {CircleDot} from 'lucide-react';
 import {Link} from '@tanstack/react-router';
 import type {IssueItem, Category} from '@wip/shared';
-import {CATEGORIES} from '../lib/category-actions';
+import {CategoryBadge} from './category-badge';
 
 export function IssueCard({issue, category}: {issue: IssueItem; category?: Category}) {
 	return (
@@ -15,11 +15,7 @@ export function IssueCard({issue, category}: {issue: IssueItem; category?: Categ
 				>
 					{issue.remote}
 				</a>
-				{category && (
-					<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[category].color}`}>
-						{CATEGORIES[category].label}
-					</span>
-				)}
+				{category && <CategoryBadge category={category} />}
 				<a
 					href={issue.url}
 					target="_blank"

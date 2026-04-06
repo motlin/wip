@@ -4,8 +4,8 @@ import {Link} from '@tanstack/react-router';
 import type {CommitItem, Category} from '@wip/shared';
 import {Diff, GitBranch, Loader2, Info} from 'lucide-react';
 import {createBranch} from '../lib/server-fns';
-import {CATEGORIES} from '../lib/category-actions';
 import {AnsiText} from './ansi-text';
+import {CategoryBadge} from './category-badge';
 
 export function CommitCard({commit, category}: {commit: CommitItem; category?: Category}) {
 	const queryClient = useQueryClient();
@@ -47,11 +47,7 @@ export function CommitCard({commit, category}: {commit: CommitItem; category?: C
 					>
 						{commit.remote}
 					</a>
-					{category && (
-						<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[category].color}`}>
-							{CATEGORIES[category].label}
-						</span>
-					)}
+					{category && <CategoryBadge category={category} />}
 				</div>
 				<div className="flex items-center gap-1.5 shrink-0">
 					<a

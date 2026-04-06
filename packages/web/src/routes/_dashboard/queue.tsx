@@ -17,7 +17,7 @@ import {IssueCard} from '../../components/issue-card';
 import {ProjectBoardItemCard} from '../../components/project-board-item-card';
 import {TodoCard} from '../../components/todo-card';
 import type {Category} from '@wip/shared';
-import {CATEGORIES, CATEGORY_PRIORITY} from '../../lib/category-actions';
+import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED} from '../../lib/category-actions';
 
 function bucketCount(items: ColumnItems): number {
 	return (items.commits?.length ?? 0) + (items.branches?.length ?? 0) + (items.pullRequests?.length ?? 0)
@@ -184,7 +184,7 @@ function Queue() {
 				</div>
 			)}
 			<div className="flex flex-col gap-6">
-				{[...CATEGORY_PRIORITY].reverse().map((category) => {
+				{CATEGORY_PRIORITY_REVERSED.map((category) => {
 					const items = grouped[category];
 					const count = bucketCount(items);
 					if (count === 0) return null;

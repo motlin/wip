@@ -316,11 +316,24 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			dirty INTEGER NOT NULL,
 			detached_head INTEGER NOT NULL,
 			branch_count INTEGER NOT NULL,
+			rebase_in_progress INTEGER NOT NULL DEFAULT 0,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (name, system_from)
 		)
 	`);
+
+  // Migrate project_cache: add rebase_in_progress column if missing
+  {
+    const pcCols = sqlite.prepare("PRAGMA table_info('project_cache')").all() as Array<{
+      name: string;
+    }>;
+    if (pcCols.length > 0 && !pcCols.some((c) => c.name === "rebase_in_progress")) {
+      sqlite.exec(
+        "ALTER TABLE project_cache ADD COLUMN rebase_in_progress INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+  }
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS children_cache (
@@ -1126,6 +1139,7 @@ export function getCachedProjectList(): ProjectInfo[] | null {
     dirty: row.dirty,
     detachedHead: row.detachedHead,
     branchCount: row.branchCount,
+    rebaseInProgress: row.rebaseInProgress,
   }));
 }
 
@@ -1150,6 +1164,7 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
           dirty: p.dirty,
           detachedHead: p.detachedHead,
           branchCount: p.branchCount,
+          rebaseInProgress: p.rebaseInProgress,
           systemFrom: timestamp,
         })
         .run();

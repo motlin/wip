@@ -1082,6 +1082,10 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
         .filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
         .filter(Boolean).length;
 
+      const rebaseInProgress =
+        fs.existsSync(path.join(dir, ".git", "rebase-merge")) ||
+        fs.existsSync(path.join(dir, ".git", "rebase-apply"));
+
       return {
         name,
         dir,
@@ -1093,6 +1097,7 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
         detachedHead: detached,
         branchCount,
         hasTestConfigured: hasTest,
+        rebaseInProgress,
       } satisfies ProjectInfo;
     }),
   );

@@ -37,7 +37,7 @@ const COLUMNS: Category[][] = [
   // Col 2: test cycle
   ["ready_to_test", "test_running", "test_failed"],
   // Col 3: rebase + split
-  ["needs_rebase", "rebase_conflicts", "needs_split"],
+  ["needs_rebase", "rebase_unknown", "rebase_conflicts", "rebase_stuck", "needs_split"],
   // Col 4: push
   ["ready_to_push", "pushed_no_pr"],
   // Col 5: CI

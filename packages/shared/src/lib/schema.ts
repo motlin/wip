@@ -302,6 +302,7 @@ export const projectCache = sqliteTable(
     dirty: integer("dirty", { mode: "boolean" }).notNull(),
     detachedHead: integer("detached_head", { mode: "boolean" }).notNull(),
     branchCount: integer("branch_count").notNull(),
+    rebaseInProgress: integer("rebase_in_progress", { mode: "boolean" }).notNull().default(false),
     systemFrom: text("system_from").notNull(),
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },

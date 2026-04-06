@@ -42,6 +42,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     detachedHead: false,
     branchCount: 3,
     hasTestConfigured: true,
+    rebaseInProgress: false,
     ...overrides,
   };
 }

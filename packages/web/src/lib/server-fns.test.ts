@@ -76,6 +76,7 @@ function makeProject(overrides: Partial<ProjectInfo> & { name: string; dir: stri
     detachedHead: false,
     branchCount: 0,
     hasTestConfigured: true,
+    rebaseInProgress: false,
     ...overrides,
   };
 }

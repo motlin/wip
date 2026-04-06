@@ -23,6 +23,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     detachedHead: false,
     branchCount: 1,
     hasTestConfigured: true,
+    rebaseInProgress: false,
     ...overrides,
   };
 }
@@ -68,13 +69,23 @@ function makePR(overrides: Partial<GitChildResult> = {}): GitChildResult {
 describe("classifyBranch priority order with combined properties", () => {
   const project = makeProject();
 
-  it("a needs-rebase branch with localAhead classifies as needs_rebase (rebase before push)", () => {
+  it("a needs-rebase branch with localAhead classifies as rebase_unknown without rebaseable", () => {
     const branch = makeBranch({ needsRebase: true, pushedToRemote: true, localAhead: true });
-    expect(classifyBranch(branch, project)).toBe("needs_rebase");
+    expect(classifyBranch(branch, project)).toBe("rebase_unknown");
   });
 
-  it("a needs-rebase branch that is pushed but not ahead classifies as needs_rebase", () => {
+  it("a needs-rebase branch that is pushed but not ahead classifies as rebase_unknown without rebaseable", () => {
     const branch = makeBranch({ needsRebase: true, pushedToRemote: true, localAhead: false });
+    expect(classifyBranch(branch, project)).toBe("rebase_unknown");
+  });
+
+  it("a needs-rebase branch that is confirmed rebaseable classifies as needs_rebase", () => {
+    const branch = makeBranch({
+      needsRebase: true,
+      rebaseable: true,
+      pushedToRemote: true,
+      localAhead: false,
+    });
     expect(classifyBranch(branch, project)).toBe("needs_rebase");
   });
 
@@ -83,9 +94,9 @@ describe("classifyBranch priority order with combined properties", () => {
     expect(classifyBranch(branch, project)).toBe("test_failed");
   });
 
-  it("a needs-rebase branch with passed tests classifies as needs_rebase (rebase before push)", () => {
+  it("a needs-rebase branch with passed tests classifies as rebase_unknown without rebaseable", () => {
     const branch = makeBranch({ testStatus: "passed", needsRebase: true, commitsAhead: 1 });
-    expect(classifyBranch(branch, project)).toBe("needs_rebase");
+    expect(classifyBranch(branch, project)).toBe("rebase_unknown");
   });
 
   it("a skippable needs-rebase branch classifies as skippable", () => {
@@ -146,7 +157,8 @@ describe("ChildCommit from getNeedsRebaseBranches should carry correct propertie
       needsRebase: childWithPr.needsRebase,
       pushedToRemote: childWithPr.pushedToRemote,
     });
-    expect(classifyBranch(branch, makeProject())).toBe("needs_rebase");
+    // Without the PR context, it classifies as rebase_unknown (rebaseable not yet checked)
+    expect(classifyBranch(branch, makeProject())).toBe("rebase_unknown");
   });
 
   it("a child with pushedToRemote=true should have localAhead computed", () => {
@@ -158,14 +170,14 @@ describe("ChildCommit from getNeedsRebaseBranches should carry correct propertie
       localAhead: true,
       needsRebase: true,
     });
-    expect(classifyBranch(branch, makeProject())).toBe("needs_rebase");
+    expect(classifyBranch(branch, makeProject())).toBe("rebase_unknown");
 
-    // With hardcoded pushedToRemote=false (old behavior): needs_rebase
+    // With hardcoded pushedToRemote=false (old behavior): rebase_unknown
     const branchWrong = makeBranch({
       pushedToRemote: false,
       needsRebase: true,
     });
-    expect(classifyBranch(branchWrong, makeProject())).toBe("needs_rebase");
+    expect(classifyBranch(branchWrong, makeProject())).toBe("rebase_unknown");
   });
 
   it("a child with merge status should carry commitsBehind for rebaseable check", () => {
@@ -185,8 +197,8 @@ describe("ChildCommit from getNeedsRebaseBranches should carry correct propertie
     });
     expect(classifyBranch(branchNotRebaseable, makeProject())).toBe("rebase_conflicts");
 
-    // Without rebaseable (old behavior): defaults to needs_rebase (not rebase_conflicts)
+    // Without rebaseable: defaults to rebase_unknown (mergeability not yet checked)
     const branchNoInfo = makeBranch({ needsRebase: true });
-    expect(classifyBranch(branchNoInfo, makeProject())).toBe("needs_rebase");
+    expect(classifyBranch(branchNoInfo, makeProject())).toBe("rebase_unknown");
   });
 });

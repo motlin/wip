@@ -20,11 +20,13 @@ export function classifyCommit(child: GitChildResult, project: ProjectInfo): Cat
 
 export function classifyBranch(child: GitChildResult, project: ProjectInfo): Category {
   if (child.skippable) return "skippable";
+  if (project.rebaseInProgress) return "rebase_stuck";
   if (child.testStatus === "running") return "test_running";
   if (child.testStatus === "failed") return "test_failed";
-  if (project.dirty) return "local_changes";
   if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
-  if (child.needsRebase) return "needs_rebase";
+  if (child.needsRebase && child.rebaseable === true) return "needs_rebase";
+  if (child.needsRebase) return "rebase_unknown";
+  if (project.dirty) return "local_changes";
   if (child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
     return "pushed_no_pr";
   if (child.pushedToRemote && child.localAhead) return "ready_to_push";

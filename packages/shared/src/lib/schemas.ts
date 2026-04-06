@@ -37,7 +37,9 @@ export const CategorySchema = z.enum([
   "test_running",
   "test_failed",
   "needs_rebase",
+  "rebase_unknown",
   "rebase_conflicts",
+  "rebase_stuck",
   "needs_split",
   "ready_to_push",
   "pushed_no_pr",
@@ -95,6 +97,8 @@ export const STATE_MACHINE: readonly StateTransition[] = [
   { from: "test_failed", transition: "snooze", to: "snoozed", kind: "active" },
   { from: "ready_to_push", transition: "snooze", to: "snoozed", kind: "active" },
   { from: "needs_rebase", transition: "snooze", to: "snoozed", kind: "active" },
+  { from: "rebase_unknown", transition: "snooze", to: "snoozed", kind: "active" },
+  { from: "rebase_stuck", transition: "snooze", to: "snoozed", kind: "active" },
   { from: "needs_split", transition: "snooze", to: "snoozed", kind: "active" },
   { from: "pushed_no_pr", transition: "snooze", to: "snoozed", kind: "active" },
   { from: "checks_passed", transition: "snooze", to: "snoozed", kind: "active" },
@@ -137,12 +141,15 @@ export const STATE_MACHINE: readonly StateTransition[] = [
   // Rebase flow
   { from: "needs_rebase", transition: "rebase", to: "ready_to_test", kind: "active" },
   { from: "needs_rebase", transition: "rebase", to: "rebase_conflicts", kind: "active" },
+  { from: "rebase_unknown", transition: "rebase", to: "ready_to_test", kind: "active" },
+  { from: "rebase_unknown", transition: "rebase", to: "rebase_conflicts", kind: "active" },
   {
     from: "rebase_conflicts",
     transition: "resolve_conflicts",
     to: "ready_to_test",
     kind: "active",
   },
+  { from: "rebase_stuck", transition: "resolve_conflicts", to: "ready_to_test", kind: "active" },
 
   // Split flow (multi-commit branches)
   { from: "needs_split", transition: "split", to: "ready_to_push", kind: "active" },
@@ -232,6 +239,7 @@ export const ProjectInfoSchema = z.object({
   detachedHead: z.boolean(),
   branchCount: z.number(),
   hasTestConfigured: z.boolean(),
+  rebaseInProgress: z.boolean(),
 });
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 

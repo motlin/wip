@@ -43,6 +43,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     detachedHead: false,
     branchCount: 1,
     hasTestConfigured: true,
+    rebaseInProgress: false,
     ...overrides,
   };
 }
@@ -205,8 +206,14 @@ describe("classifyBranch", () => {
     );
   });
 
-  it("returns needs_rebase when needsRebase and rebaseable is undefined", () => {
-    expect(classifyBranch(makeBranch({ needsRebase: true }), makeProject())).toBe("needs_rebase");
+  it("returns rebase_unknown when needsRebase and rebaseable is undefined", () => {
+    expect(classifyBranch(makeBranch({ needsRebase: true }), makeProject())).toBe("rebase_unknown");
+  });
+
+  it("returns rebase_stuck when project has rebase in progress", () => {
+    expect(classifyBranch(makeBranch(), makeProject({ rebaseInProgress: true }))).toBe(
+      "rebase_stuck",
+    );
   });
 
   it("returns test_failed when test failed even with dirty project", () => {
@@ -227,7 +234,7 @@ describe("classifyBranch", () => {
         makeBranch({ pushedToRemote: true, localAhead: true, needsRebase: true }),
         makeProject(),
       ),
-    ).toBe("needs_rebase");
+    ).toBe("rebase_unknown");
   });
 
   it("returns rebase_conflicts when pushed+localAhead+needsRebase and not rebaseable", () => {
@@ -257,9 +264,9 @@ describe("classifyBranch", () => {
     expect(classifyBranch(makeBranch(), makeProject({ dirty: true }))).toBe("local_changes");
   });
 
-  it("returns local_changes when project dirty even if needsRebase", () => {
+  it("returns rebase_unknown when needsRebase even if project dirty", () => {
     expect(classifyBranch(makeBranch({ needsRebase: true }), makeProject({ dirty: true }))).toBe(
-      "local_changes",
+      "rebase_unknown",
     );
   });
 

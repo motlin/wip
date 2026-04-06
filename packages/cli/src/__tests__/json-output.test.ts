@@ -75,6 +75,7 @@ const fakeProject: ProjectInfo = {
   detachedHead: false,
   branchCount: 1,
   hasTestConfigured: true,
+  rebaseInProgress: false,
 };
 
 const fakeChild: ChildCommit = {

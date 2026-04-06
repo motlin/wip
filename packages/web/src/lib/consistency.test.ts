@@ -124,8 +124,6 @@ describe('ChildCommit from getNeedsRebaseBranches should carry correct propertie
 		expect(childWithPr.prUrl).toBeDefined();
 		expect(childWithPr.prNumber).toBeDefined();
 
-		// And classifyPullRequest should produce a meaningful result
-		// With needsRebase=true, rebase takes priority over check/review status
 		const pr = makePR({
 			checkStatus: childWithPr.checkStatus,
 			reviewStatus: childWithPr.reviewStatus,
@@ -142,7 +140,6 @@ describe('ChildCommit from getNeedsRebaseBranches should carry correct propertie
 			needsRebase: childWithoutPr.needsRebase,
 			pushedToRemote: childWithoutPr.pushedToRemote,
 		});
-		// Without the PR context, it classifies as needs_rebase instead of checks_failed
 		expect(classifyBranch(branch, makeProject())).toBe('needs_rebase');
 	});
 
@@ -155,7 +152,6 @@ describe('ChildCommit from getNeedsRebaseBranches should carry correct propertie
 			localAhead: true,
 			needsRebase: true,
 		});
-		// With correct data: needs_rebase (rebase takes priority over localAhead)
 		expect(classifyBranch(branch, makeProject())).toBe('needs_rebase');
 
 		// With hardcoded pushedToRemote=false (old behavior): needs_rebase

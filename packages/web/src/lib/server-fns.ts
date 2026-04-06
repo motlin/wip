@@ -815,6 +815,7 @@ export const mergePr = createServerFn({method: 'POST'})
 
 		if (result.exitCode === 0) {
 			invalidatePrCache(data.project);
+			invalidateMergeStatus(data.project);
 			return {ok: true, message: `Merged PR #${data.prNumber}`};
 		}
 

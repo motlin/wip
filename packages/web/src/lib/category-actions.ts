@@ -1,7 +1,7 @@
 import {type Category, type Transition, CategorySchema, getTransitionsFrom, STATE_MACHINE} from '@wip/shared';
 
 export type Action =
-	| 'open_pr_link' | 'rebase_pr' | 'force_push' | 'rebase_local'
+	| 'open_pr_link' | 'force_push' | 'rebase_local'
 	| 'apply_fixes' | 'rename' | 'create_pr' | 'push' | 'commit'
 	| 'test' | 'view_test_log' | 'delete_branch' | 'refresh'
 	| 'review_plan' | 'implement';
@@ -29,13 +29,13 @@ export function getTransitionActions(category: Category): Action[] {
 
 // Non-state-changing actions that are added per category beyond what the state machine provides.
 export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>> = {
-	approved:          ['open_pr_link', 'rebase_pr', 'refresh'],
-	changes_requested: ['open_pr_link', 'rebase_pr', 'refresh'],
-	review_comments:   ['open_pr_link', 'rebase_pr', 'refresh'],
-	checks_passed:     ['open_pr_link', 'rebase_pr', 'refresh'],
-	checks_failed:     ['open_pr_link', 'rebase_pr', 'apply_fixes', 'refresh'],
-	checks_running:    ['open_pr_link', 'rebase_pr', 'force_push', 'refresh'],
-	checks_unknown:    ['open_pr_link', 'rebase_pr', 'force_push', 'refresh'],
+	approved:          ['open_pr_link', 'refresh'],
+	changes_requested: ['open_pr_link', 'refresh'],
+	review_comments:   ['open_pr_link', 'refresh'],
+	checks_passed:     ['open_pr_link', 'refresh'],
+	checks_failed:     ['open_pr_link', 'apply_fixes', 'refresh'],
+	checks_running:    ['open_pr_link', 'force_push', 'refresh'],
+	checks_unknown:    ['open_pr_link', 'force_push', 'refresh'],
 	pushed_no_pr:      ['force_push', 'refresh', 'rename'],
 	ready_to_push:     ['refresh', 'rename', 'delete_branch'],
 	needs_split:       ['refresh', 'rename'],

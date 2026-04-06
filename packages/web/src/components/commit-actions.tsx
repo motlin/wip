@@ -1,7 +1,7 @@
 import {useQueryClient, useQuery} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Sun, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench, Save} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, rebasePr, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, commitWorkingTree, getProjectChildren} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, commitWorkingTree, getProjectChildren} from '../lib/server-fns';
 import {snoozedQueryOptions} from '../lib/queries';
 import {useMergeStatus} from '../lib/merge-events-context';
 import {suppressMergeUpdates} from '../lib/use-merge-events';
@@ -94,8 +94,6 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 	const [pushResult, setPushResult] = useState<{message: string; compareUrl?: string} | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
-	const [rebasing, setRebasing] = useState(false);
-	const [rebaseResult, setRebaseResult] = useState<{message: string} | null>(null);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
@@ -300,25 +298,6 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 		setRefreshing(false);
 	};
 
-	const handleRebase = async () => {
-		if (!pr) return;
-		setRebasing(true);
-		setError(null);
-		setRebaseResult(null);
-		const result = await rebasePr({data: {
-			project: item.project,
-			prUrl: pr.prUrl,
-		}});
-		setRebasing(false);
-		if (result.ok) {
-			setRebaseResult({message: result.message});
-			suppressMergeUpdates(item.project, item.sha);
-			cache.updateItem(item.sha, (i) => ({...i, commitsBehind: 0, rebaseable: undefined}));
-		} else {
-			setError(result.message);
-		}
-	};
-
 	const handleForcePush = async () => {
 		setForcePushing(true);
 		setError(null);
@@ -440,24 +419,6 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 						<GitHubIcon className="h-3.5 w-3.5" />
 						Open PR
 					</a>
-				)}
-
-				{/* Rebase PR */}
-				{actions.has('rebase_pr') && pr && (
-					<button
-						type="button"
-						onClick={handleRebase}
-						disabled={rebasing}
-						title={commitsBehind != null && commitsBehind > 0 ? 'PR is behind base branch — rebase recommended' : 'PR is up to date with base branch'}
-						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							rebasing ? 'cursor-not-allowed opacity-60 text-text-300'
-							: commitsBehind != null && commitsBehind > 0 ? 'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30'
-							: 'text-text-500 hover:bg-bg-200 hover:text-text-300'
-						}`}
-					>
-						{rebasing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
-						{rebasing ? 'Rebasing...' : commitsBehind != null && commitsBehind > 0 ? 'Rebase (behind)' : 'Rebase'}
-					</button>
 				)}
 
 				{/* Force Push (local ahead of remote) */}
@@ -882,9 +843,6 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 						</a>
 					)}
 				</div>
-			)}
-			{rebaseResult && (
-				<p className="mt-2 text-xs text-green-600 dark:text-green-400">{rebaseResult.message}</p>
 			)}
 			{testJob?.status === 'failed' && (
 				<p className="mt-2 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>

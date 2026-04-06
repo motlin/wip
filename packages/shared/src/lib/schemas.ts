@@ -428,12 +428,6 @@ export const RefreshChildInputSchema = z.object({
 });
 export type RefreshChildInput = z.infer<typeof RefreshChildInputSchema>;
 
-export const RebasePrInputSchema = z.object({
-	project: z.string(),
-	prUrl: z.string(),
-});
-export type RebasePrInput = z.infer<typeof RebasePrInputSchema>;
-
 export const CreateBranchInputSchema = z.object({
 	project: z.string(),
 	sha: z.string(),

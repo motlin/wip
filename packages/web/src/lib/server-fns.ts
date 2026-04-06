@@ -12,7 +12,6 @@ import {
 	CancelTestInputSchema,
 	CreatePrInputSchema,
 	RefreshChildInputSchema,
-	RebasePrInputSchema,
 	CreateBranchInputSchema,
 	DeleteBranchInputSchema,
 	ForcePushInputSchema,
@@ -671,32 +670,6 @@ export const refreshChild = createServerFn({method: 'POST'})
 		return {ok: true, message: `Refreshed ${data.project}`};
 	});
 
-export const rebasePr = createServerFn({method: 'POST'})
-	.inputValidator((input: unknown) => RebasePrInputSchema.parse(input))
-	.handler(async ({data}): Promise<ActionResult> => {
-
-		const p = await resolveProject(data.project);
-
-		const match = data.prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-		if (!match) {
-			return {ok: false, message: `Could not parse PR URL: ${data.prUrl}`};
-		}
-		const [, owner, repo, prNumber] = match;
-
-		const {execa} = await import('execa');
-		const result = await execa('gh', [
-			'api', '--method', 'PUT',
-			`/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
-		], {cwd: p.dir, reject: false});
-
-		if (result.exitCode === 0) {
-			invalidatePrCache(data.project);
-			return {ok: true, message: `Rebased PR #${prNumber} against target branch`};
-		}
-
-		return {ok: false, message: `Failed to rebase PR: ${result.stderr}`};
-	});
-
 export type GitItemResult = CommitItem | BranchItem | PullRequestItem;
 
 export const getChildBySha = createServerFn({method: 'GET'})
@@ -912,6 +885,8 @@ export const rebaseLocal = createServerFn({method: 'POST'})
 		const {execa} = await import('execa');
 		const env = await getMiseEnv(p.dir);
 
+		await execa('git', ['-C', p.dir, 'fetch', p.upstreamRemote, p.upstreamBranch ?? 'main'], {reject: false, env});
+
 		// Validate transition: rebase is allowed from needs_rebase state
 		// Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
 		if (p.dirty) {
@@ -934,7 +909,7 @@ export const rebaseLocal = createServerFn({method: 'POST'})
 			return {ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}`};
 		}
 
-		const push = await execa('git', ['-C', p.dir, 'push', 'origin', `${data.branch}:${data.branch}`, '--force-with-lease'], {reject: false, env});
+		const push = await execa('git', ['-C', p.dir, 'push', p.remote, `${data.branch}:${data.branch}`, '--force-with-lease'], {reject: false, env});
 		if (push.exitCode !== 0 && !push.stderr.includes('Everything up-to-date')) {
 			return {ok: false, message: `Rebased but failed to push: ${push.stderr}`};
 		}
@@ -978,6 +953,13 @@ export const rebaseAllBranches = createServerFn({method: 'POST'}).handler(async 
 				errors.push(`${p.name}/${branch}: conflicts`);
 				continue;
 			}
+
+			const push = await execa('git', ['-C', p.dir, 'push', p.remote, `${branch}:${branch}`, '--force-with-lease'], {reject: false, env});
+			if (push.exitCode !== 0 && !push.stderr.includes('Everything up-to-date')) {
+				errors.push(`${p.name}/${branch}: push failed`);
+				continue;
+			}
+
 			results.push(`${p.name}/${branch}`);
 		}
 

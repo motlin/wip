@@ -30,7 +30,6 @@ export {
 	CancelTestInputSchema, type CancelTestInput,
 	CreatePrInputSchema, type CreatePrInput,
 	RefreshChildInputSchema, type RefreshChildInput,
-	RebasePrInputSchema, type RebasePrInput,
 	CreateBranchInputSchema, type CreateBranchInput,
 	DeleteBranchInputSchema, type DeleteBranchInput,
 	ForcePushInputSchema, type ForcePushInput,

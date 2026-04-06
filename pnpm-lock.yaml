@@ -15,8 +15,8 @@ importers:
   packages/cli:
     dependencies:
       '@oclif/core':
-        specifier: ^4.10.4
-        version: 4.10.4
+        specifier: ^4.10.5
+        version: 4.10.5
       '@oclif/plugin-help':
         specifier: ^6.2.43
         version: 6.2.43
@@ -453,8 +453,8 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@oclif/core@4.10.4':
-    resolution: {integrity: sha512-4aMd2BAhmGWjiASzJVmEAaPTZStxW0+VdylON5m+LwbxlG2HD7aTHZ7gWqeHBm/rXH5mi1WLb5LlQTCL+VdELQ==}
+  '@oclif/core@4.10.5':
+    resolution: {integrity: sha512-qcdCF7NrdWPfme6Kr34wwljRCXbCVpL1WVxiNy0Ep6vbWKjxAjFQwuhqkoyL0yjI+KdwtLcOCGn5z2yzdijc8w==}
     engines: {node: '>=18.0.0'}
 
   '@oclif/plugin-help@6.2.43':
@@ -2488,7 +2488,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
-  '@oclif/core@4.10.4':
+  '@oclif/core@4.10.5':
     dependencies:
       ansi-escapes: 4.3.2
       ansis: 3.17.0
@@ -2511,7 +2511,7 @@ snapshots:
 
   '@oclif/plugin-help@6.2.43':
     dependencies:
-      '@oclif/core': 4.10.4
+      '@oclif/core': 4.10.5
 
   '@oozcitak/dom@2.0.2':
     dependencies:

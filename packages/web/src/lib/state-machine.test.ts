@@ -122,4 +122,49 @@ describe('applyTransition', () => {
 	it('returns the target state for rebase transition', () => {
 		expect(applyTransition('needs_rebase', 'rebase')).toBe('ready_to_test');
 	});
+
+	// Merge from approved (A1)
+	it('returns approved for merge from approved', () => {
+		expect(applyTransition('approved', 'merge')).toBe('approved');
+	});
+
+	// Approve from changes_requested (A2)
+	it('returns approved for approve from changes_requested', () => {
+		expect(applyTransition('changes_requested', 'approve')).toBe('approved');
+	});
+
+	// Review flow transitions (A3)
+	it('returns checks_passed for dismiss_review from changes_requested', () => {
+		expect(applyTransition('changes_requested', 'dismiss_review')).toBe('checks_passed');
+	});
+
+	it('returns checks_passed for dismiss_review from review_comments', () => {
+		expect(applyTransition('review_comments', 'dismiss_review')).toBe('checks_passed');
+	});
+
+	it('returns checks_passed for dismiss_review from approved', () => {
+		expect(applyTransition('approved', 'dismiss_review')).toBe('checks_passed');
+	});
+
+	it('returns changes_requested for request_changes from review_comments', () => {
+		expect(applyTransition('review_comments', 'request_changes')).toBe('changes_requested');
+	});
+
+	it('returns changes_requested for request_changes from approved', () => {
+		expect(applyTransition('approved', 'request_changes')).toBe('changes_requested');
+	});
+
+	// Checks from checks_unknown (A8)
+	it('returns checks_passed for checks_pass from checks_unknown', () => {
+		expect(applyTransition('checks_unknown', 'checks_pass')).toBe('checks_passed');
+	});
+
+	it('returns checks_failed for checks_fail from checks_unknown', () => {
+		expect(applyTransition('checks_unknown', 'checks_fail')).toBe('checks_failed');
+	});
+
+	// Run test from no_test (A9)
+	it('returns test_running for run_test from no_test', () => {
+		expect(applyTransition('no_test', 'run_test')).toBe('test_running');
+	});
 });

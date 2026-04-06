@@ -434,3 +434,9 @@ export const CreateBranchInputSchema = z.object({
 	branchName: z.string(),
 });
 export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
+
+export const MergePrInputSchema = z.object({
+	project: z.string(),
+	prNumber: z.number(),
+});
+export type MergePrInput = z.infer<typeof MergePrInputSchema>;

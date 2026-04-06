@@ -4,18 +4,21 @@ export type Action =
 	| 'open_pr_link' | 'force_push' | 'rebase_local'
 	| 'apply_fixes' | 'rename' | 'create_pr' | 'push' | 'commit'
 	| 'test' | 'view_test_log' | 'delete_branch' | 'refresh'
-	| 'review_plan' | 'implement';
+	| 'review_plan' | 'implement' | 'merge' | 'create_branch' | 'generate_plan';
 
 // Maps state-machine transitions to UI action names.
 // Only transitions that correspond to a user-triggerable action are included.
 export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
-	run_test:      'test',
-	push:          'push',
-	force_push:    'force_push',
-	commit:        'commit',
-	create_pr:     'create_pr',
-	rebase:        'rebase_local',
-	approve_plan:  'review_plan',
+	run_test:        'test',
+	push:            'push',
+	force_push:      'force_push',
+	commit:          'commit',
+	create_pr:       'create_pr',
+	rebase:          'rebase_local',
+	approve_plan:    'review_plan',
+	merge:           'merge',
+	create_branch:   'create_branch',
+	generate_plan:   'generate_plan',
 };
 
 // Derive user-triggerable actions from state machine transitions for a category.

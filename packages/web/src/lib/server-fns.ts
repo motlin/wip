@@ -18,6 +18,7 @@ import {
 	RenameBranchInputSchema,
 	ApplyFixesInputSchema,
 	RebaseLocalInputSchema,
+	MergePrInputSchema,
 } from '@wip/shared';
 
 import {z} from 'zod';
@@ -801,6 +802,23 @@ export const forcePush = createServerFn({method: 'POST'})
 		}
 
 		return {ok: false, message: `Failed to force-push: ${result.stderr}`};
+	});
+
+export const mergePr = createServerFn({method: 'POST'})
+	.inputValidator((input: unknown) => MergePrInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => {
+
+		const p = await resolveProject(data.project);
+		const {execa} = await import('execa');
+		const env = await getMiseEnv(p.dir);
+		const result = await execa('gh', ['pr', 'merge', String(data.prNumber), '--squash', '--delete-branch', '-R', p.remote], {reject: false, cwd: p.dir, env});
+
+		if (result.exitCode === 0) {
+			invalidatePrCache(data.project);
+			return {ok: true, message: `Merged PR #${data.prNumber}`};
+		}
+
+		return {ok: false, message: `Failed to merge PR: ${result.stderr}`};
 	});
 
 export const renameBranch = createServerFn({method: 'POST'})

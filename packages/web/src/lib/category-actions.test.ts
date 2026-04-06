@@ -76,8 +76,16 @@ describe('TRANSITION_TO_ACTION', () => {
 		expect(TRANSITION_TO_ACTION.approve_plan).toBe('review_plan');
 	});
 
-	it('does not map create_branch (context-dependent)', () => {
-		expect(TRANSITION_TO_ACTION.create_branch).toBeUndefined();
+	it('maps create_branch to create_branch', () => {
+		expect(TRANSITION_TO_ACTION.create_branch).toBe('create_branch');
+	});
+
+	it('maps merge to merge', () => {
+		expect(TRANSITION_TO_ACTION.merge).toBe('merge');
+	});
+
+	it('maps generate_plan to generate_plan', () => {
+		expect(TRANSITION_TO_ACTION.generate_plan).toBe('generate_plan');
 	});
 });
 
@@ -104,16 +112,16 @@ describe('getTransitionActions', () => {
 		expect(getTransitionActions('needs_rebase')).toContain('rebase_local');
 	});
 
-	it('returns empty array for detached_head (no mapped transitions)', () => {
-		expect(getTransitionActions('detached_head')).toStrictEqual([]);
+	it('returns create_branch for detached_head', () => {
+		expect(getTransitionActions('detached_head')).toContain('create_branch');
 	});
 
 	it('returns review_plan for plan_unreviewed', () => {
 		expect(getTransitionActions('plan_unreviewed')).toContain('review_plan');
 	});
 
-	it('returns empty for plan_approved (implement is supplementary)', () => {
-		expect(getTransitionActions('plan_approved')).toStrictEqual([]);
+	it('returns create_branch for plan_approved', () => {
+		expect(getTransitionActions('plan_approved')).toContain('create_branch');
 	});
 });
 

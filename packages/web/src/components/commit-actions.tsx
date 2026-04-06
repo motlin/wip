@@ -1,7 +1,7 @@
 import {useQueryClient, useQuery} from '@tanstack/react-query';
 import {ArrowRight, Play, Loader2, Moon, Sun, Clock, FileText, X, RefreshCw, GitBranch, Trash2, AlertCircle, ArrowUpRight, Pencil, Wrench, Save} from 'lucide-react';
 import {useState, useRef, useEffect} from 'react';
-import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, commitWorkingTree, getProjectChildren} from '../lib/server-fns';
+import {pushChild, testChild, snoozeChildFn, unsnoozeChildFn, cancelTestFn, refreshChild, createBranch, deleteBranch, forcePush, renameBranch, applyFixes, rebaseLocal, getCommitDiff, createPr, commitWorkingTree, getProjectChildren, mergePr} from '../lib/server-fns';
 import {snoozedQueryOptions} from '../lib/queries';
 import {useMergeStatus} from '../lib/merge-events-context';
 import {suppressMergeUpdates} from '../lib/use-merge-events';
@@ -120,6 +120,8 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 	const [fixesPos, setFixesPos] = useState<{top: number; left: number} | null>(null);
 	const [rebasingLocal, setRebasingLocal] = useState(false);
 	const [committing, setCommitting] = useState(false);
+	const [merging, setMerging] = useState(false);
+	const [creatingBranch, setCreatingBranch] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -364,6 +366,40 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 		}
 	};
 
+	const handleMergePr = async () => {
+		if (!pr) return;
+		setMerging(true);
+		setError(null);
+		const result = await mergePr({data: {
+			project: item.project,
+			prNumber: pr.prNumber,
+		}});
+		setMerging(false);
+		if (result.ok) {
+			cache.removeItem(item.sha);
+		} else {
+			setError(result.message);
+		}
+	};
+
+	const handleCreateBranch = async () => {
+		setCreatingBranch(true);
+		setError(null);
+		const branchName = item.suggestedBranch ?? item.branch;
+		const result = await createBranch({data: {
+			project: item.project,
+			sha: item.sha,
+			branchName,
+		}});
+		setCreatingBranch(false);
+		if (result.ok) {
+			const fresh = await getProjectChildren({data: {project: item.project}});
+			queryClient.setQueryData<ProjectChildrenResult>(['children', item.project], fresh);
+		} else {
+			setError(result.message);
+		}
+	};
+
 	const handleDeleteBranchClick = async () => {
 		if (!deleteConfirmOpen && deleteButtonRef.current) {
 			const rect = deleteButtonRef.current.getBoundingClientRect();
@@ -408,6 +444,21 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 	return (
 		<div>
 			<div className={`flex ${isRow ? 'flex-wrap items-center gap-2' : 'flex-col gap-1.5'}`}>
+				{/* Merge PR */}
+				{actions.has('merge') && pr && (
+					<button
+						type="button"
+						onClick={handleMergePr}
+						disabled={merging}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							merging ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-green-600 hover:bg-green-700 text-white'
+						}`}
+					>
+						{merging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+						{merging ? 'Merging...' : 'Merge PR'}
+					</button>
+				)}
+
 				{/* PR link */}
 				{actions.has('open_pr_link') && pr && (
 					<a
@@ -629,6 +680,21 @@ function ItemActions({item, category, layout = 'column'}: ItemActionsProps) {
 							</div>
 						)}
 					</div>
+				)}
+
+				{/* Create Branch */}
+				{actions.has('create_branch') && (
+					<button
+						type="button"
+						onClick={handleCreateBranch}
+						disabled={creatingBranch}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							creatingBranch ? 'cursor-not-allowed opacity-60 text-text-300' : 'bg-blue-600 hover:bg-blue-700 text-white'
+						}`}
+					>
+						{creatingBranch ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+						{creatingBranch ? 'Creating...' : 'Create Branch'}
+					</button>
 				)}
 
 				{/* Create PR */}

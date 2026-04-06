@@ -36,6 +36,7 @@ export {
 	RenameBranchInputSchema, type RenameBranchInput,
 	ApplyFixesInputSchema, type ApplyFixesInput,
 	RebaseLocalInputSchema, type RebaseLocalInput,
+	MergePrInputSchema, type MergePrInput,
 } from './lib/schemas.js';
 export {type TodoTask, parseTodoContent, parseTodoFile, findTodoTasks, findIncompleteTodoTasks} from './lib/todo-parser.js';
 export {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from './lib/rate-limit.js';

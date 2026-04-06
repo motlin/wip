@@ -102,15 +102,17 @@ function edgePath(from: NodePos, to: NodePos): string {
 function StateGraph({activeState}: {activeState: string | undefined}) {
 	const navigate = useNavigate();
 
-	// Deduplicate edges: group by from->to, collect transition labels
-	const edgeMap = new Map<string, {from: Category; to: Category; transitions: string[]}>();
+	// Deduplicate edges: group by from->to, collect transition labels and track kind
+	const edgeMap = new Map<string, {from: Category; to: Category; transitions: string[]; hasActive: boolean; hasPassive: boolean}>();
 	for (const t of STATE_MACHINE) {
 		const key = `${t.from}->${t.to}`;
 		const existing = edgeMap.get(key);
 		if (existing) {
 			existing.transitions.push(t.transition);
+			if (t.kind === 'active') existing.hasActive = true;
+			if (t.kind === 'passive') existing.hasPassive = true;
 		} else {
-			edgeMap.set(key, {from: t.from, to: t.to, transitions: [t.transition]});
+			edgeMap.set(key, {from: t.from, to: t.to, transitions: [t.transition], hasActive: t.kind === 'active', hasPassive: t.kind === 'passive'});
 		}
 	}
 	const edges = Array.from(edgeMap.values());
@@ -139,20 +141,22 @@ function StateGraph({activeState}: {activeState: string | undefined}) {
 				</defs>
 
 				{/* Edges */}
-				{edges.map(({from, to, transitions}) => {
+				{edges.map(({from, to, transitions, hasActive, hasPassive}) => {
 					const fromPos = POSITIONS[from];
 					const toPos = POSITIONS[to];
 					if (!fromPos || !toPos) return null;
-					const isActiveEdge = activeState === from || activeState === to;
+					const isHighlighted = activeState === from || activeState === to;
+					const isPassiveOnly = hasPassive && !hasActive;
 					return (
 						<g key={`${from}-${to}`}>
 							<path
 								d={edgePath(fromPos, toPos)}
 								fill="none"
-								stroke={isActiveEdge ? '#f59e0b' : '#4b5563'}
-								strokeWidth={isActiveEdge ? 2 : 1}
-								strokeOpacity={isActiveEdge ? 0.9 : 0.4}
-								markerEnd={isActiveEdge ? 'url(#arrow-active)' : 'url(#arrow)'}
+								stroke={isHighlighted ? '#f59e0b' : '#4b5563'}
+								strokeWidth={isHighlighted ? 2 : 1}
+								strokeOpacity={isHighlighted ? 0.9 : 0.4}
+								strokeDasharray={isPassiveOnly ? '4 3' : undefined}
+								markerEnd={isHighlighted ? 'url(#arrow-active)' : 'url(#arrow)'}
 							/>
 							<title>{transitions.join(', ')}</title>
 						</g>
@@ -276,7 +280,9 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 												key={`${t.transition}-${t.to}`}
 												to="/states"
 												search={{state: t.to}}
-												className="rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 hover:bg-bg-300 hover:text-text-100"
+												className={`rounded px-1.5 py-0.5 font-mono text-xs hover:bg-bg-300 hover:text-text-100 ${
+													t.kind === 'passive' ? 'bg-bg-200/60 text-text-400 italic' : 'bg-bg-200 text-text-300'
+												}`}
 											>
 												{t.transition} &rarr; {t.to}
 											</Link>
@@ -330,6 +336,16 @@ function StatesPage() {
 
 			<div className="mb-8">
 				<StateGraph activeState={activeState} />
+				<div className="mt-3 flex items-center gap-6 text-xs text-text-400">
+					<div className="flex items-center gap-2">
+						<svg width="32" height="2"><line x1="0" y1="1" x2="32" y2="1" stroke="#4b5563" strokeWidth="1.5" /></svg>
+						<span>Active (user-triggered)</span>
+					</div>
+					<div className="flex items-center gap-2">
+						<svg width="32" height="2"><line x1="0" y1="1" x2="32" y2="1" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4 3" /></svg>
+						<span>Passive (observed on refresh)</span>
+					</div>
+				</div>
 			</div>
 
 			<div>

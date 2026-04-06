@@ -1,4 +1,4 @@
-import {type Category, type Transition, getTransitionsFrom, STATE_MACHINE} from '@wip/shared';
+import {type Category, type Transition, CategorySchema, getTransitionsFrom, STATE_MACHINE} from '@wip/shared';
 
 export type Action =
 	| 'open_pr_link' | 'rebase_pr' | 'force_push' | 'rebase_local'
@@ -90,65 +90,103 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	snoozed:           {label: 'Snoozed',           color: 'text-text-500',                        columnBg: 'bg-dim-column',    actions: buildActions('snoozed')},
 };
 
-// Derive category order from STATE_MACHINE topology using topological sort
-// This ensures columns flow left-to-right following the SDLC progression
+// Edges to ignore when computing topological order.
+// These are either orthogonal (snooze/unsnooze) or back-edges (retry loops
+// that go backward in the SDLC flow, like test_failed -> run_test -> test_running).
+// Without excluding them, Kahn's algorithm silently drops all nodes in a cycle.
+// Identified by specific (from, to) pairs, not transition names, because the same
+// transition can be a forward edge in one context and a back-edge in another
+// (e.g. run_test: ready_to_test -> test_running is forward, test_failed -> test_running is backward).
+const BACK_EDGES = new Set([
+	// Retry loops
+	'test_failed->test_running',
+	'test_running->ready_to_test',
+	'checks_failed->checks_running',
+	'changes_requested->checks_running',
+	'review_comments->checks_running',
+	'rebase_conflicts->ready_to_test',
+	// Review back-edges (dismiss/re-review goes backward in SDLC)
+	'changes_requested->checks_passed',
+	'review_comments->checks_passed',
+	'approved->checks_passed',
+	'approved->changes_requested',
+]);
+
+function isBackEdge(t: {from: Category; to: Category; transition: string}): boolean {
+	if (t.from === t.to) return true;
+	if (t.transition === 'snooze' || t.transition === 'unsnooze') return true;
+	return BACK_EDGES.has(`${t.from}->${t.to}`);
+}
+
+// Column assignments for tie-breaking: when multiple nodes have in-degree 0,
+// prefer nodes from earlier columns. This keeps failure states adjacent to
+// their success counterparts (e.g. test_failed near test_running, not after push states).
+const COLUMN_ORDER: Category[][] = [
+	['untriaged', 'triaged', 'plan_unreviewed', 'plan_approved'],
+	['detached_head', 'local_changes', 'no_test'],
+	['ready_to_test', 'test_running', 'test_failed'],
+	['needs_rebase', 'rebase_conflicts', 'needs_split'],
+	['ready_to_push', 'pushed_no_pr'],
+	['checks_unknown', 'checks_running', 'checks_failed'],
+	['checks_passed', 'review_comments', 'changes_requested', 'approved'],
+];
+
+function columnIndex(cat: Category): number {
+	for (let i = 0; i < COLUMN_ORDER.length; i++) {
+		const row = COLUMN_ORDER[i].indexOf(cat);
+		if (row >= 0) return i * 100 + row;
+	}
+	return 9999;
+}
+
+// Derive category order from STATE_MACHINE topology using topological sort.
+// This ensures columns flow left-to-right following the SDLC progression.
 function deriveCategoryPriority(): Category[] {
 	const allStates = new Set<Category>();
-	const inDegree = new Map<Category, number>();
-
-	// Collect all states and build adjacency graph
-	for (const transition of STATE_MACHINE) {
-		allStates.add(transition.from);
-		allStates.add(transition.to);
+	for (const t of STATE_MACHINE) {
+		allStates.add(t.from);
+		allStates.add(t.to);
+	}
+	for (const cat of CategorySchema.options) {
+		allStates.add(cat);
 	}
 
-	// Initialize in-degree counts
+	// Build adjacency map and in-degree counts (excluding back-edges)
+	const adjMap = new Map<Category, Category[]>();
+	const inDegree = new Map<Category, number>();
 	for (const state of allStates) {
+		adjMap.set(state, []);
 		inDegree.set(state, 0);
 	}
 
-	// Count incoming edges (excluding self-loops and cycles like snooze/unsnooze)
-	for (const transition of STATE_MACHINE) {
-		if (transition.from === transition.to) continue; // Skip self-loops
-		if (transition.transition === 'snooze' || transition.transition === 'unsnooze') continue; // Skip cycle edges
-
-		const current = inDegree.get(transition.to) ?? 0;
-		inDegree.set(transition.to, current + 1);
+	for (const t of STATE_MACHINE) {
+		if (isBackEdge(t)) continue;
+		const neighbors = adjMap.get(t.from)!;
+		if (!neighbors.includes(t.to)) {
+			neighbors.push(t.to);
+			inDegree.set(t.to, (inDegree.get(t.to) ?? 0) + 1);
+		}
 	}
 
-	// Kahn's topological sort
+	// Kahn's topological sort with tie-breaking by column position
 	const queue: Category[] = [];
 	for (const [state, degree] of inDegree) {
 		if (degree === 0) queue.push(state);
 	}
+	queue.sort((a, b) => columnIndex(a) - columnIndex(b));
 
 	const sorted: Category[] = [];
-	const adjMap = new Map<Category, Category[]>();
-
-	// Build adjacency map (excluding cycles and snooze/unsnooze)
-	for (const state of allStates) {
-		adjMap.set(state, []);
-	}
-	for (const transition of STATE_MACHINE) {
-		if (transition.from === transition.to) continue;
-		if (transition.transition === 'snooze' || transition.transition === 'unsnooze') continue;
-
-		const neighbors = adjMap.get(transition.from) ?? [];
-		if (!neighbors.includes(transition.to)) {
-			neighbors.push(transition.to);
-		}
-		adjMap.set(transition.from, neighbors);
-	}
-
 	while (queue.length > 0) {
 		const state = queue.shift()!;
 		sorted.push(state);
-
 		for (const neighbor of adjMap.get(state) ?? []) {
 			const newDegree = (inDegree.get(neighbor) ?? 0) - 1;
 			inDegree.set(neighbor, newDegree);
 			if (newDegree === 0) {
-				queue.push(neighbor);
+				// Insert sorted by column position to maintain tie-breaking
+				const idx = queue.findIndex((q) => columnIndex(q) > columnIndex(neighbor));
+				if (idx === -1) queue.push(neighbor);
+				else queue.splice(idx, 0, neighbor);
 			}
 		}
 	}
@@ -157,23 +195,13 @@ function deriveCategoryPriority(): Category[] {
 	// - snoozed first (can snooze from many states, but only unsnooze to ready_to_test)
 	// - skippable last (derived state, not a transition target)
 	const result: Category[] = [];
-
-	const snoozedIndex = sorted.indexOf('snoozed');
-	const skippableIndex = sorted.indexOf('skippable');
-
-	if (snoozedIndex >= 0) {
-		result.push('snoozed');
-	}
-
 	for (const state of sorted) {
 		if (state !== 'snoozed' && state !== 'skippable') {
 			result.push(state);
 		}
 	}
-
-	if (skippableIndex >= 0) {
-		result.push('skippable');
-	}
+	if (allStates.has('snoozed')) result.unshift('snoozed');
+	if (allStates.has('skippable')) result.push('skippable');
 
 	return result;
 }

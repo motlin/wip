@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest';
-import {CATEGORIES, type CategoryConfig, TRANSITION_TO_ACTION, getTransitionActions, SUPPLEMENTARY_ACTIONS} from './category-actions';
+import {CATEGORIES, type CategoryConfig, CATEGORY_PRIORITY, TRANSITION_TO_ACTION, getTransitionActions, SUPPLEMENTARY_ACTIONS} from './category-actions';
 import {CategorySchema, getTransitionsFrom, type Category} from '@wip/shared';
 
 describe('CATEGORIES', () => {
@@ -146,5 +146,71 @@ describe('actions arrays are derived from state machine', () => {
 			const expected = [...transitionActions, ...supplementary];
 			expect(config.actions).toStrictEqual(expected);
 		}
+	});
+});
+
+describe('CATEGORY_PRIORITY', () => {
+	it('includes every category exactly once', () => {
+		expect(CATEGORY_PRIORITY).toHaveLength(CategorySchema.options.length);
+		expect(new Set(CATEGORY_PRIORITY).size).toBe(CategorySchema.options.length);
+		for (const cat of CategorySchema.options) {
+			expect(CATEGORY_PRIORITY).toContain(cat);
+		}
+	});
+
+	it('places snoozed first', () => {
+		expect(CATEGORY_PRIORITY[0]).toBe('snoozed');
+	});
+
+	it('places skippable last', () => {
+		expect(CATEGORY_PRIORITY[CATEGORY_PRIORITY.length - 1]).toBe('skippable');
+	});
+
+	function indexOf(cat: Category): number {
+		return CATEGORY_PRIORITY.indexOf(cat);
+	}
+
+	it('orders plan flow before test flow', () => {
+		expect(indexOf('untriaged')).toBeLessThan(indexOf('ready_to_test'));
+		expect(indexOf('triaged')).toBeLessThan(indexOf('ready_to_test'));
+		expect(indexOf('plan_unreviewed')).toBeLessThan(indexOf('ready_to_test'));
+		expect(indexOf('plan_approved')).toBeLessThan(indexOf('ready_to_test'));
+	});
+
+	it('orders test flow before push flow', () => {
+		expect(indexOf('ready_to_test')).toBeLessThan(indexOf('ready_to_push'));
+		expect(indexOf('test_running')).toBeLessThan(indexOf('ready_to_push'));
+	});
+
+	it('orders push flow before CI flow', () => {
+		expect(indexOf('ready_to_push')).toBeLessThan(indexOf('checks_unknown'));
+		expect(indexOf('pushed_no_pr')).toBeLessThan(indexOf('checks_unknown'));
+	});
+
+	it('orders CI flow before review flow', () => {
+		expect(indexOf('checks_unknown')).toBeLessThan(indexOf('checks_passed'));
+		expect(indexOf('checks_running')).toBeLessThan(indexOf('checks_passed'));
+	});
+
+	it('orders review flow last (before skippable)', () => {
+		expect(indexOf('checks_passed')).toBeLessThan(indexOf('approved'));
+		expect(indexOf('approved')).toBeLessThan(indexOf('skippable'));
+	});
+
+	it('places test_failed adjacent to test_running (not after push states)', () => {
+		expect(Math.abs(indexOf('test_failed') - indexOf('test_running'))).toBeLessThanOrEqual(1);
+	});
+
+	it('places checks_failed adjacent to checks_running or checks_passed', () => {
+		const cfIdx = indexOf('checks_failed');
+		const crIdx = indexOf('checks_running');
+		const cpIdx = indexOf('checks_passed');
+		expect(cfIdx).toBeGreaterThan(crIdx);
+		expect(cfIdx).toBeLessThan(cpIdx);
+	});
+
+	it('places rebase states before push states', () => {
+		expect(indexOf('needs_rebase')).toBeLessThan(indexOf('ready_to_push'));
+		expect(indexOf('rebase_conflicts')).toBeLessThan(indexOf('ready_to_push'));
 	});
 });

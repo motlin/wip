@@ -6,6 +6,7 @@ import {applyTransition, type PullRequestItem, type Category} from '@wip/shared'
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
+import {CATEGORIES} from '../lib/category-actions';
 import {AnsiText} from './ansi-text';
 import {PullRequestActions} from './commit-actions';
 import {GitHubIcon} from './github-icon';
@@ -77,6 +78,9 @@ export function PullRequestCard({pr, category}: {pr: PullRequestItem; category: 
 						<GitHubIcon className="h-3 w-3" />
 						#{pr.prNumber}
 					</a>
+					<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[effectiveCategory].color}`}>
+						{CATEGORIES[effectiveCategory].label}
+					</span>
 				</div>
 				<div className="flex items-center gap-1.5 shrink-0">
 					<a

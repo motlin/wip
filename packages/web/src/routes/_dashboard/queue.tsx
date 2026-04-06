@@ -184,7 +184,7 @@ function Queue() {
 				</div>
 			)}
 			<div className="flex flex-col gap-6">
-				{CATEGORY_PRIORITY.map((category) => {
+				{[...CATEGORY_PRIORITY].reverse().map((category) => {
 					const items = grouped[category];
 					const count = bucketCount(items);
 					if (count === 0) return null;
@@ -198,11 +198,11 @@ function Queue() {
 							<div className="flex flex-col gap-2">
 								{items.pullRequests?.map((pr) => <PullRequestCard key={pr.sha} pr={pr} category={category} />)}
 								{items.branches?.filter((b) => b.commitsAhead === 1).map((b) => <BranchCard key={b.sha} branch={b} category={category} />)}
-								{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} />)}
+								{items.commits?.map((c) => <CommitCard key={c.sha} commit={c} category={category} />)}
 								{items.branches?.filter((b) => b.commitsAhead !== 1).map((b) => <BranchCard key={b.sha} branch={b} category={category} />)}
-								{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />)}
+								{items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} category={category} />)}
 								{items.projectItems?.map((p, i) => <ProjectBoardItemCard key={`project-${p.number ?? i}-${p.project}`} item={p} />)}
-								{items.todos?.map((t, i) => <TodoCard key={`todo-${t.project}-${t.sourceFile}-${i}`} todo={t} />)}
+								{items.todos?.map((t, i) => <TodoCard key={`todo-${t.project}-${t.sourceFile}-${i}`} todo={t} category={category} />)}
 							</div>
 						</section>
 					);

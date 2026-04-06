@@ -6,6 +6,7 @@ import {applyTransition, type BranchItem, type Category} from '@wip/shared';
 import {cancelTestFn} from '../lib/server-fns';
 import {useTestJob} from '../lib/test-events-context';
 import {useMergeStatus} from '../lib/merge-events-context';
+import {CATEGORIES} from '../lib/category-actions';
 import {AnsiText} from './ansi-text';
 import {BranchActions} from './commit-actions';
 
@@ -58,14 +59,19 @@ export function BranchCard({branch, category}: {branch: BranchItem; category: Ca
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
 			<div className="flex items-start justify-between gap-2">
-				<a
-					href={`https://github.com/${branch.remote}`}
-					target="_blank"
-					rel="noopener noreferrer"
-					className="truncate text-xs font-medium text-text-300 hover:text-text-100 transition-colors"
-				>
-					{branch.remote}
-				</a>
+				<div className="flex items-center gap-1.5 min-w-0">
+					<a
+						href={`https://github.com/${branch.remote}`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="truncate text-xs font-medium text-text-300 hover:text-text-100 transition-colors"
+					>
+						{branch.remote}
+					</a>
+					<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[effectiveCategory].color}`}>
+						{CATEGORIES[effectiveCategory].label}
+					</span>
+				</div>
 				<div className="flex items-center gap-1.5 shrink-0">
 					<a
 						href={`/diff/${branch.project}/${branch.sha}`}

@@ -1,8 +1,9 @@
 import {CircleDot} from 'lucide-react';
 import {Link} from '@tanstack/react-router';
-import type {IssueItem} from '@wip/shared';
+import type {IssueItem, Category} from '@wip/shared';
+import {CATEGORIES} from '../lib/category-actions';
 
-export function IssueCard({issue}: {issue: IssueItem}) {
+export function IssueCard({issue, category}: {issue: IssueItem; category?: Category}) {
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
 			<div className="flex items-center gap-1.5">
@@ -14,6 +15,11 @@ export function IssueCard({issue}: {issue: IssueItem}) {
 				>
 					{issue.remote}
 				</a>
+				{category && (
+					<span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORIES[category].color}`}>
+						{CATEGORIES[category].label}
+					</span>
+				)}
 				<a
 					href={issue.url}
 					target="_blank"

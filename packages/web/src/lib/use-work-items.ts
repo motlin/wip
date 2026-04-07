@@ -1,4 +1,4 @@
-import { useSuspenseQuery, useSuspenseQueries, useQueries, useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
   projectChildrenQueryOptions,
@@ -148,39 +148,4 @@ function buildWorkItems(
     todos,
     projectCount: projects.length,
   };
-}
-
-export function useWorkItemsAsync(projects: ProjectInfo[]): {
-  data: (WorkItems & { projectCount: number }) | undefined;
-  isLoading: boolean;
-} {
-  const childQueries = useQueries({
-    queries: projects.map((p) => projectChildrenQueryOptions(p.name)),
-  });
-  const todoQueries = useQueries({
-    queries: projects.map((p) => projectTodosQueryOptions(p.name)),
-  });
-  const { data: rawIssues } = useQuery(issuesQueryOptions());
-  const { data: rawProjectItems } = useQuery(projectItemsQueryOptions());
-
-  const allChildrenLoaded = childQueries.every((q) => q.data !== undefined);
-  const allTodosLoaded = todoQueries.every((q) => q.data !== undefined);
-  const isLoading =
-    !allChildrenLoaded ||
-    !allTodosLoaded ||
-    rawIssues === undefined ||
-    rawProjectItems === undefined;
-
-  const data = useMemo(() => {
-    if (isLoading) return undefined;
-    return buildWorkItems(
-      childQueries.map((q) => q.data!),
-      todoQueries.map((q) => q.data!),
-      rawIssues!,
-      rawProjectItems!,
-      projects,
-    );
-  }, [isLoading, childQueries, todoQueries, rawIssues, rawProjectItems, projects]);
-
-  return { data, isLoading };
 }

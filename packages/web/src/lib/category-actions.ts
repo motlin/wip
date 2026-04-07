@@ -358,17 +358,16 @@ function deriveCategoryPriority(): Category[] {
     }
   }
 
-  // Place special orthogonal states at the edges:
-  // - snoozed first (can snooze from many states, but only unsnooze to ready_to_test)
-  // - skippable last (derived state, not a transition target)
+  // Place special orthogonal states at the front:
+  // - snoozed first, skippable second (both are "not actionable now" categories)
   const result: Category[] = [];
   for (const state of sorted) {
     if (state !== "snoozed" && state !== "skippable") {
       result.push(state);
     }
   }
+  if (allStates.has("skippable")) result.unshift("skippable");
   if (allStates.has("snoozed")) result.unshift("snoozed");
-  if (allStates.has("skippable")) result.push("skippable");
 
   return result;
 }

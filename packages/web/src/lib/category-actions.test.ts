@@ -177,8 +177,8 @@ describe("CATEGORY_PRIORITY", () => {
     expect(CATEGORY_PRIORITY[0]).toBe("snoozed");
   });
 
-  it("places skippable last", () => {
-    expect(CATEGORY_PRIORITY[CATEGORY_PRIORITY.length - 1]).toBe("skippable");
+  it("places skippable second (right after snoozed)", () => {
+    expect(CATEGORY_PRIORITY[1]).toBe("skippable");
   });
 
   function indexOf(cat: Category): number {
@@ -207,9 +207,9 @@ describe("CATEGORY_PRIORITY", () => {
     expect(indexOf("checks_running")).toBeLessThan(indexOf("checks_passed"));
   });
 
-  it("orders review flow last (before skippable)", () => {
+  it("orders review flow last", () => {
     expect(indexOf("checks_passed")).toBeLessThan(indexOf("approved"));
-    expect(indexOf("approved")).toBeLessThan(indexOf("skippable"));
+    expect(indexOf("approved")).toBe(CATEGORY_PRIORITY.length - 1);
   });
 
   it("places test_failed adjacent to test_running (not after push states)", () => {

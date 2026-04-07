@@ -220,7 +220,7 @@ function Queue() {
             <section key={category}>
               <h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
                 <span className="font-mono text-xs text-text-500">
-                  {CATEGORY_PRIORITY.indexOf(category)}
+                  {CATEGORY_PRIORITY.indexOf(category) + 1}
                 </span>{" "}
                 {CATEGORIES[category].label}
                 <span className="ml-2 font-normal text-text-500">{count}</span>

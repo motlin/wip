@@ -209,7 +209,7 @@ function ItemDetail() {
             <Link to="/states" search={{ state: category }} className="hover:underline">
               {CATEGORIES[category].label}
               <code className="ml-2 text-xs font-normal text-text-300">
-                #{CATEGORY_PRIORITY.indexOf(category)} {category}
+                #{CATEGORY_PRIORITY.indexOf(category) + 1} {category}
               </code>
             </Link>
           </h2>

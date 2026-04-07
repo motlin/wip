@@ -360,14 +360,12 @@ function deriveCategoryPriority(): Category[] {
 
   // Place special orthogonal states at the front:
   // - snoozed first, skippable second (both are "not actionable now" categories)
-  const result: Category[] = [];
-  for (const state of sorted) {
-    if (state !== "snoozed" && state !== "skippable") {
-      result.push(state);
-    }
-  }
-  if (allStates.has("skippable")) result.unshift("skippable");
-  if (allStates.has("snoozed")) result.unshift("snoozed");
+  const rest = sorted.filter((s) => s !== "snoozed" && s !== "skippable");
+  const result: Category[] = [
+    ...(allStates.has("snoozed") ? ["snoozed" as Category] : []),
+    ...(allStates.has("skippable") ? ["skippable" as Category] : []),
+    ...rest,
+  ];
 
   return result;
 }

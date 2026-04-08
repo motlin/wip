@@ -461,7 +461,13 @@ function extractFailedChecks(
         c.__typename === "StatusContext" && (c.state === "FAILURE" || c.state === "ERROR"),
     )
     .map((c) => ({ name: c.context, url: c.targetUrl ?? undefined }));
-  return [...failedRuns, ...failedStatuses];
+  const all = [...failedRuns, ...failedStatuses];
+  const seen = new Set<string>();
+  return all.filter((c) => {
+    if (seen.has(c.name)) return false;
+    seen.add(c.name);
+    return true;
+  });
 }
 
 const PR_GRAPHQL_QUERY = `

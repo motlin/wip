@@ -197,8 +197,7 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 
 export async function getNeedsRebaseBranches(
   dir: string,
-  _upstreamRef: string,
-  descendantShas: Set<string>,
+  upstreamRef: string,
   projectName?: string,
   prStatuses?: PrStatuses,
   remoteBranches?: Set<string>,
@@ -208,24 +207,27 @@ export async function getNeedsRebaseBranches(
     { commitsAhead: number; commitsBehind: number; rebaseable: boolean | null }
   >,
 ): Promise<ChildCommit[]> {
-  // Get all local branches
-  const branchList = await git(dir, "branch", "--list");
-  if (!branchList) return [];
+  // Use git's ancestry check: branches where upstream is NOT an ancestor need rebasing.
+  // This correctly handles multi-commit branches (unlike checking only direct children).
+  const noContainsOutput = await git(
+    dir,
+    "for-each-ref",
+    "--format=%(refname:short)",
+    `--no-contains=${upstreamRef}`,
+    "refs/heads/",
+  );
+  if (!noContainsOutput) return [];
 
-  const branches = branchList
+  const nonMainBranches = noContainsOutput
     .split("\n")
     .filter(Boolean)
-    .map((b) => b.replace(/^\*?\s+/, ""));
-
-  // Filter to only branches that are not main/master
-  const nonMainBranches = branches.filter((b) => !b.match(/^(main|master)$/));
+    .filter((b) => !b.match(/^(main|master)$/));
   if (nonMainBranches.length === 0) return [];
 
   const testStatusMap: Map<string, "passed" | "failed"> = projectName
     ? getTestResultsForProject(projectName)
     : new Map();
 
-  // Get commit info for each branch
   const needsRebase: ChildCommit[] = [];
   const format = "%H%x00%h%x00%s%x00%B%x00%ai";
 
@@ -250,53 +252,49 @@ export async function getNeedsRebaseBranches(
     const rawDate = fields[4] ?? "";
     const date = rawDate.trim().split(" ")[0] ?? "";
 
-    // Only include branches that are NOT descendants of upstream
-    if (!descendantShas.has(sha)) {
-      const pushedToRemote = remoteBranches ? remoteBranches.has(branch) : false;
-      const reviewStatus = prStatuses
-        ? (prStatuses.review.get(branch) ?? ("no_pr" as const))
-        : ("no_pr" as const);
-      const checkStatus: CheckStatus = prStatuses
-        ? (prStatuses.checks.get(branch) ?? "none")
-        : "none";
-      const prUrl = prStatuses ? prStatuses.urls.get(branch) : undefined;
-      const prNumber = prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
-      const failedChecks = prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
-      const behind = prStatuses ? prStatuses.behind.get(branch) : undefined;
-      const ms = mergeStatusMap?.get(sha);
+    const pushedToRemote = remoteBranches ? remoteBranches.has(branch) : false;
+    const reviewStatus = prStatuses
+      ? (prStatuses.review.get(branch) ?? ("no_pr" as const))
+      : ("no_pr" as const);
+    const checkStatus: CheckStatus = prStatuses
+      ? (prStatuses.checks.get(branch) ?? "none")
+      : "none";
+    const prUrl = prStatuses ? prStatuses.urls.get(branch) : undefined;
+    const prNumber = prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
+    const failedChecks = prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
+    const behind = prStatuses ? prStatuses.behind.get(branch) : undefined;
+    const ms = mergeStatusMap?.get(sha);
 
-      // Detect if local branch is ahead of remote tracking branch
-      let localAhead: boolean | undefined;
-      if (pushedToRemote && remoteBranchRefs) {
-        const remoteRef = remoteBranchRefs.get(branch);
-        if (remoteRef) {
-          const remoteSha = await git(dir, "rev-parse", remoteRef);
-          localAhead = remoteSha !== "" && remoteSha !== sha;
-        }
+    let localAhead: boolean | undefined;
+    if (pushedToRemote && remoteBranchRefs) {
+      const remoteRef = remoteBranchRefs.get(branch);
+      if (remoteRef) {
+        const remoteSha = await git(dir, "rev-parse", remoteRef);
+        localAhead = remoteSha !== "" && remoteSha !== sha;
       }
-
-      needsRebase.push({
-        sha,
-        shortSha,
-        subject,
-        date,
-        branch,
-        testStatus: testStatusMap.get(sha) ?? "unknown",
-        checkStatus,
-        skippable: isSkippable(fullMessage),
-        pushedToRemote,
-        localAhead,
-        needsRebase: true,
-        reviewStatus,
-        prUrl,
-        prNumber,
-        failedChecks,
-        behind,
-        commitsBehind: ms?.commitsBehind,
-        commitsAhead: ms?.commitsAhead,
-        rebaseable: ms?.rebaseable ?? undefined,
-      });
     }
+
+    needsRebase.push({
+      sha,
+      shortSha,
+      subject,
+      date,
+      branch,
+      testStatus: testStatusMap.get(sha) ?? "unknown",
+      checkStatus,
+      skippable: isSkippable(fullMessage),
+      pushedToRemote,
+      localAhead,
+      needsRebase: true,
+      reviewStatus,
+      prUrl,
+      prNumber,
+      failedChecks,
+      behind,
+      commitsBehind: ms?.commitsBehind,
+      commitsAhead: ms?.commitsAhead,
+      rebaseable: ms?.rebaseable ?? undefined,
+    });
   }
 
   return needsRebase;

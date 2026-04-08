@@ -193,12 +193,10 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
       getRemoteBranchInfo(p.dir),
     ]);
 
-    // Discover branches that need rebase (not descendants of upstream)
-    const descendantShas = new Set(children.map((c) => c.sha));
+    // Discover branches that need rebase (upstream is not an ancestor)
     const needsRebaseBranches = await getNeedsRebaseBranches(
       p.dir,
       p.upstreamRef,
-      descendantShas,
       p.name,
       prStatuses,
       remoteBranchInfo.remoteBranches,

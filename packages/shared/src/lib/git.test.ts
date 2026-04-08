@@ -16,6 +16,7 @@ import {
   parseRemoteBranchOutput,
   computeMergeStatus,
   getChildren,
+  getNeedsRebaseBranches,
 } from "./git.js";
 import { initDb, resetDb } from "./db.js";
 import { setGitHubClient, resetGitHubClient, createTestClient } from "../services/github-client.js";
@@ -620,5 +621,70 @@ describe("getChildren", () => {
 
     const result = await getChildren(tempDir, parentSha);
     expect(result.sort()).toStrictEqual([childA, childB].sort());
+  });
+});
+
+describe("getNeedsRebaseBranches", () => {
+  let tempDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  it("does not flag a multi-commit branch as needing rebase when upstream is an ancestor", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+    const upstreamSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+
+    // Simulate upstream ref
+    execSync(`git tag upstream-ref ${upstreamSha}`, { cwd: tempDir, stdio: "ignore" });
+
+    // Create a multi-commit branch (2 commits ahead of upstream)
+    execSync("git checkout -b feature-branch", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "a.txt"), "a");
+    execSync("git add . && git commit -m 'first commit on feature'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    writeFileSync(join(tempDir, "b.txt"), "b");
+    execSync("git add . && git commit -m 'second commit on feature'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    // upstream-ref IS an ancestor of feature-branch, so it should NOT need rebase
+    const result = await getNeedsRebaseBranches(tempDir, "upstream-ref");
+    const branchNames = result.map((c) => c.branch);
+    expect(branchNames).not.toContain("feature-branch");
+  });
+
+  it("flags a branch as needing rebase when upstream is not an ancestor", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m 'initial'", { cwd: tempDir, stdio: "ignore" });
+
+    // Create a feature branch from initial commit
+    execSync("git checkout -b stale-branch", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "feature.txt"), "feature");
+    execSync("git add . && git commit -m 'feature work'", { cwd: tempDir, stdio: "ignore" });
+
+    // Go back to main and advance it (simulating upstream moving forward)
+    execSync("git checkout main", { cwd: tempDir, stdio: "ignore" });
+    writeFileSync(join(tempDir, "main-update.txt"), "updated");
+    execSync("git add . && git commit -m 'main moves forward'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    const newUpstream = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+    execSync(`git tag upstream-ref ${newUpstream}`, { cwd: tempDir, stdio: "ignore" });
+
+    // upstream-ref is NOT an ancestor of stale-branch, so it SHOULD need rebase
+    const result = await getNeedsRebaseBranches(tempDir, "upstream-ref");
+    const branchNames = result.map((c) => c.branch);
+    expect(branchNames).toContain("stale-branch");
   });
 });

@@ -8,7 +8,7 @@ import {
   getIssueByNumber,
   getProjectItemByNumber,
   getSnoozedList,
-  getTestQueue,
+  getTaskQueue,
   getCommitDiff,
   getWorkingTreeDiff,
   getTestLog,
@@ -52,12 +52,15 @@ export const snoozedQueryOptions = () =>
     staleTime: Infinity,
   });
 
-export const testQueueQueryOptions = () =>
+export const taskQueueQueryOptions = () =>
   queryOptions({
-    queryKey: ["testQueue"],
-    queryFn: () => getTestQueue(),
+    queryKey: ["taskQueue"],
+    queryFn: () => getTaskQueue(),
     staleTime: 5_000,
   });
+
+// Backward-compatible alias
+export const testQueueQueryOptions = taskQueueQueryOptions;
 
 export const workingTreeDiffQueryOptions = (project: string) =>
   queryOptions({

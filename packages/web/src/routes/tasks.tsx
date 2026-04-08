@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { testAllChildren, cancelTestFn, pushChild } from "../lib/server-fns";
-import type { TestQueueJob } from "../lib/server-fns";
+import type { TaskQueueJob, TaskType } from "@wip/shared";
 import { useTaskEvents, type TaskEvent } from "../lib/use-task-events";
 import { useHasActiveTests } from "../lib/task-events-context";
 import {
@@ -16,20 +16,47 @@ import {
   FileText,
   ArrowUpRight,
   GitBranch,
+  FlaskConical,
+  Bot,
+  GitMerge,
 } from "lucide-react";
-import { testQueueQueryOptions } from "../lib/queries";
+import { taskQueueQueryOptions } from "../lib/queries";
 
-export const Route = createFileRoute("/tests")({
-  loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(testQueueQueryOptions()),
+export const Route = createFileRoute("/tasks")({
+  loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(taskQueueQueryOptions()),
   head: () => ({
-    meta: [{ title: "WIP Tests" }],
+    meta: [{ title: "WIP Tasks" }],
   }),
-  component: Tests,
+  component: Tasks,
 });
 
-type JobStatus = TestQueueJob["status"];
+type GroupBy = "project" | "taskType";
+
+type JobStatus = TaskQueueJob["status"];
 
 const STATUS_ORDER: JobStatus[] = ["running", "queued", "failed", "cancelled", "passed"];
+
+function taskTypeIcon(taskType: TaskType) {
+  switch (taskType) {
+    case "test":
+      return <FlaskConical className="h-3.5 w-3.5 text-text-400" />;
+    case "claude":
+      return <Bot className="h-3.5 w-3.5 text-text-400" />;
+    case "rebase":
+      return <GitMerge className="h-3.5 w-3.5 text-text-400" />;
+  }
+}
+
+function taskTypeLabel(taskType: TaskType): string {
+  switch (taskType) {
+    case "test":
+      return "Test";
+    case "claude":
+      return "Claude";
+    case "rebase":
+      return "Rebase";
+  }
+}
 
 function statusIcon(status: JobStatus) {
   switch (status) {
@@ -70,8 +97,8 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remaining}s`;
 }
 
-function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, TaskEvent>): TestQueueJob[] {
-  const merged = new Map<string, TestQueueJob>();
+function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: Map<string, TaskEvent>): TaskQueueJob[] {
+  const merged = new Map<string, TaskQueueJob>();
 
   for (const job of serverJobs) {
     merged.set(`${job.project}:${job.sha}`, job);
@@ -100,7 +127,7 @@ function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, TaskEvent>)
   return Array.from(merged.values());
 }
 
-function TestCard({ job }: { job: TestQueueJob }) {
+function TaskCard({ job }: { job: TaskQueueJob }) {
   const [pushing, setPushing] = useState(false);
 
   const handlePush = async () => {
@@ -134,6 +161,10 @@ function TestCard({ job }: { job: TestQueueJob }) {
             {duration && <span className="shrink-0 text-xs text-text-500">{duration}</span>}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-text-500">
+            <span className="flex items-center gap-0.5" title={taskTypeLabel(job.taskType)}>
+              {taskTypeIcon(job.taskType)}
+              {taskTypeLabel(job.taskType)}
+            </span>
             <Link
               to="/item/$project/$sha"
               params={{ project: job.project, sha: job.sha }}
@@ -203,37 +234,55 @@ function TestCard({ job }: { job: TestQueueJob }) {
   );
 }
 
-function Tests() {
-  const { data: serverJobs } = useSuspenseQuery(testQueueQueryOptions());
-  const { tasks: liveJobs } = useTaskEvents();
-  const [testingAll, setTestingAll] = useState(false);
-  const hasActiveTests = useHasActiveTests();
+function groupTasks(
+  allJobs: TaskQueueJob[],
+  groupBy: GroupBy,
+): Array<{ key: string; label: string; icon?: React.ReactNode; tasks: TaskQueueJob[] }> {
+  const groups = new Map<string, TaskQueueJob[]>();
 
-  const allJobs = mergeJobs(serverJobs, liveJobs);
-
-  const byProject = new Map<string, TestQueueJob[]>();
   for (const job of allJobs) {
-    const existing = byProject.get(job.project) ?? [];
+    const key = groupBy === "project" ? job.project : job.taskType;
+    const existing = groups.get(key) ?? [];
     existing.push(job);
-    byProject.set(job.project, existing);
+    groups.set(key, existing);
   }
 
-  const projectEntries = Array.from(byProject.entries()).sort(([, a], [, b]) => {
-    const aActive = a.some((j) => j.status === "running" || j.status === "queued");
-    const bActive = b.some((j) => j.status === "running" || j.status === "queued");
-    if (aActive && !bActive) return -1;
-    if (!aActive && bActive) return 1;
-    return 0;
-  });
+  const entries = Array.from(groups.entries())
+    .map(([key, tasks]) => ({
+      key,
+      label: groupBy === "taskType" ? taskTypeLabel(key as TaskType) : key,
+      icon: groupBy === "taskType" ? taskTypeIcon(key as TaskType) : undefined,
+      tasks,
+    }))
+    .sort((a, b) => {
+      const aActive = a.tasks.some((j) => j.status === "running" || j.status === "queued");
+      const bActive = b.tasks.some((j) => j.status === "running" || j.status === "queued");
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      return 0;
+    });
 
-  for (const [, jobs] of projectEntries) {
-    jobs.sort((a, b) => {
+  for (const group of entries) {
+    group.tasks.sort((a, b) => {
       const aIdx = STATUS_ORDER.indexOf(a.status);
       const bIdx = STATUS_ORDER.indexOf(b.status);
       if (aIdx !== bIdx) return aIdx - bIdx;
       return b.queuedAt - a.queuedAt;
     });
   }
+
+  return entries;
+}
+
+function Tasks() {
+  const { data: serverJobs } = useSuspenseQuery(taskQueueQueryOptions());
+  const { tasks: liveJobs } = useTaskEvents();
+  const [testingAll, setTestingAll] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupBy>("project");
+  const hasActiveTests = useHasActiveTests();
+
+  const allJobs = mergeJobs(serverJobs, liveJobs);
+  const groups = groupTasks(allJobs, groupBy);
 
   const counts = {
     queued: allJobs.filter((j) => j.status === "queued").length,
@@ -252,7 +301,7 @@ function Tests() {
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Tests</h1>
+          <h1 className="text-xl font-semibold">Tasks</h1>
           <div className="mt-1 flex items-center gap-4 text-sm text-text-500">
             {counts.running > 0 && (
               <span className="flex items-center gap-1">
@@ -278,50 +327,79 @@ function Tests() {
                 {counts.failed} failed
               </span>
             )}
-            {allJobs.length === 0 && <span>No test jobs</span>}
+            {allJobs.length === 0 && <span>No tasks</span>}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleTestAll}
-          disabled={testingAll || hasActiveTests}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            testingAll || hasActiveTests
-              ? "bg-yellow-600/80 text-white"
-              : "bg-yellow-600 hover:bg-yellow-700 text-white"
-          }`}
-        >
-          {testingAll || hasActiveTests ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-          {hasActiveTests ? "Tests Running..." : "Run All Tests"}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border-300/50 text-xs">
+            <button
+              type="button"
+              onClick={() => setGroupBy("project")}
+              className={`px-2.5 py-1 rounded-l-lg transition-colors ${
+                groupBy === "project"
+                  ? "bg-bg-200 text-text-100 font-medium"
+                  : "text-text-400 hover:text-text-200"
+              }`}
+            >
+              By Project
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupBy("taskType")}
+              className={`px-2.5 py-1 rounded-r-lg transition-colors ${
+                groupBy === "taskType"
+                  ? "bg-bg-200 text-text-100 font-medium"
+                  : "text-text-400 hover:text-text-200"
+              }`}
+            >
+              By Type
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={handleTestAll}
+            disabled={testingAll || hasActiveTests}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              testingAll || hasActiveTests
+                ? "bg-yellow-600/80 text-white"
+                : "bg-yellow-600 hover:bg-yellow-700 text-white"
+            }`}
+          >
+            {testingAll || hasActiveTests ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {hasActiveTests ? "Tasks Running..." : "Run All Tests"}
+          </button>
+        </div>
       </div>
 
       {allJobs.length === 0 ? (
         <div className="rounded-lg border border-border-300/50 bg-bg-100 p-8 text-center text-text-500">
           <Play className="mx-auto mb-2 h-8 w-8 opacity-50" />
-          <p>No tests have been queued yet.</p>
-          <p className="mt-1 text-sm">Use "Run Test" on a commit card to start testing.</p>
+          <p>No tasks have been queued yet.</p>
+          <p className="mt-1 text-sm">Use "Run Test" on a commit card to start.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {projectEntries.map(([project, jobs]) => {
-            const projectActive = jobs.some((j) => j.status === "running" || j.status === "queued");
+          {groups.map(({ key, label, icon, tasks: groupTasks }) => {
+            const groupActive = groupTasks.some(
+              (j) => j.status === "running" || j.status === "queued",
+            );
             return (
-              <section key={project}>
+              <section key={key}>
                 <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                  <span className="text-text-100">{project}</span>
-                  {projectActive && (
+                  {icon}
+                  <span className="text-text-100">{label}</span>
+                  {groupActive && (
                     <Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />
                   )}
-                  <span className="font-normal text-text-500">{jobs.length}</span>
+                  <span className="font-normal text-text-500">{groupTasks.length}</span>
                 </h2>
                 <div className="flex flex-col gap-2">
-                  {jobs.map((job) => (
-                    <TestCard key={job.id} job={job} />
+                  {groupTasks.map((job) => (
+                    <TaskCard key={job.id} job={job} />
                   ))}
                 </div>
               </section>

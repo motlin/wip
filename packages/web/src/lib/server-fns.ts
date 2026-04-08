@@ -68,7 +68,8 @@ import {
   RebaseLocalInputSchema,
   MergePrInputSchema,
   type RebaseLocalInput,
-  TestQueueJobSchema,
+  TaskQueueJobSchema,
+  type TaskQueueJob,
   type TestQueueJob,
 } from "@wip/shared";
 
@@ -946,14 +947,17 @@ export const getSnoozedList = createServerFn({ method: "GET" }).handler(
     }),
 );
 
-export const getTestQueue = createServerFn({ method: "GET" }).handler(
-  async (): Promise<TestQueueJob[]> =>
-    traced("getTestQueue", async () => {
-      const { getAllJobs } = await import("./task-queue.js");
-      const jobs = getAllJobs();
-      return Array.from(jobs.values()).map((j) => TestQueueJobSchema.parse(j));
+export const getTaskQueue = createServerFn({ method: "GET" }).handler(
+  async (): Promise<TaskQueueJob[]> =>
+    traced("getTaskQueue", async () => {
+      const { getAllTasks } = await import("./task-queue.js");
+      const tasks = getAllTasks();
+      return Array.from(tasks.values()).map((t) => TaskQueueJobSchema.parse(t));
     }),
 );
+
+// Backward-compatible alias
+export const getTestQueue = getTaskQueue;
 
 export const cancelTestFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CancelTestInputSchema.parse(input))

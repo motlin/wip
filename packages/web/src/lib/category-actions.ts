@@ -119,7 +119,7 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
     color: "text-red-700 dark:text-red-400",
     columnBg: "bg-red-column",
     actions: buildActions("checks_failed"),
-    llmCommand: "/build:fix",
+    llmCommand: "/gha",
   },
   checks_running: {
     label: "Checks Running",

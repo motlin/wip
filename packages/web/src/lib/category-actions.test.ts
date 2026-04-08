@@ -49,8 +49,8 @@ describe("CATEGORIES", () => {
     expect(CATEGORIES.plan_approved.llmCommand).toBe("/markdown-tasks:do-one-task");
   });
 
-  it("maps checks_failed to /build:fix", () => {
-    expect(CATEGORIES.checks_failed.llmCommand).toBe("/build:fix");
+  it("maps checks_failed to /gha", () => {
+    expect(CATEGORIES.checks_failed.llmCommand).toBe("/gha");
   });
 });
 

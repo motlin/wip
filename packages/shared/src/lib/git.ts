@@ -207,8 +207,9 @@ export async function getNeedsRebaseBranches(
     { commitsAhead: number; commitsBehind: number; rebaseable: boolean | null }
   >,
 ): Promise<ChildCommit[]> {
-  // Use git's ancestry check: branches where upstream is NOT an ancestor need rebasing.
-  // This correctly handles multi-commit branches (unlike checking only direct children).
+  // --no-contains does a full ancestry check, not just direct-parent matching.
+  // Without this, multi-commit branches whose tip's parent is an intermediate
+  // commit (not the upstream ref itself) would be incorrectly flagged.
   const noContainsOutput = await git(
     dir,
     "for-each-ref",

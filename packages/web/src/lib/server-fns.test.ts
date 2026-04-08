@@ -1220,6 +1220,38 @@ describe("getProjectChildrenHandler", () => {
     ]);
   });
 
+  it("includes mergeStateStatus from cached PR statuses", async () => {
+    const dir = await createTestGitRepo();
+    await execa("git", ["-C", dir, "checkout", "-b", "blocked-pr"], { cwd: dir });
+    await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Blocked PR commit"]);
+
+    const { cachePrStatuses } = await import("@wip/shared");
+    cachePrStatuses("merge-state-test", [
+      {
+        branch: "blocked-pr",
+        reviewStatus: "approved",
+        checkStatus: "passed",
+        prUrl: "https://github.com/owner/repo/pull/42",
+        prNumber: 42,
+        behind: false,
+        mergeStateStatus: "BLOCKED",
+      },
+    ]);
+
+    const project = makeProject({
+      name: "merge-state-test",
+      dir,
+      upstreamRef: "main",
+    });
+    seedProjectCache([project]);
+
+    const { getProjectChildrenHandler } = await import("./server-fns.js");
+    const result = await getProjectChildrenHandler("merge-state-test");
+    const child = result.find((c) => c.branch === "blocked-pr");
+    expect(child).toBeDefined();
+    expect(child!.mergeStateStatus).toBe("BLOCKED");
+  });
+
   it("filters out snoozed children", async () => {
     const dir = await createTestGitRepo();
     await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Snoozed commit"]);

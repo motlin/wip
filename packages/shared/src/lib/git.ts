@@ -53,7 +53,7 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 
 function parseEnvrc(dir: string): { upstreamRemote: string; upstreamBranch: string } {
   const envrcPath = path.join(dir, ".envrc");
-  let upstreamRemote = "origin";
+  let upstreamRemote = "upstream";
   let upstreamBranch = "main";
 
   if (fs.existsSync(envrcPath)) {

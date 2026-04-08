@@ -143,6 +143,7 @@ describe("getPrStatuses", () => {
     expect(statuses.checks.get("feature-branch")).toBe("passed");
     expect(statuses.urls.get("feature-branch")).toBe("https://github.com/owner/repo/pull/1");
     expect(statuses.prNumbers.get("feature-branch")).toBe(1);
+    expect(statuses.mergeStateStatuses.get("feature-branch")).toBe("CLEAN");
 
     // Second call should use cache (no additional HTTP calls)
     const cached = await getPrStatuses(tempDir, "test-project");

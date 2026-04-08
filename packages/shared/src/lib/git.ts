@@ -22,7 +22,14 @@ import {
   cacheUpstreamSha,
 } from "./db.js";
 import { isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError } from "./rate-limit.js";
-import type { CheckStatus, ChildCommit, ProjectInfo, ReviewStatus } from "./schemas.js";
+import {
+  MergeStateStatusSchema,
+  type CheckStatus,
+  type ChildCommit,
+  type MergeStateStatus,
+  type ProjectInfo,
+  type ReviewStatus,
+} from "./schemas.js";
 
 const MiseEnvSchema = z.record(z.string(), z.string());
 
@@ -264,6 +271,7 @@ export async function getNeedsRebaseBranches(
     const prNumber = prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
     const failedChecks = prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
     const behind = prStatuses ? prStatuses.behind.get(branch) : undefined;
+    const mergeStateStatus = prStatuses ? prStatuses.mergeStateStatuses.get(branch) : undefined;
     const ms = mergeStatusMap?.get(sha);
 
     let localAhead: boolean | undefined;
@@ -295,6 +303,7 @@ export async function getNeedsRebaseBranches(
       commitsBehind: ms?.commitsBehind,
       commitsAhead: ms?.commitsAhead,
       rebaseable: ms?.rebaseable ?? undefined,
+      mergeStateStatus,
     });
   }
 
@@ -416,6 +425,7 @@ export interface PrStatuses {
   failedChecks: Map<string, Array<{ name: string; url?: string }>>;
   behind: Map<string, boolean>;
   prNumbers: Map<string, number>;
+  mergeStateStatuses: Map<string, MergeStateStatus>;
 }
 
 const AGGREGATE_STATE_TO_CHECK_STATUS: Record<string, CheckStatus> = {
@@ -531,6 +541,7 @@ function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
   const failedChecks = new Map<string, Array<{ name: string; url?: string }>>();
   const behind = new Map<string, boolean>();
   const prNumbers = new Map<string, number>();
+  const mergeStateStatuses = new Map<string, MergeStateStatus>();
   for (const s of cached) {
     review.set(s.branch, s.reviewStatus);
     checks.set(s.branch, s.checkStatus);
@@ -538,8 +549,12 @@ function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
     if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
     if (s.failedChecks) failedChecks.set(s.branch, s.failedChecks);
     if (s.behind) behind.set(s.branch, true);
+    if (s.mergeStateStatus) {
+      const parsed = MergeStateStatusSchema.safeParse(s.mergeStateStatus);
+      if (parsed.success) mergeStateStatuses.set(s.branch, parsed.data);
+    }
   }
-  return { review, checks, urls, failedChecks, behind, prNumbers };
+  return { review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses };
 }
 
 function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
@@ -549,13 +564,18 @@ function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
   const failedChecks = new Map<string, Array<{ name: string; url?: string }>>();
   const behind = new Map<string, boolean>();
   const prNumbers = new Map<string, number>();
+  const mergeStateStatuses = new Map<string, MergeStateStatus>();
   for (const s of stale) {
     review.set(s.branch, s.reviewStatus);
     checks.set(s.branch, "unknown");
     if (s.prUrl) urls.set(s.branch, s.prUrl);
     if (s.prNumber != null) prNumbers.set(s.branch, s.prNumber);
+    if (s.mergeStateStatus) {
+      const parsed = MergeStateStatusSchema.safeParse(s.mergeStateStatus);
+      if (parsed.success) mergeStateStatuses.set(s.branch, parsed.data);
+    }
   }
-  return { review, checks, urls, failedChecks, behind, prNumbers };
+  return { review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses };
 }
 
 function emptyPrStatuses(): PrStatuses {
@@ -566,6 +586,7 @@ function emptyPrStatuses(): PrStatuses {
     failedChecks: new Map(),
     behind: new Map(),
     prNumbers: new Map(),
+    mergeStateStatuses: new Map(),
   };
 }
 
@@ -641,6 +662,7 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
   const failedChecks = new Map<string, Array<{ name: string; url?: string }>>();
   const behind = new Map<string, boolean>();
   const prNumbers = new Map<string, number>();
+  const mergeStateStatuses = new Map<string, MergeStateStatus>();
 
   for (const pr of prs) {
     const branch = pr.headRefName;
@@ -675,6 +697,10 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
     const isBehind = pr.mergeStateStatus === "BEHIND";
     if (isBehind) behind.set(branch, true);
 
+    // Full merge state from GitHub API
+    const parsedMergeState = MergeStateStatusSchema.safeParse(pr.mergeStateStatus);
+    if (parsedMergeState.success) mergeStateStatuses.set(branch, parsedMergeState.data);
+
     // PR number
     prNumbers.set(branch, pr.number);
 
@@ -686,6 +712,7 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
       prNumber: pr.number,
       failedChecks: failed.length > 0 ? failed : undefined,
       behind: isBehind,
+      mergeStateStatus: pr.mergeStateStatus,
     });
   }
 
@@ -694,7 +721,7 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promis
     cachePrStatuses(projectName, toCache);
   }
 
-  return { review, checks, urls, failedChecks, behind, prNumbers };
+  return { review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses };
 }
 
 export async function fetchUpstreamRef(
@@ -842,6 +869,8 @@ export async function getChildCommits(
     const failedChecks = branch && prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
     const behind = branch && prStatuses ? prStatuses.behind.get(branch) : undefined;
     const prNumber = branch && prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
+    const mergeStateStatus =
+      branch && prStatuses ? prStatuses.mergeStateStatuses.get(branch) : undefined;
 
     // Merge status from cache (computed asynchronously by merge-queue)
     const ms = mergeStatusMap?.get(sha);
@@ -883,6 +912,7 @@ export async function getChildCommits(
       commitsBehind,
       commitsAhead,
       rebaseable,
+      mergeStateStatus,
       alreadyOnRemote,
     });
   }

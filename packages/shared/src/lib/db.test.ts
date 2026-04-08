@@ -68,8 +68,27 @@ describe("PR status cache", () => {
       sampleStatuses.map((s) => ({
         ...s,
         failedChecks: undefined,
+        mergeStateStatus: undefined,
       })),
     );
+  });
+
+  it("round-trips mergeStateStatus through cache", () => {
+    const statuses: CachedPrStatus[] = [
+      {
+        branch: "feature/merge-state",
+        reviewStatus: "approved",
+        checkStatus: "passed",
+        prUrl: "https://github.com/owner/repo/pull/99",
+        prNumber: 99,
+        behind: false,
+        mergeStateStatus: "BLOCKED",
+      },
+    ];
+    cachePrStatuses("test-project", statuses);
+    const cached = getStalePrStatuses("test-project");
+    expect(cached).not.toBeNull();
+    expect(cached![0]!.mergeStateStatus).toBe("BLOCKED");
   });
 
   it("round-trips PR statuses with failed checks", () => {

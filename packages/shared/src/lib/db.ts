@@ -192,6 +192,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			pr_url TEXT,
 			pr_number INTEGER,
 			behind INTEGER NOT NULL DEFAULT 0,
+			merge_state_status TEXT,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (project, branch, system_from)
@@ -367,8 +368,14 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   try {
     db.run(sql`ALTER TABLE pr_status_cache ADD COLUMN pr_number INTEGER`);
   } catch (error: unknown) {
-    // Column already exists — expected on subsequent runs
     log.general.debug({ error }, "Failed to add pr_number column to pr_status_cache");
+  }
+
+  // Migrate: add merge_state_status column if missing on existing databases
+  try {
+    db.run(sql`ALTER TABLE pr_status_cache ADD COLUMN merge_state_status TEXT`);
+  } catch (error: unknown) {
+    log.general.debug({ error }, "Failed to add merge_state_status column to pr_status_cache");
   }
 
   return db;
@@ -611,6 +618,7 @@ export interface CachedPrStatus {
   prNumber?: number;
   failedChecks?: Array<{ name: string; url?: string }>;
   behind?: boolean;
+  mergeStateStatus?: string;
 }
 
 function queryPrStatusesWithChecks(
@@ -629,6 +637,7 @@ function queryPrStatusesWithChecks(
       prUrl: prStatusCache.prUrl,
       prNumber: prStatusCache.prNumber,
       behind: prStatusCache.behind,
+      mergeStateStatus: prStatusCache.mergeStateStatus,
       systemFrom: prStatusCache.systemFrom,
     })
     .from(prStatusCache)
@@ -662,6 +671,7 @@ function queryPrStatusesWithChecks(
     prNumber: r.prNumber ?? undefined,
     failedChecks: checksByBranch.get(r.branch),
     behind: r.behind ?? undefined,
+    mergeStateStatus: r.mergeStateStatus ?? undefined,
   }));
 }
 
@@ -725,7 +735,8 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
         existing.checkStatus !== s.checkStatus ||
         existing.prUrl !== s.prUrl ||
         (existing.prNumber ?? undefined) !== s.prNumber ||
-        (existing.behind ?? undefined) !== s.behind;
+        (existing.behind ?? undefined) !== s.behind ||
+        (existing.mergeStateStatus ?? undefined) !== s.mergeStateStatus;
 
       if (parentChanged) {
         // Close old parent row if it exists
@@ -751,6 +762,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
             prUrl: s.prUrl,
             prNumber: s.prNumber ?? null,
             behind: s.behind ?? false,
+            mergeStateStatus: s.mergeStateStatus ?? null,
             systemFrom: timestamp,
           })
           .run();

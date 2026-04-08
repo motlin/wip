@@ -22,6 +22,18 @@ export type CheckStatus = z.infer<typeof CheckStatusSchema>;
 export const TestStatusSchema = z.enum(["passed", "failed", "running", "unknown"]);
 export type TestStatus = z.infer<typeof TestStatusSchema>;
 
+export const MergeStateStatusSchema = z.enum([
+  "BEHIND",
+  "BLOCKED",
+  "CLEAN",
+  "DIRTY",
+  "DRAFT",
+  "HAS_HOOKS",
+  "UNKNOWN",
+  "UNSTABLE",
+]);
+export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
+
 // Kanban left-to-right: full SDLC flow
 export const CategorySchema = z.enum([
   "snoozed",
@@ -265,6 +277,7 @@ export const ChildCommitSchema = z.object({
   commitsBehind: z.number().optional(),
   commitsAhead: z.number().optional(),
   rebaseable: z.boolean().optional(),
+  mergeStateStatus: MergeStateStatusSchema.optional(),
   alreadyOnRemote: z.object({ branch: branchSchema }).optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
@@ -328,6 +341,7 @@ export const GitChildResultSchema = z.object({
   commitsBehind: z.number().optional(),
   commitsAhead: z.number().optional(),
   rebaseable: z.boolean().optional(),
+  mergeStateStatus: MergeStateStatusSchema.optional(),
   alreadyOnRemote: z.object({ branch: branchSchema }).optional(),
   failureTail: z.string().optional(),
   suggestedBranch: branchSchema.optional(),

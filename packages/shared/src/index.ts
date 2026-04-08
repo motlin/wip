@@ -114,6 +114,8 @@ export {
   type CheckStatus,
   TestStatusSchema,
   type TestStatus,
+  MergeStateStatusSchema,
+  type MergeStateStatus,
   CategorySchema,
   type Category,
   TransitionSchema,

@@ -269,6 +269,7 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
         commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
         rebaseable:
           ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+        mergeStateStatus: child.mergeStateStatus,
         alreadyOnRemote: child.alreadyOnRemote,
         failureTail,
         suggestedBranch:

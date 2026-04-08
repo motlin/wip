@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { Sun, Moon } from "lucide-react";
 import appCss from "../styles/globals.css?url";
-import { TestEventsProvider } from "../lib/test-events-context";
+import { TaskEventsProvider } from "../lib/task-events-context";
 import { MergeEventsProvider } from "../lib/merge-events-context";
 import { ProjectEventsProvider } from "../lib/project-events-context";
 import { useTheme } from "../lib/use-theme";
@@ -42,7 +42,7 @@ function RootComponent() {
 
   return (
     <RootDocument>
-      <TestEventsProvider>
+      <TaskEventsProvider>
         <MergeEventsProvider>
           <ProjectEventsProvider>
             <div className="min-h-screen bg-bg-000">
@@ -93,7 +93,7 @@ function RootComponent() {
             </div>
           </ProjectEventsProvider>
         </MergeEventsProvider>
-      </TestEventsProvider>
+      </TaskEventsProvider>
     </RootDocument>
   );
 }

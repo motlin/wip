@@ -16,7 +16,7 @@ import { useRef, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { applyTransition, type GitChildResult, type Category } from "@wip/shared";
 import { cancelTestFn } from "../lib/server-fns";
-import { useTestJob } from "../lib/test-events-context";
+import { useTestJob } from "../lib/task-events-context";
 import { useMergeStatus } from "../lib/merge-events-context";
 import { AnsiText } from "./ansi-text";
 import { CategoryBadge } from "./category-badge";

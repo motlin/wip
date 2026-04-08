@@ -3,8 +3,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Transition } from "@wip/shared";
 import type { ProjectChildrenResult } from "./server-fns";
 
-export interface JobEvent {
+export type TaskType = "test" | "claude" | "rebase";
+
+export interface TaskEvent {
   id: string;
+  taskType: TaskType;
   sha: string;
   project: string;
   shortSha: string;
@@ -16,6 +19,9 @@ export interface JobEvent {
   type?: "status" | "log";
   log?: string;
 }
+
+// Re-export for backward compatibility
+export type JobEvent = TaskEvent;
 
 const TERMINAL_STATUSES = new Set(["passed", "failed", "cancelled"]);
 
@@ -36,18 +42,18 @@ function updateTestStatus(
   });
 }
 
-export function useTestEvents() {
-  const [jobs, setJobs] = useState<Map<string, JobEvent>>(new Map());
+export function useTaskEvents() {
+  const [tasks, setTasks] = useState<Map<string, TaskEvent>>(new Map());
   const [logs, setLogs] = useState<Map<string, string>>(new Map());
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const es = new EventSource("/api/test-events");
+    const es = new EventSource("/api/task-events");
 
     es.onmessage = (event) => {
-      let data: JobEvent;
+      let data: TaskEvent;
       try {
-        data = JSON.parse(event.data) as JobEvent;
+        data = JSON.parse(event.data) as TaskEvent;
       } catch {
         return;
       }
@@ -62,14 +68,13 @@ export function useTestEvents() {
         return;
       }
 
-      setJobs((prev) => {
+      setTasks((prev) => {
         const next = new Map(prev);
         next.set(key, data);
         return next;
       });
 
       if (data.status === "queued" || data.status === "running") {
-        // Clear log when a new test starts
         if (data.status === "queued") {
           setLogs((prev) => {
             const next = new Map(prev);
@@ -79,7 +84,7 @@ export function useTestEvents() {
         }
       }
 
-      if (TERMINAL_STATUSES.has(data.status)) {
+      if (data.taskType === "test" && TERMINAL_STATUSES.has(data.status)) {
         updateTestStatus(queryClient, data.project, data.sha, data.status);
       }
     };
@@ -87,11 +92,11 @@ export function useTestEvents() {
     return () => es.close();
   }, [queryClient]);
 
-  const getJob = useCallback(
-    (sha: string, project: string): JobEvent | undefined => {
-      return jobs.get(`${project}:${sha}`);
+  const getTask = useCallback(
+    (sha: string, project: string): TaskEvent | undefined => {
+      return tasks.get(`${project}:${sha}`);
     },
-    [jobs],
+    [tasks],
   );
 
   const getLog = useCallback(
@@ -101,9 +106,16 @@ export function useTestEvents() {
     [logs],
   );
 
-  const hasActiveJobs = Array.from(jobs.values()).some(
-    (j) => j.status === "queued" || j.status === "running",
+  const hasActiveTasks = Array.from(tasks.values()).some(
+    (t) => t.status === "queued" || t.status === "running",
   );
 
-  return { jobs, getJob, getLog, hasActiveJobs };
+  // Backward-compatible aliases
+  const getJob = getTask;
+  const hasActiveJobs = hasActiveTasks;
+
+  return { tasks, getTask, getJob, getLog, hasActiveTasks, hasActiveJobs };
 }
+
+// Backward-compatible alias
+export const useTestEvents = useTaskEvents;

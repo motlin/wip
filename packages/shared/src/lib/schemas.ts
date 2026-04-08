@@ -452,8 +452,12 @@ export const MergePrInputSchema = z.object({
 });
 export type MergePrInput = z.infer<typeof MergePrInputSchema>;
 
-export const TestQueueJobSchema = z.object({
+export const TaskTypeSchema = z.enum(["test", "claude", "rebase"]);
+export type TaskType = z.infer<typeof TaskTypeSchema>;
+
+export const TaskQueueJobSchema = z.object({
   id: z.string(),
+  taskType: TaskTypeSchema.default("test"),
   project: z.string(),
   sha: z.string(),
   shortSha: z.string(),
@@ -465,4 +469,8 @@ export const TestQueueJobSchema = z.object({
   startedAt: z.number().optional(),
   finishedAt: z.number().optional(),
 });
-export type TestQueueJob = z.infer<typeof TestQueueJobSchema>;
+export type TaskQueueJob = z.infer<typeof TaskQueueJobSchema>;
+
+// Backward-compatible aliases
+export const TestQueueJobSchema = TaskQueueJobSchema;
+export type TestQueueJob = TaskQueueJob;

@@ -10,7 +10,7 @@ import {
   isGitChildBranch,
   isGitChildCommit,
 } from "../../lib/git-child-discriminators";
-import { useHasActiveTests } from "../../lib/test-events-context";
+import { useHasActiveTests } from "../../lib/task-events-context";
 import { projectsQueryOptions } from "../../lib/queries";
 import { useWorkItems } from "../../lib/use-work-items";
 import type { ColumnItems } from "../../components/kanban-column";

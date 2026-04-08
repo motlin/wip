@@ -3,7 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { ArrowDown } from "lucide-react";
 import { LineNumberedAnsiText } from "../components/line-numbered-ansi-text";
 import { testLogQueryOptions } from "../lib/queries";
-import { useTestLog } from "../lib/test-events-context";
+import { useTestLog } from "../lib/task-events-context";
 import { useAutoTail } from "../lib/use-auto-tail";
 
 export const Route = createFileRoute("/log/$project/$sha")({

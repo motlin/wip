@@ -3,8 +3,8 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { testAllChildren, cancelTestFn, pushChild } from "../lib/server-fns";
 import type { TestQueueJob } from "../lib/server-fns";
-import { useTestEvents, type JobEvent } from "../lib/use-test-events";
-import { useHasActiveTests } from "../lib/test-events-context";
+import { useTaskEvents, type TaskEvent } from "../lib/use-task-events";
+import { useHasActiveTests } from "../lib/task-events-context";
 import {
   Clock,
   Play,
@@ -70,7 +70,7 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remaining}s`;
 }
 
-function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, JobEvent>): TestQueueJob[] {
+function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, TaskEvent>): TestQueueJob[] {
   const merged = new Map<string, TestQueueJob>();
 
   for (const job of serverJobs) {
@@ -84,6 +84,7 @@ function mergeJobs(serverJobs: TestQueueJob[], liveJobs: Map<string, JobEvent>):
     } else {
       merged.set(key, {
         id: liveJob.id,
+        taskType: liveJob.taskType ?? "test",
         project: liveJob.project,
         sha: liveJob.sha,
         shortSha: liveJob.shortSha,
@@ -204,7 +205,7 @@ function TestCard({ job }: { job: TestQueueJob }) {
 
 function Tests() {
   const { data: serverJobs } = useSuspenseQuery(testQueueQueryOptions());
-  const { jobs: liveJobs } = useTestEvents();
+  const { tasks: liveJobs } = useTaskEvents();
   const [testingAll, setTestingAll] = useState(false);
   const hasActiveTests = useHasActiveTests();
 

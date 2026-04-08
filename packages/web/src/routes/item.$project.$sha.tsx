@@ -32,7 +32,7 @@ import { classifyCommit, classifyBranch, classifyPullRequest } from "../lib/clas
 import { applyTransition } from "@wip/shared";
 import { CATEGORIES, CATEGORY_PRIORITY } from "../lib/category-actions";
 import { useSyncChildToCache } from "../lib/use-sync-child-to-cache";
-import { useTestJob, useTestLog } from "../lib/test-events-context";
+import { useTestJob, useTestLog } from "../lib/task-events-context";
 import { useAutoTail } from "../lib/use-auto-tail";
 
 export const Route = createFileRoute("/item/$project/$sha")({

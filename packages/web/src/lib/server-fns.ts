@@ -616,7 +616,7 @@ export const testChild = createServerFn({ method: "POST" })
           );
         }
 
-        const { enqueueTest } = await import("./test-queue.js");
+        const { enqueueTest } = await import("./task-queue.js");
         const job = enqueueTest(data.project, p.dir, data.sha, shortSha, subject, branch);
         return { id: job.id, status: job.status, message: job.message };
       }),
@@ -624,7 +624,7 @@ export const testChild = createServerFn({ method: "POST" })
 
 export async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
   return traced("testAllChildren", async () => {
-    const { enqueueTest } = await import("./test-queue.js");
+    const { enqueueTest } = await import("./task-queue.js");
 
     const projectsDirs = getProjectsDirs();
     const projects = await discoverAllProjects(projectsDirs);
@@ -949,7 +949,7 @@ export const getSnoozedList = createServerFn({ method: "GET" }).handler(
 export const getTestQueue = createServerFn({ method: "GET" }).handler(
   async (): Promise<TestQueueJob[]> =>
     traced("getTestQueue", async () => {
-      const { getAllJobs } = await import("./test-queue.js");
+      const { getAllJobs } = await import("./task-queue.js");
       const jobs = getAllJobs();
       return Array.from(jobs.values()).map((j) => TestQueueJobSchema.parse(j));
     }),
@@ -960,7 +960,7 @@ export const cancelTestFn = createServerFn({ method: "POST" })
   .handler(
     async ({ data }): Promise<ActionResult> =>
       traced("cancelTestFn", async () => {
-        const { cancelTest } = await import("./test-queue.js");
+        const { cancelTest } = await import("./task-queue.js");
         const result = cancelTest(data.id);
         return { ok: result.ok, message: result.message };
       }),

@@ -44,7 +44,7 @@ import type { GitChildResult, SnoozedChild, Category } from "@wip/shared";
 import type { ProjectChildrenResult } from "../lib/server-fns";
 import { CATEGORIES } from "../lib/category-actions";
 import { GitHubIcon } from "./github-icon";
-import { useTestJob } from "../lib/test-events-context";
+import { useTestJob } from "../lib/task-events-context";
 
 const SNOOZE_PRESETS = [
   { label: "1 hour", hours: 1 },

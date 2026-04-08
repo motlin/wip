@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/api/test-events")({
+export const Route = createFileRoute("/api/task-events")({
   server: {
     handlers: {
       GET: async () => {
-        const { emitter } = await import("../../lib/test-queue.js");
-        const { getAllActiveJobs } = await import("../../lib/test-queue.js");
+        const { emitter } = await import("../../lib/task-queue.js");
+        const { getAllActiveTasks } = await import("../../lib/task-queue.js");
 
         const stream = new ReadableStream({
           start(controller) {
@@ -22,26 +22,26 @@ export const Route = createFileRoute("/api/test-events")({
             }
 
             // Send current state on connect
-            for (const job of getAllActiveJobs()) {
+            for (const task of getAllActiveTasks()) {
               send({
-                id: job.id,
-                sha: job.sha,
-                project: job.project,
-                shortSha: job.shortSha,
-                subject: job.subject,
-                branch: job.branch,
-                status: job.status,
-                message: job.message,
+                id: task.id,
+                taskType: task.taskType,
+                sha: task.sha,
+                project: task.project,
+                shortSha: task.shortSha,
+                subject: task.subject,
+                branch: task.branch,
+                status: task.status,
+                message: task.message,
               });
             }
 
-            function onJob(event: unknown) {
+            function onTask(event: unknown) {
               send(event);
             }
 
-            emitter.on("job", onJob);
+            emitter.on("task", onTask);
 
-            // Clean up when client disconnects (detected when enqueue throws)
             const keepalive = setInterval(() => {
               if (closed) return;
               try {
@@ -54,7 +54,7 @@ export const Route = createFileRoute("/api/test-events")({
             function cleanup() {
               if (closed) return;
               closed = true;
-              emitter.off("job", onJob);
+              emitter.off("task", onTask);
               clearInterval(keepalive);
               try {
                 controller.close();

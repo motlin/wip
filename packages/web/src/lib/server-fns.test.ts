@@ -340,7 +340,7 @@ describe("getSnoozedList (underlying logic)", () => {
 describe("getTestQueue (underlying logic)", () => {
   it("returns enqueued jobs with correct TestQueueJobSchema fields", async () => {
     const { TestQueueJobSchema } = await import("@wip/shared");
-    const { enqueueTest, getAllJobs } = await import("./test-queue.js");
+    const { enqueueTest, getAllJobs } = await import("./task-queue.js");
 
     const dir = await createTestGitRepo();
     const job = enqueueTest(
@@ -628,11 +628,11 @@ describe("snoozeChildFn / unsnoozeChildFn (underlying logic)", () => {
   });
 });
 
-// -- testChild (underlying logic via test-queue) --
+// -- testChild (underlying logic via task-queue) --
 
-describe("testChild (underlying logic via test-queue)", () => {
+describe("testChild (underlying logic via task-queue)", () => {
   it("enqueueTest creates a job with correct fields", async () => {
-    const { enqueueTest, getAllJobs } = await import("./test-queue.js");
+    const { enqueueTest, getAllJobs } = await import("./task-queue.js");
 
     const dir = await createTestGitRepo();
     const sha = "dddd1234567890123456789012345678901234dd";
@@ -651,7 +651,7 @@ describe("testChild (underlying logic via test-queue)", () => {
   });
 
   it("enqueueTest returns existing job if already queued for same sha+project", async () => {
-    const { enqueueTest } = await import("./test-queue.js");
+    const { enqueueTest } = await import("./task-queue.js");
 
     const dir = await createTestGitRepo();
     const sha = "eeee1234567890123456789012345678901234ee";
@@ -665,11 +665,11 @@ describe("testChild (underlying logic via test-queue)", () => {
   });
 });
 
-// -- cancelTestFn (underlying logic via test-queue) --
+// -- cancelTestFn (underlying logic via task-queue) --
 
-describe("cancelTestFn (underlying logic via test-queue)", () => {
+describe("cancelTestFn (underlying logic via task-queue)", () => {
   it("cancels a queued job", async () => {
-    const { enqueueTest, cancelTest, getAllJobs } = await import("./test-queue.js");
+    const { enqueueTest, cancelTest, getAllJobs } = await import("./task-queue.js");
 
     const dir = await createTestGitRepo();
     // Enqueue two jobs for same project to ensure one stays queued
@@ -692,7 +692,7 @@ describe("cancelTestFn (underlying logic via test-queue)", () => {
   });
 
   it("cannot cancel an already-finished job", async () => {
-    const { cancelTest } = await import("./test-queue.js");
+    const { cancelTest } = await import("./task-queue.js");
 
     const result = cancelTest("nonexistent-id");
     expect(result.ok).toBe(false);

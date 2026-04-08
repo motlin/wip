@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { getMiseEnv, getTestLogDir, log, recordTestResult } from "@wip/shared";
+import { getCacheDir, getMiseEnv, getTestLogDir, log, recordTestResult } from "@wip/shared";
 import type { Transition } from "@wip/shared";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
@@ -18,6 +18,7 @@ export interface Task {
   shortSha: string;
   subject: string;
   branch?: string;
+  command?: string;
   status: TaskStatus;
   message?: string;
   queuedAt: number;
@@ -141,20 +142,37 @@ async function runTask(task: Task): Promise<void> {
   switch (task.taskType) {
     case "test":
       return runTestTask(task);
+    case "claude":
+      return runClaudeTask(task);
     default:
       throw new Error(`Task type "${task.taskType}" is not yet implemented`);
   }
 }
 
-async function runTestTask(task: Task): Promise<void> {
-  const miseEnv = await getMiseEnv(task.projectDir);
-  const logDir = getTestLogDir(task.project);
+interface RunProcessOptions {
+  task: Task;
+  cmd: string;
+  args: string[];
+  logDir: string;
+  env?: Record<string, string>;
+  cwd?: string;
+}
+
+async function runProcess({
+  task,
+  cmd,
+  args,
+  logDir,
+  env,
+  cwd,
+}: RunProcessOptions): Promise<{ exitCode: number | undefined; duration: number } | undefined> {
   fs.mkdirSync(logDir, { recursive: true });
 
   const start = performance.now();
-  const childProcess = execa("git", ["-C", task.projectDir, "test", "run", "--retest", task.sha], {
+  const childProcess = execa(cmd, args, {
     reject: false,
-    env: { ...miseEnv, FORCE_COLOR: "1", CLICOLOR_FORCE: "1" },
+    env: { ...env, FORCE_COLOR: "1", CLICOLOR_FORCE: "1" },
+    cwd,
     buffer: true,
   });
   runningProcesses.set(task.id, { kill: () => childProcess.kill("SIGTERM") });
@@ -173,21 +191,30 @@ async function runTestTask(task: Task): Promise<void> {
   const result = await childProcess;
   runningProcesses.delete(task.id);
 
-  if (task.status === "cancelled") return;
+  if (task.status === "cancelled") return undefined;
 
   const duration = Math.round(performance.now() - start);
-  log.subprocess.debug(
-    {
-      cmd: "git",
-      args: ["-C", task.projectDir, "test", "run", "--retest", task.sha],
-      duration,
-    },
-    `git -C ${task.projectDir} test run --retest ${task.sha} (${duration}ms)`,
-  );
+  log.subprocess.debug({ cmd, args, duration }, `${cmd} ${args.join(" ")} (${duration}ms)`);
 
   const logContent = [result.stdout, result.stderr].filter(Boolean).join("\n");
   const logPath = path.join(logDir, `${task.sha}.log`);
   fs.writeFileSync(logPath, logContent + "\n");
+
+  return { exitCode: result.exitCode, duration };
+}
+
+async function runTestTask(task: Task): Promise<void> {
+  const miseEnv = await getMiseEnv(task.projectDir);
+  const args = ["-C", task.projectDir, "test", "run", "--retest", task.sha];
+
+  const result = await runProcess({
+    task,
+    cmd: "git",
+    args,
+    logDir: getTestLogDir(task.project),
+    env: miseEnv,
+  });
+  if (!result) return;
 
   task.finishedAt = Date.now();
   const status = result.exitCode === 0 ? "passed" : "failed";
@@ -197,7 +224,40 @@ async function runTestTask(task: Task): Promise<void> {
       ? `${task.shortSha} passed`
       : `${task.shortSha} failed (exit ${result.exitCode})`;
 
-  recordTestResult(task.sha, task.project, status, result.exitCode ?? 1, duration);
+  recordTestResult(task.sha, task.project, status, result.exitCode ?? 1, result.duration);
+  emit(task);
+}
+
+async function runClaudeTask(task: Task): Promise<void> {
+  if (!task.command) throw new Error("Claude task requires a command");
+  if (!task.branch) throw new Error("Claude task requires a branch");
+
+  const checkoutResult = await execa("git", ["-C", task.projectDir, "checkout", task.branch], {
+    reject: false,
+  });
+  if (checkoutResult.exitCode !== 0) {
+    task.status = "failed";
+    task.finishedAt = Date.now();
+    task.message = `Failed to checkout ${task.branch}: ${checkoutResult.stderr}`;
+    emit(task);
+    return;
+  }
+
+  const result = await runProcess({
+    task,
+    cmd: "claude",
+    args: ["--print", task.command],
+    logDir: path.join(getCacheDir(), "claude-logs", task.project),
+    cwd: task.projectDir,
+  });
+  if (!result) return;
+
+  task.finishedAt = Date.now();
+  task.status = result.exitCode === 0 ? "passed" : "failed";
+  task.message =
+    task.status === "passed"
+      ? `${task.shortSha} ${task.command} completed`
+      : `${task.shortSha} ${task.command} failed (exit ${result.exitCode})`;
   emit(task);
 }
 
@@ -209,6 +269,7 @@ export function enqueueTask(
   shortSha: string,
   subject?: string,
   branch?: string,
+  command?: string,
 ): Task {
   const existing = findTask(sha, project, taskType);
   if (existing && (existing.status === "queued" || existing.status === "running")) {
@@ -225,6 +286,7 @@ export function enqueueTask(
     shortSha,
     subject: subject ?? shortSha,
     branch,
+    command,
     status: "queued",
     queuedAt: Date.now(),
   };

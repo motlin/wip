@@ -452,6 +452,14 @@ export const MergePrInputSchema = z.object({
 });
 export type MergePrInput = z.infer<typeof MergePrInputSchema>;
 
+export const RunClaudeCommandInputSchema = z.object({
+  project: z.string(),
+  sha: shaSchema,
+  branch: branchSchema,
+  command: z.string(),
+});
+export type RunClaudeCommandInput = z.infer<typeof RunClaudeCommandInputSchema>;
+
 export const TaskTypeSchema = z.enum(["test", "claude", "rebase"]);
 export type TaskType = z.infer<typeof TaskTypeSchema>;
 
@@ -463,6 +471,7 @@ export const TaskQueueJobSchema = z.object({
   shortSha: z.string(),
   subject: z.string(),
   branch: z.string().optional(),
+  command: z.string().optional(),
   status: z.enum(["queued", "running", "passed", "failed", "cancelled"]),
   message: z.string().optional(),
   queuedAt: z.number(),

@@ -71,6 +71,7 @@ import {
   TaskQueueJobSchema,
   type TaskQueueJob,
   type TestQueueJob,
+  RunClaudeCommandInputSchema,
 } from "@wip/shared";
 
 import { tracedExeca } from "@wip/shared/services/traced-execa.js";
@@ -967,6 +968,27 @@ export const cancelTestFn = createServerFn({ method: "POST" })
         const { cancelTest } = await import("./task-queue.js");
         const result = cancelTest(data.id);
         return { ok: result.ok, message: result.message };
+      }),
+  );
+
+export const runClaudeCommand = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => RunClaudeCommandInputSchema.parse(input))
+  .handler(
+    async ({ data }): Promise<TestJobStatus> =>
+      traced("runClaudeCommand", async () => {
+        const p = await resolveProject(data.project);
+        const { enqueueTask } = await import("./task-queue.js");
+        const task = enqueueTask(
+          "claude",
+          data.project,
+          p.dir,
+          data.sha,
+          data.sha.slice(0, 7),
+          undefined,
+          data.branch,
+          data.command,
+        );
+        return { id: task.id, status: task.status, message: task.message };
       }),
   );
 

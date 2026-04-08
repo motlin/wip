@@ -131,6 +131,8 @@ export {
   type ChildCommit,
   GitChildResultSchema,
   type GitChildResult,
+  RunClaudeCommandInputSchema,
+  type RunClaudeCommandInput,
   TaskTypeSchema,
   type TaskType,
   TaskQueueJobSchema,

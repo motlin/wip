@@ -16,6 +16,7 @@ import {
   Pencil,
   Wrench,
   Save,
+  Bot,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -36,6 +37,7 @@ import {
   getProjectChildren,
   mergePr,
   createBranch,
+  runClaudeCommand,
 } from "../lib/server-fns";
 import { snoozedQueryOptions } from "../lib/queries";
 import { useMergeStatus } from "../lib/merge-events-context";
@@ -150,6 +152,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const [committing, setCommitting] = useState(false);
   const [merging, setMerging] = useState(false);
   const [creatingBranch, setCreatingBranch] = useState(false);
+  const [runningClaude, setRunningClaude] = useState(false);
   const testJob = useTestJob(item.sha, item.project);
   const mergeStatus = useMergeStatus(item.sha, item.project);
   const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -563,7 +566,23 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     }
   };
 
-  const actions = new Set(CATEGORIES[category].actions);
+  const handleRunClaude = async () => {
+    if (!llmCommand || !branch) return;
+    setRunningClaude(true);
+    try {
+      await runClaudeCommand({
+        data: { project: item.project, sha: item.sha, branch, command: llmCommand },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run Claude command");
+    } finally {
+      setRunningClaude(false);
+    }
+  };
+
+  const categoryConfig = CATEGORIES[category];
+  const actions = new Set(categoryConfig.actions);
+  const llmCommand = categoryConfig.llmCommand;
   const isDefaultBranch = /^(main|master)$/.test(branch);
 
   const isRow = layout === "row";
@@ -1041,6 +1060,28 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
             </div>
           )}
         </div>
+
+        {/* Run Claude Command */}
+        {llmCommand && branch && (
+          <button
+            type="button"
+            onClick={handleRunClaude}
+            disabled={runningClaude}
+            className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+              runningClaude
+                ? "cursor-not-allowed opacity-60 text-text-300"
+                : "bg-purple-600 hover:bg-purple-700 text-white"
+            }`}
+            title={`Run ${llmCommand}`}
+          >
+            {runningClaude ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Bot className="h-3.5 w-3.5" />
+            )}
+            {runningClaude ? "Running..." : llmCommand}
+          </button>
+        )}
 
         {/* Refresh */}
         {actions.has("refresh") && (

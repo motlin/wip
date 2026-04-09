@@ -254,6 +254,7 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
       return {
         project: p.name,
         remote: p.remote,
+        originRemote: p.originRemote,
         sha: child.sha,
         shortSha: child.shortSha,
         subject: child.subject,
@@ -1024,7 +1025,15 @@ export const getChildBySha = createServerFn({ method: "GET" })
 
         const logResult = await tracedExeca(
           "git",
-          ["-C", p.dir, "log", "-1", "--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D", data.sha],
+          [
+            "-C",
+            p.dir,
+            "log",
+            "-1",
+            "--decorate-refs=refs/heads/",
+            "--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D",
+            data.sha,
+          ],
           { reject: false },
         );
         if (logResult.exitCode !== 0) return null;
@@ -1088,6 +1097,7 @@ export const getChildBySha = createServerFn({ method: "GET" })
         return {
           project: p.name,
           remote: p.remote,
+          originRemote: p.originRemote,
           sha,
           shortSha,
           subject,

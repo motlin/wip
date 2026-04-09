@@ -334,6 +334,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
         "ALTER TABLE project_cache ADD COLUMN rebase_in_progress INTEGER NOT NULL DEFAULT 0",
       );
     }
+    if (pcCols.length > 0 && !pcCols.some((c) => c.name === "origin_remote")) {
+      sqlite.exec("ALTER TABLE project_cache ADD COLUMN origin_remote TEXT NOT NULL DEFAULT ''");
+    }
   }
 
   sqlite.exec(`
@@ -1144,6 +1147,7 @@ export function getCachedProjectList(): ProjectInfo[] | null {
     name: row.name,
     dir: row.dir,
     remote: row.remote,
+    originRemote: row.originRemote || row.remote,
     upstreamRemote: row.upstreamRemote,
     upstreamBranch: row.upstreamBranch,
     upstreamRef: row.upstreamRef,
@@ -1169,6 +1173,7 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
           name: p.name,
           dir: p.dir,
           remote: p.remote,
+          originRemote: p.originRemote,
           upstreamRemote: p.upstreamRemote,
           upstreamBranch: p.upstreamBranch,
           upstreamRef: p.upstreamRef,

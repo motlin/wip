@@ -69,6 +69,7 @@ function setupPolly(context: { name: string }): {
 function makeProject(overrides: Partial<ProjectInfo> & { name: string; dir: string }): ProjectInfo {
   return {
     remote: "owner/repo",
+    originRemote: "owner/repo",
     upstreamRemote: "origin",
     upstreamBranch: "main",
     upstreamRef: "origin/main",

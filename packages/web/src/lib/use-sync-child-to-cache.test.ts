@@ -8,6 +8,7 @@ function makeCommit(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "myproject",
     remote: "org/repo",
+    originRemote: "org/repo",
     sha: "aaa111",
     shortSha: "aaa111",
     subject: "fix something",
@@ -25,6 +26,7 @@ function makeBranch(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "myproject",
     remote: "org/repo",
+    originRemote: "org/repo",
     sha: "bbb222",
     shortSha: "bbb222",
     subject: "branch work",
@@ -46,6 +48,7 @@ function makePullRequest(overrides: Partial<GitChildResult> = {}): GitChildResul
   return {
     project: "myproject",
     remote: "org/repo",
+    originRemote: "org/repo",
     sha: "ccc333",
     shortSha: "ccc333",
     subject: "pr work",

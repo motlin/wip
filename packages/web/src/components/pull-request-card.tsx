@@ -57,7 +57,7 @@ export function PullRequestCard({ pr, category }: { pr: GitChildResult; category
   const commitsAhead = mergeStatus?.commitsAhead ?? pr.commitsAhead;
   const rebaseable = mergeStatus?.rebaseable ?? pr.rebaseable;
 
-  const ghBranchUrl = `https://github.com/${pr.remote}/tree/${pr.branch}`;
+  const ghBranchUrl = `https://github.com/${pr.originRemote}/tree/${pr.branch}`;
 
   const handleCancelTest = async () => {
     if (!testJob) return;

@@ -35,6 +35,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     name: "test-project",
     dir: "/tmp/test-project",
     remote: "origin",
+    originRemote: "origin",
     upstreamRemote: "upstream",
     upstreamBranch: "main",
     upstreamRef: "upstream/main",

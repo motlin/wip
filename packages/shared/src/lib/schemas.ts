@@ -244,6 +244,7 @@ export const ProjectInfoSchema = z.object({
   name: z.string(),
   dir: z.string(),
   remote: z.string(),
+  originRemote: z.string(),
   upstreamRemote: z.string(),
   upstreamBranch: z.string(),
   upstreamRef: z.string(),
@@ -321,6 +322,7 @@ export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 export const GitChildResultSchema = z.object({
   project: z.string(),
   remote: z.string(),
+  originRemote: z.string(),
   sha: shaSchema,
   shortSha: shortShaSchema,
   subject: z.string(),

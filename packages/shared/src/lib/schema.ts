@@ -296,6 +296,7 @@ export const projectCache = sqliteTable(
     name: text("name").notNull(),
     dir: text("dir").notNull(),
     remote: text("remote").notNull(),
+    originRemote: text("origin_remote").notNull().default(""),
     upstreamRemote: text("upstream_remote").notNull(),
     upstreamBranch: text("upstream_branch").notNull(),
     upstreamRef: text("upstream_ref").notNull(),

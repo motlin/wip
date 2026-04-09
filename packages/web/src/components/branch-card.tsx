@@ -75,7 +75,7 @@ export function BranchCard({ branch, category }: { branch: GitChildResult; categ
   const commitsAhead = mergeStatus?.commitsAhead ?? branch.commitsAhead;
   const rebaseable = mergeStatus?.rebaseable ?? branch.rebaseable;
 
-  const ghBranchUrl = `https://github.com/${branch.remote}/tree/${branch.branch}`;
+  const ghBranchUrl = `https://github.com/${branch.originRemote}/tree/${branch.branch}`;
 
   const handleCancelTest = async () => {
     if (!testJob) return;

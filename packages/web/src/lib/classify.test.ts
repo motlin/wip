@@ -15,6 +15,7 @@ function makePR(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "test",
     remote: "origin",
+    originRemote: "origin",
     sha: "abc123",
     shortSha: "abc",
     subject: "Test PR",
@@ -36,6 +37,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     name: "test",
     dir: "/tmp/test",
     remote: "origin",
+    originRemote: "origin",
     upstreamRemote: "origin",
     upstreamBranch: "main",
     upstreamRef: "origin/main",
@@ -52,6 +54,7 @@ function makeBranch(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "test",
     remote: "origin",
+    originRemote: "origin",
     sha: "abc123",
     shortSha: "abc",
     subject: "Test branch",
@@ -70,6 +73,7 @@ function makeCommit(overrides: Partial<GitChildResult> = {}): GitChildResult {
   return {
     project: "test",
     remote: "origin",
+    originRemote: "origin",
     sha: "abc123",
     shortSha: "abc",
     subject: "Test commit",

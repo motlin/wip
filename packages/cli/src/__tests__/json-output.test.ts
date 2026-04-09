@@ -68,6 +68,7 @@ const fakeProject: ProjectInfo = {
   name: "test-project",
   dir: "/tmp/fake-projects/test-project",
   remote: "user/test-project",
+  originRemote: "origin",
   upstreamRemote: "origin",
   upstreamBranch: "main",
   upstreamRef: "origin/main",

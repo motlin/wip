@@ -1190,15 +1190,19 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 
       if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
 
-      const [canonicalRepo, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
-        getCanonicalRepo(dir, upstreamRemote),
-        isDirty(dir),
-        isDetachedHead(dir),
-        git(dir, "branch", "--list"),
-        hasTestConfigured(dir),
-      ]);
+      const [canonicalRepo, originUrl, dirtyFlag, detached, branchList, hasTest] =
+        await Promise.all([
+          getCanonicalRepo(dir, upstreamRemote),
+          git(dir, "remote", "get-url", "origin"),
+          isDirty(dir),
+          isDetachedHead(dir),
+          git(dir, "branch", "--list"),
+          hasTestConfigured(dir),
+        ]);
 
       const ghRemote = `${canonicalRepo.owner}/${canonicalRepo.name}`;
+      const originParsed = parseRemoteUrl(originUrl);
+      const originRemote = originParsed ? `${originParsed.owner}/${originParsed.name}` : ghRemote;
       const branchCount = branchList
         .split("\n")
         .filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
@@ -1212,6 +1216,7 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
         name,
         dir,
         remote: ghRemote,
+        originRemote,
         upstreamRemote,
         upstreamBranch,
         upstreamRef,

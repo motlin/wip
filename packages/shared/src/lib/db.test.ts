@@ -443,6 +443,7 @@ describe("Children cache", () => {
     {
       project: "test-project",
       remote: "owner/repo",
+      originRemote: "owner/repo",
       sha: "abc123",
       shortSha: "abc",
       subject: "Fix bug",

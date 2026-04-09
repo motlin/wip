@@ -293,15 +293,19 @@ function ItemDetail() {
             </dd>
             {Object.entries(child).map(([key, value]) => {
               if (key === "subject" || key === "failureTail") return null;
-              const remoteName = "remote" in child ? (child as any).remote : undefined;
+              const originRemoteName =
+                "originRemote" in child ? (child as any).originRemote : undefined;
               const isRemote = "pushedToRemote" in child && (child as any).pushedToRemote;
               return (
                 <Fragment key={key}>
                   <dt className="text-text-400">{key}</dt>
                   <dd className="font-mono text-text-200 break-all">
-                    {key === "branch" && typeof value === "string" && isRemote && remoteName ? (
+                    {key === "branch" &&
+                    typeof value === "string" &&
+                    isRemote &&
+                    originRemoteName ? (
                       <a
-                        href={`https://github.com/${remoteName}/tree/${value}`}
+                        href={`https://github.com/${originRemoteName}/tree/${value}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:underline dark:text-blue-400"
@@ -345,9 +349,9 @@ function ItemDetail() {
                       typeof value === "object" &&
                       value &&
                       "branch" in value &&
-                      remoteName ? (
+                      originRemoteName ? (
                       <a
-                        href={`https://github.com/${remoteName}/tree/${(value as any).branch}`}
+                        href={`https://github.com/${originRemoteName}/tree/${(value as any).branch}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:underline dark:text-blue-400"

@@ -1190,17 +1190,15 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 
       if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
 
-      const [remote, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
-        git(dir, "remote", "get-url", "origin"),
+      const [canonicalRepo, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
+        getCanonicalRepo(dir, upstreamRemote),
         isDirty(dir),
         isDetachedHead(dir),
         git(dir, "branch", "--list"),
         hasTestConfigured(dir),
       ]);
 
-      // Extract owner/repo from any git remote URL format:
-      // git@github.com:owner/repo.git, git@SshAlias:owner/repo.git, https://github.com/owner/repo.git
-      const ghRemote = remote.replace(/^.*[:/]([^/]+\/[^/]+?)(?:\.git)?$/, "$1");
+      const ghRemote = `${canonicalRepo.owner}/${canonicalRepo.name}`;
       const branchCount = branchList
         .split("\n")
         .filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))

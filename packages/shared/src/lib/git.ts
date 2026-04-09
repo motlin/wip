@@ -728,12 +728,42 @@ async function fetchPrStatusesFromApi(
 ): Promise<PrStatuses> {
   const ghLogin = await getGhLogin();
 
-  let response: z.infer<typeof PrGraphQLResponseSchema>;
+  type PrNode = z.infer<typeof GraphQLPrNodeSchema>;
+  let allPrs: PrNode[] = [];
   try {
-    const { owner, name } = await getCanonicalRepo(dir, upstreamRemote);
+    const canonical = await getCanonicalRepo(dir, upstreamRemote);
     const client = getGitHubClient();
-    const raw = await client.graphql(PR_GRAPHQL_QUERY, { owner, name });
-    response = PrGraphQLResponseSchema.parse(raw);
+
+    // Query canonical (upstream) repo for PRs
+    const raw = await client.graphql(PR_GRAPHQL_QUERY, {
+      owner: canonical.owner,
+      name: canonical.name,
+    });
+    const response = PrGraphQLResponseSchema.parse(raw);
+    allPrs = response.data?.repository.pullRequests.nodes ?? [];
+
+    // Also query origin repo if it differs from canonical (catches fork-only PRs)
+    const originUrl = await git(dir, "remote", "get-url", "origin");
+    const origin = parseRemoteUrl(originUrl);
+    if (origin && (origin.owner !== canonical.owner || origin.name !== canonical.name)) {
+      try {
+        const originRaw = await client.graphql(PR_GRAPHQL_QUERY, {
+          owner: origin.owner,
+          name: origin.name,
+        });
+        const originResponse = PrGraphQLResponseSchema.parse(originRaw);
+        const originPrs = originResponse.data?.repository.pullRequests.nodes ?? [];
+        // Merge: upstream PRs take priority, add origin PRs for branches not already covered
+        const upstreamBranches = new Set(allPrs.map((pr) => pr.headRefName));
+        for (const pr of originPrs) {
+          if (!upstreamBranches.has(pr.headRefName)) {
+            allPrs.push(pr);
+          }
+        }
+      } catch {
+        // Origin query failed — continue with upstream PRs only
+      }
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     // Detect rate limiting and activate cooldown to prevent further calls
@@ -747,7 +777,6 @@ async function fetchPrStatusesFromApi(
     }
     return emptyPrStatuses();
   }
-  const allPrs = response.data?.repository.pullRequests.nodes ?? [];
   const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
   const toCache: CachedPrStatus[] = [];
 

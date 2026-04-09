@@ -125,7 +125,7 @@ describe("getPrStatuses", () => {
                   author: { login: "testuser" },
                   reviewDecision: "APPROVED",
                   mergeStateStatus: "CLEAN",
-                  reviews: { nodes: [] },
+                  reviewThreads: { nodes: [] },
                   commits: {
                     nodes: [
                       {
@@ -189,7 +189,7 @@ describe("getPrStatuses", () => {
                   author: { login: "testuser" },
                   reviewDecision: "CHANGES_REQUESTED",
                   mergeStateStatus: "CLEAN",
-                  reviews: { nodes: [{ state: "CHANGES_REQUESTED" }] },
+                  reviewThreads: { nodes: [] },
                   commits: {
                     nodes: [
                       {
@@ -227,6 +227,83 @@ describe("getPrStatuses", () => {
     ]);
   });
 
+  it("classifies commented only when unresolved review threads exist", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    const { polly, stop } = setupPolly({ name: "getPrStatuses-review-threads" });
+    pollyStop = stop;
+
+    polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
+      const body = JSON.parse(req.body as string) as { query: string };
+
+      if (body.query.includes("viewer")) {
+        res.status(200).json({ data: { viewer: { login: "testuser" } } });
+        return;
+      }
+
+      if (body.query.includes("parent")) {
+        res.status(200).json({ data: { repository: { parent: null } } });
+        return;
+      }
+
+      res.status(200).json({
+        data: {
+          repository: {
+            pullRequests: {
+              nodes: [
+                {
+                  headRefName: "has-threads",
+                  url: "https://github.com/owner/repo/pull/10",
+                  number: 10,
+                  author: { login: "testuser" },
+                  reviewDecision: null,
+                  mergeStateStatus: "CLEAN",
+                  reviewThreads: { nodes: [{ isResolved: false }] },
+                  commits: {
+                    nodes: [
+                      {
+                        commit: {
+                          statusCheckRollup: {
+                            state: "SUCCESS",
+                            contexts: { nodes: [] },
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  headRefName: "no-threads",
+                  url: "https://github.com/owner/repo/pull/11",
+                  number: 11,
+                  author: { login: "testuser" },
+                  reviewDecision: null,
+                  mergeStateStatus: "CLEAN",
+                  reviewThreads: { nodes: [] },
+                  commits: {
+                    nodes: [
+                      {
+                        commit: {
+                          statusCheckRollup: {
+                            state: "SUCCESS",
+                            contexts: { nodes: [] },
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      });
+    });
+
+    const statuses = await getPrStatuses(tempDir, "test-project-threads");
+    expect(statuses.review.get("has-threads")).toBe("commented");
+    expect(statuses.review.get("no-threads")).toBe("clean");
+  });
+
   it("classifies behind merge state", async () => {
     tempDir = createTestGitRepo("owner", "repo");
     const { polly, stop } = setupPolly({ name: "getPrStatuses-behind" });
@@ -257,7 +334,7 @@ describe("getPrStatuses", () => {
                   author: { login: "testuser" },
                   reviewDecision: null,
                   mergeStateStatus: "BEHIND",
-                  reviews: { nodes: [] },
+                  reviewThreads: { nodes: [] },
                   commits: {
                     nodes: [
                       {

@@ -387,7 +387,9 @@ const GraphQLPrNodeSchema = z.object({
   author: z.object({ login: z.string() }),
   reviewDecision: z.string().nullable(),
   mergeStateStatus: z.string(),
-  reviews: z.object({ nodes: z.array(z.object({ state: z.string() })) }),
+  reviewThreads: z.object({
+    nodes: z.array(z.object({ isResolved: z.boolean() })),
+  }),
   commits: z.object({
     nodes: z.array(
       z.object({
@@ -481,7 +483,7 @@ query($owner: String!, $name: String!) {
         author { login }
         reviewDecision
         mergeStateStatus
-        reviews(first: 10) { nodes { state } }
+        reviewThreads(first: 100) { nodes { isResolved } }
         commits(last: 1) {
           nodes {
             commit {
@@ -766,7 +768,7 @@ async function fetchPrStatusesFromApi(
       reviewStatus = "changes_requested";
     } else if (pr.reviewDecision === "APPROVED") {
       reviewStatus = "approved";
-    } else if (pr.reviews?.nodes?.some((r) => r.state === "COMMENTED" || r.state === "PENDING")) {
+    } else if (pr.reviewThreads?.nodes?.some((t) => !t.isResolved)) {
       reviewStatus = "commented";
     } else {
       reviewStatus = "clean";

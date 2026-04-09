@@ -540,6 +540,85 @@ export async function getRepoOwnerAndName(dir: string): Promise<{ owner: string;
   return { owner: match[1], name: match[2] };
 }
 
+function parseRemoteUrl(url: string): { owner: string; name: string } | undefined {
+  const match = url.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
+  if (!match?.[1] || !match[2]) return undefined;
+  return { owner: match[1], name: match[2] };
+}
+
+// Cache fork-parent lookups: "owner/name" → parent "owner/name" or null (not a fork)
+const forkParentCache = new Map<string, { owner: string; name: string } | null>();
+
+/**
+ * Resolve the canonical (upstream) repo for PR queries using a hybrid approach:
+ * 1. Try the upstream remote URL (free, no API call)
+ * 2. Fall back to GitHub fork-parent API (cached, handles origin-only forks)
+ * 3. Fall back to origin (for non-fork repos)
+ */
+async function getCanonicalRepo(
+  dir: string,
+  upstreamRemote?: string,
+): Promise<{ owner: string; name: string }> {
+  // Step 1: Try upstream remote
+  if (upstreamRemote && upstreamRemote !== "origin") {
+    const upstreamUrl = await git(dir, "remote", "get-url", upstreamRemote);
+    if (upstreamUrl) {
+      const parsed = parseRemoteUrl(upstreamUrl);
+      if (parsed) return parsed;
+    }
+  }
+
+  // Step 2: Resolve origin, then check if it's a fork
+  const originUrl = await git(dir, "remote", "get-url", "origin");
+  const origin = parseRemoteUrl(originUrl);
+  if (!origin) {
+    throw new Error(`Could not parse owner/repo from remote URL: ${originUrl}`);
+  }
+
+  const cacheKey = `${origin.owner}/${origin.name}`;
+  if (forkParentCache.has(cacheKey)) {
+    return forkParentCache.get(cacheKey) ?? origin;
+  }
+
+  try {
+    const client = getGitHubClient();
+    const raw = await client.graphql(
+      `query($owner: String!, $name: String!) {
+        repository(owner: $owner, name: $name) {
+          parent { owner { login } name }
+        }
+      }`,
+      { owner: origin.owner, name: origin.name },
+    );
+    const result = z
+      .object({
+        data: z.object({
+          repository: z.object({
+            parent: z
+              .object({ owner: z.object({ login: z.string() }), name: z.string() })
+              .nullable(),
+          }),
+        }),
+      })
+      .safeParse(raw);
+
+    if (result.success && result.data.data.repository.parent) {
+      const parent = {
+        owner: result.data.data.repository.parent.owner.login,
+        name: result.data.data.repository.parent.name,
+      };
+      forkParentCache.set(cacheKey, parent);
+      return parent;
+    }
+    forkParentCache.set(cacheKey, null);
+  } catch {
+    // API failure — don't cache, fall through to origin
+  }
+
+  // Step 3: Not a fork, use origin
+  return origin;
+}
+
 function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
   const review = new Map<string, ReviewStatus>();
   const checks = new Map<string, CheckStatus>();
@@ -603,7 +682,11 @@ function emptyPrStatuses(): PrStatuses {
  * Multiple concurrent callers for the same repo will share a single
  * API request rather than each firing their own GraphQL query.
  */
-export async function getPrStatuses(dir: string, projectName?: string): Promise<PrStatuses> {
+export async function getPrStatuses(
+  dir: string,
+  projectName?: string,
+  upstreamRemote?: string,
+): Promise<PrStatuses> {
   // Check cache first (fast path, no API call needed)
   if (projectName) {
     const cached = getCachedPrStatuses(projectName);
@@ -627,7 +710,7 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
     return inflight;
   }
 
-  const promise = fetchPrStatusesFromApi(dir, projectName);
+  const promise = fetchPrStatusesFromApi(dir, projectName, upstreamRemote);
   inflightPrRequests.set(dedupeKey, promise);
   try {
     return await promise;
@@ -636,12 +719,16 @@ export async function getPrStatuses(dir: string, projectName?: string): Promise<
   }
 }
 
-async function fetchPrStatusesFromApi(dir: string, projectName?: string): Promise<PrStatuses> {
+async function fetchPrStatusesFromApi(
+  dir: string,
+  projectName?: string,
+  upstreamRemote?: string,
+): Promise<PrStatuses> {
   const ghLogin = await getGhLogin();
 
   let response: z.infer<typeof PrGraphQLResponseSchema>;
   try {
-    const { owner, name } = await getRepoOwnerAndName(dir);
+    const { owner, name } = await getCanonicalRepo(dir, upstreamRemote);
     const client = getGitHubClient();
     const raw = await client.graphql(PR_GRAPHQL_QUERY, { owner, name });
     response = PrGraphQLResponseSchema.parse(raw);

@@ -104,6 +104,14 @@ describe("getPrStatuses", () => {
         return;
       }
 
+      // Handle fork-parent check (getCanonicalRepo)
+      if (body.query.includes("parent")) {
+        res.status(200).json({
+          data: { repository: { parent: null } },
+        });
+        return;
+      }
+
       // Handle PR statuses request
       res.status(200).json({
         data: {
@@ -148,7 +156,7 @@ describe("getPrStatuses", () => {
     // Second call should use cache (no additional HTTP calls)
     const cached = await getPrStatuses(tempDir, "test-project");
     expect(cached.review.get("feature-branch")).toBe("approved");
-    expect(callCount).toBe(2); // viewer login + PR statuses, no third call
+    expect(callCount).toBe(3); // viewer login + fork-parent check + PR statuses, no fourth call
   });
 
   it("classifies changes_requested review status", async () => {
@@ -161,6 +169,11 @@ describe("getPrStatuses", () => {
 
       if (body.query.includes("viewer")) {
         res.status(200).json({ data: { viewer: { login: "testuser" } } });
+        return;
+      }
+
+      if (body.query.includes("parent")) {
+        res.status(200).json({ data: { repository: { parent: null } } });
         return;
       }
 
@@ -227,6 +240,11 @@ describe("getPrStatuses", () => {
         return;
       }
 
+      if (body.query.includes("parent")) {
+        res.status(200).json({ data: { repository: { parent: null } } });
+        return;
+      }
+
       res.status(200).json({
         data: {
           repository: {
@@ -288,6 +306,11 @@ describe("getPrStatuses", () => {
 
       if (body.query.includes("viewer")) {
         res.status(200).json({ data: { viewer: { login: "testuser" } } });
+        return;
+      }
+
+      if (body.query.includes("parent")) {
+        res.status(200).json({ data: { repository: { parent: null } } });
         return;
       }
 

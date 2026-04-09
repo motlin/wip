@@ -170,7 +170,7 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
       return [];
     }
 
-    const prStatuses = await getPrStatuses(p.dir, p.name);
+    const prStatuses = await getPrStatuses(p.dir, p.name, p.upstreamRemote);
 
     const upstreamSha = getCachedUpstreamSha(p.name);
     const mergeStatusMap = new Map<
@@ -1056,7 +1056,7 @@ export const getChildBySha = createServerFn({ method: "GET" })
 
         if (branch) {
           const [prStatuses, remoteBranchInfo] = await Promise.all([
-            getPrStatuses(p.dir, p.name),
+            getPrStatuses(p.dir, p.name, p.upstreamRemote),
             getRemoteBranchInfo(p.dir),
           ]);
           prUrl = prStatuses.urls.get(branch);

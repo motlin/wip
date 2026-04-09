@@ -7,3 +7,4 @@ packages/web/src/routeTree.gen.ts
 .playwright-mcp/
 logs/
 .claude/
+.llm/

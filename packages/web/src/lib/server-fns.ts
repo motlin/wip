@@ -76,6 +76,8 @@ import {
 
 import { tracedExeca } from "@wip/shared/services/traced-execa.js";
 import { getTracer } from "@wip/shared/services/telemetry.js";
+import { childrenEmitter } from "./children-events.js";
+import { todoEmitter } from "./todo-events.js";
 import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -288,6 +290,7 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
     });
 
     cacheChildren(projectName, results);
+    childrenEmitter.emit("children", { project: projectName, children: results });
     return results;
   });
 
@@ -341,6 +344,7 @@ async function refreshProjectTodos(projectName: string): Promise<SharedTodoItem[
       sourceLabel: path.relative(p.dir, task.sourceFile),
     }));
     cacheTodos(projectName, todos);
+    todoEmitter.emit("todos", { project: projectName, todos });
     return todos;
   });
 

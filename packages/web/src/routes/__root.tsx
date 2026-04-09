@@ -13,6 +13,8 @@ import appCss from "../styles/globals.css?url";
 import { TaskEventsProvider } from "../lib/task-events-context";
 import { MergeEventsProvider } from "../lib/merge-events-context";
 import { ProjectEventsProvider } from "../lib/project-events-context";
+import { ChildrenEventsProvider } from "../lib/children-events-context";
+import { TodoEventsProvider } from "../lib/todo-events-context";
 import { useTheme } from "../lib/use-theme";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -45,52 +47,60 @@ function RootComponent() {
       <TaskEventsProvider>
         <MergeEventsProvider>
           <ProjectEventsProvider>
-            <div className="min-h-screen bg-bg-000">
-              <nav className="flex items-center gap-4 border-b border-border-300/50 px-6 py-2 text-sm">
-                <Link to="/" className="font-semibold text-text-100 hover:text-text-000">
-                  WIP
-                </Link>
-                <Link
-                  to="/queue"
-                  className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
-                >
-                  Queue
-                </Link>
-                <Link
-                  to="/kanban"
-                  className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
-                >
-                  Kanban
-                </Link>
-                <Link
-                  to="/snoozed"
-                  className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
-                >
-                  Snoozed
-                </Link>
-                <Link
-                  to="/tasks"
-                  className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
-                >
-                  Tasks
-                </Link>
-                <Link
-                  to="/states"
-                  className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
-                >
-                  States
-                </Link>
-                <button
-                  type="button"
-                  onClick={toggle}
-                  className="ml-auto rounded p-1.5 text-text-400 transition-colors hover:bg-bg-200 hover:text-text-100"
-                  title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </button>
-              </nav>
-              <Outlet />
-            </div>
+            <ChildrenEventsProvider>
+              <TodoEventsProvider>
+                <div className="min-h-screen bg-bg-000">
+                  <nav className="flex items-center gap-4 border-b border-border-300/50 px-6 py-2 text-sm">
+                    <Link to="/" className="font-semibold text-text-100 hover:text-text-000">
+                      WIP
+                    </Link>
+                    <Link
+                      to="/queue"
+                      className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+                    >
+                      Queue
+                    </Link>
+                    <Link
+                      to="/kanban"
+                      className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+                    >
+                      Kanban
+                    </Link>
+                    <Link
+                      to="/snoozed"
+                      className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+                    >
+                      Snoozed
+                    </Link>
+                    <Link
+                      to="/tasks"
+                      className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+                    >
+                      Tasks
+                    </Link>
+                    <Link
+                      to="/states"
+                      className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+                    >
+                      States
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={toggle}
+                      className="ml-auto rounded p-1.5 text-text-400 transition-colors hover:bg-bg-200 hover:text-text-100"
+                      title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                    >
+                      {theme === "dark" ? (
+                        <Sun className="h-4 w-4" />
+                      ) : (
+                        <Moon className="h-4 w-4" />
+                      )}
+                    </button>
+                  </nav>
+                  <Outlet />
+                </div>
+              </TodoEventsProvider>
+            </ChildrenEventsProvider>
           </ProjectEventsProvider>
         </MergeEventsProvider>
       </TaskEventsProvider>

@@ -6,6 +6,7 @@ import { Diff, GitBranch, Loader2, Info } from "lucide-react";
 import { createBranch } from "../lib/server-fns";
 import { AnsiText } from "./ansi-text";
 import { CategoryBadge } from "./category-badge";
+import { BranchActions } from "./commit-actions";
 
 export function CommitCard({ commit, category }: { commit: GitChildResult; category?: Category }) {
   const queryClient = useQueryClient();
@@ -139,6 +140,11 @@ export function CommitCard({ commit, category }: { commit: GitChildResult; categ
         )}
         {error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
+      {category && (
+        <div className="mt-2 border-t border-border-300/20 pt-2">
+          <BranchActions item={commit} category={category} layout="row" />
+        </div>
+      )}
     </div>
   );
 }

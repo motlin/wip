@@ -60,7 +60,7 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
   checks_failed: ["open_pr_link", "apply_fixes", "refresh"],
   checks_running: ["open_pr_link", "force_push", "refresh"],
   checks_unknown: ["open_pr_link", "force_push", "refresh"],
-  pushed_no_pr: ["force_push", "refresh", "rename"],
+  pushed_no_pr: ["force_push", "refresh", "rename", "delete_branch"],
   ready_to_push: ["refresh", "rename", "delete_branch"],
   needs_split: ["refresh", "rename"],
   needs_rebase: ["refresh", "rename"],

@@ -298,10 +298,19 @@ function ItemDetail() {
                 <Fragment key={key}>
                   <dt className="text-text-400">{key}</dt>
                   <dd className="font-mono text-text-200 break-all">
-                    {key === "branch" &&
-                    typeof value === "string" &&
-                    isRemote &&
-                    originRemoteName ? (
+                    {(key === "remote" || key === "originRemote") && typeof value === "string" ? (
+                      <a
+                        href={`https://github.com/${value}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        {value}
+                      </a>
+                    ) : key === "branch" &&
+                      typeof value === "string" &&
+                      isRemote &&
+                      originRemoteName ? (
                       <a
                         href={`https://github.com/${originRemoteName}/tree/${value}`}
                         target="_blank"

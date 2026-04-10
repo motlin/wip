@@ -501,51 +501,6 @@ describe("getProjectItemsFn (underlying logic)", () => {
   });
 });
 
-// -- getChildBySha() --
-
-describe("getChildBySha (underlying logic)", () => {
-  it("returns commit details for a valid SHA", async () => {
-    const dir = await createTestGitRepo();
-    await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Lookup commit"]);
-
-    const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
-
-    // Simulate what getChildBySha does: git log -1 --format=...
-    const logResult = await execa("git", [
-      "-C",
-      dir,
-      "log",
-      "-1",
-      "--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D",
-      sha,
-    ]);
-
-    const fields = logResult.stdout.split("\0");
-    expect(fields[0]).toBe(sha);
-    expect(fields[2]).toBe("Lookup commit");
-  });
-
-  it("returns failure for an invalid SHA", async () => {
-    const dir = await createTestGitRepo();
-
-    const result = await execa(
-      "git",
-      [
-        "-C",
-        dir,
-        "log",
-        "-1",
-        "--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D",
-        "0000000000000000000000000000000000000000",
-      ],
-      { reject: false },
-    );
-
-    // Invalid SHA causes git log to fail (non-zero exit code)
-    expect(result.exitCode).not.toBe(0);
-  });
-});
-
 // -- getProjectTodos() --
 
 describe("getProjectTodos (underlying logic)", () => {

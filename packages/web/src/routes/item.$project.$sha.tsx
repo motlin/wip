@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Loader2,
@@ -21,7 +21,7 @@ import { PullRequestCard } from "../components/pull-request-card";
 import { DiffPanel } from "../components/diff-section";
 import { AnsiText } from "../components/ansi-text";
 import {
-  childByShaQueryOptions,
+  projectChildrenQueryOptions,
   diffQueryOptions,
   workingTreeDiffQueryOptions,
   testLogQueryOptions,
@@ -31,14 +31,13 @@ import {
 import { classifyCommit, classifyBranch, classifyPullRequest } from "../lib/classify";
 import { applyTransition } from "@wip/shared";
 import { CATEGORIES, CATEGORY_PRIORITY } from "../lib/category-actions";
-import { useSyncChildToCache } from "../lib/use-sync-child-to-cache";
 import { useTestJob, useTestLog } from "../lib/task-events-context";
 import { useAutoTail } from "../lib/use-auto-tail";
 
 export const Route = createFileRoute("/item/$project/$sha")({
   loader: ({ context: { queryClient }, params }) =>
     Promise.all([
-      queryClient.ensureQueryData(childByShaQueryOptions(params.project, params.sha)),
+      queryClient.ensureQueryData(projectChildrenQueryOptions(params.project)),
       queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
       queryClient.ensureQueryData(testLogQueryOptions(params.project, params.sha)),
       queryClient.ensureQueryData(projectsQueryOptions()),
@@ -80,8 +79,8 @@ function ItemDetailError({ error }: { error: unknown }) {
 
 function ItemDetail() {
   const { project, sha } = Route.useParams();
-  const queryClient = useQueryClient();
-  const { data: child } = useSuspenseQuery(childByShaQueryOptions(project, sha));
+  const { data: children } = useSuspenseQuery(projectChildrenQueryOptions(project));
+  const child = children.find((c) => c.sha === sha) ?? null;
   const {
     data: { files, stat },
   } = useSuspenseQuery(diffQueryOptions(project, sha));
@@ -90,7 +89,6 @@ function ItemDetail() {
   } = useSuspenseQuery(testLogQueryOptions(project, sha));
   const { data: projects } = useSuspenseQuery(projectsQueryOptions());
   const { data: snoozedItems } = useSuspenseQuery(snoozedQueryOptions());
-  useSyncChildToCache(queryClient, project, child);
   const projectInfo = projects.find((p) => p.name === project);
   const isSnoozed = snoozedItems.some((s) => s.project === project && s.sha === sha);
   const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);

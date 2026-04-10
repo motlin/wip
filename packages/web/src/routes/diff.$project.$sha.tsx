@@ -4,14 +4,18 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import "@git-diff-view/react/styles/diff-view.css";
 import { BranchActions, PullRequestActions } from "../components/commit-actions";
 import { FileDiffSection, DiffToolbar } from "../components/diff-section";
-import { diffQueryOptions, childByShaQueryOptions, projectsQueryOptions } from "../lib/queries";
+import {
+  diffQueryOptions,
+  projectChildrenQueryOptions,
+  projectsQueryOptions,
+} from "../lib/queries";
 import { classifyBranch, classifyPullRequest } from "../lib/classify";
 
 export const Route = createFileRoute("/diff/$project/$sha")({
   loader: ({ context: { queryClient }, params }) =>
     Promise.all([
       queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
-      queryClient.ensureQueryData(childByShaQueryOptions(params.project, params.sha)),
+      queryClient.ensureQueryData(projectChildrenQueryOptions(params.project)),
       queryClient.ensureQueryData(projectsQueryOptions()),
     ]),
   head: ({ params }) => ({
@@ -25,7 +29,8 @@ function DiffViewer() {
   const {
     data: { files, stat, subject },
   } = useSuspenseQuery(diffQueryOptions(project, sha));
-  const { data: child } = useSuspenseQuery(childByShaQueryOptions(project, sha));
+  const { data: children } = useSuspenseQuery(projectChildrenQueryOptions(project));
+  const child = children.find((c) => c.sha === sha) ?? null;
   const { data: projects } = useSuspenseQuery(projectsQueryOptions());
   const projectInfo = projects.find((p) => p.name === project);
   const [mode, setMode] = useState<"split" | "unified">("split");

@@ -12,7 +12,6 @@ import {
   getCommitDiff,
   getWorkingTreeDiff,
   getTestLog,
-  getChildBySha,
 } from "./server-fns";
 
 export const projectsQueryOptions = () =>
@@ -75,14 +74,6 @@ export const diffQueryOptions = (project: string, sha: string) =>
     queryFn: () => getCommitDiff({ data: { project, sha } }),
     staleTime: Infinity,
     gcTime: Infinity,
-  });
-
-export const childByShaQueryOptions = (project: string, sha: string) =>
-  queryOptions({
-    queryKey: ["child", project, sha],
-    queryFn: () => getChildBySha({ data: { project, sha } }),
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
   });
 
 export const testLogQueryOptions = (project: string, sha: string) =>

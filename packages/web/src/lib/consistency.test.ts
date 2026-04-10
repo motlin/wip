@@ -122,8 +122,8 @@ describe("ChildCommit from getNeedsRebaseBranches should carry correct propertie
   it("a child with prUrl+prNumber should classify as a pull request, not a branch", () => {
     // When getNeedsRebaseBranches doesn't look up prStatuses, it won't set
     // prUrl/prNumber, so the child classifies via classifyBranch instead of
-    // classifyPullRequest. The detail page (getChildBySha) correctly sets
-    // prUrl/prNumber. This causes the same item to classify differently.
+    // classifyPullRequest. This causes the item to classify differently
+    // depending on which code path built it.
 
     const childWithPr: ChildCommit = {
       sha: "abc123",

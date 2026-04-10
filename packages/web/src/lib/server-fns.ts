@@ -19,9 +19,7 @@ import {
   invalidatePrCache,
   invalidateIssuesCache,
   invalidateProjectItemsCache,
-  isSkippable,
   log,
-  parseBranch,
   snoozeItem,
   suggestBranchNames,
   unsnoozeItem,
@@ -1005,118 +1003,6 @@ export const refreshChild = createServerFn({ method: "POST" })
         invalidatePrCache(data.project);
         invalidateChildrenCache(data.project);
         return { ok: true, message: `Refreshed ${data.project}` };
-      }),
-  );
-
-export const getChildBySha = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
-    z.object({ project: z.string(), sha: z.string() }).parse(input),
-  )
-  .handler(
-    async ({ data }): Promise<GitChildResult | null> =>
-      traced("getChildBySha", async () => {
-        let p: ProjectInfo;
-        try {
-          p = await resolveProject(data.project);
-        } catch (error: unknown) {
-          log.general.error({ project: data.project, error }, "Project resolution failed");
-          return null;
-        }
-
-        const logResult = await tracedExeca(
-          "git",
-          [
-            "-C",
-            p.dir,
-            "log",
-            "-1",
-            "--decorate-refs=refs/heads/",
-            "--format=%H%x00%h%x00%s%x00%B%x00%ai%x00%D",
-            data.sha,
-          ],
-          { reject: false },
-        );
-        if (logResult.exitCode !== 0) return null;
-
-        const childFields = logResult.stdout.split("\0");
-        const sha = childFields[0] ?? "";
-        const shortSha = childFields[1] ?? "";
-        const subject = childFields[2] ?? "";
-        const fullMessage = childFields[3] ?? "";
-        const date = childFields[4] ?? "";
-        const decorations = childFields[5] ?? "";
-        const skippable = isSkippable(fullMessage);
-
-        const testResults = p.hasTestConfigured ? getTestResultsForProject(p.name) : new Map();
-        const testStatus = skippable
-          ? ("unknown" as const)
-          : (testResults.get(sha) ?? ("unknown" as const));
-
-        const upstreamSha = getCachedUpstreamSha(p.name);
-        const ms = upstreamSha
-          ? getCachedMergeStatuses(p.name, upstreamSha).find((s) => s.sha === sha)
-          : undefined;
-
-        const branch = parseBranch(decorations);
-
-        let pushedToRemote = false;
-        let localAhead: boolean | undefined;
-        let prUrl: string | undefined;
-        let prNumber: number | undefined;
-        let reviewStatus: import("@wip/shared").ReviewStatus = "no_pr";
-        let checkStatus: import("@wip/shared").CheckStatus = "none";
-        let failedChecks: Array<{ name: string; url?: string }> | undefined;
-
-        if (branch) {
-          const [prStatuses, remoteBranchInfo] = await Promise.all([
-            getPrStatuses(p.dir, p.name, p.upstreamRemote),
-            getRemoteBranchInfo(p.dir),
-          ]);
-          prUrl = prStatuses.urls.get(branch);
-          prNumber = prStatuses.prNumbers.get(branch);
-          pushedToRemote = remoteBranchInfo.remoteBranches.has(branch);
-          failedChecks = prStatuses.failedChecks.get(branch);
-          reviewStatus = prStatuses.review.get(branch) ?? "no_pr";
-          checkStatus = prStatuses.checks.get(branch) ?? "none";
-
-          // Detect if local branch is ahead of remote tracking branch
-          if (pushedToRemote) {
-            const remoteRef = remoteBranchInfo.remoteBranchRefs.get(branch);
-            if (remoteRef) {
-              const remoteSha = await tracedExeca("git", ["-C", p.dir, "rev-parse", remoteRef], {
-                reject: false,
-              });
-              localAhead =
-                remoteSha.exitCode === 0 &&
-                remoteSha.stdout.trim() !== "" &&
-                remoteSha.stdout.trim() !== sha;
-            }
-          }
-        }
-
-        return {
-          project: p.name,
-          remote: p.remote,
-          originRemote: p.originRemote,
-          sha,
-          shortSha,
-          subject,
-          date,
-          branch,
-          skippable,
-          testStatus,
-          checkStatus,
-          pushedToRemote,
-          localAhead,
-          needsRebase: ms ? ms.commitsBehind > 0 : false,
-          reviewStatus,
-          prUrl,
-          prNumber,
-          failedChecks,
-          commitsBehind: ms?.commitsBehind,
-          commitsAhead: ms?.commitsAhead,
-          rebaseable: ms?.rebaseable ?? undefined,
-        };
       }),
   );
 

@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
 
+import { sql } from "drizzle-orm";
+
 import {
   initDb,
   resetDb,
+  getDb,
   cachePrStatuses,
   getCachedPrStatuses,
   getStalePrStatuses,
@@ -395,13 +398,68 @@ describe("Cache TTL expiry", () => {
         behind: false,
       },
     ]);
-    // getCachedPrStatuses uses a built-in 10-minute TTL, so stale data returns null
-    // We can only test that getStalePrStatuses (no TTL) returns data while getCachedPrStatuses
-    // returns it when fresh (which it will be since we just cached it)
     const stale = getStalePrStatuses("test-project");
     expect(stale).not.toBeNull();
     const fresh = getCachedPrStatuses("test-project");
     expect(fresh).not.toBeNull();
+  });
+
+  it("returns all current PR rows when some are old and some are new", () => {
+    // Simulate the real bug: cache 2 branches, then age one of them past the TTL.
+    // When a second cache call only updates the changed branch, the unchanged
+    // branch keeps its old systemFrom. getCachedPrStatuses must still return both.
+    cachePrStatuses("test-project", [
+      {
+        branch: "feature/unchanged",
+        reviewStatus: "clean",
+        checkStatus: "passed",
+        prUrl: "https://github.com/org/repo/pull/1",
+        behind: false,
+      },
+      {
+        branch: "feature/will-change",
+        reviewStatus: "clean",
+        checkStatus: "passed",
+        prUrl: "https://github.com/org/repo/pull/2",
+        behind: false,
+      },
+    ]);
+
+    // Age all rows to 20 minutes ago (past the 10-minute TTL)
+    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000)
+      .toISOString()
+      .replace("T", " ")
+      .replace("Z", "");
+    const d = getDb();
+    d.run(
+      sql`UPDATE pr_status_cache SET system_from = ${oldTimestamp} WHERE project = 'test-project'`,
+    );
+
+    // Now update only one branch (simulates a real API refresh where one PR changed)
+    cachePrStatuses("test-project", [
+      {
+        branch: "feature/unchanged",
+        reviewStatus: "clean",
+        checkStatus: "passed",
+        prUrl: "https://github.com/org/repo/pull/1",
+        behind: false,
+      },
+      {
+        branch: "feature/will-change",
+        reviewStatus: "changes_requested",
+        checkStatus: "failed",
+        prUrl: "https://github.com/org/repo/pull/2",
+        behind: false,
+      },
+    ]);
+
+    // feature/unchanged still has old systemFrom, feature/will-change has a fresh one.
+    // getCachedPrStatuses must return BOTH.
+    const cached = getCachedPrStatuses("test-project");
+    expect(cached).not.toBeNull();
+    expect(cached).toHaveLength(2);
+    const branches = cached!.map((c) => c.branch).sort();
+    expect(branches).toEqual(["feature/unchanged", "feature/will-change"]);
   });
 });
 

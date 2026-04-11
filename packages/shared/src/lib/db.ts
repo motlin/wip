@@ -685,7 +685,25 @@ export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
     .replace("T", " ")
     .replace("Z", "");
 
-  return queryPrStatusesWithChecks(d, project, sql`${prStatusCache.systemFrom} > ${cutoff}`);
+  // Check if any current row was written within the TTL window.
+  // cachePrStatuses only updates systemFrom on changed rows, so unchanged rows
+  // retain their original systemFrom. We use the max systemFrom as a proxy for
+  // "the cache was refreshed recently" and then return ALL current-state rows.
+  const sample = d
+    .select({ systemFrom: prStatusCache.systemFrom })
+    .from(prStatusCache)
+    .where(
+      and(
+        eq(prStatusCache.project, project),
+        eq(prStatusCache.systemTo, FAR_FUTURE),
+        sql`${prStatusCache.systemFrom} > ${cutoff}`,
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!sample) return null;
+
+  return queryPrStatusesWithChecks(d, project);
 }
 
 export function getStalePrStatuses(project: string): CachedPrStatus[] | null {

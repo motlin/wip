@@ -17,6 +17,14 @@ import {
   getAllSnoozedForDisplay,
   cacheMiseEnv,
   getCachedMiseEnv,
+  cacheGhLogin,
+  getCachedGhLogin,
+  cacheUpstreamSha,
+  getCachedUpstreamSha,
+  setBranchName,
+  getBranchName,
+  recordTestResult,
+  getTestResultsForProject,
   type CachedPrStatus,
 } from "./db.js";
 import { cacheIssues, getCachedIssues } from "./db.js";
@@ -865,6 +873,392 @@ describe("cacheProjectItems deduplication", () => {
     expect(cached![0]!.status).toBe("In Progress");
 
     const allRows = getDb().all(sql`SELECT * FROM github_project_items`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("setBranchName deduplication", () => {
+  it("skips re-insert when branch name is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    setBranchName("abc123", "test-project", "feature/foo");
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    setBranchName("abc123", "test-project", "feature/foo");
+
+    const rows = getDb().all(sql`SELECT * FROM branch_names`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when branch name changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    setBranchName("abc123", "test-project", "feature/foo");
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    setBranchName("abc123", "test-project", "feature/bar");
+
+    const cached = getBranchName("abc123", "test-project");
+    expect(cached).toBe("feature/bar");
+
+    const allRows = getDb().all(sql`SELECT * FROM branch_names`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("recordTestResult deduplication", () => {
+  it("skips re-insert when test result is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    recordTestResult("abc123", "test-project", "passed", 0, 1234);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    recordTestResult("abc123", "test-project", "passed", 0, 1234);
+
+    const rows = getDb().all(sql`SELECT * FROM test_results`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when test status changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    recordTestResult("abc123", "test-project", "passed", 0, 1234);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    recordTestResult("abc123", "test-project", "failed", 1, 5678);
+
+    const cached = getTestResultsForProject("test-project");
+    expect(cached.get("abc123")).toBe("failed");
+
+    const allRows = getDb().all(sql`SELECT * FROM test_results`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheMiseEnv deduplication", () => {
+  it("skips re-insert when env is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const env = { PATH: "/usr/bin", HOME: "/home/user" };
+    cacheMiseEnv("/projects/test", env);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheMiseEnv("/projects/test", env);
+
+    const rows = getDb().all(sql`SELECT * FROM mise_env_cache`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when env changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheMiseEnv("/projects/test", { PATH: "/usr/bin" });
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheMiseEnv("/projects/test", { PATH: "/usr/local/bin" });
+
+    const cached = getCachedMiseEnv("/projects/test");
+    expect(cached).toStrictEqual({ PATH: "/usr/local/bin" });
+
+    const allRows = getDb().all(sql`SELECT * FROM mise_env_cache`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheGhLogin deduplication", () => {
+  it("skips re-insert when login is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheGhLogin("octocat");
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheGhLogin("octocat");
+
+    const rows = getDb().all(sql`SELECT * FROM gh_login_cache`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when login changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheGhLogin("octocat");
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheGhLogin("newuser");
+
+    const cached = getCachedGhLogin();
+    expect(cached).toBe("newuser");
+
+    const allRows = getDb().all(sql`SELECT * FROM gh_login_cache`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheUpstreamSha deduplication", () => {
+  it("skips re-insert when ref and sha are unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheUpstreamSha("test-project", "upstream/main", "abc123");
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheUpstreamSha("test-project", "upstream/main", "abc123");
+
+    const rows = getDb().all(sql`SELECT * FROM upstream_refs`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when sha changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheUpstreamSha("test-project", "upstream/main", "abc123");
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheUpstreamSha("test-project", "upstream/main", "def456");
+
+    const cached = getCachedUpstreamSha("test-project");
+    expect(cached).toBe("def456");
+
+    const allRows = getDb().all(sql`SELECT * FROM upstream_refs`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheMergeStatus deduplication", () => {
+  it("skips re-insert when merge status is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 1, true);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 1, true);
+
+    const rows = getDb().all(sql`SELECT * FROM merge_status`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when commits behind changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 1, true);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 5, true);
+
+    const cached = getCachedMergeStatuses("test-project", "upstream-sha");
+    expect(cached).toHaveLength(1);
+    expect(cached[0]!.commitsBehind).toBe(5);
+
+    const allRows = getDb().all(sql`SELECT * FROM merge_status`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheChildren deduplication", () => {
+  it("skips re-insert when children JSON is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const children = [
+      {
+        project: "test-project",
+        remote: "owner/repo",
+        originRemote: "owner/repo",
+        sha: "abc123",
+        shortSha: "abc",
+        subject: "Fix bug",
+        date: "2024-01-01",
+        testStatus: "passed" as const,
+        checkStatus: "passed" as const,
+        skippable: false,
+        pushedToRemote: true,
+        needsRebase: false,
+        reviewStatus: "approved" as const,
+      },
+    ];
+    cacheChildren("test-project", children);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheChildren("test-project", children);
+
+    const rows = getDb().all(sql`SELECT * FROM children_cache`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when children data changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const children = [
+      {
+        project: "test-project",
+        remote: "owner/repo",
+        originRemote: "owner/repo",
+        sha: "abc123",
+        shortSha: "abc",
+        subject: "Fix bug",
+        date: "2024-01-01",
+        testStatus: "passed" as const,
+        checkStatus: "passed" as const,
+        skippable: false,
+        pushedToRemote: true,
+        needsRebase: false,
+        reviewStatus: "approved" as const,
+      },
+    ];
+    cacheChildren("test-project", children);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheChildren("test-project", [{ ...children[0]!, sha: "def456" }]);
+
+    const cached = getCachedChildren("test-project");
+    expect(cached![0]!.sha).toBe("def456");
+
+    const allRows = getDb().all(sql`SELECT * FROM children_cache`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheTodos deduplication", () => {
+  it("skips re-insert when todos JSON is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const todos = [
+      {
+        project: "test-project",
+        title: "Fix the thing",
+        sourceFile: "/path/to/todo.md",
+        sourceLabel: "todo.md",
+      },
+    ];
+    cacheTodos("test-project", todos);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheTodos("test-project", todos);
+
+    const rows = getDb().all(sql`SELECT * FROM todos_cache`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when todos data changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheTodos("test-project", [
+      {
+        project: "test-project",
+        title: "Fix the thing",
+        sourceFile: "/path/to/todo.md",
+        sourceLabel: "todo.md",
+      },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheTodos("test-project", [
+      {
+        project: "test-project",
+        title: "New todo",
+        sourceFile: "/path/to/new.md",
+        sourceLabel: "new.md",
+      },
+    ]);
+
+    const cached = getCachedTodos("test-project");
+    expect(cached![0]!.title).toBe("New todo");
+
+    const allRows = getDb().all(sql`SELECT * FROM todos_cache`) as Array<{
       system_to: string;
     }>;
     expect(allRows).toHaveLength(2);

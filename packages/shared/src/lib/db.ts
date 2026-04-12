@@ -595,8 +595,9 @@ export function setBranchName(sha: string, project: string, name: string): void 
   const timestamp = now();
 
   d.transaction((tx) => {
-    tx.update(branchNames)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(branchNames)
       .where(
         and(
           eq(branchNames.sha, sha),
@@ -604,7 +605,22 @@ export function setBranchName(sha: string, project: string, name: string): void 
           eq(branchNames.systemTo, FAR_FUTURE),
         ),
       )
-      .run();
+      .get();
+
+    if (existing && existing.name === name) return;
+
+    if (existing) {
+      tx.update(branchNames)
+        .set({ systemTo: timestamp })
+        .where(
+          and(
+            eq(branchNames.sha, sha),
+            eq(branchNames.project, project),
+            eq(branchNames.systemTo, FAR_FUTURE),
+          ),
+        )
+        .run();
+    }
 
     tx.insert(branchNames)
       .values({ sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE })
@@ -643,8 +659,9 @@ export function recordTestResult(
   const timestamp = now();
 
   d.transaction((tx) => {
-    tx.update(testResults)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(testResults)
       .where(
         and(
           eq(testResults.sha, sha),
@@ -653,7 +670,30 @@ export function recordTestResult(
           eq(testResults.systemTo, FAR_FUTURE),
         ),
       )
-      .run();
+      .get();
+
+    if (
+      existing &&
+      existing.status === status &&
+      existing.exitCode === exitCode &&
+      existing.durationMs === durationMs
+    ) {
+      return;
+    }
+
+    if (existing) {
+      tx.update(testResults)
+        .set({ systemTo: timestamp })
+        .where(
+          and(
+            eq(testResults.sha, sha),
+            eq(testResults.project, project),
+            eq(testResults.testName, testName),
+            eq(testResults.systemTo, FAR_FUTURE),
+          ),
+        )
+        .run();
+    }
 
     tx.insert(testResults)
       .values({
@@ -895,10 +935,21 @@ export function cacheMiseEnv(dir: string, env: Record<string, string>): void {
   const timestamp = now();
   const serialized = JSON.stringify(env);
   d.transaction((tx) => {
-    tx.update(miseEnvCache)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(miseEnvCache)
       .where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
-      .run();
+      .get();
+
+    if (existing && existing.env === serialized) return;
+
+    if (existing) {
+      tx.update(miseEnvCache)
+        .set({ systemTo: timestamp })
+        .where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
+        .run();
+    }
+
     tx.insert(miseEnvCache).values({ dir, env: serialized, systemFrom: timestamp }).run();
   });
 }
@@ -915,10 +966,21 @@ export function cacheGhLogin(login: string): void {
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(ghLoginCache)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(ghLoginCache)
       .where(eq(ghLoginCache.systemTo, FAR_FUTURE))
-      .run();
+      .get();
+
+    if (existing && existing.login === login) return;
+
+    if (existing) {
+      tx.update(ghLoginCache)
+        .set({ systemTo: timestamp })
+        .where(eq(ghLoginCache.systemTo, FAR_FUTURE))
+        .run();
+    }
+
     tx.insert(ghLoginCache).values({ login, systemFrom: timestamp }).run();
   });
 }
@@ -1280,10 +1342,21 @@ export function cacheUpstreamSha(project: string, ref: string, sha: string): voi
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(upstreamRefs)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(upstreamRefs)
       .where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE)))
-      .run();
+      .get();
+
+    if (existing && existing.ref === ref && existing.sha === sha) return;
+
+    if (existing) {
+      tx.update(upstreamRefs)
+        .set({ systemTo: timestamp })
+        .where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE)))
+        .run();
+    }
+
     tx.insert(upstreamRefs).values({ project, ref, sha, systemFrom: timestamp }).run();
   });
 }
@@ -1322,8 +1395,9 @@ export function cacheMergeStatus(
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(mergeStatus)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(mergeStatus)
       .where(
         and(
           eq(mergeStatus.project, project),
@@ -1331,7 +1405,31 @@ export function cacheMergeStatus(
           eq(mergeStatus.systemTo, FAR_FUTURE),
         ),
       )
-      .run();
+      .get();
+
+    if (
+      existing &&
+      existing.upstreamSha === upstreamSha &&
+      existing.commitsAhead === commitsAhead &&
+      existing.commitsBehind === commitsBehind &&
+      existing.rebaseable === rebaseable
+    ) {
+      return;
+    }
+
+    if (existing) {
+      tx.update(mergeStatus)
+        .set({ systemTo: timestamp })
+        .where(
+          and(
+            eq(mergeStatus.project, project),
+            eq(mergeStatus.sha, sha),
+            eq(mergeStatus.systemTo, FAR_FUTURE),
+          ),
+        )
+        .run();
+    }
+
     tx.insert(mergeStatus)
       .values({
         project,
@@ -1464,10 +1562,21 @@ export function cacheChildren(project: string, children: GitChildResult[]): void
   const timestamp = now();
   const serialized = JSON.stringify(children);
   d.transaction((tx) => {
-    tx.update(childrenCache)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(childrenCache)
       .where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
-      .run();
+      .get();
+
+    if (existing && existing.childrenJson === serialized) return;
+
+    if (existing) {
+      tx.update(childrenCache)
+        .set({ systemTo: timestamp })
+        .where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
+        .run();
+    }
+
     tx.insert(childrenCache)
       .values({ project, childrenJson: serialized, systemFrom: timestamp })
       .run();
@@ -1502,10 +1611,21 @@ export function cacheTodos(project: string, todos: TodoItem[]): void {
   const timestamp = now();
   const serialized = JSON.stringify(todos);
   d.transaction((tx) => {
-    tx.update(todosCache)
-      .set({ systemTo: timestamp })
+    const existing = tx
+      .select()
+      .from(todosCache)
       .where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
-      .run();
+      .get();
+
+    if (existing && existing.todosJson === serialized) return;
+
+    if (existing) {
+      tx.update(todosCache)
+        .set({ systemTo: timestamp })
+        .where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
+        .run();
+    }
+
     tx.insert(todosCache).values({ project, todosJson: serialized, systemFrom: timestamp }).run();
   });
   markCacheFresh(`todos:${project}`);

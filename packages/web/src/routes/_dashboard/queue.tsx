@@ -41,38 +41,21 @@ const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
 
 const MAX_VISIBLE_PROJECTS = 8;
 
+const TEXT_TO_DOT: Record<string, string> = {
+  "text-green-700": "bg-green-500",
+  "text-red-700": "bg-red-500",
+  "text-blue-700": "bg-blue-500",
+  "text-yellow-700": "bg-yellow-500",
+  "text-orange-700": "bg-orange-500",
+  "text-amber-700": "bg-amber-500",
+  "text-purple-700": "bg-purple-500",
+  "text-text-300": "bg-text-300",
+  "text-text-500": "bg-text-500",
+};
+
 export function categoryDotColor(category: Category): string {
-  switch (category) {
-    case "checks_passed":
-    case "approved":
-    case "ready_to_push":
-    case "plan_approved":
-      return "bg-green-500";
-    case "checks_failed":
-    case "test_failed":
-    case "rebase_conflicts":
-    case "rebase_stuck":
-    case "changes_requested":
-      return "bg-red-500";
-    case "checks_running":
-    case "test_running":
-    case "ready_to_test":
-    case "needs_rebase":
-    case "needs_split":
-    case "rebase_unknown":
-    case "detached_head":
-    case "local_changes":
-    case "plan_unreviewed":
-      return "bg-yellow-500";
-    case "pushed_no_pr":
-    case "review_comments":
-    case "checks_unknown":
-      return "bg-blue-500";
-    case "triaged":
-      return "bg-purple-500";
-    default:
-      return "bg-text-500";
-  }
+  const textColor = CATEGORIES[category].color.split(" ")[0]!;
+  return TEXT_TO_DOT[textColor] ?? "bg-text-500";
 }
 
 export function bucketCount(items: ColumnItems): number {

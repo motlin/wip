@@ -31,7 +31,7 @@ import {
 } from "../lib/queries";
 import { classifyCommit, classifyBranch, classifyPullRequest } from "../lib/classify";
 import { applyTransition } from "@wip/shared";
-import { CATEGORIES } from "../lib/category-actions";
+import { CATEGORIES, categoryTextClass } from "../lib/category-actions";
 import { useTestJob, useTestLog } from "../lib/task-events-context";
 import { useAutoTail } from "../lib/use-auto-tail";
 
@@ -364,7 +364,7 @@ function ItemDetail() {
                 <div className="mt-1.5 flex items-center gap-2 text-xs text-text-400">
                   {category && (
                     <Link to="/states" search={{ state: category }} className="hover:underline">
-                      <span className={CATEGORIES[category].color}>
+                      <span className={categoryTextClass(category)}>
                         {CATEGORIES[category].label}
                       </span>
                     </Link>

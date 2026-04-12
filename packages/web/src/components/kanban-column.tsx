@@ -10,7 +10,7 @@ import {
   isGitChildBranch,
   isGitChildCommit,
 } from "../lib/git-child-discriminators";
-import { CATEGORIES } from "../lib/category-actions";
+import { CATEGORIES, categoryTextClass, categoryColumnClass } from "../lib/category-actions";
 import { CommitCard } from "./commit-card";
 import { BranchCard } from "./branch-card";
 import { PullRequestCard } from "./pull-request-card";
@@ -39,11 +39,11 @@ export function KanbanColumn({ category, items, count }: KanbanColumnProps) {
   const commits = items.gitChildren?.filter(isGitChildCommit) ?? [];
 
   return (
-    <div className={`flex min-w-0 flex-col rounded-xl ${config.columnBg} p-3`}>
+    <div className={`flex min-w-0 flex-col rounded-xl ${categoryColumnClass(category)} p-3`}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className={`text-sm font-semibold ${config.color}`}>{config.label}</h2>
+        <h2 className={`text-sm font-semibold ${categoryTextClass(category)}`}>{config.label}</h2>
         <span
-          className={`rounded-full bg-bg-000/60 px-2 py-0.5 text-xs font-medium ${config.color}`}
+          className={`rounded-full bg-bg-000/60 px-2 py-0.5 text-xs font-medium ${categoryTextClass(category)}`}
         >
           {count}
         </span>

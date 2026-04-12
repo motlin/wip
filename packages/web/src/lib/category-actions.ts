@@ -81,181 +81,199 @@ function buildActions(category: Category): readonly Action[] {
   return [...transitionActions, ...supplementary];
 }
 
+export type PaletteKey =
+  | "green"
+  | "red"
+  | "blue"
+  | "yellow"
+  | "orange"
+  | "amber"
+  | "purple"
+  | "dim"
+  | "muted";
+
+interface PaletteEntry {
+  text: string;
+  dot: string;
+  column: string;
+}
+
+const PALETTE: Record<PaletteKey, PaletteEntry> = {
+  green: {
+    text: "text-green-700 dark:text-green-400",
+    dot: "bg-green-500",
+    column: "bg-green-column",
+  },
+  red: {
+    text: "text-red-700 dark:text-red-400",
+    dot: "bg-red-500",
+    column: "bg-red-column",
+  },
+  blue: {
+    text: "text-blue-700 dark:text-blue-400",
+    dot: "bg-blue-500",
+    column: "bg-blue-column",
+  },
+  yellow: {
+    text: "text-yellow-700 dark:text-yellow-400",
+    dot: "bg-yellow-500",
+    column: "bg-yellow-column",
+  },
+  orange: {
+    text: "text-orange-700 dark:text-orange-400",
+    dot: "bg-orange-500",
+    column: "bg-yellow-column",
+  },
+  amber: {
+    text: "text-amber-700 dark:text-amber-400",
+    dot: "bg-amber-500",
+    column: "bg-yellow-column",
+  },
+  purple: {
+    text: "text-purple-700 dark:text-purple-400",
+    dot: "bg-purple-500",
+    column: "bg-purple-column",
+  },
+  dim: {
+    text: "text-text-300",
+    dot: "bg-text-300",
+    column: "bg-dim-column",
+  },
+  muted: {
+    text: "text-text-500",
+    dot: "bg-text-500",
+    column: "bg-dim-column",
+  },
+};
+
 export interface CategoryConfig {
   label: string;
-  color: string;
-  columnBg: string;
+  palette: PaletteKey;
   actions: readonly Action[];
   llmCommand?: string;
 }
 
 export const CATEGORIES: Record<Category, CategoryConfig> = {
-  approved: {
-    label: "Approved",
-    color: "text-green-700 dark:text-green-400",
-    columnBg: "bg-green-column",
-    actions: buildActions("approved"),
-  },
+  approved: { label: "Approved", palette: "green", actions: buildActions("approved") },
   changes_requested: {
     label: "Changes Requested",
-    color: "text-purple-700 dark:text-purple-400",
-    columnBg: "bg-purple-column",
+    palette: "purple",
     actions: buildActions("changes_requested"),
   },
   review_comments: {
     label: "Review Comments",
-    color: "text-blue-700 dark:text-blue-400",
-    columnBg: "bg-blue-column",
+    palette: "blue",
     actions: buildActions("review_comments"),
   },
   checks_passed: {
     label: "Checks Passed",
-    color: "text-blue-700 dark:text-blue-400",
-    columnBg: "bg-blue-column",
+    palette: "blue",
     actions: buildActions("checks_passed"),
   },
   checks_failed: {
     label: "Checks Failed",
-    color: "text-red-700 dark:text-red-400",
-    columnBg: "bg-red-column",
+    palette: "red",
     actions: buildActions("checks_failed"),
     llmCommand: "/gha",
   },
   checks_running: {
     label: "Checks Running",
-    color: "text-yellow-700 dark:text-yellow-400",
-    columnBg: "bg-yellow-column",
+    palette: "yellow",
     actions: buildActions("checks_running"),
   },
   checks_unknown: {
     label: "Checks Unknown",
-    color: "text-text-300",
-    columnBg: "bg-dim-column",
+    palette: "dim",
     actions: buildActions("checks_unknown"),
   },
-  pushed_no_pr: {
-    label: "Needs PR",
-    color: "text-blue-700 dark:text-blue-400",
-    columnBg: "bg-blue-column",
-    actions: buildActions("pushed_no_pr"),
-  },
+  pushed_no_pr: { label: "Needs PR", palette: "blue", actions: buildActions("pushed_no_pr") },
   ready_to_push: {
     label: "Ready to Push",
-    color: "text-green-700 dark:text-green-400",
-    columnBg: "bg-green-column",
+    palette: "green",
     actions: buildActions("ready_to_push"),
   },
   needs_split: {
     label: "Needs Split",
-    color: "text-orange-700 dark:text-orange-400",
-    columnBg: "bg-yellow-column",
+    palette: "orange",
     actions: buildActions("needs_split"),
     llmCommand: "/git:split-branch",
   },
   needs_rebase: {
     label: "Needs Rebase",
-    color: "text-orange-700 dark:text-orange-400",
-    columnBg: "bg-yellow-column",
+    palette: "orange",
     actions: buildActions("needs_rebase"),
     llmCommand: "/git:rebase-all",
   },
   rebase_unknown: {
     label: "Rebase Unknown",
-    color: "text-amber-700 dark:text-amber-400",
-    columnBg: "bg-yellow-column",
+    palette: "amber",
     actions: buildActions("rebase_unknown"),
   },
   rebase_conflicts: {
     label: "Rebase Conflicts",
-    color: "text-red-700 dark:text-red-400",
-    columnBg: "bg-red-column",
+    palette: "red",
     actions: buildActions("rebase_conflicts"),
     llmCommand: "/git:conflicts",
   },
   rebase_stuck: {
     label: "Rebase Stuck",
-    color: "text-red-700 dark:text-red-400",
-    columnBg: "bg-red-column",
+    palette: "red",
     actions: buildActions("rebase_stuck"),
     llmCommand: "/git:conflicts",
   },
   test_failed: {
     label: "Test Failed",
-    color: "text-red-700 dark:text-red-400",
-    columnBg: "bg-red-column",
+    palette: "red",
     actions: buildActions("test_failed"),
     llmCommand: "/build:fix",
   },
   ready_to_test: {
     label: "Ready to Test",
-    color: "text-yellow-700 dark:text-yellow-400",
-    columnBg: "bg-yellow-column",
+    palette: "yellow",
     actions: buildActions("ready_to_test"),
     llmCommand: "/build:test-branch",
   },
-  test_running: {
-    label: "Test Running",
-    color: "text-yellow-700 dark:text-yellow-400",
-    columnBg: "bg-yellow-column",
-    actions: buildActions("test_running"),
-  },
+  test_running: { label: "Test Running", palette: "yellow", actions: buildActions("test_running") },
   detached_head: {
     label: "Detached HEAD",
-    color: "text-yellow-700 dark:text-yellow-400",
-    columnBg: "bg-yellow-column",
+    palette: "yellow",
     actions: buildActions("detached_head"),
   },
   local_changes: {
     label: "Local Changes",
-    color: "text-text-300",
-    columnBg: "bg-dim-column",
+    palette: "dim",
     actions: buildActions("local_changes"),
     llmCommand: "/git:commit",
   },
-  no_test: {
-    label: "No Test",
-    color: "text-text-300",
-    columnBg: "bg-dim-column",
-    actions: buildActions("no_test"),
-  },
-  untriaged: {
-    label: "Untriaged",
-    color: "text-text-500",
-    columnBg: "bg-dim-column",
-    actions: buildActions("untriaged"),
-  },
-  triaged: {
-    label: "Triaged",
-    color: "text-purple-700 dark:text-purple-400",
-    columnBg: "bg-purple-column",
-    actions: buildActions("triaged"),
-  },
+  no_test: { label: "No Test", palette: "dim", actions: buildActions("no_test") },
+  untriaged: { label: "Untriaged", palette: "muted", actions: buildActions("untriaged") },
+  triaged: { label: "Triaged", palette: "purple", actions: buildActions("triaged") },
   plan_unreviewed: {
     label: "Plan Unreviewed",
-    color: "text-orange-700 dark:text-orange-400",
-    columnBg: "bg-yellow-column",
+    palette: "orange",
     actions: buildActions("plan_unreviewed"),
   },
   plan_approved: {
     label: "Plan Approved",
-    color: "text-green-700 dark:text-green-400",
-    columnBg: "bg-green-column",
+    palette: "green",
     actions: buildActions("plan_approved"),
     llmCommand: "/markdown-tasks:do-one-task",
   },
-  skippable: {
-    label: "Skippable",
-    color: "text-text-500",
-    columnBg: "bg-dim-column",
-    actions: buildActions("skippable"),
-  },
-  snoozed: {
-    label: "Snoozed",
-    color: "text-text-500",
-    columnBg: "bg-dim-column",
-    actions: buildActions("snoozed"),
-  },
+  skippable: { label: "Skippable", palette: "muted", actions: buildActions("skippable") },
+  snoozed: { label: "Snoozed", palette: "muted", actions: buildActions("snoozed") },
 };
+
+export function categoryTextClass(category: Category): string {
+  return PALETTE[CATEGORIES[category].palette].text;
+}
+
+export function categoryDotClass(category: Category): string {
+  return PALETTE[CATEGORIES[category].palette].dot;
+}
+
+export function categoryColumnClass(category: Category): string {
+  return PALETTE[CATEGORIES[category].palette].column;
+}
 
 // Edges to ignore when computing topological order.
 // These are either orthogonal (snooze/unsnooze) or back-edges (retry loops

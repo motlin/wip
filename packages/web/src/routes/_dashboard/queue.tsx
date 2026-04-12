@@ -15,6 +15,7 @@ import {
   CATEGORIES,
   CATEGORY_PRIORITY,
   CATEGORY_PRIORITY_REVERSED,
+  categoryDotClass,
 } from "../../lib/category-actions";
 
 // Categories where the user needs to take action (not waiting on CI or external review)
@@ -40,23 +41,6 @@ const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
 ]);
 
 const MAX_VISIBLE_PROJECTS = 8;
-
-const TEXT_TO_DOT: Record<string, string> = {
-  "text-green-700": "bg-green-500",
-  "text-red-700": "bg-red-500",
-  "text-blue-700": "bg-blue-500",
-  "text-yellow-700": "bg-yellow-500",
-  "text-orange-700": "bg-orange-500",
-  "text-amber-700": "bg-amber-500",
-  "text-purple-700": "bg-purple-500",
-  "text-text-300": "bg-text-300",
-  "text-text-500": "bg-text-500",
-};
-
-export function categoryDotColor(category: Category): string {
-  const textColor = CATEGORIES[category].color.split(" ")[0]!;
-  return TEXT_TO_DOT[textColor] ?? "bg-text-500";
-}
 
 export function bucketCount(items: ColumnItems): number {
   return (
@@ -364,7 +348,7 @@ function QueueLayout() {
                   >
                     <span className="flex items-center">
                       <span
-                        className={`mr-2 h-2 w-2 shrink-0 rounded-full ${categoryDotColor(cat)}`}
+                        className={`mr-2 h-2 w-2 shrink-0 rounded-full ${categoryDotClass(cat)}`}
                       />
                       {CATEGORIES[cat].label}
                     </span>

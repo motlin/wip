@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { ArrowLeft } from "lucide-react";
-import { CATEGORIES, CATEGORY_PRIORITY } from "../lib/category-actions";
+import { CATEGORIES, CATEGORY_PRIORITY, categoryTextClass } from "../lib/category-actions";
 import { STATE_MACHINE, type Category } from "@wip/shared";
 
 const statesSearchSchema = z.object({
@@ -76,14 +76,25 @@ function nodeColor(
   if (isActive) {
     return { fill: "#fbbf24", stroke: "#f59e0b", text: "#000" };
   }
-  const colorStr = CATEGORIES[category].color;
-  if (colorStr.includes("green")) return { fill: "#064e3b", stroke: "#059669", text: "#6ee7b7" };
-  if (colorStr.includes("red")) return { fill: "#450a0a", stroke: "#dc2626", text: "#fca5a5" };
-  if (colorStr.includes("yellow")) return { fill: "#422006", stroke: "#ca8a04", text: "#fde68a" };
-  if (colorStr.includes("blue")) return { fill: "#172554", stroke: "#2563eb", text: "#93c5fd" };
-  if (colorStr.includes("orange")) return { fill: "#431407", stroke: "#ea580c", text: "#fdba74" };
-  if (colorStr.includes("purple")) return { fill: "#2e1065", stroke: "#7c3aed", text: "#c4b5fd" };
-  return { fill: "#1e1e2e", stroke: "#4b5563", text: "#9ca3af" };
+  const palette = CATEGORIES[category].palette;
+  switch (palette) {
+    case "green":
+      return { fill: "#064e3b", stroke: "#059669", text: "#6ee7b7" };
+    case "red":
+      return { fill: "#450a0a", stroke: "#dc2626", text: "#fca5a5" };
+    case "yellow":
+      return { fill: "#422006", stroke: "#ca8a04", text: "#fde68a" };
+    case "blue":
+      return { fill: "#172554", stroke: "#2563eb", text: "#93c5fd" };
+    case "orange":
+      return { fill: "#431407", stroke: "#ea580c", text: "#fdba74" };
+    case "amber":
+      return { fill: "#451a03", stroke: "#d97706", text: "#fcd34d" };
+    case "purple":
+      return { fill: "#2e1065", stroke: "#7c3aed", text: "#c4b5fd" };
+    default:
+      return { fill: "#1e1e2e", stroke: "#4b5563", text: "#9ca3af" };
+  }
 }
 
 function edgePath(from: NodePos, to: NodePos): string {
@@ -284,12 +295,14 @@ function StateTable({ activeState }: { activeState: string | undefined }) {
                   <Link
                     to="/states"
                     search={{ state: cat }}
-                    className={`font-mono text-xs hover:underline ${isActive ? "font-bold text-amber-400" : config.color}`}
+                    className={`font-mono text-xs hover:underline ${isActive ? "font-bold text-amber-400" : categoryTextClass(cat)}`}
                   >
                     {cat}
                   </Link>
                 </td>
-                <td className={`px-3 py-2 font-medium ${config.color}`}>{config.label}</td>
+                <td className={`px-3 py-2 font-medium ${categoryTextClass(cat)}`}>
+                  {config.label}
+                </td>
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap gap-1">
                     {config.actions.map((action) => (

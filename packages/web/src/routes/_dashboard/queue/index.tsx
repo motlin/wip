@@ -4,7 +4,7 @@ import {
   isGitChildBranch,
   isGitChildCommit,
 } from "../../../lib/git-child-discriminators";
-import { CATEGORIES, CATEGORY_PRIORITY } from "../../../lib/category-actions";
+import { CATEGORIES, CATEGORY_PRIORITY, categoryTextClass } from "../../../lib/category-actions";
 import { CommitCard } from "../../../components/commit-card";
 import { BranchCard } from "../../../components/branch-card";
 import { PullRequestCard } from "../../../components/pull-request-card";
@@ -29,7 +29,7 @@ function QueueCards() {
         if (count === 0) return null;
         return (
           <section key={category}>
-            <h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
+            <h2 className={`mb-2 text-sm font-semibold ${categoryTextClass(category)}`}>
               <span className="font-mono text-xs text-text-500">
                 {CATEGORY_PRIORITY.indexOf(category) + 1}
               </span>{" "}

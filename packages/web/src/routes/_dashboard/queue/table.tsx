@@ -8,8 +8,13 @@ import type {
   TodoItem,
 } from "@wip/shared";
 import { isGitChildPullRequest, isGitChildBranch } from "../../../lib/git-child-discriminators";
-import { CATEGORIES, CATEGORY_PRIORITY } from "../../../lib/category-actions";
-import { useQueueContext, categoryDotColor, bucketCount } from "../queue";
+import {
+  CATEGORIES,
+  CATEGORY_PRIORITY,
+  categoryDotClass,
+  categoryTextClass,
+} from "../../../lib/category-actions";
+import { useQueueContext, bucketCount } from "../queue";
 
 type ItemType = "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
 
@@ -292,7 +297,7 @@ function CategoryGroup({ category, rows }: { category: Category; rows: FlatRow[]
       <tr>
         <td
           colSpan={8}
-          className={`border-b border-border-300 bg-bg-100 px-3 py-2.5 text-xs font-semibold ${CATEGORIES[category].color}`}
+          className={`border-b border-border-300 bg-bg-100 px-3 py-2.5 text-xs font-semibold ${categoryTextClass(category)}`}
         >
           {CATEGORY_PRIORITY.indexOf(category) + 1} &middot; {CATEGORIES[category].label} &mdash;{" "}
           {rows.length}
@@ -321,7 +326,7 @@ function TableRow({ row }: { row: FlatRow }) {
       className={`border-b border-border-300/50 transition-colors hover:bg-bg-100 ${link ? "cursor-pointer" : ""}`}
     >
       <td className="px-3 py-2">
-        <span className={`inline-block h-2 w-2 rounded-full ${categoryDotColor(row.category)}`} />
+        <span className={`inline-block h-2 w-2 rounded-full ${categoryDotClass(row.category)}`} />
       </td>
       <td className="px-3 py-2 font-medium">{row.subject}</td>
       <td className="px-3 py-2 text-xs text-text-500">{row.repository}</td>

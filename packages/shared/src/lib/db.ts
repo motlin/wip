@@ -1,5 +1,5 @@
 import DatabaseConstructor from "better-sqlite3";
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -931,10 +931,11 @@ export function getCachedIssues(): GitHubIssue[] | null {
   const rows = d.select().from(githubIssues).where(eq(githubIssues.systemTo, FAR_FUTURE)).all();
   if (rows.length === 0) return null;
 
+  const systemFroms = [...new Set(rows.map((r) => r.systemFrom))];
   const labelRows = d
     .select()
     .from(githubIssueLabels)
-    .where(eq(githubIssueLabels.systemFrom, rows[0]!.systemFrom))
+    .where(inArray(githubIssueLabels.systemFrom, systemFroms))
     .all();
 
   const labelsByKey = new Map<string, Array<{ name: string; color: string }>>();
@@ -961,38 +962,122 @@ export function cacheIssues(issues: GitHubIssue[]): void {
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    // Close old issue rows
-    tx.update(githubIssues)
-      .set({ systemTo: timestamp })
+    const existingRows = tx
+      .select()
+      .from(githubIssues)
       .where(eq(githubIssues.systemTo, FAR_FUTURE))
-      .run();
+      .all();
 
-    // Delete old label rows (no system_to; would otherwise leak forever)
-    tx.delete(githubIssueLabels).where(ne(githubIssueLabels.systemFrom, timestamp)).run();
+    const existingByKey = new Map(
+      existingRows.map((r) => [`${r.repoNameWithOwner}:${r.number}`, r]),
+    );
+    const incomingKeys = new Set(issues.map((i) => `${i.repository.nameWithOwner}:${i.number}`));
 
-    // Insert new issue rows
+    // Fetch existing labels grouped by systemFrom for comparison
+    const existingSystemFroms = [...new Set(existingRows.map((r) => r.systemFrom))];
+    const existingLabelRows =
+      existingSystemFroms.length > 0
+        ? tx
+            .select()
+            .from(githubIssueLabels)
+            .where(inArray(githubIssueLabels.systemFrom, existingSystemFroms))
+            .all()
+        : [];
+    const existingLabelsByKey = new Map<string, Array<{ name: string; color: string }>>();
+    for (const l of existingLabelRows) {
+      const key = `${l.repoNameWithOwner}:${l.issueNumber}`;
+      const arr = existingLabelsByKey.get(key) ?? [];
+      arr.push({ name: l.labelName, color: l.labelColor });
+      existingLabelsByKey.set(key, arr);
+    }
+
+    // Close rows for issues no longer present
+    for (const existing of existingRows) {
+      const key = `${existing.repoNameWithOwner}:${existing.number}`;
+      if (!incomingKeys.has(key)) {
+        tx.update(githubIssues)
+          .set({ systemTo: timestamp })
+          .where(
+            and(
+              eq(githubIssues.number, existing.number),
+              eq(githubIssues.repoNameWithOwner, existing.repoNameWithOwner),
+              eq(githubIssues.systemTo, FAR_FUTURE),
+            ),
+          )
+          .run();
+      }
+    }
+
+    // Track which systemFroms are still referenced after this sync
+    const activeSystemFroms = new Set<string>();
+
     for (const issue of issues) {
-      tx.insert(githubIssues)
-        .values({
-          systemFrom: timestamp,
-          number: issue.number,
-          title: issue.title,
-          url: issue.url,
-          repoName: issue.repository.name,
-          repoNameWithOwner: issue.repository.nameWithOwner,
-        })
-        .run();
+      const key = `${issue.repository.nameWithOwner}:${issue.number}`;
+      const existing = existingByKey.get(key);
 
-      // Insert label rows
-      for (const label of issue.labels) {
-        tx.insert(githubIssueLabels)
+      const existingLabels = existingLabelsByKey.get(key) ?? [];
+      const labelsMatch =
+        existingLabels.length === issue.labels.length &&
+        existingLabels.every(
+          (el, i) => el.name === issue.labels[i]!.name && el.color === issue.labels[i]!.color,
+        );
+
+      const issueChanged =
+        !existing ||
+        existing.title !== issue.title ||
+        existing.url !== issue.url ||
+        existing.repoName !== issue.repository.name ||
+        !labelsMatch;
+
+      if (issueChanged) {
+        if (existing) {
+          tx.update(githubIssues)
+            .set({ systemTo: timestamp })
+            .where(
+              and(
+                eq(githubIssues.number, existing.number),
+                eq(githubIssues.repoNameWithOwner, existing.repoNameWithOwner),
+                eq(githubIssues.systemTo, FAR_FUTURE),
+              ),
+            )
+            .run();
+        }
+
+        tx.insert(githubIssues)
           .values({
             systemFrom: timestamp,
-            issueNumber: issue.number,
+            number: issue.number,
+            title: issue.title,
+            url: issue.url,
+            repoName: issue.repository.name,
             repoNameWithOwner: issue.repository.nameWithOwner,
-            labelName: label.name,
-            labelColor: label.color,
           })
+          .run();
+
+        activeSystemFroms.add(timestamp);
+
+        for (const label of issue.labels) {
+          tx.insert(githubIssueLabels)
+            .values({
+              systemFrom: timestamp,
+              issueNumber: issue.number,
+              repoNameWithOwner: issue.repository.nameWithOwner,
+              labelName: label.name,
+              labelColor: label.color,
+            })
+            .run();
+        }
+      } else {
+        activeSystemFroms.add(existing.systemFrom);
+      }
+    }
+
+    // Delete label rows whose systemFrom is no longer referenced by any active issue
+    if (existingSystemFroms.length > 0) {
+      const orphanedSystemFroms = existingSystemFroms.filter((sf) => !activeSystemFroms.has(sf));
+      if (orphanedSystemFroms.length > 0) {
+        tx.delete(githubIssueLabels)
+          .where(inArray(githubIssueLabels.systemFrom, orphanedSystemFroms))
           .run();
       }
     }
@@ -1021,10 +1106,11 @@ export function getCachedProjectItems(): GitHubProjectItem[] | null {
     .all();
   if (rows.length === 0) return null;
 
+  const systemFroms = [...new Set(rows.map((r) => r.systemFrom))];
   const labelRows = d
     .select()
     .from(githubProjectItemLabels)
-    .where(eq(githubProjectItemLabels.systemFrom, rows[0]!.systemFrom))
+    .where(inArray(githubProjectItemLabels.systemFrom, systemFroms))
     .all();
 
   const labelsByItemId = new Map<string, Array<{ name: string; color: string }>>();
@@ -1050,41 +1136,119 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    // Close old project item rows
-    tx.update(githubProjectItems)
-      .set({ systemTo: timestamp })
+    const existingRows = tx
+      .select()
+      .from(githubProjectItems)
       .where(eq(githubProjectItems.systemTo, FAR_FUTURE))
-      .run();
+      .all();
 
-    // Delete old label rows (no system_to; would otherwise leak forever)
-    tx.delete(githubProjectItemLabels)
-      .where(ne(githubProjectItemLabels.systemFrom, timestamp))
-      .run();
+    const existingById = new Map(existingRows.map((r) => [r.itemId, r]));
+    const incomingIds = new Set(items.map((i) => i.id));
 
-    // Insert new project item rows
+    // Fetch existing labels for comparison
+    const existingSystemFroms = [...new Set(existingRows.map((r) => r.systemFrom))];
+    const existingLabelRows =
+      existingSystemFroms.length > 0
+        ? tx
+            .select()
+            .from(githubProjectItemLabels)
+            .where(inArray(githubProjectItemLabels.systemFrom, existingSystemFroms))
+            .all()
+        : [];
+    const existingLabelsByItemId = new Map<string, Array<{ name: string; color: string }>>();
+    for (const l of existingLabelRows) {
+      const arr = existingLabelsByItemId.get(l.itemId) ?? [];
+      arr.push({ name: l.labelName, color: l.labelColor });
+      existingLabelsByItemId.set(l.itemId, arr);
+    }
+
+    // Close rows for items no longer present
+    for (const existing of existingRows) {
+      if (!incomingIds.has(existing.itemId)) {
+        tx.update(githubProjectItems)
+          .set({ systemTo: timestamp })
+          .where(
+            and(
+              eq(githubProjectItems.itemId, existing.itemId),
+              eq(githubProjectItems.systemTo, FAR_FUTURE),
+            ),
+          )
+          .run();
+      }
+    }
+
+    // Track which systemFroms are still referenced after this sync
+    const activeSystemFroms = new Set<string>();
+
     for (const item of items) {
-      tx.insert(githubProjectItems)
-        .values({
-          systemFrom: timestamp,
-          itemId: item.id,
-          title: item.title,
-          status: item.status,
-          type: item.type,
-          url: item.url ?? null,
-          number: item.number ?? null,
-          repository: item.repository ?? null,
-        })
-        .run();
+      const existing = existingById.get(item.id);
 
-      // Insert label rows
-      for (const label of item.labels) {
-        tx.insert(githubProjectItemLabels)
+      const existingLabels = existingLabelsByItemId.get(item.id) ?? [];
+      const labelsMatch =
+        existingLabels.length === item.labels.length &&
+        existingLabels.every(
+          (el, i) => el.name === item.labels[i]!.name && el.color === item.labels[i]!.color,
+        );
+
+      const itemChanged =
+        !existing ||
+        existing.title !== item.title ||
+        existing.status !== item.status ||
+        existing.type !== item.type ||
+        (existing.url ?? undefined) !== (item.url ?? undefined) ||
+        (existing.number ?? undefined) !== (item.number ?? undefined) ||
+        (existing.repository ?? undefined) !== (item.repository ?? undefined) ||
+        !labelsMatch;
+
+      if (itemChanged) {
+        if (existing) {
+          tx.update(githubProjectItems)
+            .set({ systemTo: timestamp })
+            .where(
+              and(
+                eq(githubProjectItems.itemId, existing.itemId),
+                eq(githubProjectItems.systemTo, FAR_FUTURE),
+              ),
+            )
+            .run();
+        }
+
+        tx.insert(githubProjectItems)
           .values({
             systemFrom: timestamp,
             itemId: item.id,
-            labelName: label.name,
-            labelColor: label.color,
+            title: item.title,
+            status: item.status,
+            type: item.type,
+            url: item.url ?? null,
+            number: item.number ?? null,
+            repository: item.repository ?? null,
           })
+          .run();
+
+        activeSystemFroms.add(timestamp);
+
+        for (const label of item.labels) {
+          tx.insert(githubProjectItemLabels)
+            .values({
+              systemFrom: timestamp,
+              itemId: item.id,
+              labelName: label.name,
+              labelColor: label.color,
+            })
+            .run();
+        }
+      } else {
+        activeSystemFroms.add(existing.systemFrom);
+      }
+    }
+
+    // Delete label rows whose systemFrom is no longer referenced by any active item
+    if (existingSystemFroms.length > 0) {
+      const orphanedSystemFroms = existingSystemFroms.filter((sf) => !activeSystemFroms.has(sf));
+      if (orphanedSystemFroms.length > 0) {
+        tx.delete(githubProjectItemLabels)
+          .where(inArray(githubProjectItemLabels.systemFrom, orphanedSystemFroms))
           .run();
       }
     }
@@ -1216,28 +1380,68 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
   const d = getDb();
   const timestamp = now();
   d.transaction((tx) => {
-    tx.update(projectCache)
-      .set({ systemTo: timestamp })
+    const existingRows = tx
+      .select()
+      .from(projectCache)
       .where(eq(projectCache.systemTo, FAR_FUTURE))
-      .run();
+      .all();
+
+    const existingByName = new Map(existingRows.map((r) => [r.name, r]));
+    const incomingNames = new Set(projects.map((p) => p.name));
+
+    // Close rows for projects no longer present
+    for (const existing of existingRows) {
+      if (!incomingNames.has(existing.name)) {
+        tx.update(projectCache)
+          .set({ systemTo: timestamp })
+          .where(and(eq(projectCache.name, existing.name), eq(projectCache.systemTo, FAR_FUTURE)))
+          .run();
+      }
+    }
+
     for (const p of projects) {
-      tx.insert(projectCache)
-        .values({
-          name: p.name,
-          dir: p.dir,
-          remote: p.remote,
-          originRemote: p.originRemote,
-          upstreamRemote: p.upstreamRemote,
-          upstreamBranch: p.upstreamBranch,
-          upstreamRef: p.upstreamRef,
-          hasTestConfigured: p.hasTestConfigured,
-          dirty: p.dirty,
-          detachedHead: p.detachedHead,
-          branchCount: p.branchCount,
-          rebaseInProgress: p.rebaseInProgress,
-          systemFrom: timestamp,
-        })
-        .run();
+      const existing = existingByName.get(p.name);
+
+      const projectChanged =
+        !existing ||
+        existing.dir !== p.dir ||
+        existing.remote !== p.remote ||
+        existing.originRemote !== p.originRemote ||
+        existing.upstreamRemote !== p.upstreamRemote ||
+        existing.upstreamBranch !== p.upstreamBranch ||
+        existing.upstreamRef !== p.upstreamRef ||
+        existing.hasTestConfigured !== p.hasTestConfigured ||
+        existing.dirty !== p.dirty ||
+        existing.detachedHead !== p.detachedHead ||
+        existing.branchCount !== p.branchCount ||
+        existing.rebaseInProgress !== p.rebaseInProgress;
+
+      if (projectChanged) {
+        if (existing) {
+          tx.update(projectCache)
+            .set({ systemTo: timestamp })
+            .where(and(eq(projectCache.name, existing.name), eq(projectCache.systemTo, FAR_FUTURE)))
+            .run();
+        }
+
+        tx.insert(projectCache)
+          .values({
+            name: p.name,
+            dir: p.dir,
+            remote: p.remote,
+            originRemote: p.originRemote,
+            upstreamRemote: p.upstreamRemote,
+            upstreamBranch: p.upstreamBranch,
+            upstreamRef: p.upstreamRef,
+            hasTestConfigured: p.hasTestConfigured,
+            dirty: p.dirty,
+            detachedHead: p.detachedHead,
+            branchCount: p.branchCount,
+            rebaseInProgress: p.rebaseInProgress,
+            systemFrom: timestamp,
+          })
+          .run();
+      }
     }
   });
 }

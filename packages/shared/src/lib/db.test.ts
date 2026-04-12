@@ -28,6 +28,8 @@ import {
   cacheTodos,
   getCachedTodos,
   invalidateTodosCache,
+  setCachedProjectList,
+  getCachedProjectList,
 } from "./db.js";
 import type { GitHubIssue } from "./github-issues.js";
 import type { GitHubProjectItem } from "./github-projects.js";
@@ -640,5 +642,309 @@ describe("Todos cache", () => {
     invalidateTodosCache("test-project");
     expect(getCachedTodos("test-project")).toBeNull();
     expect(getCachedTodos("test-project")).toBeNull();
+  });
+});
+
+describe("cacheIssues deduplication", () => {
+  it("skips re-insert when issue data is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const issues: GitHubIssue[] = [
+      {
+        number: 1,
+        title: "Issue one",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [{ name: "bug", color: "d73a4a" }],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ];
+    cacheIssues(issues);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheIssues(issues);
+
+    const rows = getDb().all(sql`SELECT * FROM github_issues`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+    expect(rows[0]!.system_to).toBe("9999-12-31 23:59:59");
+
+    vi.useRealTimers();
+  });
+
+  it("phases out removed issues and keeps unchanged ones", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "Issue one",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+      {
+        number: 2,
+        title: "Issue two",
+        url: "https://github.com/owner/repo/issues/2",
+        labels: [],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "Issue one",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    const cached = getCachedIssues();
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.number).toBe(1);
+
+    const allRows = getDb().all(sql`SELECT * FROM github_issues`) as Array<{
+      number: number;
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+    const closedRow = allRows.find((r) => r.number === 2);
+    expect(closedRow!.system_to).toBe("2025-01-01 00:01:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when issue title changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "Old title",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "New title",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    const cached = getCachedIssues();
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.title).toBe("New title");
+
+    const allRows = getDb().all(sql`SELECT * FROM github_issues`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when labels change", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "Issue",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [{ name: "bug", color: "d73a4a" }],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "Issue",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [{ name: "feature", color: "0075ca" }],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    const cached = getCachedIssues();
+    expect(cached![0]!.labels).toStrictEqual([{ name: "feature", color: "0075ca" }]);
+
+    const labelRows = getDb().all(sql`SELECT * FROM github_issue_labels`) as Array<{
+      label_name: string;
+    }>;
+    expect(labelRows).toHaveLength(1);
+    expect(labelRows[0]!.label_name).toBe("feature");
+
+    vi.useRealTimers();
+  });
+});
+
+describe("cacheProjectItems deduplication", () => {
+  it("skips re-insert when item data is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const items: GitHubProjectItem[] = [
+      {
+        id: "PVTI_abc",
+        title: "Task",
+        status: "In Progress",
+        type: "ISSUE",
+        labels: [{ name: "enhancement", color: "a2eeef" }],
+      },
+    ];
+    cacheProjectItems(items);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    cacheProjectItems(items);
+
+    const rows = getDb().all(sql`SELECT * FROM github_project_items`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("phases out removed items and keeps unchanged ones", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheProjectItems([
+      { id: "PVTI_a", title: "A", status: "Todo", type: "ISSUE", labels: [] },
+      { id: "PVTI_b", title: "B", status: "Todo", type: "ISSUE", labels: [] },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    cacheProjectItems([{ id: "PVTI_a", title: "A", status: "Todo", type: "ISSUE", labels: [] }]);
+
+    const cached = getCachedProjectItems();
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.id).toBe("PVTI_a");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when item status changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheProjectItems([{ id: "PVTI_a", title: "Task", status: "Todo", type: "ISSUE", labels: [] }]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    cacheProjectItems([
+      { id: "PVTI_a", title: "Task", status: "In Progress", type: "ISSUE", labels: [] },
+    ]);
+
+    const cached = getCachedProjectItems();
+    expect(cached![0]!.status).toBe("In Progress");
+
+    const allRows = getDb().all(sql`SELECT * FROM github_project_items`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("setCachedProjectList deduplication", () => {
+  const sampleProject = {
+    name: "test-project",
+    dir: "/home/user/projects/test",
+    remote: "origin",
+    originRemote: "origin",
+    upstreamRemote: "upstream",
+    upstreamBranch: "main",
+    upstreamRef: "upstream/main",
+    hasTestConfigured: true,
+    dirty: false,
+    detachedHead: false,
+    branchCount: 3,
+    rebaseInProgress: false,
+  };
+
+  it("skips re-insert when project data is unchanged", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    setCachedProjectList([sampleProject]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    setCachedProjectList([sampleProject]);
+
+    const rows = getDb().all(sql`SELECT * FROM project_cache`) as Array<{
+      system_from: string;
+      system_to: string;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
+
+    vi.useRealTimers();
+  });
+
+  it("phases out removed projects and keeps unchanged ones", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    setCachedProjectList([
+      sampleProject,
+      { ...sampleProject, name: "other-project", dir: "/home/user/projects/other" },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    setCachedProjectList([sampleProject]);
+
+    const cached = getCachedProjectList();
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.name).toBe("test-project");
+
+    vi.useRealTimers();
+  });
+
+  it("replaces row when project dirty flag changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    setCachedProjectList([sampleProject]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+    setCachedProjectList([{ ...sampleProject, dirty: true }]);
+
+    const cached = getCachedProjectList();
+    expect(cached).toHaveLength(1);
+    expect(cached![0]!.dirty).toBe(true);
+
+    const allRows = getDb().all(sql`SELECT * FROM project_cache`) as Array<{
+      system_to: string;
+    }>;
+    expect(allRows).toHaveLength(2);
+
+    vi.useRealTimers();
   });
 });

@@ -8,3 +8,5 @@ packages/web/src/routeTree.gen.ts
 logs/
 .claude/
 .llm/
+packages/web/public/mockups/
+*.png

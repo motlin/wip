@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vite-plus/test";
 
 import { sql } from "drizzle-orm";
 
@@ -353,6 +353,86 @@ describe("GitHub project items cache", () => {
     expect(draft!.url).toBeUndefined();
     expect(draft!.number).toBeUndefined();
     expect(draft!.repository).toBeUndefined();
+  });
+});
+
+describe("GitHub issues cache cleans up old label rows", () => {
+  it("deletes old label rows when caching new issues", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheIssues([
+      {
+        number: 1,
+        title: "Issue one",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [{ name: "bug", color: "d73a4a" }],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    // Cache again with different labels
+    cacheIssues([
+      {
+        number: 1,
+        title: "Issue one",
+        url: "https://github.com/owner/repo/issues/1",
+        labels: [{ name: "feature", color: "0075ca" }],
+        repository: { name: "repo", nameWithOwner: "owner/repo" },
+      },
+    ]);
+
+    const totalLabelRows = getDb().all(
+      sql`SELECT count(*) as cnt FROM github_issue_labels`,
+    ) as Array<{ cnt: number }>;
+    expect(totalLabelRows[0]!.cnt).toBe(1);
+
+    const cached = getCachedIssues();
+    expect(cached![0]!.labels).toStrictEqual([{ name: "feature", color: "0075ca" }]);
+
+    vi.useRealTimers();
+  });
+});
+
+describe("GitHub project items cache cleans up old label rows", () => {
+  it("deletes old label rows when caching new project items", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    cacheProjectItems([
+      {
+        id: "PVTI_abc",
+        title: "Task",
+        status: "In Progress",
+        type: "ISSUE",
+        labels: [{ name: "enhancement", color: "a2eeef" }],
+      },
+    ]);
+
+    vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
+
+    // Cache again with different labels
+    cacheProjectItems([
+      {
+        id: "PVTI_abc",
+        title: "Task",
+        status: "In Progress",
+        type: "ISSUE",
+        labels: [{ name: "bug", color: "d73a4a" }],
+      },
+    ]);
+
+    const totalLabelRows = getDb().all(
+      sql`SELECT count(*) as cnt FROM github_project_item_labels`,
+    ) as Array<{ cnt: number }>;
+    expect(totalLabelRows[0]!.cnt).toBe(1);
+
+    const cached = getCachedProjectItems();
+    expect(cached![0]!.labels).toStrictEqual([{ name: "bug", color: "d73a4a" }]);
+
+    vi.useRealTimers();
   });
 });
 

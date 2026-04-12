@@ -1,5 +1,5 @@
 import DatabaseConstructor from "better-sqlite3";
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -914,6 +914,9 @@ export function cacheIssues(issues: GitHubIssue[]): void {
       .where(eq(githubIssues.systemTo, FAR_FUTURE))
       .run();
 
+    // Delete old label rows (no system_to; would otherwise leak forever)
+    tx.delete(githubIssueLabels).where(ne(githubIssueLabels.systemFrom, timestamp)).run();
+
     // Insert new issue rows
     for (const issue of issues) {
       tx.insert(githubIssues)
@@ -998,6 +1001,11 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
     tx.update(githubProjectItems)
       .set({ systemTo: timestamp })
       .where(eq(githubProjectItems.systemTo, FAR_FUTURE))
+      .run();
+
+    // Delete old label rows (no system_to; would otherwise leak forever)
+    tx.delete(githubProjectItemLabels)
+      .where(ne(githubProjectItemLabels.systemFrom, timestamp))
       .run();
 
     // Insert new project item rows

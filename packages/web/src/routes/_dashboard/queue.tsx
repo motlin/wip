@@ -1,26 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Play, Loader2, GitBranch } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, createContext, useContext } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { testAllChildren, rebaseAllBranches, getProjectChildren } from "../../lib/server-fns";
 import type { ProjectChildrenResult } from "../../lib/server-fns";
-import {
-  isGitChildPullRequest,
-  isGitChildBranch,
-  isGitChildCommit,
-} from "../../lib/git-child-discriminators";
 import { useHasActiveTests } from "../../lib/task-events-context";
 import { projectsQueryOptions } from "../../lib/queries";
 import { useWorkItems } from "../../lib/use-work-items";
 import type { ColumnItems } from "../../components/kanban-column";
 import { classifyGitChild, classifyIssue, classifyTodo } from "../../lib/classify";
-import { CommitCard } from "../../components/commit-card";
-import { BranchCard } from "../../components/branch-card";
-import { PullRequestCard } from "../../components/pull-request-card";
-import { IssueCard } from "../../components/issue-card";
-import { ProjectBoardItemCard } from "../../components/project-board-item-card";
-import { TodoCard } from "../../components/todo-card";
 import type { Category } from "@wip/shared";
 import {
   CATEGORIES,
@@ -52,7 +41,7 @@ const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
 
 const MAX_VISIBLE_PROJECTS = 8;
 
-function categoryDotColor(category: Category): string {
+export function categoryDotColor(category: Category): string {
   switch (category) {
     case "checks_passed":
     case "approved":
@@ -86,7 +75,7 @@ function categoryDotColor(category: Category): string {
   }
 }
 
-function bucketCount(items: ColumnItems): number {
+export function bucketCount(items: ColumnItems): number {
   return (
     (items.gitChildren?.length ?? 0) +
     (items.issues?.length ?? 0) +
@@ -95,14 +84,36 @@ function bucketCount(items: ColumnItems): number {
   );
 }
 
+export interface QueueContextValue {
+  grouped: Record<Category, ColumnItems>;
+  totalCount: number;
+  readyToTestCount: number;
+  needsRebaseCount: number;
+  projectCount: number;
+  selectedCategory: Category | null;
+  selectedProject: string | null;
+  filterByProject: (items: ColumnItems) => ColumnItems;
+  visibleCategories: Category[];
+}
+
+export const QueueContext = createContext<QueueContextValue | null>(null);
+
+export function useQueueContext(): QueueContextValue {
+  const context = useContext(QueueContext);
+  if (!context) {
+    throw new Error("useQueueContext must be used within QueueContext.Provider");
+  }
+  return context;
+}
+
 export const Route = createFileRoute("/_dashboard/queue")({
   head: () => ({
     meta: [{ title: "WIP Queue" }],
   }),
-  component: Queue,
+  component: QueueLayout,
 });
 
-function Queue() {
+function QueueLayout() {
   const queryClient = useQueryClient();
   const { data: projects } = useSuspenseQuery(projectsQueryOptions());
   const workItems = useWorkItems(projects);
@@ -154,21 +165,18 @@ function Queue() {
       g[cat].gitChildren.push(child);
     }
 
-    // Issues are classified by plan status (triaged, plan_unreviewed, plan_approved).
     for (const issue of workItems.issues) {
       const cat = classifyIssue(issue);
       g[cat].issues = g[cat].issues ?? [];
       g[cat].issues.push(issue);
     }
 
-    // Todos are classified by plan status (triaged, plan_unreviewed, plan_approved).
     for (const todo of workItems.todos) {
       const cat = classifyTodo(todo);
       g[cat].todos = g[cat].todos ?? [];
       g[cat].todos.push(todo);
     }
 
-    // Project items lack assignment info, so they are untriaged.
     g.untriaged.projectItems = workItems.projectItems;
 
     let total = 0;
@@ -283,241 +291,231 @@ function Queue() {
     : projectCounts.slice(0, MAX_VISIBLE_PROJECTS);
   const hiddenProjectCount = projectCounts.length - MAX_VISIBLE_PROJECTS;
 
-  return (
-    <div className="grid min-h-0 grid-cols-[240px_1fr]">
-      {/* Sidebar */}
-      <aside className="overflow-y-auto border-r border-border-300 bg-bg-100 p-5">
-        {/* Summary stats */}
-        <section className="mb-6">
-          <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
-            Summary
-          </h3>
-          <div className="flex flex-col">
-            <div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
-              <span>Total items</span>
-              <span className="font-semibold text-text-000">{totalCount}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
-              <span>Projects</span>
-              <span className="font-semibold text-text-000">{workItems.projectCount}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
-              <span>Needs action</span>
-              <span className="font-semibold text-text-000">{needsActionCount}</span>
-            </div>
-            <div className="flex items-center justify-between py-2 text-[0.8125rem] text-text-300">
-              <span>Waiting</span>
-              <span className="font-semibold text-text-000">{waitingCount}</span>
-            </div>
-          </div>
-        </section>
+  const queueContextValue = useMemo<QueueContextValue>(
+    () => ({
+      grouped,
+      totalCount,
+      readyToTestCount,
+      needsRebaseCount,
+      projectCount: workItems.projectCount,
+      selectedCategory,
+      selectedProject,
+      filterByProject,
+      visibleCategories,
+    }),
+    [
+      grouped,
+      totalCount,
+      readyToTestCount,
+      needsRebaseCount,
+      workItems.projectCount,
+      selectedCategory,
+      selectedProject,
+      filterByProject,
+      visibleCategories,
+    ],
+  );
 
-        {/* Category filters */}
-        <section className="mb-6">
-          <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
-            Categories
-          </h3>
-          <div className="flex flex-col gap-0.5">
-            <button
-              type="button"
-              onClick={() => handleCategoryClick(null)}
-              className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-                selectedCategory === null ? "bg-bg-200 font-medium" : ""
-              }`}
-            >
-              <span className="flex items-center">
-                <span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-status-green" />
-                All
-              </span>
-              <span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
-                {totalCount}
-              </span>
-            </button>
-            {CATEGORY_PRIORITY_REVERSED.map((cat) => {
-              const count = categoryCounts[cat];
-              if (!count) return null;
-              return (
+  return (
+    <QueueContext.Provider value={queueContextValue}>
+      <div className="grid min-h-0 grid-cols-[240px_1fr]">
+        {/* Sidebar */}
+        <aside className="overflow-y-auto border-r border-border-300 bg-bg-100 p-5">
+          {/* Summary stats */}
+          <section className="mb-6">
+            <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
+              Summary
+            </h3>
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
+                <span>Total items</span>
+                <span className="font-semibold text-text-000">{totalCount}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
+                <span>Projects</span>
+                <span className="font-semibold text-text-000">{workItems.projectCount}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
+                <span>Needs action</span>
+                <span className="font-semibold text-text-000">{needsActionCount}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 text-[0.8125rem] text-text-300">
+                <span>Waiting</span>
+                <span className="font-semibold text-text-000">{waitingCount}</span>
+              </div>
+            </div>
+          </section>
+
+          {/* Category filters */}
+          <section className="mb-6">
+            <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
+              Categories
+            </h3>
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                onClick={() => handleCategoryClick(null)}
+                className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
+                  selectedCategory === null ? "bg-bg-200 font-medium" : ""
+                }`}
+              >
+                <span className="flex items-center">
+                  <span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-status-green" />
+                  All
+                </span>
+                <span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+                  {totalCount}
+                </span>
+              </button>
+              {CATEGORY_PRIORITY_REVERSED.map((cat) => {
+                const count = categoryCounts[cat];
+                if (!count) return null;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleCategoryClick(cat)}
+                    className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
+                      selectedCategory === cat ? "bg-bg-200 font-medium" : ""
+                    }`}
+                  >
+                    <span className="flex items-center">
+                      <span
+                        className={`mr-2 h-2 w-2 shrink-0 rounded-full ${categoryDotColor(cat)}`}
+                      />
+                      {CATEGORIES[cat].label}
+                    </span>
+                    <span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Project filters */}
+          <section>
+            <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
+              Projects
+            </h3>
+            <div className="flex flex-col gap-0.5">
+              {visibleProjects.map(([project, count]) => (
                 <button
-                  key={cat}
+                  key={project}
                   type="button"
-                  onClick={() => handleCategoryClick(cat)}
+                  onClick={() => handleProjectClick(project)}
                   className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-                    selectedCategory === cat ? "bg-bg-200 font-medium" : ""
+                    selectedProject === project ? "bg-bg-200 font-medium" : ""
                   }`}
                 >
-                  <span className="flex items-center">
-                    <span
-                      className={`mr-2 h-2 w-2 shrink-0 rounded-full ${categoryDotColor(cat)}`}
-                    />
-                    {CATEGORIES[cat].label}
-                  </span>
-                  <span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+                  <span className="truncate">{project}</span>
+                  <span className="ml-2 min-w-6 shrink-0 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
                     {count}
                   </span>
                 </button>
-              );
-            })}
-          </div>
-        </section>
+              ))}
+              {hiddenProjectCount > 0 && !showAllProjects && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllProjects(true)}
+                  className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
+                >
+                  + {hiddenProjectCount} more...
+                </button>
+              )}
+              {showAllProjects && hiddenProjectCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllProjects(false)}
+                  className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
+                >
+                  Show less
+                </button>
+              )}
+            </div>
+          </section>
+        </aside>
 
-        {/* Project filters */}
-        <section>
-          <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
-            Projects
-          </h3>
-          <div className="flex flex-col gap-0.5">
-            {visibleProjects.map(([project, count]) => (
-              <button
-                key={project}
-                type="button"
-                onClick={() => handleProjectClick(project)}
-                className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-                  selectedProject === project ? "bg-bg-200 font-medium" : ""
-                }`}
-              >
-                <span className="truncate">{project}</span>
-                <span className="ml-2 min-w-6 shrink-0 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
-                  {count}
-                </span>
-              </button>
-            ))}
-            {hiddenProjectCount > 0 && !showAllProjects && (
-              <button
-                type="button"
-                onClick={() => setShowAllProjects(true)}
-                className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
-              >
-                + {hiddenProjectCount} more...
-              </button>
-            )}
-            {showAllProjects && hiddenProjectCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowAllProjects(false)}
-                className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
-              >
-                Show less
-              </button>
-            )}
+        {/* Main content */}
+        <main className="overflow-y-auto p-6 pr-8">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold">Queue</h1>
+              <span className="text-sm text-text-500">
+                {totalCount} items across {workItems.projectCount} projects
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* View toggle */}
+              <div className="mr-2 flex rounded-lg border border-border-300">
+                <Link
+                  to="/queue"
+                  activeOptions={{ exact: true }}
+                  className="rounded-l-lg px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
+                >
+                  Cards
+                </Link>
+                <Link
+                  to="/queue/table"
+                  className="rounded-r-lg border-l border-border-300 px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
+                >
+                  Table
+                </Link>
+              </div>
+              {needsRebaseCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRebaseAll}
+                  disabled={rebasingAll}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    rebasingAll
+                      ? "bg-orange-600/80 text-white"
+                      : "bg-orange-600 hover:bg-orange-700 text-white"
+                  }`}
+                >
+                  {rebasingAll ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GitBranch className="h-4 w-4" />
+                  )}
+                  {rebasingAll ? "Rebasing..." : `Rebase All (${needsRebaseCount})`}
+                </button>
+              )}
+              {readyToTestCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleTestAll}
+                  disabled={testingAll || hasActiveTests}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                    testingAll || hasActiveTests
+                      ? "bg-yellow-600/80 text-white"
+                      : "bg-yellow-600 hover:bg-yellow-700 text-white"
+                  }`}
+                >
+                  {testingAll || hasActiveTests ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  {hasActiveTests ? "Tests Running..." : `Test All (${readyToTestCount})`}
+                </button>
+              )}
+            </div>
           </div>
-        </section>
-      </aside>
-
-      {/* Main content */}
-      <main className="overflow-y-auto p-6 pr-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">Queue</h1>
-            <span className="text-sm text-text-500">
-              {totalCount} items across {workItems.projectCount} projects
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {needsRebaseCount > 0 && (
-              <button
-                type="button"
-                onClick={handleRebaseAll}
-                disabled={rebasingAll}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  rebasingAll
-                    ? "bg-orange-600/80 text-white"
-                    : "bg-orange-600 hover:bg-orange-700 text-white"
-                }`}
-              >
-                {rebasingAll ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <GitBranch className="h-4 w-4" />
-                )}
-                {rebasingAll ? "Rebasing..." : `Rebase All (${needsRebaseCount})`}
-              </button>
-            )}
-            {readyToTestCount > 0 && (
-              <button
-                type="button"
-                onClick={handleTestAll}
-                disabled={testingAll || hasActiveTests}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  testingAll || hasActiveTests
-                    ? "bg-yellow-600/80 text-white"
-                    : "bg-yellow-600 hover:bg-yellow-700 text-white"
-                }`}
-              >
-                {testingAll || hasActiveTests ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                {hasActiveTests ? "Tests Running..." : `Test All (${readyToTestCount})`}
-              </button>
-            )}
-          </div>
-        </div>
-        {rebaseResult && (
-          <div className="mb-4 rounded-lg bg-bg-200 px-3 py-2 text-sm text-text-200">
-            {rebaseResult}
-          </div>
-        )}
-        {testAllError && (
-          <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-            {testAllError}
-          </div>
-        )}
-        <div className="flex flex-col gap-6">
-          {visibleCategories.map((category) => {
-            const rawItems = grouped[category];
-            const items = filterByProject(rawItems);
-            const count = bucketCount(items);
-            if (count === 0) return null;
-            return (
-              <section key={category}>
-                <h2 className={`mb-2 text-sm font-semibold ${CATEGORIES[category].color}`}>
-                  <span className="font-mono text-xs text-text-500">
-                    {CATEGORY_PRIORITY.indexOf(category) + 1}
-                  </span>{" "}
-                  {CATEGORIES[category].label}
-                  <span className="ml-2 font-normal text-text-500">{count}</span>
-                </h2>
-                <div className="flex flex-col gap-2">
-                  {items.gitChildren
-                    ?.filter((c) => isGitChildPullRequest(c))
-                    .map((pr) => (
-                      <PullRequestCard key={pr.sha} pr={pr} category={category} />
-                    ))}
-                  {items.gitChildren
-                    ?.filter((c) => isGitChildBranch(c) && c.commitsAhead === 1)
-                    .map((b) => (
-                      <BranchCard key={b.sha} branch={b} category={category} />
-                    ))}
-                  {items.gitChildren
-                    ?.filter((c) => isGitChildCommit(c))
-                    .map((c) => (
-                      <CommitCard key={c.sha} commit={c} category={category} />
-                    ))}
-                  {items.gitChildren
-                    ?.filter((c) => isGitChildBranch(c) && c.commitsAhead !== 1)
-                    .map((b) => (
-                      <BranchCard key={b.sha} branch={b} category={category} />
-                    ))}
-                  {items.issues?.map((i) => (
-                    <IssueCard key={`issue-${i.number}`} issue={i} category={category} />
-                  ))}
-                  {items.projectItems?.map((p, i) => (
-                    <ProjectBoardItemCard key={`project-${p.number ?? i}-${p.project}`} item={p} />
-                  ))}
-                  {items.todos?.map((t, i) => (
-                    <TodoCard
-                      key={`todo-${t.project}-${t.sourceFile}-${i}`}
-                      todo={t}
-                      category={category}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </main>
-    </div>
+          {rebaseResult && (
+            <div className="mb-4 rounded-lg bg-bg-200 px-3 py-2 text-sm text-text-200">
+              {rebaseResult}
+            </div>
+          )}
+          {testAllError && (
+            <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+              {testAllError}
+            </div>
+          )}
+          <Outlet />
+        </main>
+      </div>
+    </QueueContext.Provider>
   );
 }

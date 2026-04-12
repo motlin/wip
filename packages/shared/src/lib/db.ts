@@ -81,6 +81,35 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
     sqlite.exec("DROP TABLE snoozed");
   }
 
+  // Migrate: PK changed from (id, system_from) to (id, system_to) — drop all temporal tables
+  {
+    const createSql = sqlite
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='snoozed'")
+      .get() as { sql: string } | undefined;
+    if (createSql?.sql?.includes("system_from)")) {
+      for (const table of [
+        "snoozed",
+        "branch_names",
+        "test_results",
+        "pr_status_cache",
+        "pr_failed_checks",
+        "mise_env_cache",
+        "gh_login_cache",
+        "github_issues",
+        "github_issue_labels",
+        "github_project_items",
+        "github_project_item_labels",
+        "upstream_refs",
+        "merge_status",
+        "project_cache",
+        "children_cache",
+        "todos_cache",
+      ]) {
+        sqlite.exec(`DROP TABLE IF EXISTS ${table}`);
+      }
+    }
+  }
+
   // Create table if not exists
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS snoozed (
@@ -91,7 +120,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			until TEXT,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (sha, project, system_from)
+			PRIMARY KEY (sha, project, system_to)
 		)
 	`);
 
@@ -102,7 +131,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			name TEXT NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (sha, project, system_from)
+			PRIMARY KEY (sha, project, system_to)
 		)
 	`);
   sqlite.exec(
@@ -128,7 +157,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			duration_ms INTEGER NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (sha, project, test_name, system_from)
+			PRIMARY KEY (sha, project, test_name, system_to)
 		)
 	`);
   sqlite.exec(
@@ -196,7 +225,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			merge_state_status TEXT,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (project, branch, system_from)
+			PRIMARY KEY (project, branch, system_to)
 		)
 	`);
 
@@ -208,7 +237,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			name TEXT NOT NULL,
 			url TEXT,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (project, branch, system_from, name)
+			PRIMARY KEY (project, branch, system_to, name)
 		)
 	`);
 
@@ -218,7 +247,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			env TEXT NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (dir, system_from)
+			PRIMARY KEY (dir, system_to)
 		)
 	`);
 
@@ -228,7 +257,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			login TEXT NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (id, system_from)
+			PRIMARY KEY (id, system_to)
 		)
 	`);
 
@@ -241,7 +270,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			repo_name TEXT NOT NULL,
 			repo_name_with_owner TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (system_from, number, repo_name_with_owner)
+			PRIMARY KEY (system_to, number, repo_name_with_owner)
 		)
 	`);
 
@@ -267,7 +296,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			number INTEGER,
 			repository TEXT,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (system_from, item_id)
+			PRIMARY KEY (system_to, item_id)
 		)
 	`);
 
@@ -288,7 +317,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			sha TEXT NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (project, system_from)
+			PRIMARY KEY (project, system_to)
 		)
 	`);
 
@@ -302,7 +331,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			rebaseable INTEGER,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (project, sha, system_from)
+			PRIMARY KEY (project, sha, system_to)
 		)
 	`);
 
@@ -321,7 +350,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			rebase_in_progress INTEGER NOT NULL DEFAULT 0,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (name, system_from)
+			PRIMARY KEY (name, system_to)
 		)
 	`);
 
@@ -346,7 +375,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			children_json TEXT NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (project, system_from)
+			PRIMARY KEY (project, system_to)
 		)
 	`);
   sqlite.exec(
@@ -359,7 +388,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			todos_json TEXT NOT NULL,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (project, system_from)
+			PRIMARY KEY (project, system_to)
 		)
 	`);
   sqlite.exec(

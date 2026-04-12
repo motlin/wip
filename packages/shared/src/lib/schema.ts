@@ -12,7 +12,7 @@ export const branchNames = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.sha, table.project, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.sha, table.project, table.systemTo] }),
     activeIdx: index("branch_names_active_idx").on(table.sha, table.project, table.systemTo),
   }),
 );
@@ -30,7 +30,7 @@ export const testResults = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.sha, table.project, table.testName, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.sha, table.project, table.testName, table.systemTo] }),
     activeIdx: index("test_results_active_idx").on(table.project, table.systemTo),
   }),
 );
@@ -54,7 +54,7 @@ export const prStatusCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.project, table.branch, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.project, table.branch, table.systemTo] }),
   }),
 );
 
@@ -69,7 +69,7 @@ export const prFailedChecks = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.project, table.branch, table.systemFrom, table.name] }),
+    pk: primaryKey({ columns: [table.project, table.branch, table.systemTo, table.name] }),
   }),
 );
 
@@ -82,7 +82,7 @@ export const reportCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.id, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.id, table.systemTo] }),
   }),
 );
 
@@ -96,7 +96,7 @@ export const miseEnvVars = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.dir, table.systemFrom, table.key] }),
+    pk: primaryKey({ columns: [table.dir, table.systemTo, table.key] }),
   }),
 );
 
@@ -109,7 +109,7 @@ export const miseEnvCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.dir, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.dir, table.systemTo] }),
   }),
 );
 
@@ -122,7 +122,7 @@ export const ghLoginCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.id, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.id, table.systemTo] }),
   }),
 );
 
@@ -138,7 +138,7 @@ export const githubIssues = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.systemFrom, table.number, table.repoNameWithOwner] }),
+    pk: primaryKey({ columns: [table.systemTo, table.number, table.repoNameWithOwner] }),
   }),
 );
 
@@ -167,7 +167,7 @@ export const githubIssuesCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.id, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.id, table.systemTo] }),
   }),
 );
 
@@ -185,7 +185,7 @@ export const githubProjectItems = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.systemFrom, table.itemId] }),
+    pk: primaryKey({ columns: [table.systemTo, table.itemId] }),
   }),
 );
 
@@ -211,7 +211,7 @@ export const githubProjectItemsCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.id, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.id, table.systemTo] }),
   }),
 );
 
@@ -225,7 +225,7 @@ export const upstreamRefs = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.project, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.project, table.systemTo] }),
   }),
 );
 
@@ -242,7 +242,7 @@ export const mergeStatus = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.project, table.sha, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.project, table.sha, table.systemTo] }),
   }),
 );
 
@@ -258,7 +258,7 @@ export const snoozed = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.sha, table.project, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.sha, table.project, table.systemTo] }),
   }),
 );
 
@@ -271,7 +271,7 @@ export const childrenCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.project, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.project, table.systemTo] }),
     activeIdx: index("children_cache_active_idx").on(table.project, table.systemTo),
   }),
 );
@@ -285,7 +285,7 @@ export const todosCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.project, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.project, table.systemTo] }),
     activeIdx: index("todos_cache_active_idx").on(table.project, table.systemTo),
   }),
 );
@@ -314,7 +314,7 @@ export const projectCache = sqliteTable(
     systemTo: text("system_to").notNull().default(FAR_FUTURE),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.name, table.systemFrom] }),
+    pk: primaryKey({ columns: [table.name, table.systemTo] }),
     activeIdx: index("project_cache_active_idx").on(table.name, table.systemTo),
   }),
 );

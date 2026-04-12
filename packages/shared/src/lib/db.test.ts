@@ -203,6 +203,65 @@ describe("PR status cache", () => {
     expect(cached).toHaveLength(1);
     expect(cached![0]!.failedChecks).toStrictEqual([{ name: "ci/new-check", url: undefined }]);
   });
+
+  it("does not churn failed checks rows when checks are unchanged", () => {
+    const statuses: CachedPrStatus[] = [
+      {
+        branch: "feature/stable-checks",
+        reviewStatus: "clean",
+        checkStatus: "failed",
+        prUrl: "https://github.com/owner/repo/pull/10",
+        prNumber: 10,
+        failedChecks: [
+          { name: "ci/lint", url: "https://example.com/lint" },
+          { name: "ci/test", url: "https://example.com/test" },
+        ],
+        behind: false,
+      },
+    ];
+
+    cachePrStatuses("test-project", statuses);
+
+    const afterFirst = getDb().all(
+      sql`SELECT * FROM pr_failed_checks WHERE project = 'test-project'`,
+    );
+    expect(afterFirst).toHaveLength(2);
+
+    // Cache again with identical data
+    cachePrStatuses("test-project", statuses);
+
+    const afterSecond = getDb().all(
+      sql`SELECT * FROM pr_failed_checks WHERE project = 'test-project'`,
+    );
+    // No rows should have been closed and re-inserted; still just 2 active rows
+    expect(afterSecond).toHaveLength(2);
+    expect(afterSecond).toStrictEqual(afterFirst);
+  });
+
+  it("closes failed checks for branches no longer present", () => {
+    const statuses: CachedPrStatus[] = [
+      {
+        branch: "feature/removed",
+        reviewStatus: "clean",
+        checkStatus: "failed",
+        prUrl: null,
+        failedChecks: [{ name: "ci/test" }],
+        behind: false,
+      },
+    ];
+
+    cachePrStatuses("test-project", statuses);
+
+    // Cache again with empty list (branch removed)
+    cachePrStatuses("test-project", []);
+
+    const allRows = getDb().all(sql`SELECT * FROM pr_failed_checks WHERE project = 'test-project'`);
+    // The original row should be closed (system_to != FAR_FUTURE), no active rows
+    expect(allRows).toHaveLength(1);
+
+    const cached = getCachedPrStatuses("test-project");
+    expect(cached).toBeNull();
+  });
 });
 
 describe("Merge status cache", () => {

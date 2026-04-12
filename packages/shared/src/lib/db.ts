@@ -813,7 +813,25 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
     const existingByBranch = new Map(existingRows.map((r) => [r.branch, r]));
     const incomingBranches = new Set(statuses.map((s) => s.branch));
 
-    // Close parent rows for branches no longer present
+    // Fetch existing active failed-checks rows for comparison
+    const existingChecksRows = tx
+      .select({
+        branch: prFailedChecks.branch,
+        name: prFailedChecks.name,
+        url: prFailedChecks.url,
+      })
+      .from(prFailedChecks)
+      .where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
+      .all();
+
+    const existingChecksByBranch = new Map<string, Array<{ name: string; url: string | null }>>();
+    for (const c of existingChecksRows) {
+      const arr = existingChecksByBranch.get(c.branch) ?? [];
+      arr.push({ name: c.name, url: c.url });
+      existingChecksByBranch.set(c.branch, arr);
+    }
+
+    // Close parent rows and checks for branches no longer present
     for (const existing of existingRows) {
       if (!incomingBranches.has(existing.branch)) {
         tx.update(prStatusCache)
@@ -826,14 +844,24 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
             ),
           )
           .run();
+        tx.update(prFailedChecks)
+          .set({ systemTo: timestamp })
+          .where(
+            and(
+              eq(prFailedChecks.project, project),
+              eq(prFailedChecks.branch, existing.branch),
+              eq(prFailedChecks.systemTo, FAR_FUTURE),
+            ),
+          )
+          .run();
       }
     }
 
-    // Always close all old pr_failed_checks rows for this project
-    tx.update(prFailedChecks)
-      .set({ systemTo: timestamp })
-      .where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
-      .run();
+    const checkKey = (checks: Array<{ name: string; url: string | null }>) =>
+      checks
+        .map((c) => `${c.name}\0${c.url ?? ""}`)
+        .sort()
+        .join("\n");
 
     for (const s of statuses) {
       const existing = existingByBranch.get(s.branch);
@@ -876,26 +904,51 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
           .run();
       }
 
-      // Insert new failed checks rows
+      // Deduplicate incoming checks by name
+      const incomingChecks: Array<{ name: string; url: string | null }> = [];
       if (s.failedChecks && s.failedChecks.length > 0) {
-        // Deduplicate by name — a PR can report the same check multiple times
         const seen = new Set<string>();
-        const uniqueChecks = s.failedChecks.filter((fc) => {
-          if (seen.has(fc.name)) return false;
-          seen.add(fc.name);
-          return true;
-        });
-        tx.insert(prFailedChecks)
-          .values(
-            uniqueChecks.map((fc) => ({
-              project,
-              branch: s.branch,
-              systemFrom: timestamp,
-              name: fc.name,
-              url: fc.url ?? null,
-            })),
-          )
-          .run();
+        for (const fc of s.failedChecks) {
+          if (!seen.has(fc.name)) {
+            seen.add(fc.name);
+            incomingChecks.push({ name: fc.name, url: fc.url ?? null });
+          }
+        }
+      }
+
+      const oldChecks = existingChecksByBranch.get(s.branch) ?? [];
+
+      const checksChanged = checkKey(oldChecks) !== checkKey(incomingChecks);
+
+      if (checksChanged) {
+        // Close old checks for this branch
+        if (oldChecks.length > 0) {
+          tx.update(prFailedChecks)
+            .set({ systemTo: timestamp })
+            .where(
+              and(
+                eq(prFailedChecks.project, project),
+                eq(prFailedChecks.branch, s.branch),
+                eq(prFailedChecks.systemTo, FAR_FUTURE),
+              ),
+            )
+            .run();
+        }
+
+        // Insert new checks
+        if (incomingChecks.length > 0) {
+          tx.insert(prFailedChecks)
+            .values(
+              incomingChecks.map((fc) => ({
+                project,
+                branch: s.branch,
+                systemFrom: timestamp,
+                name: fc.name,
+                url: fc.url,
+              })),
+            )
+            .run();
+        }
       }
     }
   });

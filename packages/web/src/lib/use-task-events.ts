@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Transition } from "@wip/shared";
+import type { TestStatus, Transition } from "@wip/shared";
 import type { ProjectChildrenResult } from "./server-fns";
 
 export type TaskType = "test" | "claude" | "rebase";
@@ -23,15 +23,20 @@ export interface TaskEvent {
 // Re-export for backward compatibility
 export type JobEvent = TaskEvent;
 
-const TERMINAL_STATUSES = new Set(["passed", "failed", "cancelled"]);
+const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
+  queued: "running",
+  running: "running",
+  passed: "passed",
+  failed: "failed",
+  cancelled: "unknown",
+};
 
 function updateTestStatus(
   queryClient: ReturnType<typeof useQueryClient>,
   project: string,
   sha: string,
-  status: string,
+  testStatus: TestStatus,
 ) {
-  const testStatus = status as "passed" | "failed" | "unknown";
   queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
     if (!old) return old;
     return old.map((c) => (c.sha === sha ? { ...c, testStatus } : c));
@@ -74,18 +79,17 @@ export function useTaskEvents() {
         return next;
       });
 
-      if (data.status === "queued" || data.status === "running") {
-        if (data.status === "queued") {
-          setLogs((prev) => {
-            const next = new Map(prev);
-            next.delete(key);
-            return next;
-          });
-        }
+      if (data.status === "queued") {
+        setLogs((prev) => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
       }
 
-      if (data.taskType === "test" && TERMINAL_STATUSES.has(data.status)) {
-        updateTestStatus(queryClient, data.project, data.sha, data.status);
+      if (data.taskType === "test") {
+        const testStatus = TASK_TO_TEST_STATUS[data.status] ?? "unknown";
+        updateTestStatus(queryClient, data.project, data.sha, testStatus);
       }
     };
 

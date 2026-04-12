@@ -8,7 +8,7 @@ import {
   getDb,
   cachePrStatuses,
   getCachedPrStatuses,
-  getStalePrStatuses,
+  isCacheFresh,
   invalidatePrCache,
   cacheMergeStatus,
   getCachedMergeStatuses,
@@ -24,11 +24,9 @@ import { cacheProjectItems, getCachedProjectItems } from "./db.js";
 import {
   cacheChildren,
   getCachedChildren,
-  getStaleChildren,
   invalidateChildrenCache,
   cacheTodos,
   getCachedTodos,
-  getStaleTodos,
   invalidateTodosCache,
 } from "./db.js";
 import type { GitHubIssue } from "./github-issues.js";
@@ -64,7 +62,7 @@ describe("PR status cache", () => {
 
   it("round-trips PR statuses through cache", () => {
     cachePrStatuses("test-project", sampleStatuses);
-    const cached = getStalePrStatuses("test-project");
+    const cached = getCachedPrStatuses("test-project");
     expect(cached).not.toBeNull();
     expect(cached).toHaveLength(2);
     expect(cached).toStrictEqual(
@@ -89,7 +87,7 @@ describe("PR status cache", () => {
       },
     ];
     cachePrStatuses("test-project", statuses);
-    const cached = getStalePrStatuses("test-project");
+    const cached = getCachedPrStatuses("test-project");
     expect(cached).not.toBeNull();
     expect(cached![0]!.mergeStateStatus).toBe("BLOCKED");
   });
@@ -110,7 +108,7 @@ describe("PR status cache", () => {
       },
     ];
     cachePrStatuses("test-project", statuses);
-    const cached = getStalePrStatuses("test-project");
+    const cached = getCachedPrStatuses("test-project");
     expect(cached).not.toBeNull();
     expect(cached).toHaveLength(1);
     expect(cached![0]!.failedChecks).toStrictEqual([
@@ -135,7 +133,7 @@ describe("PR status cache", () => {
       },
     ];
     expect(() => cachePrStatuses("test-project", statuses)).not.toThrow();
-    const cached = getStalePrStatuses("test-project");
+    const cached = getCachedPrStatuses("test-project");
     expect(cached).not.toBeNull();
     // Duplicates are deduplicated by name, so only 2 unique checks
     expect(cached![0]!.failedChecks).toHaveLength(2);
@@ -158,7 +156,7 @@ describe("PR status cache", () => {
     ];
     cachePrStatuses("test-project", statuses);
     invalidatePrCache("test-project");
-    const cached = getStalePrStatuses("test-project");
+    const cached = getCachedPrStatuses("test-project");
     expect(cached).toBeNull();
   });
 
@@ -190,7 +188,7 @@ describe("PR status cache", () => {
     ];
     cachePrStatuses("test-project", updated);
 
-    const cached = getStalePrStatuses("test-project");
+    const cached = getCachedPrStatuses("test-project");
     expect(cached).not.toBeNull();
     expect(cached).toHaveLength(1);
     expect(cached![0]!.failedChecks).toStrictEqual([{ name: "ci/new-check", url: undefined }]);
@@ -293,7 +291,7 @@ describe("GitHub issues cache", () => {
   it("round-trips issues with labels reconstructed", () => {
     cacheIssues(sampleIssues);
     // Use a large TTL so the just-cached data is within range
-    const cached = getCachedIssues(60 * 60 * 1000);
+    const cached = getCachedIssues();
     expect(cached).not.toBeNull();
     expect(cached).toHaveLength(2);
 
@@ -335,7 +333,7 @@ describe("GitHub project items cache", () => {
 
   it("round-trips project items with labels reconstructed", () => {
     cacheProjectItems(sampleItems);
-    const cached = getCachedProjectItems(60 * 60 * 1000);
+    const cached = getCachedProjectItems();
     expect(cached).not.toBeNull();
     expect(cached).toHaveLength(2);
 
@@ -359,7 +357,7 @@ describe("GitHub project items cache", () => {
 });
 
 describe("Cache TTL expiry", () => {
-  it("returns null when cached data is older than TTL", () => {
+  it("getCachedIssues always returns current state regardless of age", () => {
     cacheIssues([
       {
         number: 1,
@@ -369,12 +367,12 @@ describe("Cache TTL expiry", () => {
         repository: { name: "repo", nameWithOwner: "owner/repo" },
       },
     ]);
-    // Use a TTL of 0ms so the just-cached data is already expired
-    const cached = getCachedIssues(0);
-    expect(cached).toBeNull();
+    const cached = getCachedIssues();
+    expect(cached).not.toBeNull();
+    expect(cached).toHaveLength(1);
   });
 
-  it("returns null for project items when cached data is older than TTL", () => {
+  it("getCachedProjectItems always returns current state regardless of age", () => {
     cacheProjectItems([
       {
         id: "PVTI_old",
@@ -384,11 +382,12 @@ describe("Cache TTL expiry", () => {
         labels: [],
       },
     ]);
-    const cached = getCachedProjectItems(0);
-    expect(cached).toBeNull();
+    const cached = getCachedProjectItems();
+    expect(cached).not.toBeNull();
+    expect(cached).toHaveLength(1);
   });
 
-  it("returns null for PR statuses when cached data is older than TTL", () => {
+  it("getCachedPrStatuses always returns current state regardless of age", () => {
     cachePrStatuses("test-project", [
       {
         branch: "feature/old",
@@ -398,35 +397,9 @@ describe("Cache TTL expiry", () => {
         behind: false,
       },
     ]);
-    const stale = getStalePrStatuses("test-project");
-    expect(stale).not.toBeNull();
-    const fresh = getCachedPrStatuses("test-project");
-    expect(fresh).not.toBeNull();
-  });
 
-  it("returns all current PR rows when some are old and some are new", () => {
-    // Simulate the real bug: cache 2 branches, then age one of them past the TTL.
-    // When a second cache call only updates the changed branch, the unchanged
-    // branch keeps its old systemFrom. getCachedPrStatuses must still return both.
-    cachePrStatuses("test-project", [
-      {
-        branch: "feature/unchanged",
-        reviewStatus: "clean",
-        checkStatus: "passed",
-        prUrl: "https://github.com/org/repo/pull/1",
-        behind: false,
-      },
-      {
-        branch: "feature/will-change",
-        reviewStatus: "clean",
-        checkStatus: "passed",
-        prUrl: "https://github.com/org/repo/pull/2",
-        behind: false,
-      },
-    ]);
-
-    // Age all rows to 20 minutes ago (past the 10-minute TTL)
-    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000)
+    // Age the row past any reasonable TTL
+    const oldTimestamp = new Date(Date.now() - 60 * 60 * 1000)
       .toISOString()
       .replace("T", " ")
       .replace("Z", "");
@@ -435,31 +408,34 @@ describe("Cache TTL expiry", () => {
       sql`UPDATE pr_status_cache SET system_from = ${oldTimestamp} WHERE project = 'test-project'`,
     );
 
-    // Now update only one branch (simulates a real API refresh where one PR changed)
+    // getCachedPrStatuses is a pure current-state query — still returns the data
+    const cached = getCachedPrStatuses("test-project");
+    expect(cached).not.toBeNull();
+    expect(cached).toHaveLength(1);
+  });
+
+  it("isCacheFresh tracks polling freshness separately from temporal data", () => {
     cachePrStatuses("test-project", [
       {
-        branch: "feature/unchanged",
+        branch: "feature/a",
         reviewStatus: "clean",
         checkStatus: "passed",
-        prUrl: "https://github.com/org/repo/pull/1",
-        behind: false,
-      },
-      {
-        branch: "feature/will-change",
-        reviewStatus: "changes_requested",
-        checkStatus: "failed",
-        prUrl: "https://github.com/org/repo/pull/2",
+        prUrl: null,
         behind: false,
       },
     ]);
 
-    // feature/unchanged still has old systemFrom, feature/will-change has a fresh one.
-    // getCachedPrStatuses must return BOTH.
-    const cached = getCachedPrStatuses("test-project");
-    expect(cached).not.toBeNull();
-    expect(cached).toHaveLength(2);
-    const branches = cached!.map((c) => c.branch).sort();
-    expect(branches).toEqual(["feature/unchanged", "feature/will-change"]);
+    // cachePrStatuses calls markCacheFresh, so it should be fresh
+    expect(isCacheFresh("pr-statuses:test-project", 10 * 60 * 1000)).toBe(true);
+
+    // Age the freshness record
+    getDb().run(
+      sql`UPDATE cache_freshness SET last_refreshed = '2020-01-01 00:00:00' WHERE cache_key = 'pr-statuses:test-project'`,
+    );
+    expect(isCacheFresh("pr-statuses:test-project", 10 * 60 * 1000)).toBe(false);
+
+    // But the data is still there
+    expect(getCachedPrStatuses("test-project")).not.toBeNull();
   });
 });
 
@@ -488,7 +464,7 @@ describe("Migration: old schema to new", () => {
       },
     ];
     cachePrStatuses("migrated-project", statuses);
-    const cached = getStalePrStatuses("migrated-project");
+    const cached = getCachedPrStatuses("migrated-project");
     expect(cached).not.toBeNull();
     expect(cached).toHaveLength(1);
     expect(cached![0]!.failedChecks).toHaveLength(2);
@@ -526,22 +502,17 @@ describe("Children cache", () => {
     expect(cached![0]!.sha).toBe("abc123");
   });
 
-  it("returns null when cache is expired", () => {
+  it("isCacheFresh tracks children freshness separately from data", () => {
     cacheChildren("test-project", sampleChildren);
-    // TTL of -1 ensures the cutoff is in the future, so the cache is always expired
-    expect(getCachedChildren("test-project", -1)).toBeNull();
-  });
-
-  it("returns stale data regardless of TTL", () => {
-    cacheChildren("test-project", sampleChildren);
-    expect(getStaleChildren("test-project")).toHaveLength(1);
+    expect(isCacheFresh("children:test-project", 10 * 60 * 1000)).toBe(true);
+    expect(getCachedChildren("test-project")).toHaveLength(1);
   });
 
   it("invalidates cache", () => {
     cacheChildren("test-project", sampleChildren);
     invalidateChildrenCache("test-project");
     expect(getCachedChildren("test-project")).toBeNull();
-    expect(getStaleChildren("test-project")).toBeNull();
+    expect(getCachedChildren("test-project")).toBeNull();
   });
 
   it("overwrites previous cache entry after invalidation", async () => {
@@ -578,20 +549,16 @@ describe("Todos cache", () => {
     expect(cached![0]!.title).toBe("Fix the thing");
   });
 
-  it("returns null when cache is expired", () => {
+  it("isCacheFresh tracks todos freshness separately from data", () => {
     cacheTodos("test-project", sampleTodos);
-    expect(getCachedTodos("test-project", -1)).toBeNull();
-  });
-
-  it("returns stale data regardless of TTL", () => {
-    cacheTodos("test-project", sampleTodos);
-    expect(getStaleTodos("test-project")).toHaveLength(1);
+    expect(isCacheFresh("todos:test-project", 10 * 60 * 1000)).toBe(true);
+    expect(getCachedTodos("test-project")).toHaveLength(1);
   });
 
   it("invalidates cache", () => {
     cacheTodos("test-project", sampleTodos);
     invalidateTodosCache("test-project");
     expect(getCachedTodos("test-project")).toBeNull();
-    expect(getStaleTodos("test-project")).toBeNull();
+    expect(getCachedTodos("test-project")).toBeNull();
   });
 });

@@ -3,7 +3,12 @@ import { z } from "zod";
 import { getGitHubClient } from "../services/github-client.js";
 import { log } from "../services/logger.js";
 import { type Category, LabelSchema } from "./schemas.js";
-import { getCachedProjectItems, cacheProjectItems, invalidateProjectItemsCacheDb } from "./db.js";
+import {
+  getCachedProjectItems,
+  cacheProjectItems,
+  isCacheFresh,
+  invalidateProjectItemsCacheDb,
+} from "./db.js";
 import { detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 
 export { LabelSchema as GitHubProjectItemLabelSchema };
@@ -302,8 +307,6 @@ export function mapProjectStatusToCategory(status: string): Category {
 }
 
 const PROJECT_ITEMS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-// Return stale cached data that is up to 1 hour old when rate limited
-const PROJECT_ITEMS_STALE_TTL_MS = 60 * 60 * 1000;
 
 let inflightProjectItemsRequest: Promise<GitHubProjectItem[]> | null = null;
 
@@ -317,14 +320,14 @@ export function invalidateProjectItemsCache(): void {
  * Results are cached for 10 minutes to reduce GitHub API calls.
  */
 export async function fetchAllProjectItems(): Promise<GitHubProjectItem[]> {
-  const cached = getCachedProjectItems(PROJECT_ITEMS_CACHE_TTL_MS);
-  if (cached) return cached;
+  if (isCacheFresh("github-project-items", PROJECT_ITEMS_CACHE_TTL_MS)) {
+    const cached = getCachedProjectItems();
+    if (cached) return cached;
+  }
 
-  // If rate limited, return stale cache rather than calling API
+  // If rate limited, return cached data rather than calling API
   if (isGitHubRateLimited()) {
-    const stale = getCachedProjectItems(PROJECT_ITEMS_STALE_TTL_MS);
-    if (stale) return stale;
-    return [];
+    return getCachedProjectItems() ?? [];
   }
 
   // Deduplicate concurrent requests

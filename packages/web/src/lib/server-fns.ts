@@ -31,11 +31,10 @@ import {
   getCachedProjectList,
   setCachedProjectList,
   getCachedChildren,
-  getStaleChildren,
   cacheChildren,
   invalidateChildrenCache,
+  isCacheFresh,
   getCachedTodos,
-  getStaleTodos,
   cacheTodos,
   invalidateTodosCache,
 } from "@wip/shared";
@@ -300,17 +299,17 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
   }
 }
 
+const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
+const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
+
 export async function getProjectChildrenHandler(project: string): Promise<ProjectChildrenResult> {
   return traced("getProjectChildren", async () => {
     const cached = getCachedChildren(project);
-    if (cached) return cached;
-
-    const stale = getStaleChildren(project);
-    if (stale) {
+    if (cached) {
+      if (isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS)) return cached;
       refreshProjectChildren(project).catch(() => {});
-      return stale;
+      return cached;
     }
-
     return refreshProjectChildren(project);
   });
 }
@@ -361,14 +360,11 @@ export const getProjectTodos = createServerFn({ method: "GET" })
     async ({ data }): Promise<SharedTodoItem[]> =>
       traced("getProjectTodos", async () => {
         const cached = getCachedTodos(data.project);
-        if (cached) return cached;
-
-        const stale = getStaleTodos(data.project);
-        if (stale) {
+        if (cached) {
+          if (isCacheFresh(`todos:${data.project}`, TODOS_CACHE_TTL_MS)) return cached;
           refreshProjectTodos(data.project).catch(() => {});
-          return stale;
+          return cached;
         }
-
         return refreshProjectTodos(data.project);
       }),
   );

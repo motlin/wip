@@ -10,7 +10,7 @@ import {
   cachePrStatuses,
   type CachedPrStatus,
   getCachedPrStatuses,
-  getStalePrStatuses,
+  isCacheFresh,
   getTestResultsForProject,
   getBranchName,
   setBranchName,
@@ -684,22 +684,24 @@ function emptyPrStatuses(): PrStatuses {
  * Multiple concurrent callers for the same repo will share a single
  * API request rather than each firing their own GraphQL query.
  */
+const PR_CACHE_TTL_MS = 10 * 60 * 1000;
+
 export async function getPrStatuses(
   dir: string,
   projectName?: string,
   upstreamRemote?: string,
 ): Promise<PrStatuses> {
-  // Check cache first (fast path, no API call needed)
-  if (projectName) {
+  // Fast path: cache is fresh, return current state directly
+  if (projectName && isCacheFresh(`pr-statuses:${projectName}`, PR_CACHE_TTL_MS)) {
     const cached = getCachedPrStatuses(projectName);
     if (cached) return buildPrStatusesFromCached(cached);
   }
 
-  // If rate limited, return stale cache immediately without calling API
+  // If rate limited, return cached data with degraded check statuses
   if (isGitHubRateLimited()) {
     if (projectName) {
-      const stale = getStalePrStatuses(projectName);
-      if (stale) return buildStalePrStatuses(stale);
+      const cached = getCachedPrStatuses(projectName);
+      if (cached) return buildStalePrStatuses(cached);
     }
     return emptyPrStatuses();
   }
@@ -770,10 +772,10 @@ async function fetchPrStatusesFromApi(
     if (detectRateLimitError(errorMessage)) {
       markGitHubRateLimited();
     }
-    // API call failed — fall back to stale cache
+    // API call failed — fall back to cached data with degraded check statuses
     if (projectName) {
-      const stale = getStalePrStatuses(projectName);
-      if (stale) return buildStalePrStatuses(stale);
+      const cached = getCachedPrStatuses(projectName);
+      if (cached) return buildStalePrStatuses(cached);
     }
     return emptyPrStatuses();
   }

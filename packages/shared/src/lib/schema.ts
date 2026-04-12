@@ -290,6 +290,11 @@ export const todosCache = sqliteTable(
   }),
 );
 
+export const cacheFreshness = sqliteTable("cache_freshness", {
+  cacheKey: text("cache_key").notNull().primaryKey(),
+  lastRefreshed: text("last_refreshed").notNull(),
+});
+
 export const projectCache = sqliteTable(
   "project_cache",
   {

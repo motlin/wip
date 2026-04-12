@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { getGitHubClient } from "../services/github-client.js";
 import { log } from "../services/logger.js";
-import { getCachedIssues, cacheIssues, invalidateIssuesCacheDb } from "./db.js";
+import { getCachedIssues, cacheIssues, isCacheFresh, invalidateIssuesCacheDb } from "./db.js";
 import { detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 import { LabelSchema, PlanStatusSchema, RepositorySchema } from "./schemas.js";
 
@@ -29,8 +29,6 @@ export const IssueResultSchema = GitHubIssueSchema.pick({
 export type IssueResult = z.infer<typeof IssueResultSchema>;
 
 const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-// Return stale cached data that is up to 1 hour old when rate limited
-const ISSUES_STALE_TTL_MS = 60 * 60 * 1000;
 
 let inflightIssuesRequest: Promise<GitHubIssue[]> | null = null;
 
@@ -39,14 +37,14 @@ export function invalidateIssuesCache(): void {
 }
 
 export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
-  const cached = getCachedIssues(ISSUES_CACHE_TTL_MS);
-  if (cached) return cached;
+  if (isCacheFresh("github-issues", ISSUES_CACHE_TTL_MS)) {
+    const cached = getCachedIssues();
+    if (cached) return cached;
+  }
 
-  // If rate limited, return stale cache rather than calling API
+  // If rate limited, return cached data rather than calling API
   if (isGitHubRateLimited()) {
-    const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
-    if (stale) return stale;
-    return [];
+    return getCachedIssues() ?? [];
   }
 
   // Deduplicate concurrent requests
@@ -129,9 +127,7 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
       markGitHubRateLimited();
     }
 
-    // Fall back to stale cache on failure
-    const stale = getCachedIssues(ISSUES_STALE_TTL_MS);
-    if (stale) return stale;
-    return [];
+    // Fall back to cached data on failure
+    return getCachedIssues() ?? [];
   }
 }

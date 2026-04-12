@@ -17,6 +17,7 @@ import * as schema from "./schema.js";
 import { log } from "../services/logger.js";
 import {
   branchNames,
+  cacheFreshness,
   childrenCache,
   FAR_FUTURE,
   ghLoginCache,
@@ -365,6 +366,13 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
     `CREATE INDEX IF NOT EXISTS todos_cache_active_idx ON todos_cache (project, system_to)`,
   );
 
+  sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS cache_freshness (
+			cache_key TEXT NOT NULL PRIMARY KEY,
+			last_refreshed TEXT NOT NULL
+		)
+	`);
+
   db = drizzle(sqlite, { schema });
 
   // Migrate: add pr_number column if missing on existing databases
@@ -609,9 +617,29 @@ export function recordTestResult(
   });
 }
 
-// PR status cache functions
+// --- Cache freshness (non-temporal polling metadata) ---
 
-const PR_CACHE_TTL_MINUTES = 10;
+export function isCacheFresh(cacheKey: string, ttlMs: number): boolean {
+  const d = getDb();
+  const row = d
+    .select({ lastRefreshed: cacheFreshness.lastRefreshed })
+    .from(cacheFreshness)
+    .where(eq(cacheFreshness.cacheKey, cacheKey))
+    .get();
+  if (!row) return false;
+  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
+  return row.lastRefreshed > cutoff;
+}
+
+export function markCacheFresh(cacheKey: string): void {
+  const d = getDb();
+  d.insert(cacheFreshness)
+    .values({ cacheKey, lastRefreshed: now() })
+    .onConflictDoUpdate({ target: cacheFreshness.cacheKey, set: { lastRefreshed: now() } })
+    .run();
+}
+
+// PR status cache functions
 
 export interface CachedPrStatus {
   branch: string;
@@ -627,11 +655,7 @@ export interface CachedPrStatus {
 function queryPrStatusesWithChecks(
   d: BetterSQLite3Database<typeof schema>,
   project: string,
-  extraConditions?: ReturnType<typeof sql>,
 ): CachedPrStatus[] | null {
-  const conditions = [eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)];
-  if (extraConditions) conditions.push(extraConditions);
-
   const rows = d
     .select({
       branch: prStatusCache.branch,
@@ -641,10 +665,9 @@ function queryPrStatusesWithChecks(
       prNumber: prStatusCache.prNumber,
       behind: prStatusCache.behind,
       mergeStateStatus: prStatusCache.mergeStateStatus,
-      systemFrom: prStatusCache.systemFrom,
     })
     .from(prStatusCache)
-    .where(and(...conditions))
+    .where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
     .all();
 
   if (rows.length === 0) return null;
@@ -679,36 +702,7 @@ function queryPrStatusesWithChecks(
 }
 
 export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
-  const d = getDb();
-  const cutoff = new Date(Date.now() - PR_CACHE_TTL_MINUTES * 60 * 1000)
-    .toISOString()
-    .replace("T", " ")
-    .replace("Z", "");
-
-  // Check if any current row was written within the TTL window.
-  // cachePrStatuses only updates systemFrom on changed rows, so unchanged rows
-  // retain their original systemFrom. We use the max systemFrom as a proxy for
-  // "the cache was refreshed recently" and then return ALL current-state rows.
-  const sample = d
-    .select({ systemFrom: prStatusCache.systemFrom })
-    .from(prStatusCache)
-    .where(
-      and(
-        eq(prStatusCache.project, project),
-        eq(prStatusCache.systemTo, FAR_FUTURE),
-        sql`${prStatusCache.systemFrom} > ${cutoff}`,
-      ),
-    )
-    .limit(1)
-    .get();
-  if (!sample) return null;
-
-  return queryPrStatusesWithChecks(d, project);
-}
-
-export function getStalePrStatuses(project: string): CachedPrStatus[] | null {
-  const d = getDb();
-  return queryPrStatusesWithChecks(d, project);
+  return queryPrStatusesWithChecks(getDb(), project);
 }
 
 export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void {
@@ -812,6 +806,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
       }
     }
   });
+  markCacheFresh(`pr-statuses:${project}`);
 }
 
 export function invalidatePrCache(project: string): void {
@@ -877,25 +872,16 @@ export function cacheGhLogin(login: string): void {
 
 // --- GitHub issues cache ---
 
-export function getCachedIssues(ttlMs: number): GitHubIssue[] | null {
+export function getCachedIssues(): GitHubIssue[] | null {
   const d = getDb();
-  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-
-  // Check if any active rows exist within the TTL
-  const sample = d
-    .select({ systemFrom: githubIssues.systemFrom })
-    .from(githubIssues)
-    .where(and(eq(githubIssues.systemTo, FAR_FUTURE), sql`${githubIssues.systemFrom} > ${cutoff}`))
-    .limit(1)
-    .get();
-  if (!sample) return null;
 
   const rows = d.select().from(githubIssues).where(eq(githubIssues.systemTo, FAR_FUTURE)).all();
+  if (rows.length === 0) return null;
 
   const labelRows = d
     .select()
     .from(githubIssueLabels)
-    .where(eq(githubIssueLabels.systemFrom, sample.systemFrom))
+    .where(eq(githubIssueLabels.systemFrom, rows[0]!.systemFrom))
     .all();
 
   const labelsByKey = new Map<string, Array<{ name: string; color: string }>>();
@@ -955,6 +941,7 @@ export function cacheIssues(issues: GitHubIssue[]): void {
       }
     }
   });
+  markCacheFresh("github-issues");
 }
 
 export function invalidateIssuesCacheDb(): void {
@@ -968,34 +955,20 @@ export function invalidateIssuesCacheDb(): void {
 
 // --- GitHub project items cache ---
 
-export function getCachedProjectItems(ttlMs: number): GitHubProjectItem[] | null {
+export function getCachedProjectItems(): GitHubProjectItem[] | null {
   const d = getDb();
-  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-
-  // Check if any active rows exist within the TTL
-  const sample = d
-    .select({ systemFrom: githubProjectItems.systemFrom })
-    .from(githubProjectItems)
-    .where(
-      and(
-        eq(githubProjectItems.systemTo, FAR_FUTURE),
-        sql`${githubProjectItems.systemFrom} > ${cutoff}`,
-      ),
-    )
-    .limit(1)
-    .get();
-  if (!sample) return null;
 
   const rows = d
     .select()
     .from(githubProjectItems)
     .where(eq(githubProjectItems.systemTo, FAR_FUTURE))
     .all();
+  if (rows.length === 0) return null;
 
   const labelRows = d
     .select()
     .from(githubProjectItemLabels)
-    .where(eq(githubProjectItemLabels.systemFrom, sample.systemFrom))
+    .where(eq(githubProjectItemLabels.systemFrom, rows[0]!.systemFrom))
     .all();
 
   const labelsByItemId = new Map<string, Array<{ name: string; color: string }>>();
@@ -1055,6 +1028,7 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
       }
     }
   });
+  markCacheFresh("github-project-items");
 }
 
 export function invalidateProjectItemsCacheDb(): void {
@@ -1209,30 +1183,7 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
 
 // --- Children cache ---
 
-const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
-
-export function getCachedChildren(
-  project: string,
-  ttlMs = CHILDREN_CACHE_TTL_MS,
-): GitChildResult[] | null {
-  const d = getDb();
-  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-  const row = d
-    .select()
-    .from(childrenCache)
-    .where(
-      and(
-        eq(childrenCache.project, project),
-        eq(childrenCache.systemTo, FAR_FUTURE),
-        gte(childrenCache.systemFrom, cutoff),
-      ),
-    )
-    .get();
-  if (!row) return null;
-  return JSON.parse(row.childrenJson) as GitChildResult[];
-}
-
-export function getStaleChildren(project: string): GitChildResult[] | null {
+export function getCachedChildren(project: string): GitChildResult[] | null {
   const d = getDb();
   const row = d
     .select()
@@ -1256,6 +1207,7 @@ export function cacheChildren(project: string, children: GitChildResult[]): void
       .values({ project, childrenJson: serialized, systemFrom: timestamp })
       .run();
   });
+  markCacheFresh(`children:${project}`);
 }
 
 export function invalidateChildrenCache(project: string): void {
@@ -1269,27 +1221,7 @@ export function invalidateChildrenCache(project: string): void {
 
 // --- Todos cache ---
 
-const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
-
-export function getCachedTodos(project: string, ttlMs = TODOS_CACHE_TTL_MS): TodoItem[] | null {
-  const d = getDb();
-  const cutoff = new Date(Date.now() - ttlMs).toISOString().replace("T", " ").replace("Z", "");
-  const row = d
-    .select()
-    .from(todosCache)
-    .where(
-      and(
-        eq(todosCache.project, project),
-        eq(todosCache.systemTo, FAR_FUTURE),
-        gte(todosCache.systemFrom, cutoff),
-      ),
-    )
-    .get();
-  if (!row) return null;
-  return JSON.parse(row.todosJson) as TodoItem[];
-}
-
-export function getStaleTodos(project: string): TodoItem[] | null {
+export function getCachedTodos(project: string): TodoItem[] | null {
   const d = getDb();
   const row = d
     .select()
@@ -1311,6 +1243,7 @@ export function cacheTodos(project: string, todos: TodoItem[]): void {
       .run();
     tx.insert(todosCache).values({ project, todosJson: serialized, systemFrom: timestamp }).run();
   });
+  markCacheFresh(`todos:${project}`);
 }
 
 export function invalidateTodosCache(project: string): void {

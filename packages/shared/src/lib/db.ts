@@ -123,6 +123,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (sha, project, system_to)
 		)
 	`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS snoozed_active_idx ON snoozed (system_to)`);
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS branch_names (
@@ -228,6 +229,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (project, branch, system_to)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS pr_status_cache_active_idx ON pr_status_cache (project, system_to)`,
+  );
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS pr_failed_checks (
@@ -240,6 +244,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (project, branch, system_to, name)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS pr_failed_checks_active_idx ON pr_failed_checks (project, system_to)`,
+  );
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS mise_env_cache (
@@ -250,6 +257,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (dir, system_to)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS mise_env_cache_active_idx ON mise_env_cache (dir, system_to)`,
+  );
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS gh_login_cache (
@@ -260,6 +270,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (id, system_to)
 		)
 	`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS gh_login_cache_active_idx ON gh_login_cache (system_to)`);
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS github_issues (
@@ -273,6 +284,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (system_to, number, repo_name_with_owner)
 		)
 	`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS github_issues_active_idx ON github_issues (system_to)`);
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS github_issue_labels (
@@ -299,6 +311,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (system_to, item_id)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS github_project_items_active_idx ON github_project_items (system_to)`,
+  );
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS github_project_item_labels (
@@ -320,6 +335,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (project, system_to)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS upstream_refs_active_idx ON upstream_refs (project, system_to)`,
+  );
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS merge_status (
@@ -334,6 +352,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (project, sha, system_to)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS merge_status_active_idx ON merge_status (project, system_to)`,
+  );
 
   sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS project_cache (
@@ -353,6 +374,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (name, system_to)
 		)
 	`);
+  sqlite.exec(
+    `CREATE INDEX IF NOT EXISTS project_cache_active_idx ON project_cache (name, system_to)`,
+  );
 
   // Migrate project_cache: add rebase_in_progress column if missing
   {

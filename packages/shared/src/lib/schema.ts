@@ -55,6 +55,7 @@ export const prStatusCache = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.project, table.branch, table.systemTo] }),
+    activeIdx: index("pr_status_cache_active_idx").on(table.project, table.systemTo),
   }),
 );
 
@@ -70,6 +71,7 @@ export const prFailedChecks = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.project, table.branch, table.systemTo, table.name] }),
+    activeIdx: index("pr_failed_checks_active_idx").on(table.project, table.systemTo),
   }),
 );
 
@@ -110,6 +112,7 @@ export const miseEnvCache = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.dir, table.systemTo] }),
+    activeIdx: index("mise_env_cache_active_idx").on(table.dir, table.systemTo),
   }),
 );
 
@@ -123,6 +126,7 @@ export const ghLoginCache = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.id, table.systemTo] }),
+    activeIdx: index("gh_login_cache_active_idx").on(table.systemTo),
   }),
 );
 
@@ -139,6 +143,7 @@ export const githubIssues = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.systemTo, table.number, table.repoNameWithOwner] }),
+    activeIdx: index("github_issues_active_idx").on(table.systemTo),
   }),
 );
 
@@ -186,6 +191,7 @@ export const githubProjectItems = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.systemTo, table.itemId] }),
+    activeIdx: index("github_project_items_active_idx").on(table.systemTo),
   }),
 );
 
@@ -226,6 +232,7 @@ export const upstreamRefs = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.project, table.systemTo] }),
+    activeIdx: index("upstream_refs_active_idx").on(table.project, table.systemTo),
   }),
 );
 
@@ -243,6 +250,7 @@ export const mergeStatus = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.project, table.sha, table.systemTo] }),
+    activeIdx: index("merge_status_active_idx").on(table.project, table.systemTo),
   }),
 );
 
@@ -259,6 +267,7 @@ export const snoozed = sqliteTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.sha, table.project, table.systemTo] }),
+    activeIdx: index("snoozed_active_idx").on(table.systemTo),
   }),
 );
 

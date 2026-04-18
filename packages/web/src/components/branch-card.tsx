@@ -21,6 +21,7 @@ import { useMergeStatus } from "../lib/merge-events-context";
 import { AnsiText } from "./ansi-text";
 import { CategoryBadge } from "./category-badge";
 import { BranchActions } from "./commit-actions";
+import { branchRemoteUrl } from "../lib/branch-rename";
 
 function relativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -75,7 +76,7 @@ export function BranchCard({ branch, category }: { branch: GitChildResult; categ
   const commitsAhead = mergeStatus?.commitsAhead ?? branch.commitsAhead;
   const rebaseable = mergeStatus?.rebaseable ?? branch.rebaseable;
 
-  const ghBranchUrl = `https://github.com/${branch.originRemote}/tree/${branch.branch}`;
+  const ghBranchUrl = branchRemoteUrl(branch);
 
   const handleCancelTest = async () => {
     if (!testJob) return;
@@ -120,15 +121,21 @@ export function BranchCard({ branch, category }: { branch: GitChildResult; categ
 
       <div className="mt-1 flex items-center gap-1">
         <GitBranch className="h-3 w-3 shrink-0 text-text-400" />
-        <a
-          href={ghBranchUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="truncate font-mono text-xs text-text-300 hover:text-text-100 transition-colors"
-          title={branch.branch}
-        >
-          {branch.branch}
-        </a>
+        {ghBranchUrl ? (
+          <a
+            href={ghBranchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate font-mono text-xs text-text-300 hover:text-text-100 transition-colors"
+            title={branch.branch}
+          >
+            {branch.branch}
+          </a>
+        ) : (
+          <span className="truncate font-mono text-xs text-text-300" title={branch.branch}>
+            {branch.branch}
+          </span>
+        )}
         {branch.pushedToRemote ? (
           <span
             title="Branch exists on remote"

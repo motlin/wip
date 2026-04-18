@@ -32,6 +32,7 @@ import {
 import { classifyCommit, classifyBranch, classifyPullRequest } from "../lib/classify";
 import { applyTransition } from "@wip/shared";
 import { CATEGORIES, categoryTextClass } from "../lib/category-actions";
+import { branchRemoteUrl } from "../lib/branch-rename";
 import { useTestJob, useTestLog } from "../lib/task-events-context";
 import { useAutoTail } from "../lib/use-auto-tail";
 
@@ -190,12 +191,8 @@ function ItemDetail() {
     enabled: isLocalChanges,
   });
 
-  const originRemoteName = "originRemote" in child ? child.originRemote : undefined;
   const isRemote = "pushedToRemote" in child && child.pushedToRemote;
-  const ghBranchUrl =
-    isBranch && originRemoteName
-      ? `https://github.com/${originRemoteName}/tree/${child.branch}`
-      : undefined;
+  const ghBranchUrl = isBranch ? branchRemoteUrl(child) : undefined;
 
   const statLines = stat ? stat.split("\n").filter(Boolean) : [];
   const summaryLine = statLines.length > 0 ? statLines[statLines.length - 1] : undefined;

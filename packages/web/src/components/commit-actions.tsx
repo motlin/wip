@@ -42,6 +42,7 @@ import {
 import { snoozedQueryOptions } from "../lib/queries";
 import { useMergeStatus } from "../lib/merge-events-context";
 import { suppressMergeUpdates } from "../lib/use-merge-events";
+import { applyRenameToChild } from "../lib/branch-rename";
 import type { GitChildResult, SnoozedChild, Category } from "@wip/shared";
 import type { ProjectChildrenResult } from "../lib/server-fns";
 import { CATEGORIES } from "../lib/category-actions";
@@ -422,8 +423,8 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       });
       if (result.ok) {
         setRenameOpen(false);
-        cache.updateItem(item.sha, (i) => ({ ...i, branch: newBranchName.trim() }));
-        // Note: branch local variable won't update until re-render
+        const renamed = newBranchName.trim();
+        cache.updateItem(item.sha, (i) => applyRenameToChild(i, renamed));
       } else {
         setError(result.message);
       }

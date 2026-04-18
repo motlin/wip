@@ -6,6 +6,7 @@ import { applyTransition, type GitChildResult, type Category } from "@wip/shared
 import { cancelTestFn } from "../lib/server-fns";
 import { useTestJob } from "../lib/task-events-context";
 import { useMergeStatus } from "../lib/merge-events-context";
+import { branchRemoteUrl } from "../lib/branch-rename";
 import { AnsiText } from "./ansi-text";
 import { CategoryBadge } from "./category-badge";
 import { PullRequestActions } from "./commit-actions";
@@ -57,7 +58,7 @@ export function PullRequestCard({ pr, category }: { pr: GitChildResult; category
   const commitsAhead = mergeStatus?.commitsAhead ?? pr.commitsAhead;
   const rebaseable = mergeStatus?.rebaseable ?? pr.rebaseable;
 
-  const ghBranchUrl = `https://github.com/${pr.originRemote}/tree/${pr.branch}`;
+  const ghBranchUrl = branchRemoteUrl(pr);
 
   const handleCancelTest = async () => {
     if (!testJob) return;

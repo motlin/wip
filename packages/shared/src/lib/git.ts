@@ -345,6 +345,16 @@ export async function getRemoteBranchInfo(dir: string): Promise<RemoteBranchInfo
   return parseRemoteBranchOutput(output);
 }
 
+/**
+ * Remove tracking refs for branches that no longer exist on the named remote.
+ * Without this, `git branch -r` keeps reporting branches that were deleted on
+ * GitHub — making `pushedToRemote` a lie and breaking downstream classification
+ * and branch-URL construction. Silent on remotes that can't be contacted.
+ */
+export async function pruneRemote(dir: string, remote: string): Promise<void> {
+  await git(dir, "remote", "prune", remote);
+}
+
 export function parseBranch(decoration: string): string | undefined {
   const refs = decoration
     .split(",")

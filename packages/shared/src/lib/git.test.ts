@@ -17,6 +17,8 @@ import {
   computeMergeStatus,
   getChildren,
   getNeedsRebaseBranches,
+  getRemoteBranchInfo,
+  pruneRemote,
 } from "./git.js";
 import { initDb, resetDb } from "./db.js";
 import { setGitHubClient, resetGitHubClient, createTestClient } from "../services/github-client.js";
@@ -472,6 +474,69 @@ describe("parseRemoteBranchOutput", () => {
     const result = parseRemoteBranchOutput(output);
     expect(result.defaultBranch).toBeUndefined();
     expect(result.remoteBranches).toStrictEqual(new Set(["feature-x", "feature-y"]));
+  });
+});
+
+describe("pruneRemote", () => {
+  let tempDir: string | undefined;
+  let remoteDir: string | undefined;
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+    if (remoteDir) {
+      rmSync(remoteDir, { recursive: true, force: true });
+      remoteDir = undefined;
+    }
+  });
+
+  it("removes stale tracking refs for branches deleted on the remote", async () => {
+    // Bare repo acts as the remote
+    remoteDir = mkdtempSync(join(tmpdir(), "wip-test-remote-"));
+    execSync("git init --bare", { cwd: remoteDir, stdio: "ignore" });
+
+    // Working repo pointing at the bare remote
+    tempDir = mkdtempSync(join(tmpdir(), "wip-test-"));
+    execSync("git init", { cwd: tempDir, stdio: "ignore" });
+    execSync("git config user.email test@test.com", { cwd: tempDir, stdio: "ignore" });
+    execSync("git config user.name Test", { cwd: tempDir, stdio: "ignore" });
+    execFileSync("git", ["remote", "add", "origin", remoteDir], {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    // Push main to the bare remote so there's something for origin/HEAD to reference
+    writeFileSync(join(tempDir, "file.txt"), "hello");
+    execSync("git add . && git commit -m initial", { cwd: tempDir, stdio: "ignore" });
+    execSync("git branch -M main", { cwd: tempDir, stdio: "ignore" });
+    execSync("git push origin main", { cwd: tempDir, stdio: "ignore" });
+    execSync("git fetch origin", { cwd: tempDir, stdio: "ignore" });
+
+    // Simulate a stale tracking ref: a branch that exists locally as
+    // refs/remotes/origin/gone-branch but was never/no-longer on the remote.
+    // update-ref bypasses the push path that would otherwise clean up.
+    const commitSha = execSync("git rev-parse HEAD", { cwd: tempDir }).toString().trim();
+    execSync(`git update-ref refs/remotes/origin/gone-branch ${commitSha}`, {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    const before = await getRemoteBranchInfo(tempDir);
+    expect(before.remoteBranches.has("gone-branch")).toBe(true);
+
+    await pruneRemote(tempDir, "origin");
+
+    const after = await getRemoteBranchInfo(tempDir);
+    expect(after.remoteBranches.has("gone-branch")).toBe(false);
+    expect(after.remoteBranches.has("main")).toBe(true);
+  });
+
+  it("is a no-op when the remote does not exist", async () => {
+    tempDir = createTestGitRepo("owner", "repo");
+    // Should not throw when the remote can't be contacted
+    await pruneRemote(tempDir, "nonexistent-remote");
   });
 });
 

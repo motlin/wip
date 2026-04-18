@@ -13,6 +13,7 @@ import {
   getPrStatuses,
   getProjectsDirs,
   getRemoteBranchInfo,
+  pruneRemote,
   getSnoozedSet,
   getTestLogDir,
   getTestResultsForProject,
@@ -179,6 +180,12 @@ async function refreshProjectChildren(projectName: string): Promise<ProjectChild
         mergeStatusMap.set(ms.sha, ms);
       }
     }
+
+    // Prune stale remote tracking refs so deleted GitHub branches stop being
+    // reported as `pushedToRemote: true`. Runs before reading branch state in
+    // parallel below — both `getChildCommits` and `getRemoteBranchInfo` read
+    // `git branch -r`, so a single prune cleans up both reads.
+    await pruneRemote(p.dir, p.upstreamRemote);
 
     const [children, remoteBranchInfo] = await Promise.all([
       getChildCommits(

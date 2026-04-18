@@ -34,6 +34,7 @@ export {
   parseBranch,
   parseRemoteBranchOutput,
   getRemoteBranchInfo,
+  pruneRemote,
   getRepoOwnerAndName,
 } from "./lib/git.js";
 export {

@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GitChildResult } from "@wip/shared";
+import type { GitChildResult, SnoozedChild } from "@wip/shared";
+
+import { filterSnoozedChildren } from "./snoozed-filter";
 
 interface ChildrenEvent {
   project: string;
@@ -15,7 +17,9 @@ export function useChildrenEvents() {
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data) as ChildrenEvent;
-      queryClient.setQueryData(["children", data.project], data.children);
+      const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
+      const filtered = filterSnoozedChildren(data.children, data.project, snoozed);
+      queryClient.setQueryData(["children", data.project], filtered);
     };
 
     return () => es.close();

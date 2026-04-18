@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
 
 import {
+  captureLogs,
   clearLogBuffer,
   getRecentLogs,
   subscribeLogs,
@@ -84,5 +85,74 @@ describe("logger buffer", () => {
     const logs = getRecentLogs();
     expect(logs[0]?.msg).not.toContain("ghp_12345abcdefghijklmnopqrstuvwxyz0123");
     expect(logs[0]?.msg).toContain("[REDACTED]");
+  });
+});
+
+describe("captureLogs", () => {
+  beforeEach(() => {
+    clearLogBuffer();
+  });
+
+  afterEach(() => {
+    clearLogBuffer();
+  });
+
+  it("captures logs emitted during the callback and returns the result", async () => {
+    const { result, logs } = await captureLogs(async () => {
+      writeLogEntry({ time: 10, level: 20, category: "subprocess", msg: "running git push" });
+      writeLogEntry({ time: 11, level: 50, category: "subprocess", msg: "push failed" });
+      return "ok";
+    });
+
+    expect(result).toBe("ok");
+    expect(logs.length).toBe(2);
+    expect(logs[0]?.msg).toBe("running git push");
+    expect(logs[1]?.msg).toBe("push failed");
+  });
+
+  it("captures logs only from the category filter when provided", async () => {
+    const { logs } = await captureLogs(
+      async () => {
+        writeLogEntry({ time: 20, level: 30, category: "subprocess", msg: "sub" });
+        writeLogEntry({ time: 21, level: 30, category: "general", msg: "gen" });
+        writeLogEntry({ time: 22, level: 30, category: "progress", msg: "prog" });
+      },
+      { categories: ["subprocess"] },
+    );
+
+    expect(logs.map((l) => l.msg)).toEqual(["sub"]);
+  });
+
+  it("does not capture logs emitted after the callback resolves", async () => {
+    const { logs } = await captureLogs(async () => {
+      writeLogEntry({ time: 30, level: 30, category: "subprocess", msg: "during" });
+    });
+
+    writeLogEntry({ time: 31, level: 30, category: "subprocess", msg: "after" });
+
+    expect(logs.map((l) => l.msg)).toEqual(["during"]);
+  });
+
+  it("returns captured logs even when the callback throws", async () => {
+    let caught: unknown;
+    let capturedLogs: LogEntry[] = [];
+    try {
+      await captureLogs(async () => {
+        writeLogEntry({ time: 40, level: 30, category: "subprocess", msg: "before throw" });
+        throw new Error("boom");
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    // Verify listeners are cleaned up even on throw
+    writeLogEntry({ time: 41, level: 30, category: "subprocess", msg: "after throw" });
+    const { logs } = await captureLogs(async () => {
+      // nothing — used only to verify captureLogs is not polluted
+    });
+    capturedLogs = logs;
+
+    expect(caught).toBeInstanceOf(Error);
+    expect(capturedLogs).toEqual([]);
   });
 });

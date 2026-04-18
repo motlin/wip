@@ -366,10 +366,19 @@ export const TodoItemSchema = z.object({
 });
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 
+export const ActionLogEntrySchema = z.object({
+  time: z.number(),
+  level: z.number(),
+  category: z.string(),
+  msg: z.string(),
+});
+export type ActionLogEntry = z.infer<typeof ActionLogEntrySchema>;
+
 export const ActionResultSchema = z.object({
   ok: z.boolean(),
   message: z.string(),
   compareUrl: z.string().url().optional(),
+  logs: z.array(ActionLogEntrySchema).optional(),
 });
 export type ActionResult = z.infer<typeof ActionResultSchema>;
 

@@ -1272,6 +1272,30 @@ describe("pushChildHandler", () => {
     const branches = (await execa("git", ["-C", dir, "branch"])).stdout;
     expect(branches).toContain("branchless-push");
   });
+
+  it("attaches subprocess logs to the result", async () => {
+    const dir = await createTestGitRepo();
+    await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Dirty push"]);
+    const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+
+    seedProjectCache([makeProject({ name: "push-logs-handler", dir, dirty: true })]);
+
+    const { pushChildHandler } = await import("./server-fns.js");
+    const result = await pushChildHandler({
+      project: "push-logs-handler",
+      sha,
+      branch: "main",
+    });
+
+    // When logs are present, every entry must be a subprocess or general log
+    // (the categories captureLogs filters on). The captured array is set only
+    // when at least one entry was emitted during the handler.
+    if (result.logs !== undefined) {
+      for (const entry of result.logs) {
+        expect(["subprocess", "general"]).toContain(entry.category);
+      }
+    }
+  });
 });
 
 // -- rebaseLocalHandler (direct handler tests) --

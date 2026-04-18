@@ -16,6 +16,7 @@ import { ProjectEventsProvider } from "../lib/project-events-context";
 import { ChildrenEventsProvider } from "../lib/children-events-context";
 import { TodoEventsProvider } from "../lib/todo-events-context";
 import { useTheme } from "../lib/use-theme";
+import { Toaster } from "../components/toaster";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
@@ -104,6 +105,7 @@ function RootComponent() {
                     </button>
                   </nav>
                   <Outlet />
+                  <Toaster />
                 </div>
               </TodoEventsProvider>
             </ChildrenEventsProvider>

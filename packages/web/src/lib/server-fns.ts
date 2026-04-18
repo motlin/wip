@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import {
+  captureLogs,
   clearExpiredSnoozes,
   discoverAllProjects,
   fetchAssignedIssues,
@@ -87,6 +88,22 @@ async function traced<T>(name: string, fn: () => Promise<T>): Promise<T> {
       span.end();
     }
   });
+}
+
+/**
+ * Wraps an action handler so that any subprocess/general logs emitted during
+ * the call are attached to the returned ActionResult. The client uses these
+ * entries to show toasts to the user.
+ */
+async function tracedAction(name: string, fn: () => Promise<ActionResult>): Promise<ActionResult> {
+  const { result, logs } = await captureLogs(() => traced(name, fn), {
+    categories: ["subprocess", "general"],
+  });
+  if (logs.length === 0) return result;
+  return {
+    ...result,
+    logs: logs.map((e) => ({ time: e.time, level: e.level, category: e.category, msg: e.msg })),
+  };
 }
 
 export type { ActionResult, Category, SnoozedChild, GitChildResult, TestQueueJob };
@@ -466,7 +483,7 @@ export const getProjectItemByNumber = createServerFn({ method: "GET" })
   );
 
 export async function pushChildHandler(data: PushChildInput): Promise<ActionResult> {
-  return traced("pushChild", async () => {
+  return tracedAction("pushChild", async () => {
     const p = await resolveProject(data.project);
 
     // Validate transition: push can be done from ready_to_push or no_test
@@ -534,7 +551,7 @@ export const createPr = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("createPr", async () => {
+      tracedAction("createPr", async () => {
         const p = await resolveProject(data.project);
 
         let headRefName = data.branch;
@@ -873,7 +890,7 @@ export const commitWorkingTree = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ project: z.string() }).parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("commitWorkingTree", async () => {
+      tracedAction("commitWorkingTree", async () => {
         const p = await resolveProject(data.project);
 
         const result = await tracedExeca("claude", ["-p", "/git:commit"], {
@@ -914,7 +931,7 @@ export const snoozeChildFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("snoozeChildFn", async () => {
+      tracedAction("snoozeChildFn", async () => {
         const p = await resolveProject(data.project);
 
         const logResult = await tracedExeca(
@@ -940,7 +957,7 @@ export const unsnoozeChildFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("unsnoozeChildFn", async () => {
+      tracedAction("unsnoozeChildFn", async () => {
         unsnoozeItem(data.sha, data.project);
         return { ok: true, message: "Unsnoozed" };
       }),
@@ -970,7 +987,7 @@ export const cancelTestFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CancelTestInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("cancelTestFn", async () => {
+      tracedAction("cancelTestFn", async () => {
         const { cancelTest } = await import("./task-queue.js");
         const result = cancelTest(data.id);
         return { ok: result.ok, message: result.message };
@@ -1002,7 +1019,7 @@ export const refreshChild = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RefreshChildInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("refreshChild", async () => {
+      tracedAction("refreshChild", async () => {
         invalidatePrCache(data.project);
         invalidateChildrenCache(data.project);
         return { ok: true, message: `Refreshed ${data.project}` };
@@ -1013,7 +1030,7 @@ export const createBranch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("createBranch", async () => {
+      tracedAction("createBranch", async () => {
         const p = await resolveProject(data.project);
 
         const result = await tracedExeca(
@@ -1036,7 +1053,7 @@ export const deleteBranch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("deleteBranch", async () => {
+      tracedAction("deleteBranch", async () => {
         const p = await resolveProject(data.project);
 
         const result = await tracedExeca("git", ["-C", p.dir, "branch", "-D", data.branch], {
@@ -1057,7 +1074,7 @@ export const forcePush = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ForcePushInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("forcePush", async () => {
+      tracedAction("forcePush", async () => {
         const p = await resolveProject(data.project);
 
         const result = await tracedExeca(
@@ -1085,30 +1102,33 @@ export const forcePush = createServerFn({ method: "POST" })
 
 export const mergePr = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => MergePrInputSchema.parse(input))
-  .handler(async ({ data }): Promise<ActionResult> => {
-    const p = await resolveProject(data.project);
-    const { execa } = await import("execa");
-    const env = await getMiseEnv(p.dir);
-    const result = await execa(
-      "gh",
-      ["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", p.remote],
-      { reject: false, cwd: p.dir, env },
-    );
+  .handler(
+    async ({ data }): Promise<ActionResult> =>
+      tracedAction("mergePr", async () => {
+        const p = await resolveProject(data.project);
+        const { execa } = await import("execa");
+        const env = await getMiseEnv(p.dir);
+        const result = await execa(
+          "gh",
+          ["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", p.remote],
+          { reject: false, cwd: p.dir, env },
+        );
 
-    if (result.exitCode === 0) {
-      invalidatePrCache(data.project);
-      invalidateMergeStatus(data.project);
-      return { ok: true, message: `Merged PR #${data.prNumber}` };
-    }
+        if (result.exitCode === 0) {
+          invalidatePrCache(data.project);
+          invalidateMergeStatus(data.project);
+          return { ok: true, message: `Merged PR #${data.prNumber}` };
+        }
 
-    return { ok: false, message: `Failed to merge PR: ${result.stderr}` };
-  });
+        return { ok: false, message: `Failed to merge PR: ${result.stderr}` };
+      }),
+  );
 
 export const renameBranch = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RenameBranchInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("renameBranch", async () => {
+      tracedAction("renameBranch", async () => {
         const p = await resolveProject(data.project);
 
         const result = await tracedExeca(
@@ -1131,7 +1151,7 @@ export const applyFixes = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ApplyFixesInputSchema.parse(input))
   .handler(
     async ({ data }): Promise<ActionResult> =>
-      traced("applyFixes", async () => {
+      tracedAction("applyFixes", async () => {
         const p = await resolveProject(data.project);
 
         const env = await getMiseEnv(p.dir);
@@ -1229,7 +1249,7 @@ export const applyFixes = createServerFn({ method: "POST" })
   );
 
 export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<ActionResult> {
-  return traced("rebaseLocal", async () => {
+  return tracedAction("rebaseLocal", async () => {
     const p = await resolveProject(data.project);
 
     const env = await getMiseEnv(p.dir);
@@ -1293,7 +1313,7 @@ export const rebaseLocal = createServerFn({ method: "POST" })
 
 export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
   async (): Promise<ActionResult> =>
-    traced("rebaseAllBranches", async () => {
+    tracedAction("rebaseAllBranches", async () => {
       const projectsDirs = getProjectsDirs();
       const projects = await discoverAllProjects(projectsDirs);
 
@@ -1389,7 +1409,7 @@ export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
 );
 
 export async function refreshAllHandler(): Promise<ActionResult> {
-  return traced("refreshAll", async () => {
+  return tracedAction("refreshAll", async () => {
     cachedProjects = null;
     cachedProjectsTime = 0;
     invalidateIssuesCache();

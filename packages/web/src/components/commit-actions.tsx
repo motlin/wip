@@ -43,11 +43,12 @@ import { snoozedQueryOptions } from "../lib/queries";
 import { useMergeStatus } from "../lib/merge-events-context";
 import { suppressMergeUpdates } from "../lib/use-merge-events";
 import { applyRenameToChild } from "../lib/branch-rename";
-import type { GitChildResult, SnoozedChild, Category } from "@wip/shared";
+import type { ActionResult, GitChildResult, SnoozedChild, Category } from "@wip/shared";
 import type { ProjectChildrenResult } from "../lib/server-fns";
 import { CATEGORIES } from "../lib/category-actions";
 import { GitHubIcon } from "./github-icon";
 import { useTestJob } from "../lib/task-events-context";
+import { pushToast, toastLogs } from "../lib/toast-store";
 
 const SNOOZE_PRESETS = [
   { label: "1 hour", hours: 1 },
@@ -67,6 +68,34 @@ interface ItemActionsProps {
 
 function isPullRequest(item: ActionableItem): boolean {
   return item.prUrl !== undefined;
+}
+
+/**
+ * Surface subprocess logs and the summary message from an action as toasts.
+ * - Always shows subprocess logs (if any) emitted by the action.
+ * - For failed actions, emits a final error toast with the summary message.
+ * - For successful actions with no subprocess logs, emits a single success toast.
+ */
+function showActionToasts(action: string, result: ActionResult): void {
+  const logs = result.logs ?? [];
+  if (logs.length > 0) {
+    toastLogs(logs);
+  }
+  if (!result.ok) {
+    pushToast({ level: "error", message: action, detail: result.message });
+    return;
+  }
+  if (logs.length === 0) {
+    pushToast({ level: "success", message: result.message });
+  }
+}
+
+function showActionError(action: string, error: unknown): void {
+  pushToast({
+    level: "error",
+    message: action,
+    detail: error instanceof Error ? error.message : String(error),
+  });
 }
 
 function useChildrenCache(project: string) {
@@ -252,6 +281,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           branch,
         },
       });
+      showActionToasts("Push", result);
       if (result.ok) {
         setPushResult({ message: result.message, compareUrl: result.compareUrl });
         cache.updateItem(item.sha, (i) => ({ ...i, pushedToRemote: true, localAhead: false }));
@@ -262,6 +292,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Push", e);
       setError(e instanceof Error ? e.message : "Failed to push");
     } finally {
       setLoading(false);
@@ -287,8 +318,10 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     setError(null);
     try {
       const result = await cancelTestFn({ data: { id: testJob.id } });
+      showActionToasts("Cancel test", result);
       if (!result.ok) setError(result.message);
     } catch (e) {
+      showActionError("Cancel test", e);
       setError(e instanceof Error ? e.message : "Failed to cancel test");
     }
   };
@@ -300,6 +333,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
     try {
       const result = await snoozeChildFn({ data: { project: item.project, sha: item.sha, until } });
+      showActionToasts("Snooze", result);
       if (result.ok) {
         cache.removeItem(item.sha);
         queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) => [
@@ -316,6 +350,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Snooze", e);
       setError(e instanceof Error ? e.message : "Failed to snooze");
     }
   };
@@ -325,6 +360,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     setError(null);
     try {
       const result = await unsnoozeChildFn({ data: { project: item.project, sha: item.sha } });
+      showActionToasts("Unsnooze", result);
       if (result.ok) {
         queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) =>
           (old ?? []).filter((s) => !(s.project === item.project && s.sha === item.sha)),
@@ -335,6 +371,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Unsnooze", e);
       setError(e instanceof Error ? e.message : "Failed to unsnooze");
     }
   };
@@ -344,6 +381,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     setError(null);
     try {
       const result = await commitWorkingTree({ data: { project: item.project } });
+      showActionToasts("Commit", result);
       if (result.ok) {
         const fresh = await getProjectChildren({ data: { project: item.project } });
         queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
@@ -351,6 +389,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Commit", e);
       setError(e instanceof Error ? e.message : "Failed to commit");
     } finally {
       setCommitting(false);
@@ -370,6 +409,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           draft: true,
         },
       });
+      showActionToasts("Create PR", result);
       if (result.ok) {
         const prUrl = result.compareUrl ?? "";
         const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
@@ -379,6 +419,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Create PR", e);
       setError(e instanceof Error ? e.message : "Failed to create PR");
     } finally {
       setCreatingPr(false);
@@ -390,6 +431,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     setError(null);
     try {
       const result = await refreshChild({ data: { project: item.project, sha: item.sha } });
+      showActionToasts("Refresh", result);
       if (result.ok) {
         const fresh = await getProjectChildren({ data: { project: item.project } });
         queryClient.setQueryData(["children", item.project], fresh);
@@ -397,6 +439,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Refresh", e);
       setError(e instanceof Error ? e.message : "Failed to refresh");
     } finally {
       setRefreshing(false);
@@ -413,12 +456,14 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           branch,
         },
       });
+      showActionToasts("Force push", result);
       if (result.ok) {
         cache.updateItem(item.sha, (i) => ({ ...i, localAhead: false }));
       } else {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Force push", e);
       setError(e instanceof Error ? e.message : "Failed to force push");
     } finally {
       setForcePushing(false);
@@ -437,6 +482,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           newBranch: newBranchName.trim(),
         },
       });
+      showActionToasts("Rename branch", result);
       if (result.ok) {
         setRenameOpen(false);
         const renamed = newBranchName.trim();
@@ -445,6 +491,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Rename branch", e);
       setError(e instanceof Error ? e.message : "Failed to rename branch");
     } finally {
       setRenaming(false);
@@ -463,6 +510,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           prNumber: pr.prNumber,
         },
       });
+      showActionToasts("Apply fixes", result);
       if (result.ok) {
         cache.updateItem(item.sha, (i) => ({
           ...i,
@@ -473,6 +521,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Apply fixes", e);
       setError(e instanceof Error ? e.message : "Failed to apply fixes");
     } finally {
       setApplyingFixes(false);
@@ -489,6 +538,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           branch: branch,
         },
       });
+      showActionToasts("Rebase", result);
       if (result.ok) {
         suppressMergeUpdates(item.project, item.sha);
         cache.updateItem(item.sha, (i) => ({ ...i, needsRebase: false, commitsBehind: 0 }));
@@ -496,6 +546,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Rebase", e);
       setError(e instanceof Error ? e.message : "Failed to rebase locally");
     } finally {
       setRebasingLocal(false);
@@ -513,6 +564,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       },
     });
     setMerging(false);
+    showActionToasts("Merge PR", result);
     if (result.ok) {
       cache.removeItem(item.sha);
     } else {
@@ -532,6 +584,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       },
     });
     setCreatingBranch(false);
+    showActionToasts("Create branch", result);
     if (result.ok) {
       const fresh = await getProjectChildren({ data: { project: item.project } });
       queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
@@ -570,6 +623,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           branch: branch,
         },
       });
+      showActionToasts("Delete branch", result);
       if (result.ok) {
         setDeleteConfirmOpen(false);
         cache.removeItem(item.sha);
@@ -577,6 +631,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
         setError(result.message);
       }
     } catch (e) {
+      showActionError("Delete branch", e);
       setError(e instanceof Error ? e.message : "Failed to delete branch");
     } finally {
       setDeleteLoading(false);

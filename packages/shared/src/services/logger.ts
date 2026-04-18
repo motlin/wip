@@ -74,6 +74,33 @@ export function clearLogBuffer(): void {
   listeners.clear();
 }
 
+/**
+ * Runs `fn` and returns its result along with all log entries emitted during
+ * the call. When `options.categories` is provided, only entries whose
+ * `category` matches one of the allowed values are captured.
+ *
+ * Entries emitted after `fn` resolves or rejects are not captured. Listeners
+ * are always removed, even when `fn` throws.
+ */
+export async function captureLogs<T>(
+  fn: () => Promise<T> | T,
+  options?: { categories?: readonly LogCategory[] },
+): Promise<{ result: T; logs: LogEntry[] }> {
+  const captured: LogEntry[] = [];
+  const filter = options?.categories ? new Set<string>(options.categories) : null;
+  const listener: LogListener = (entry) => {
+    if (filter && !filter.has(entry.category)) return;
+    captured.push(entry);
+  };
+  subscribeLogs(listener);
+  try {
+    const result = await fn();
+    return { result, logs: captured };
+  } finally {
+    unsubscribeLogs(listener);
+  }
+}
+
 class BufferStream extends Writable {
   private leftover = "";
 

@@ -285,9 +285,9 @@ function QueueLayout() {
 
   return (
     <QueueContext.Provider value={queueContextValue}>
-      <div className="grid min-h-0 grid-cols-[240px_1fr]">
+      <div className="grid min-h-0 md:grid-cols-[240px_1fr]">
         {/* Sidebar */}
-        <aside className="overflow-y-auto border-r border-border-300 bg-bg-100 p-5">
+        <aside className="border-b border-border-300 bg-bg-100 p-5 md:overflow-y-auto md:border-b-0 md:border-r">
           {/* Summary stats */}
           <section className="mb-6">
             <h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">

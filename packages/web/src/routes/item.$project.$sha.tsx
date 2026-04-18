@@ -211,9 +211,9 @@ function ItemDetail() {
         Back
       </Link>
 
-      <div className="grid grid-cols-[280px_1fr] gap-6">
+      <div className="grid gap-6 md:grid-cols-[280px_1fr]">
         {/* Sidebar */}
-        <aside className="sticky top-6 self-start space-y-4">
+        <aside className="space-y-4 md:sticky md:top-6 md:self-start">
           {/* State */}
           <SidebarSection title="State">
             {category && (

@@ -223,6 +223,22 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [fixesConfirmOpen]);
 
+  // Popovers use position: fixed with coordinates captured at open time, so
+  // they stay pinned to the viewport when the page scrolls. Close them on
+  // scroll rather than tracking the button's new position.
+  useEffect(() => {
+    const anyOpen = snoozeOpen || deleteConfirmOpen || renameOpen || fixesConfirmOpen;
+    if (!anyOpen) return;
+    function handleScroll() {
+      setSnoozeOpen(false);
+      setDeleteConfirmOpen(false);
+      setRenameOpen(false);
+      setFixesConfirmOpen(false);
+    }
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, [snoozeOpen, deleteConfirmOpen, renameOpen, fixesConfirmOpen]);
+
   const pushLabel = "Push";
 
   const handlePush = async () => {

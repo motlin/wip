@@ -1,27 +1,9 @@
 import { describe, it, expect } from "vitest";
 
-import type { GitChildResult, SnoozedChild } from "@wip/shared";
+import type { SnoozedChild } from "@wip/shared";
 
 import { filterSnoozedChildren } from "./snoozed-filter";
-
-function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult {
-  return {
-    project: "test",
-    remote: "owner/repo",
-    originRemote: "owner/repo",
-    sha: "0000000000000000000000000000000000000000",
-    shortSha: "0000000",
-    subject: "test",
-    date: "2026-01-01",
-    branch: "feature",
-    skippable: false,
-    pushedToRemote: true,
-    testStatus: "passed",
-    reviewStatus: "no_pr",
-    checkStatus: "none",
-    ...overrides,
-  };
-}
+import { makeChild } from "./test-factories";
 
 function makeSnoozed(project: string, sha: string): SnoozedChild {
   return {

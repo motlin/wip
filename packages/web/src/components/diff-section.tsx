@@ -152,9 +152,6 @@ export function FileDiffSection({
   mode: "split" | "unified";
   wrap: boolean;
 }) {
-  // Defer the expensive DiffFile construction + Shiki highlighting until the
-  // section is near the viewport. `rootMargin` preloads just below the fold so
-  // users rarely see the placeholder while scrolling.
   const { ref, inView } = useInView<HTMLDivElement>({ rootMargin: "400px 0px" });
   const placeholderHeight = useMemo(() => estimatePlaceholderHeight(file.hunks), [file.hunks]);
 

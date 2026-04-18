@@ -191,7 +191,16 @@ export {
   resetGitHubRateLimit,
   detectRateLimitError,
 } from "./lib/rate-limit.js";
-export { log } from "./services/logger.js";
+export {
+  log,
+  type LogCategory,
+  type LogEntry,
+  clearLogBuffer,
+  getRecentLogs,
+  subscribeLogs,
+  unsubscribeLogs,
+  writeLogEntry,
+} from "./services/logger.js";
 export {
   type CreatePrParams,
   createPullRequest,

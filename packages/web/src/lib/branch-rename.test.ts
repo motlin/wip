@@ -1,27 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import type { GitChildResult } from "@wip/shared";
-
 import { applyRenameToChild, branchRemoteUrl } from "./branch-rename";
-
-function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult {
-  return {
-    project: "test",
-    remote: "test-owner/test-repo",
-    originRemote: "test-owner/test-repo",
-    sha: "0000000000000000000000000000000000000000",
-    shortSha: "0000000",
-    subject: "test commit",
-    date: "2026-01-01",
-    branch: "main",
-    skippable: false,
-    pushedToRemote: true,
-    testStatus: "passed",
-    reviewStatus: "no_pr",
-    checkStatus: "none",
-    ...overrides,
-  };
-}
+import { makeChild } from "./test-factories";
 
 describe("applyRenameToChild", () => {
   it("updates the branch name", () => {

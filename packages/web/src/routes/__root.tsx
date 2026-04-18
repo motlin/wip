@@ -84,6 +84,12 @@ function RootComponent() {
                     >
                       States
                     </Link>
+                    <Link
+                      to="/debug/logs"
+                      className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+                    >
+                      Logs
+                    </Link>
                     <button
                       type="button"
                       onClick={toggle}

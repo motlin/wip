@@ -3,6 +3,24 @@ import { DiffView, DiffModeEnum } from "@git-diff-view/react";
 import { DiffFile } from "@git-diff-view/core";
 import "@git-diff-view/react/styles/diff-view.css";
 import type { FileDiff } from "../lib/server-fns";
+import { useInView } from "../lib/use-in-view";
+
+/**
+ * Approximate line height used to reserve space for a file diff before it
+ * becomes visible. Tuned to match `@git-diff-view/react`'s 12px font rendering.
+ */
+const APPROX_LINE_HEIGHT_PX = 20;
+/** Minimum placeholder height so tiny diffs still register an intersection. */
+const MIN_PLACEHOLDER_HEIGHT_PX = 120;
+/** Cap the placeholder so very large files don't blow out the scroll area. */
+const MAX_PLACEHOLDER_HEIGHT_PX = 4000;
+
+/** Estimate the rendered height of a diff section from its hunk text. */
+export function estimatePlaceholderHeight(hunks: string): number {
+  const newlineCount = (hunks.match(/\n/g) ?? []).length;
+  const estimated = newlineCount * APPROX_LINE_HEIGHT_PX;
+  return Math.max(MIN_PLACEHOLDER_HEIGHT_PX, Math.min(estimated, MAX_PLACEHOLDER_HEIGHT_PX));
+}
 
 /** Map of file extensions to shiki language identifiers supported by @git-diff-view/shiki's default highlighter. */
 const SUPPORTED_LANGS = new Set([
@@ -99,7 +117,7 @@ function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "u
   }, [file, theme, mode]);
 }
 
-export function FileDiffSection({
+function FileDiffBody({
   file,
   theme,
   mode,
@@ -112,21 +130,47 @@ export function FileDiffSection({
 }) {
   const diffFile = useDiffFile(file, theme, mode);
   return (
+    <DiffView
+      diffFile={diffFile}
+      diffViewMode={mode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
+      diffViewTheme={theme}
+      diffViewHighlight
+      diffViewWrap={wrap}
+      diffViewFontSize={12}
+    />
+  );
+}
+
+export function FileDiffSection({
+  file,
+  theme,
+  mode,
+  wrap,
+}: {
+  file: FileDiff;
+  theme: "light" | "dark";
+  mode: "split" | "unified";
+  wrap: boolean;
+}) {
+  // Defer the expensive DiffFile construction + Shiki highlighting until the
+  // section is near the viewport. `rootMargin` preloads just below the fold so
+  // users rarely see the placeholder while scrolling.
+  const { ref, inView } = useInView<HTMLDivElement>({ rootMargin: "400px 0px" });
+  const placeholderHeight = useMemo(() => estimatePlaceholderHeight(file.hunks), [file.hunks]);
+
+  return (
     <div className="mb-6">
       <div className="rounded-t-lg border border-border-300/50 bg-bg-200 px-4 py-2 font-mono text-xs text-text-300">
         {file.oldFileName === file.newFileName
           ? file.newFileName
           : `${file.oldFileName} → ${file.newFileName}`}
       </div>
-      <div className="overflow-x-auto rounded-b-lg border border-t-0 border-border-300/50">
-        <DiffView
-          diffFile={diffFile}
-          diffViewMode={mode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
-          diffViewTheme={theme}
-          diffViewHighlight
-          diffViewWrap={wrap}
-          diffViewFontSize={12}
-        />
+      <div
+        ref={ref}
+        className="overflow-x-auto rounded-b-lg border border-t-0 border-border-300/50"
+        style={inView ? undefined : { minHeight: placeholderHeight }}
+      >
+        {inView ? <FileDiffBody file={file} theme={theme} mode={mode} wrap={wrap} /> : null}
       </div>
     </div>
   );

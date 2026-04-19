@@ -17,6 +17,10 @@
     "./services/traced-execa.js": {
       "types": "./src/services/traced-execa.ts",
       "import": "./src/services/traced-execa.ts"
+    },
+    "./services/logger-pino.js": {
+      "types": "./src/services/logger-pino.ts",
+      "import": "./src/services/logger-pino.ts"
     }
   },
   "scripts": {

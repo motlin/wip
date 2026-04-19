@@ -14,7 +14,7 @@ import type {
 import type { GitHubIssue } from "./github-issues.js";
 import type { GitHubProjectItem } from "./github-projects.js";
 import * as schema from "./schema.js";
-import { log } from "../services/logger.js";
+import { log } from "../services/logger-pino.js";
 import {
   branchNames,
   cacheFreshness,

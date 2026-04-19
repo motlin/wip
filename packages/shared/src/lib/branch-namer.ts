@@ -1,6 +1,6 @@
 import { execa } from "execa";
 
-import { log } from "../services/logger.js";
+import { log } from "../services/logger-pino.js";
 import { getBranchNames, setBranchName } from "./db.js";
 
 interface NamingRequest {

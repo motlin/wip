@@ -1,5 +1,6 @@
 import { execa } from "execa";
-import { getCacheDir, getMiseEnv, getTestLogDir, log, recordTestResult } from "@wip/shared";
+import { getCacheDir, getMiseEnv, getTestLogDir, recordTestResult } from "@wip/shared";
+import { log } from "@wip/shared/services/logger-pino.js";
 import type { Transition } from "@wip/shared";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";

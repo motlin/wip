@@ -21,7 +21,6 @@ import {
   invalidatePrCache,
   invalidateIssuesCache,
   invalidateProjectItemsCache,
-  log,
   snoozeItem,
   suggestBranchNames,
   unsnoozeItem,
@@ -73,6 +72,7 @@ import {
   RunClaudeCommandInputSchema,
 } from "@wip/shared";
 
+import { log } from "@wip/shared/services/logger-pino.js";
 import { tracedExeca } from "@wip/shared/services/traced-execa.js";
 import { getTracer } from "@wip/shared/services/telemetry.js";
 import { z } from "zod";

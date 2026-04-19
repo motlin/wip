@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { getGitHubClient } from "../services/github-client.js";
-import { log } from "../services/logger.js";
+import { log } from "../services/logger-pino.js";
 import { getCachedIssues, cacheIssues, isCacheFresh, invalidateIssuesCacheDb } from "./db.js";
 import { detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited } from "./rate-limit.js";
 import { LabelSchema, PlanStatusSchema, RepositorySchema } from "./schemas.js";

@@ -15,12 +15,12 @@ import {
   getTestLogDir,
   hasLocalModifications,
   isDirty,
-  log,
   recordTestResult,
   suggestBranchNames,
   testBranch,
   testFix,
 } from "@wip/shared";
+import { log } from "@wip/shared/services/logger-pino.js";
 
 interface TestResult {
   project: string;

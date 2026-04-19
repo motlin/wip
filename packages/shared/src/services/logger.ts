@@ -1,6 +1,3 @@
-import { Writable } from "node:stream";
-import pino from "pino";
-
 export type LogCategory = "subprocess" | "progress" | "general";
 
 export interface LogEntry {
@@ -16,10 +13,6 @@ type LogListener = (entry: LogEntry) => void;
 const BUFFER_MAX = 2000;
 const buffer: LogEntry[] = [];
 const listeners = new Set<LogListener>();
-
-function isLoggingEnabled(): boolean {
-  return process.env["WIP_SUBPROCESS_LOGGING"] === "true";
-}
 
 const TOKEN_PATTERNS: RegExp[] = [/gh[pousr]_[A-Za-z0-9]{20,}/g, /github_pat_[A-Za-z0-9_]{20,}/g];
 
@@ -74,14 +67,6 @@ export function clearLogBuffer(): void {
   listeners.clear();
 }
 
-/**
- * Runs `fn` and returns its result along with all log entries emitted during
- * the call. When `options.categories` is provided, only entries whose
- * `category` matches one of the allowed values are captured.
- *
- * Entries emitted after `fn` resolves or rejects are not captured. Listeners
- * are always removed, even when `fn` throws.
- */
 export async function captureLogs<T>(
   fn: () => Promise<T> | T,
   options?: { categories?: readonly LogCategory[] },
@@ -100,64 +85,3 @@ export async function captureLogs<T>(
     unsubscribeLogs(listener);
   }
 }
-
-class BufferStream extends Writable {
-  private leftover = "";
-
-  override _write(
-    chunk: Buffer | string,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
-    const text = this.leftover + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
-    const lines = text.split("\n");
-    this.leftover = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line) continue;
-      try {
-        const parsed = JSON.parse(line) as LogEntry;
-        writeLogEntry(parsed);
-      } catch {}
-    }
-    callback();
-  }
-}
-
-function createLogger() {
-  if (!isLoggingEnabled()) {
-    return pino({ level: "silent" });
-  }
-
-  const prettyStream = pino.transport({
-    target: "pino-pretty",
-    options: {
-      destination: 2, // stderr
-      sync: true,
-      colorize: true,
-      translateTime: "HH:MM:ss.l",
-      ignore: "pid,hostname,category,cmd,args,duration",
-      messageFormat: "{msg}",
-      singleLine: true,
-    },
-  });
-
-  const bufferStream = new BufferStream();
-
-  return pino(
-    {
-      level: "debug",
-    },
-    pino.multistream([
-      { level: "debug", stream: prettyStream },
-      { level: "debug", stream: bufferStream },
-    ]),
-  );
-}
-
-const baseLogger = createLogger();
-
-export const log = {
-  subprocess: baseLogger.child({ category: "subprocess" }),
-  progress: baseLogger.child({ category: "progress" }),
-  general: baseLogger.child({ category: "general" }),
-};

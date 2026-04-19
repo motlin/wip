@@ -1,4 +1,4 @@
-import { log } from "../services/logger.js";
+import { log } from "../services/logger-pino.js";
 
 /**
  * Shared rate limit tracking for GitHub API calls.

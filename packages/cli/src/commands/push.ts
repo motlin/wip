@@ -2,7 +2,8 @@ import { Args, Command, Flags } from "@oclif/core";
 import chalk from "chalk";
 import { execa } from "execa";
 
-import { discoverAllProjects, getChildCommits, getProjectsDirs, isDirty, log } from "@wip/shared";
+import { discoverAllProjects, getChildCommits, getProjectsDirs, isDirty } from "@wip/shared";
+import { log } from "@wip/shared/services/logger-pino.js";
 
 interface PushResult {
   sha: string;

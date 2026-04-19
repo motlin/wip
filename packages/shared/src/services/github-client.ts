@@ -1,6 +1,6 @@
 import { execa } from "execa";
 
-import { log } from "./logger.js";
+import { log } from "./logger-pino.js";
 
 export interface GitHubClient {
   graphql(query: string, variables?: Record<string, unknown>): Promise<unknown>;

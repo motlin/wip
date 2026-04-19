@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { getGitHubClient } from "../services/github-client.js";
-import { log } from "../services/logger.js";
+import { log } from "../services/logger-pino.js";
 import { type Category, LabelSchema } from "./schemas.js";
 import {
   getCachedProjectItems,

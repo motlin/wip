@@ -194,7 +194,6 @@ export {
   detectRateLimitError,
 } from "./lib/rate-limit.js";
 export {
-  log,
   type LogCategory,
   type LogEntry,
   captureLogs,

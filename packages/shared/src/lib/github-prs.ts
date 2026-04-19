@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { getGitHubClient } from "../services/github-client.js";
-import { log } from "../services/logger.js";
+import { log } from "../services/logger-pino.js";
 
 const REPOSITORY_ID_QUERY = `
   query($owner: String!, $name: String!) {

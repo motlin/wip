@@ -1,12 +1,19 @@
 import { execa } from "execa";
-import { getCacheDir, getMiseEnv, getTestLogDir, recordTestResult } from "@wip/shared";
+import {
+  getCacheDir,
+  getMiseEnv,
+  getTestLogDir,
+  invalidateChildrenCache,
+  invalidatePrCache,
+  recordTestResult,
+} from "@wip/shared";
 import { log } from "@wip/shared/services/logger-pino.js";
 import type { Transition } from "@wip/shared";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type TaskType = "test" | "claude" | "rebase";
+export type TaskType = "test" | "claude" | "rebase" | "push";
 
 export type TaskStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
 
@@ -20,8 +27,11 @@ export interface Task {
   subject: string;
   branch?: string;
   command?: string;
+  upstreamRemote?: string;
+  remote?: string;
   status: TaskStatus;
   message?: string;
+  compareUrl?: string;
   queuedAt: number;
   startedAt?: number;
   finishedAt?: number;
@@ -38,6 +48,7 @@ export interface TaskEvent {
   status: TaskStatus;
   transition?: Transition;
   message?: string;
+  compareUrl?: string;
   type?: "status" | "log";
   log?: string;
 }
@@ -55,18 +66,27 @@ export function statusToTransition(
   status: TaskStatus,
   taskType: TaskType = "test",
 ): Transition | undefined {
-  if (taskType !== "test") return undefined;
-  switch (status) {
-    case "queued":
-    case "running":
-      return "run_test";
-    case "passed":
-      return "test_pass";
-    case "failed":
-      return "test_fail";
-    case "cancelled":
-      return "cancel_test";
+  if (taskType === "test") {
+    switch (status) {
+      case "queued":
+      case "running":
+        return "run_test";
+      case "passed":
+        return "test_pass";
+      case "failed":
+        return "test_fail";
+      case "cancelled":
+        return "cancel_test";
+    }
   }
+  if (taskType === "push") {
+    switch (status) {
+      case "queued":
+      case "running":
+        return "push";
+    }
+  }
+  return undefined;
 }
 
 function emit(task: Task): void {
@@ -82,6 +102,7 @@ function emit(task: Task): void {
     status: task.status,
     transition,
     message: task.message,
+    compareUrl: task.compareUrl,
     type: "status",
   };
   emitter.emit("task", event);
@@ -145,6 +166,8 @@ async function runTask(task: Task): Promise<void> {
       return runTestTask(task);
     case "claude":
       return runClaudeTask(task);
+    case "push":
+      return runPushTask(task);
     default:
       throw new Error(`Task type "${task.taskType}" is not yet implemented`);
   }
@@ -262,6 +285,41 @@ async function runClaudeTask(task: Task): Promise<void> {
   emit(task);
 }
 
+async function runPushTask(task: Task): Promise<void> {
+  if (!task.branch) throw new Error("Push task requires a branch");
+  if (!task.upstreamRemote) throw new Error("Push task requires upstreamRemote");
+
+  const result = await runProcess({
+    task,
+    cmd: "git",
+    args: [
+      "-C",
+      task.projectDir,
+      "push",
+      "-u",
+      task.upstreamRemote,
+      `${task.branch}:refs/heads/${task.branch}`,
+    ],
+    logDir: path.join(getCacheDir(), "push-logs", task.project),
+  });
+  if (!result) return;
+
+  task.finishedAt = Date.now();
+  if (result.exitCode === 0) {
+    invalidatePrCache(task.project);
+    invalidateChildrenCache(task.project);
+    task.status = "passed";
+    task.message = `Pushed ${task.shortSha} to ${task.branch}`;
+    if (task.remote) {
+      task.compareUrl = `https://github.com/${task.remote}/compare/${task.branch}?expand=1`;
+    }
+  } else {
+    task.status = "failed";
+    task.message = `Failed to push ${task.shortSha} to ${task.branch}`;
+  }
+  emit(task);
+}
+
 export function enqueueTask(
   taskType: TaskType,
   project: string,
@@ -300,6 +358,83 @@ export function enqueueTask(
 
   emit(task);
   processQueue(project);
+  return task;
+}
+
+export interface EnqueuePushOptions {
+  project: string;
+  projectDir: string;
+  sha: string;
+  shortSha: string;
+  subject: string;
+  branch: string;
+  upstreamRemote: string;
+  remote: string;
+  createBranch: boolean;
+}
+
+export function enqueuePush(opts: EnqueuePushOptions): Task {
+  const {
+    project,
+    projectDir,
+    sha,
+    shortSha,
+    subject,
+    branch,
+    upstreamRemote,
+    remote,
+    createBranch,
+  } = opts;
+  const existing = findTask(sha, project, "push");
+  if (existing && (existing.status === "queued" || existing.status === "running")) {
+    return existing;
+  }
+
+  const id = String(nextId++);
+  const now = Date.now();
+  const task: Task = {
+    id,
+    taskType: "push",
+    project,
+    projectDir,
+    sha,
+    shortSha,
+    subject,
+    branch,
+    upstreamRemote,
+    remote,
+    status: "running",
+    queuedAt: now,
+    startedAt: now,
+  };
+
+  tasks.set(id, task);
+  emit(task);
+
+  void (async () => {
+    try {
+      if (createBranch) {
+        const branchResult = await execa("git", ["-C", projectDir, "branch", branch, sha], {
+          reject: false,
+        });
+        if (branchResult.exitCode !== 0) {
+          task.status = "failed";
+          task.message = `Failed to create branch: ${branchResult.stderr}`;
+          task.finishedAt = Date.now();
+          emit(task);
+          return;
+        }
+        emitLog(task, `Created branch ${branch}\n`);
+      }
+      await runPushTask(task);
+    } catch (err) {
+      task.status = "failed";
+      task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
+      task.finishedAt = Date.now();
+      emit(task);
+    }
+  })();
+
   return task;
 }
 

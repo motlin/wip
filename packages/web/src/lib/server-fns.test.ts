@@ -1233,68 +1233,39 @@ describe("getProjectChildrenHandler", () => {
 // -- pushChildHandler (direct handler tests) --
 
 describe("pushChildHandler", () => {
-  it("returns failure when push fails (no remote configured)", async () => {
+  it("enqueues a push task and returns running status", async () => {
     const dir = await createTestGitRepo();
     await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Push this"]);
     const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
 
-    seedProjectCache([makeProject({ name: "push-fail-handler", dir })]);
+    seedProjectCache([makeProject({ name: "push-enqueue-handler", dir })]);
 
     const { pushChildHandler } = await import("./server-fns.js");
-    // Push should fail because there is no remote 'origin'
     const result = await pushChildHandler({
-      project: "push-fail-handler",
+      project: "push-enqueue-handler",
       sha,
       branch: "main",
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.message).toContain("Failed to push");
+    expect(result.id).toBeDefined();
+    expect(result.status).toBe("running");
   });
 
-  it("creates branch when no branch is provided", async () => {
+  it("derives branch name when no branch is provided", async () => {
     const dir = await createTestGitRepo();
     await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Branchless push"]);
     const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
 
-    seedProjectCache([makeProject({ name: "push-branch-create", dir })]);
-
-    const { pushChildHandler } = await import("./server-fns.js");
-    // Should attempt to create a branch from the commit subject, then fail on push (no remote)
-    const result = await pushChildHandler({
-      project: "push-branch-create",
-      sha,
-    });
-
-    // Push fails (no remote), but the branch should have been created
-    expect(result.ok).toBe(false);
-    // Verify the branch was created locally
-    const branches = (await execa("git", ["-C", dir, "branch"])).stdout;
-    expect(branches).toContain("branchless-push");
-  });
-
-  it("attaches subprocess logs to the result", async () => {
-    const dir = await createTestGitRepo();
-    await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Dirty push"]);
-    const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
-
-    seedProjectCache([makeProject({ name: "push-logs-handler", dir, dirty: true })]);
+    seedProjectCache([makeProject({ name: "push-branch-derive", dir })]);
 
     const { pushChildHandler } = await import("./server-fns.js");
     const result = await pushChildHandler({
-      project: "push-logs-handler",
+      project: "push-branch-derive",
       sha,
-      branch: "main",
     });
 
-    // When logs are present, every entry must be a subprocess or general log
-    // (the categories captureLogs filters on). The captured array is set only
-    // when at least one entry was emitted during the handler.
-    if (result.logs !== undefined) {
-      for (const entry of result.logs) {
-        expect(["subprocess", "general"]).toContain(entry.category);
-      }
-    }
+    expect(result.id).toBeDefined();
+    expect(result.status).toBe("running");
   });
 });
 

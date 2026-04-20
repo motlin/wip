@@ -120,6 +120,16 @@ describe("classifyCommit", () => {
     );
   });
 
+  it("returns pushing when pushing is true", () => {
+    expect(classifyCommit(makeCommit({ pushing: true }), makeProject())).toBe("pushing");
+  });
+
+  it("prioritizes pushing over test status", () => {
+    expect(classifyCommit(makeCommit({ pushing: true, testStatus: "passed" }), makeProject())).toBe(
+      "pushing",
+    );
+  });
+
   it("returns ready_to_test for default untested commit", () => {
     expect(classifyCommit(makeCommit(), makeProject())).toBe("ready_to_test");
   });
@@ -138,6 +148,10 @@ describe("classifyCommit", () => {
 });
 
 describe("classifyBranch", () => {
+  it("returns pushing when pushing is true", () => {
+    expect(classifyBranch(makeBranch({ pushing: true }), makeProject())).toBe("pushing");
+  });
+
   it("returns ready_to_push for single-commit branch with tests passed", () => {
     expect(
       classifyBranch(makeBranch({ testStatus: "passed", commitsAhead: 1 }), makeProject()),

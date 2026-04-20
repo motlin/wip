@@ -1,26 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { TestStatus, Transition } from "@wip/shared";
+import type { TestStatus } from "@wip/shared";
+import type { TaskEvent } from "./task-queue";
 import type { ProjectChildrenResult } from "./server-fns";
 
-export type TaskType = "test" | "claude" | "rebase";
-
-export interface TaskEvent {
-  id: string;
-  taskType: TaskType;
-  sha: string;
-  project: string;
-  shortSha: string;
-  subject: string;
-  branch?: string;
-  status: "queued" | "running" | "passed" | "failed" | "cancelled";
-  transition?: Transition;
-  message?: string;
-  type?: "status" | "log";
-  log?: string;
-}
-
-// Re-export for backward compatibility
+export type { TaskEvent };
 export type JobEvent = TaskEvent;
 
 const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
@@ -44,6 +28,35 @@ function updateTestStatus(
   queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
     if (!old) return old;
     return { ...old, testStatus };
+  });
+}
+
+function updatePushStatus(
+  queryClient: ReturnType<typeof useQueryClient>,
+  project: string,
+  sha: string,
+  status: TaskEvent["status"],
+) {
+  const pushing = status === "queued" || status === "running";
+  const pushedToRemote = status === "passed";
+  queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
+    if (!old) return old;
+    return old.map((c) => {
+      if (c.sha !== sha) return c;
+      return {
+        ...c,
+        pushing,
+        ...(pushedToRemote ? { pushedToRemote: true, localAhead: false } : {}),
+      };
+    });
+  });
+  queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
+    if (!old) return old;
+    return {
+      ...old,
+      pushing,
+      ...(pushedToRemote ? { pushedToRemote: true, localAhead: false } : {}),
+    };
   });
 }
 
@@ -91,6 +104,13 @@ export function useTaskEvents() {
         const testStatus = TASK_TO_TEST_STATUS[data.status] ?? "unknown";
         updateTestStatus(queryClient, data.project, data.sha, testStatus);
       }
+
+      if (data.taskType === "push") {
+        updatePushStatus(queryClient, data.project, data.sha, data.status);
+        if (data.status === "passed" && data.compareUrl) {
+          window.open(data.compareUrl, "_blank");
+        }
+      }
     };
 
     return () => es.close();
@@ -114,12 +134,10 @@ export function useTaskEvents() {
     (t) => t.status === "queued" || t.status === "running",
   );
 
-  // Backward-compatible aliases
   const getJob = getTask;
   const hasActiveJobs = hasActiveTasks;
 
   return { tasks, getTask, getJob, getLog, hasActiveTasks, hasActiveJobs };
 }
 
-// Backward-compatible alias
 export const useTestEvents = useTaskEvents;

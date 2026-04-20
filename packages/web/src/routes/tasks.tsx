@@ -19,6 +19,7 @@ import {
   FlaskConical,
   Bot,
   GitMerge,
+  ArrowRight,
 } from "lucide-react";
 import { taskQueueQueryOptions } from "../lib/queries";
 
@@ -44,6 +45,8 @@ function taskTypeIcon(taskType: TaskType) {
       return <Bot className="h-3.5 w-3.5 text-text-400" />;
     case "rebase":
       return <GitMerge className="h-3.5 w-3.5 text-text-400" />;
+    case "push":
+      return <ArrowRight className="h-3.5 w-3.5 text-text-400" />;
   }
 }
 
@@ -55,6 +58,8 @@ function taskTypeLabel(taskType: TaskType): string {
       return "Claude";
     case "rebase":
       return "Rebase";
+    case "push":
+      return "Push";
   }
 }
 
@@ -133,13 +138,10 @@ function TaskCard({ job }: { job: TaskQueueJob }) {
   const handlePush = async () => {
     if (!job.branch) return;
     setPushing(true);
-    const result = await pushChild({
+    await pushChild({
       data: { project: job.project, sha: job.sha, branch: job.branch },
     });
     setPushing(false);
-    if (result.compareUrl) {
-      window.open(result.compareUrl, "_blank");
-    }
   };
 
   const duration =

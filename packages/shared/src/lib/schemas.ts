@@ -54,6 +54,7 @@ export const CategorySchema = z.enum([
   "rebase_stuck",
   "needs_split",
   "ready_to_push",
+  "pushing",
   "pushed_no_pr",
   "checks_unknown",
   "checks_running",
@@ -167,9 +168,10 @@ export const STATE_MACHINE: readonly StateTransition[] = [
   { from: "needs_split", transition: "split", to: "ready_to_push", kind: "active" },
 
   // Push flow
-  { from: "ready_to_push", transition: "push", to: "pushed_no_pr", kind: "active" },
+  { from: "ready_to_push", transition: "push", to: "pushing", kind: "active" },
   { from: "ready_to_push", transition: "force_push", to: "pushed_no_pr", kind: "active" },
-  { from: "no_test", transition: "push", to: "pushed_no_pr", kind: "active" },
+  { from: "no_test", transition: "push", to: "pushing", kind: "active" },
+  { from: "pushing", transition: "snooze", to: "snoozed", kind: "active" },
 
   // PR creation
   { from: "pushed_no_pr", transition: "create_pr", to: "checks_unknown", kind: "active" },
@@ -266,6 +268,7 @@ export const ChildCommitSchema = z.object({
   checkStatus: CheckStatusSchema,
   skippable: z.boolean(),
   pushedToRemote: z.boolean(),
+  pushing: z.boolean().optional(),
   localAhead: z.boolean().optional(),
   needsRebase: z.boolean().optional(),
   reviewStatus: ReviewStatusSchema,
@@ -332,6 +335,7 @@ export const GitChildResultSchema = z.object({
   checkStatus: CheckStatusSchema,
   skippable: z.boolean(),
   pushedToRemote: z.boolean(),
+  pushing: z.boolean().optional(),
   localAhead: z.boolean().optional(),
   needsRebase: z.boolean().optional(),
   reviewStatus: ReviewStatusSchema,
@@ -471,7 +475,7 @@ export const RunClaudeCommandInputSchema = z.object({
 });
 export type RunClaudeCommandInput = z.infer<typeof RunClaudeCommandInputSchema>;
 
-export const TaskTypeSchema = z.enum(["test", "claude", "rebase"]);
+export const TaskTypeSchema = z.enum(["test", "claude", "rebase", "push"]);
 export type TaskType = z.infer<typeof TaskTypeSchema>;
 
 export const TaskQueueJobSchema = z.object({

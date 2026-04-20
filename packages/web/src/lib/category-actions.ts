@@ -62,6 +62,7 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
   checks_unknown: ["open_pr_link", "force_push", "refresh"],
   pushed_no_pr: ["force_push", "refresh", "rename", "delete_branch"],
   ready_to_push: ["refresh", "rename", "delete_branch"],
+  pushing: ["refresh"],
   needs_split: ["refresh", "rename"],
   needs_rebase: ["refresh", "rename"],
   rebase_unknown: ["refresh", "rename"],
@@ -192,6 +193,7 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
     palette: "green",
     actions: buildActions("ready_to_push"),
   },
+  pushing: { label: "Pushing", palette: "yellow", actions: buildActions("pushing") },
   needs_split: {
     label: "Needs Split",
     palette: "orange",
@@ -311,7 +313,7 @@ const COLUMN_ORDER: Category[][] = [
   ["detached_head", "local_changes", "no_test"],
   ["ready_to_test", "test_running", "test_failed"],
   ["needs_rebase", "rebase_conflicts", "needs_split"],
-  ["ready_to_push", "pushed_no_pr"],
+  ["ready_to_push", "pushing", "pushed_no_pr"],
   ["checks_unknown", "checks_running", "checks_failed"],
   ["checks_passed", "review_comments", "changes_requested", "approved"],
 ];

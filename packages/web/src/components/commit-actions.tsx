@@ -147,11 +147,7 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const cache = useChildrenCache(item.project);
   const { data: snoozedItems } = useQuery(snoozedQueryOptions());
   const snoozedEntry = snoozedItems?.find((s) => s.project === item.project && s.sha === item.sha);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pushResult, setPushResult] = useState<{ message: string; compareUrl?: string } | null>(
-    null,
-  );
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const snoozeRef = useRef<HTMLDivElement>(null);
@@ -271,31 +267,20 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
   const pushLabel = "Push";
 
   const handlePush = async () => {
-    setLoading(true);
     setError(null);
+    cache.updateItem(item.sha, (i) => ({ ...i, pushing: true }));
     try {
-      const result = await pushChild({
+      await pushChild({
         data: {
           project: item.project,
           sha: item.sha,
           branch,
         },
       });
-      showActionToasts("Push", result);
-      if (result.ok) {
-        setPushResult({ message: result.message, compareUrl: result.compareUrl });
-        cache.updateItem(item.sha, (i) => ({ ...i, pushedToRemote: true, localAhead: false }));
-        if (result.compareUrl) {
-          window.open(result.compareUrl, "_blank");
-        }
-      } else {
-        setError(result.message);
-      }
     } catch (e) {
+      cache.updateItem(item.sha, (i) => ({ ...i, pushing: false }));
       showActionError("Push", e);
-      setError(e instanceof Error ? e.message : "Failed to push");
-    } finally {
-      setLoading(false);
+      setError(e instanceof Error ? e.message : "Failed to enqueue push");
     }
   };
 
@@ -1010,19 +995,19 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
           <button
             type="button"
             onClick={handlePush}
-            disabled={loading}
+            disabled={item.pushing}
             className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-              loading
+              item.pushing
                 ? "cursor-not-allowed opacity-60"
                 : "bg-green-600 hover:bg-green-700 text-white"
             }`}
           >
-            {loading ? (
+            {item.pushing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <ArrowRight className="h-3.5 w-3.5" />
             )}
-            {loading ? "Pushing..." : pushLabel}
+            {item.pushing ? "Pushing..." : pushLabel}
           </button>
         )}
 
@@ -1087,7 +1072,6 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
               }
               setSnoozeOpen(!snoozeOpen);
             }}
-            disabled={loading}
             className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
               snoozedEntry
                 ? "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
@@ -1235,22 +1219,6 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
       </div>
 
       {/* Status messages */}
-      {pushResult && (
-        <div className="mt-2">
-          <p className="text-xs text-green-600 dark:text-green-400">{pushResult.message}</p>
-          {pushResult.compareUrl && (
-            <a
-              href={pushResult.compareUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
-            >
-              <GitHubIcon className="h-3 w-3" />
-              Create PR
-            </a>
-          )}
-        </div>
-      )}
       {testJob?.status === "failed" && (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">{testJob.message}</p>
       )}

@@ -48,7 +48,8 @@ describe("client bundle has no node: imports", () => {
     for (const [file, content] of fileContents) {
       const dir = path.dirname(file);
 
-      const staticImportRe = /(?:^|\n)\s*(?:import|export)\s+[\s\S]*?\s+from\s+["']([^"']+)["']/g;
+      const staticImportRe =
+        /(?:^|\n)\s*(?:import|export)\s+(?!type\s)[\s\S]*?\s+from\s+["']([^"']+)["']/g;
       let match: RegExpExecArray | null;
       while ((match = staticImportRe.exec(content)) !== null) {
         const specifier = match[1]!;

@@ -153,6 +153,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   rebase_stuck: "Rebase stuck",
   needs_split: "Needs split",
   ready_to_push: "Ready to push",
+  pushing: "Pushing",
   pushed_no_pr: "Needs PR",
   checks_unknown: "Checks unknown",
   checks_running: "Checks running",
@@ -187,6 +188,7 @@ function categoryStyle(category: Category, text: string): string {
     case "needs_rebase":
     case "rebase_unknown":
     case "needs_split":
+    case "pushing":
       return chalk.yellow(text);
     case "local_changes":
     case "no_test":
@@ -258,6 +260,7 @@ export default class Report extends Command {
       rebase_stuck: [],
       needs_split: [],
       ready_to_push: [],
+      pushing: [],
       pushed_no_pr: [],
       checks_unknown: [],
       checks_running: [],

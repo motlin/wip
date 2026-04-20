@@ -482,23 +482,10 @@ export const getProjectItemByNumber = createServerFn({ method: "GET" })
       }),
   );
 
-export async function pushChildHandler(data: PushChildInput): Promise<ActionResult> {
-  return tracedAction("pushChild", async () => {
+export async function pushChildHandler(data: PushChildInput): Promise<TestJobStatus> {
+  return traced("pushChild", async () => {
     const p = await resolveProject(data.project);
 
-    // Validate transition: push can be done from ready_to_push or no_test
-    // Only check dirty state if operating on HEAD
-    const headSha = (
-      await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false })
-    ).stdout.trim();
-    if (p.dirty && data.sha === headSha) {
-      log.subprocess.debug(
-        { project: data.project, sha: data.sha },
-        "Pushing HEAD from dirty project state",
-      );
-    }
-
-    // Resolve shortSha and subject from git
     const logResult = await tracedExeca(
       "git",
       ["-C", p.dir, "log", "-1", "--format=%h%x00%s", data.sha],
@@ -517,29 +504,21 @@ export async function pushChildHandler(data: PushChildInput): Promise<ActionResu
         .replaceAll(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
 
-    if (!data.branch) {
-      const branchResult = await tracedExeca("git", ["-C", p.dir, "branch", branchName, data.sha], {
-        reject: false,
-      });
-      if (branchResult.exitCode !== 0) {
-        return { ok: false, message: `Failed to create branch: ${branchResult.stderr}` };
-      }
-    }
+    const createBranch = !data.branch;
 
-    const pushResult = await tracedExeca(
-      "git",
-      ["-C", p.dir, "push", "-u", p.upstreamRemote, `${branchName}:refs/heads/${branchName}`],
-      { reject: false },
-    );
-
-    if (pushResult.exitCode === 0) {
-      invalidatePrCache(data.project);
-      invalidateChildrenCache(data.project);
-      const compareUrl = `https://github.com/${p.remote}/compare/${branchName}?expand=1`;
-      return { ok: true, message: `Pushed ${shortSha} to ${branchName}`, compareUrl };
-    }
-
-    return { ok: false, message: `Failed to push: ${pushResult.stderr}` };
+    const { enqueuePush } = await import("./task-queue.js");
+    const task = enqueuePush({
+      project: data.project,
+      projectDir: p.dir,
+      sha: data.sha,
+      shortSha,
+      subject,
+      branch: branchName,
+      upstreamRemote: p.upstreamRemote,
+      remote: p.remote,
+      createBranch,
+    });
+    return { id: task.id, status: task.status, message: task.message };
   });
 }
 

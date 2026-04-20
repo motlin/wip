@@ -9,6 +9,7 @@ export function classifyGitChild(child: GitChildResult, project: ProjectInfo): C
 
 export function classifyCommit(child: GitChildResult, project: ProjectInfo): Category {
   if (child.skippable) return "skippable";
+  if (child.pushing) return "pushing";
   if (child.testStatus === "running") return "test_running";
   if (child.testStatus === "failed") return "test_failed";
   if (child.testStatus === "passed") return "ready_to_push";
@@ -20,6 +21,7 @@ export function classifyCommit(child: GitChildResult, project: ProjectInfo): Cat
 
 export function classifyBranch(child: GitChildResult, project: ProjectInfo): Category {
   if (child.skippable) return "skippable";
+  if (child.pushing) return "pushing";
   if (project.rebaseInProgress) return "rebase_stuck";
   if (child.testStatus === "running") return "test_running";
   if (child.testStatus === "failed") return "test_failed";

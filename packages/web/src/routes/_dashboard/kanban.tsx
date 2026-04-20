@@ -53,6 +53,7 @@ function Kanban() {
       rebase_stuck: {},
       needs_split: {},
       ready_to_push: {},
+      pushing: {},
       pushed_no_pr: {},
       checks_unknown: {},
       checks_running: {},

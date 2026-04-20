@@ -31,7 +31,7 @@
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-trace-otlp-proto": "^0.214.0",
-    "@opentelemetry/instrumentation-http": "^0.214.0",
+    "@opentelemetry/instrumentation-http": "^0.215.0",
     "@opentelemetry/sdk-node": "^0.214.0",
     "better-sqlite3": "^12.9.0",
     "drizzle-orm": "^0.45.2",

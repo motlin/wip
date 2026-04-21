@@ -1174,19 +1174,7 @@ export async function testFix(
     return { ok: false, message: "worktree still dirty after fixup commit" };
   }
 
-  // 6. Replay branch onto HEAD to include fixup, then checkout branch
-  const replayOnto = await tracedExeca(
-    "git",
-    ["-C", dir, "replay", "--onto", "HEAD", `HEAD^..${branch}`],
-    { reject: false },
-  );
-  if (replayOnto.exitCode !== 0) {
-    return { ok: false, message: `replay --onto failed: ${replayOnto.stderr}` };
-  }
-
-  await tracedExeca("git", ["-C", dir, "checkout", "--quiet", branch], { reject: false });
-
-  // 7. Autosquash rebase (git replay doesn't support --autosquash)
+  // 6. Autosquash rebase — squashes the fixup commit into its target and rebases onto upstream
   const autosquash = await tracedExeca(
     "git",
     ["-C", dir, "rebase", "--autosquash", "--rebase-merges", "--update-refs", upstreamRef],
@@ -1196,11 +1184,11 @@ export async function testFix(
     return { ok: false, message: `autosquash rebase failed: ${autosquash.stderr}` };
   }
 
-  // 8. Clean up JUSTFILE_BRANCH
+  // 7. Clean up JUSTFILE_BRANCH
   const branchFilePath = path.join(dir, "JUSTFILE_BRANCH");
   if (fs.existsSync(branchFilePath)) fs.unlinkSync(branchFilePath);
 
-  // 9. Re-run test on fixed branch
+  // 8. Re-run test on fixed branch
   const retest = await testBranch(dir, branch, upstreamRef, env, opts);
   if (retest.exitCode === 0) {
     return { ok: true, message: "fixed and retested successfully" };

@@ -392,18 +392,7 @@ export interface EnqueuePushOptions {
 }
 
 export function enqueuePush(opts: EnqueuePushOptions): Task {
-  const {
-    project,
-    projectDir,
-    sha,
-    shortSha,
-    subject,
-    branch,
-    upstreamRemote,
-    remote,
-    createBranch,
-  } = opts;
-  const existing = findTask(sha, project, "push");
+  const existing = findTask(opts.sha, opts.project, "push");
   if (existing && (existing.status === "queued" || existing.status === "running")) {
     return existing;
   }
@@ -413,24 +402,27 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
   const task: Task = {
     id,
     taskType: "push",
-    project,
-    projectDir,
-    sha,
-    shortSha,
-    subject,
-    branch,
-    upstreamRemote,
-    remote,
-    createBranch,
+    project: opts.project,
+    projectDir: opts.projectDir,
+    sha: opts.sha,
+    shortSha: opts.shortSha,
+    subject: opts.subject,
+    branch: opts.branch,
+    upstreamRemote: opts.upstreamRemote,
+    remote: opts.remote,
+    createBranch: opts.createBranch,
     status: "running",
     queuedAt: now,
-    startedAt: now,
   };
 
   tasks.set(id, task);
+  if (!projectQueues.has(opts.project)) {
+    projectQueues.set(opts.project, []);
+  }
+  projectQueues.get(opts.project)!.push(id);
+
   emit(task);
 
-  // Push tasks bypass the per-project serialization queue so they don't block tests.
   void runPushTask(task).catch((err) => {
     task.status = "failed";
     task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;

@@ -1174,19 +1174,19 @@ export async function testFix(
     return { ok: false, message: "worktree still dirty after fixup commit" };
   }
 
-  // 6. Rebase onto HEAD to include fixup, then checkout branch
-  const rebaseOnto = await tracedExeca(
+  // 6. Replay branch onto HEAD to include fixup, then checkout branch
+  const replayOnto = await tracedExeca(
     "git",
-    ["-C", dir, "rebase", "--quiet", "--onto", "HEAD", "HEAD^", branch],
+    ["-C", dir, "replay", "--onto", "HEAD", `HEAD^..${branch}`],
     { reject: false },
   );
-  if (rebaseOnto.exitCode !== 0) {
-    return { ok: false, message: `rebase --onto failed: ${rebaseOnto.stderr}` };
+  if (replayOnto.exitCode !== 0) {
+    return { ok: false, message: `replay --onto failed: ${replayOnto.stderr}` };
   }
 
   await tracedExeca("git", ["-C", dir, "checkout", "--quiet", branch], { reject: false });
 
-  // 7. Autosquash rebase
+  // 7. Autosquash rebase (git replay doesn't support --autosquash)
   const autosquash = await tracedExeca(
     "git",
     ["-C", dir, "rebase", "--autosquash", "--rebase-merges", "--update-refs", upstreamRef],

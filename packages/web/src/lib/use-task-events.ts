@@ -25,10 +25,6 @@ function patchChildItem(
     if (!old) return old;
     return old.map((c) => (c.sha === sha ? { ...c, ...patch } : c));
   });
-  queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
-    if (!old) return old;
-    return { ...old, ...patch };
-  });
 }
 
 function updateTestStatus(

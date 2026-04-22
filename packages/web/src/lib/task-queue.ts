@@ -7,9 +7,9 @@ import {
   invalidatePrCache,
   recordTestResult,
   type TaskType,
+  type Transition,
 } from "@wip/shared";
 import { log } from "@wip/shared/services/logger-pino.js";
-import type { Transition } from "@wip/shared";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -338,6 +338,32 @@ async function runPushTask(task: Task): Promise<void> {
   emit(task);
 }
 
+function registerTask(task: Task): Task {
+  tasks.set(task.id, task);
+
+  if (task.taskType === "push") {
+    task.startedAt = Date.now();
+  }
+  emit(task);
+
+  if (task.taskType === "push") {
+    void runPushTask(task).catch((err) => {
+      task.status = "failed";
+      task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
+      task.finishedAt = Date.now();
+      emit(task);
+    });
+  } else {
+    if (!projectQueues.has(task.project)) {
+      projectQueues.set(task.project, []);
+    }
+    projectQueues.get(task.project)!.push(task.id);
+    processQueue(task.project);
+  }
+
+  return task;
+}
+
 export function enqueueTask(
   taskType: TaskType,
   project: string,
@@ -353,9 +379,8 @@ export function enqueueTask(
     return existing;
   }
 
-  const id = String(nextId++);
-  const task: Task = {
-    id,
+  return registerTask({
+    id: String(nextId++),
     taskType,
     project,
     projectDir,
@@ -366,17 +391,7 @@ export function enqueueTask(
     command,
     status: "queued",
     queuedAt: Date.now(),
-  };
-
-  tasks.set(id, task);
-  if (!projectQueues.has(project)) {
-    projectQueues.set(project, []);
-  }
-  projectQueues.get(project)!.push(id);
-
-  emit(task);
-  processQueue(project);
-  return task;
+  });
 }
 
 export interface EnqueuePushOptions {
@@ -397,10 +412,8 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
     return existing;
   }
 
-  const id = String(nextId++);
-  const now = Date.now();
-  const task: Task = {
-    id,
+  return registerTask({
+    id: String(nextId++),
     taskType: "push",
     project: opts.project,
     projectDir: opts.projectDir,
@@ -412,25 +425,8 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
     remote: opts.remote,
     createBranch: opts.createBranch,
     status: "running",
-    queuedAt: now,
-  };
-
-  tasks.set(id, task);
-  if (!projectQueues.has(opts.project)) {
-    projectQueues.set(opts.project, []);
-  }
-  projectQueues.get(opts.project)!.push(id);
-
-  emit(task);
-
-  void runPushTask(task).catch((err) => {
-    task.status = "failed";
-    task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
-    task.finishedAt = Date.now();
-    emit(task);
+    queuedAt: Date.now(),
   });
-
-  return task;
 }
 
 export function findTask(sha: string, project: string, taskType?: TaskType): Task | undefined {
@@ -486,7 +482,6 @@ export function cancelTask(id: string): { ok: boolean; message: string } {
   return { ok: false, message: "Unknown task status" };
 }
 
-// Backward-compatible aliases for test-specific callers
 export type JobStatus = TaskStatus;
 export type TestJob = Task;
 export type JobEvent = TaskEvent;

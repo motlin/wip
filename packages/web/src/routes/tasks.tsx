@@ -133,15 +133,11 @@ function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: Map<string, TaskEvent>)
 }
 
 function TaskCard({ job }: { job: TaskQueueJob }) {
-  const [pushing, setPushing] = useState(false);
-
-  const handlePush = async () => {
+  const handlePush = () => {
     if (!job.branch) return;
-    setPushing(true);
-    await pushChild({
+    void pushChild({
       data: { project: job.project, sha: job.sha, branch: job.branch },
     });
-    setPushing(false);
   };
 
   const duration =
@@ -197,14 +193,9 @@ function TaskCard({ job }: { job: TaskQueueJob }) {
             <button
               type="button"
               onClick={handlePush}
-              disabled={pushing}
-              className="inline-flex items-center gap-1 rounded-md border border-btn-success-border bg-btn-success-bg px-2 py-1 text-xs font-medium text-btn-success-text transition-colors hover:opacity-80 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md border border-btn-success-border bg-btn-success-bg px-2 py-1 text-xs font-medium text-btn-success-text transition-colors hover:opacity-80"
             >
-              {pushing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <ArrowUpRight className="h-3 w-3" />
-              )}
+              <ArrowUpRight className="h-3 w-3" />
               Push
             </button>
           )}

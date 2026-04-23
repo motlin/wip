@@ -15,20 +15,29 @@ const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
   cancelled: "unknown",
 };
 
+function patchChildItem(
+  queryClient: ReturnType<typeof useQueryClient>,
+  project: string,
+  sha: string,
+  patch: Record<string, unknown>,
+) {
+  queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
+    if (!old) return old;
+    return old.map((c) => (c.sha === sha ? { ...c, ...patch } : c));
+  });
+  queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
+    if (!old) return old;
+    return { ...old, ...patch };
+  });
+}
+
 function updateTestStatus(
   queryClient: ReturnType<typeof useQueryClient>,
   project: string,
   sha: string,
   testStatus: TestStatus,
 ) {
-  queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
-    if (!old) return old;
-    return old.map((c) => (c.sha === sha ? { ...c, testStatus } : c));
-  });
-  queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
-    if (!old) return old;
-    return { ...old, testStatus };
-  });
+  patchChildItem(queryClient, project, sha, { testStatus });
 }
 
 function updatePushStatus(
@@ -39,24 +48,9 @@ function updatePushStatus(
 ) {
   const pushing = status === "queued" || status === "running";
   const pushedToRemote = status === "passed";
-  queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
-    if (!old) return old;
-    return old.map((c) => {
-      if (c.sha !== sha) return c;
-      return {
-        ...c,
-        pushing,
-        ...(pushedToRemote ? { pushedToRemote: true, localAhead: false } : {}),
-      };
-    });
-  });
-  queryClient.setQueryData(["child", project, sha], (old: Record<string, unknown> | undefined) => {
-    if (!old) return old;
-    return {
-      ...old,
-      pushing,
-      ...(pushedToRemote ? { pushedToRemote: true, localAhead: false } : {}),
-    };
+  patchChildItem(queryClient, project, sha, {
+    pushing,
+    ...(pushedToRemote ? { pushedToRemote: true, localAhead: false } : {}),
   });
 }
 

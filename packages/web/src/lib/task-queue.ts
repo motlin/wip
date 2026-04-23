@@ -6,6 +6,7 @@ import {
   invalidateChildrenCache,
   invalidatePrCache,
   recordTestResult,
+  type TaskType,
 } from "@wip/shared";
 import { log } from "@wip/shared/services/logger-pino.js";
 import type { Transition } from "@wip/shared";
@@ -13,7 +14,7 @@ import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type TaskType = "test" | "claude" | "rebase" | "push";
+export type { TaskType };
 
 export type TaskStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
 
@@ -29,6 +30,7 @@ export interface Task {
   command?: string;
   upstreamRemote?: string;
   remote?: string;
+  createBranch?: boolean;
   status: TaskStatus;
   message?: string;
   compareUrl?: string;
@@ -289,6 +291,22 @@ async function runPushTask(task: Task): Promise<void> {
   if (!task.branch) throw new Error("Push task requires a branch");
   if (!task.upstreamRemote) throw new Error("Push task requires upstreamRemote");
 
+  if (task.createBranch) {
+    const branchResult = await execa(
+      "git",
+      ["-C", task.projectDir, "branch", task.branch, task.sha],
+      { reject: false },
+    );
+    if (branchResult.exitCode !== 0) {
+      task.status = "failed";
+      task.message = `Failed to create branch: ${branchResult.stderr}`;
+      task.finishedAt = Date.now();
+      emit(task);
+      return;
+    }
+    emitLog(task, `Created branch ${task.branch}\n`);
+  }
+
   const result = await runProcess({
     task,
     cmd: "git",
@@ -315,7 +333,7 @@ async function runPushTask(task: Task): Promise<void> {
     }
   } else {
     task.status = "failed";
-    task.message = `Failed to push ${task.shortSha} to ${task.branch}`;
+    task.message = `Failed to push ${task.branch}`;
   }
   emit(task);
 }
@@ -403,6 +421,7 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
     branch,
     upstreamRemote,
     remote,
+    createBranch,
     status: "running",
     queuedAt: now,
     startedAt: now,
@@ -411,29 +430,13 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
   tasks.set(id, task);
   emit(task);
 
-  void (async () => {
-    try {
-      if (createBranch) {
-        const branchResult = await execa("git", ["-C", projectDir, "branch", branch, sha], {
-          reject: false,
-        });
-        if (branchResult.exitCode !== 0) {
-          task.status = "failed";
-          task.message = `Failed to create branch: ${branchResult.stderr}`;
-          task.finishedAt = Date.now();
-          emit(task);
-          return;
-        }
-        emitLog(task, `Created branch ${branch}\n`);
-      }
-      await runPushTask(task);
-    } catch (err) {
-      task.status = "failed";
-      task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
-      task.finishedAt = Date.now();
-      emit(task);
-    }
-  })();
+  // Push tasks bypass the per-project serialization queue so they don't block tests.
+  void runPushTask(task).catch((err) => {
+    task.status = "failed";
+    task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
+    task.finishedAt = Date.now();
+    emit(task);
+  });
 
   return task;
 }

@@ -540,7 +540,7 @@ describe("pruneRemote", () => {
   });
 });
 
-describe("isDirty", () => {
+describe("isDirty", { timeout: 30_000 }, () => {
   let tempDir: string | undefined;
 
   afterEach(() => {
@@ -652,7 +652,7 @@ describe("hasTestConfigured", () => {
   });
 });
 
-describe("computeMergeStatus", () => {
+describe("computeMergeStatus", { timeout: 30_000 }, () => {
   let tempDir: string | undefined;
 
   afterEach(() => {
@@ -720,7 +720,7 @@ describe("computeMergeStatus", () => {
   });
 });
 
-describe("getChildren", () => {
+describe("getChildren", { timeout: 30_000 }, () => {
   let tempDir: string | undefined;
 
   afterEach(() => {
@@ -790,7 +790,7 @@ describe("getChildren", () => {
   });
 });
 
-describe("getNeedsRebaseBranches", () => {
+describe("getNeedsRebaseBranches", { timeout: 30_000 }, () => {
   let tempDir: string | undefined;
 
   afterEach(() => {

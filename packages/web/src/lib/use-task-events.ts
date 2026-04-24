@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { TestStatus } from "@wip/shared";
 import type { TaskEvent } from "./task-queue";
 import type { ProjectChildrenResult } from "./server-fns";
+import { pushToast } from "./toast-store";
 
 export type { TaskEvent };
 export type JobEvent = TaskEvent;
@@ -54,7 +55,6 @@ export function useTaskEvents() {
   const [tasks, setTasks] = useState<Map<string, TaskEvent>>(new Map());
   const [logs, setLogs] = useState<Map<string, string>>(new Map());
   const queryClient = useQueryClient();
-  const openedUrls = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const es = new EventSource("/api/task-events");
@@ -98,13 +98,14 @@ export function useTaskEvents() {
 
       if (data.taskType === "push") {
         updatePushStatus(queryClient, data.project, data.sha, data.status);
-        if (
-          data.status === "passed" &&
-          data.compareUrl &&
-          !openedUrls.current.has(data.compareUrl)
-        ) {
-          openedUrls.current.add(data.compareUrl);
-          window.open(data.compareUrl, "_blank");
+        if (data.status === "passed") {
+          pushToast({
+            level: "success",
+            message: data.message ?? "Push complete",
+            detail: data.compareUrl,
+          });
+        } else if (data.status === "failed") {
+          pushToast({ level: "error", message: "Push failed", detail: data.message });
         }
       }
     };

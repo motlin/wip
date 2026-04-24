@@ -341,10 +341,6 @@ async function runPushTask(task: Task): Promise<void> {
 
 function registerTask(task: Task): Task {
   tasks.set(task.id, task);
-
-  if (task.taskType === "push") {
-    task.startedAt = Date.now();
-  }
   emit(task);
 
   if (task.taskType === "push") {
@@ -427,6 +423,7 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
     createBranch: opts.createBranch,
     status: "running",
     queuedAt: Date.now(),
+    startedAt: Date.now(),
   });
 }
 

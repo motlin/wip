@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@oclif/core": "^4.10.5",
-    "@oclif/plugin-help": "^6.2.44",
+    "@oclif/plugin-help": "^6.2.45",
     "@wip/shared": "workspace:*",
     "chalk": "^5.6.2",
     "execa": "^9.6.1"

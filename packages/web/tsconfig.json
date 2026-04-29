@@ -19,6 +19,6 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", ".storybook/**/*"],
   "exclude": ["node_modules", "dist", ".output"]
 }

@@ -16,7 +16,7 @@
     "@git-diff-view/shiki": "^0.1.3",
     "@opentelemetry/api": "^1.9.1",
     "@tanstack/query-sync-storage-persister": "^5.100.6",
-    "@tanstack/react-query": "^5.100.5",
+    "@tanstack/react-query": "^5.100.6",
     "@tanstack/react-query-devtools": "^5.100.6",
     "@tanstack/react-query-persist-client": "^5.100.6",
     "@tanstack/react-router": "^1.168.25",

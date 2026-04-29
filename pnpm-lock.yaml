@@ -147,8 +147,8 @@ importers:
         specifier: ^5.100.5
         version: 5.100.5(react@19.2.5)
       '@tanstack/react-query-devtools':
-        specifier: ^5.100.5
-        version: 5.100.5(@tanstack/react-query@5.100.5(react@19.2.5))(react@19.2.5)
+        specifier: ^5.100.6
+        version: 5.100.6(@tanstack/react-query@5.100.5(react@19.2.5))(react@19.2.5)
       '@tanstack/react-query-persist-client':
         specifier: ^5.100.6
         version: 5.100.6(@tanstack/react-query@5.100.5(react@19.2.5))(react@19.2.5)
@@ -1326,8 +1326,8 @@ packages:
   '@tanstack/query-core@5.100.6':
     resolution: {integrity: sha512-Os2CPUr98to98RYm+D4qGqGkiffn7MGSyl2547a4MljVkHE30AMJRqTiyCqBfMwzAx/I91vCkAxp5tHSla6Twg==}
 
-  '@tanstack/query-devtools@5.100.5':
-    resolution: {integrity: sha512-SuCkVCqqliRYJvm+LEL2U/TcFv92zTnHj6OGrJFHp1v/RsiwamI+ZDgQzbeUrLsJb8/Nj/52aIw0NyDMcVHl4A==}
+  '@tanstack/query-devtools@5.100.6':
+    resolution: {integrity: sha512-2SiNwlOiAdTbqktCSmwlXZH8x8mckSbES2O0bdr3qZNhdQl5DCtImZx0S3HGeNHWTIkzTaHx2Isg+bD4M3WRIg==}
 
   '@tanstack/query-persist-client-core@5.100.6':
     resolution: {integrity: sha512-SLJXsn5x2XAwKgOVulBFh0KXop7zeDoRmmB7ImKODLflyBnvLBmPQPadmwTgBiZQUa/Kx/y1MxzAXC/4Nfg8kQ==}
@@ -1335,10 +1335,10 @@ packages:
   '@tanstack/query-sync-storage-persister@5.100.6':
     resolution: {integrity: sha512-hfQjg4xtfaAAFw/Sm46i4R4fu2J2jC5iEHTBMNZApSAC6iIAlc2xF2mU7Zzq0Nc7RabaUupnDBvFk+y7b85xPw==}
 
-  '@tanstack/react-query-devtools@5.100.5':
-    resolution: {integrity: sha512-bItQERx7dJoiI0WEoS4tIrvNnmk4kUYsaQLdIpm4o9Kttmsi5B6xlY6JBDkavstR3hH/R2+VT5dr3L5LBFPW4g==}
+  '@tanstack/react-query-devtools@5.100.6':
+    resolution: {integrity: sha512-sz3ksMKA2t1rx0+Odzb0x1A3pXH/SVf7fzlzd3sKXzwXz8980f5sbOwfQD6+UfTG8G4Y2KaIg9e3sBn+uC4VTg==}
     peerDependencies:
-      '@tanstack/react-query': ^5.100.5
+      '@tanstack/react-query': ^5.100.6
       react: ^18 || ^19
 
   '@tanstack/react-query-persist-client@5.100.6':
@@ -4656,7 +4656,7 @@ snapshots:
 
   '@tanstack/query-core@5.100.6': {}
 
-  '@tanstack/query-devtools@5.100.5': {}
+  '@tanstack/query-devtools@5.100.6': {}
 
   '@tanstack/query-persist-client-core@5.100.6':
     dependencies:
@@ -4667,9 +4667,9 @@ snapshots:
       '@tanstack/query-core': 5.100.6
       '@tanstack/query-persist-client-core': 5.100.6
 
-  '@tanstack/react-query-devtools@5.100.5(@tanstack/react-query@5.100.5(react@19.2.5))(react@19.2.5)':
+  '@tanstack/react-query-devtools@5.100.6(@tanstack/react-query@5.100.5(react@19.2.5))(react@19.2.5)':
     dependencies:
-      '@tanstack/query-devtools': 5.100.5
+      '@tanstack/query-devtools': 5.100.6
       '@tanstack/react-query': 5.100.5(react@19.2.5)
       react: 19.2.5
 

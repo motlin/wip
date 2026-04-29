@@ -169,7 +169,8 @@ async function runTask(task: Task): Promise<void> {
     case "claude":
       return runClaudeTask(task);
     case "push":
-      return runPushTask(task);
+      // Push tasks are started directly in registerTask and never enter the project queue
+      throw new Error("Push tasks must not reach the project queue");
     default:
       throw new Error(`Task type "${task.taskType}" is not yet implemented`);
   }

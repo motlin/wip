@@ -37,8 +37,8 @@ importers:
         specifier: ^4.11.0
         version: 4.11.0
       '@oclif/plugin-help':
-        specifier: ^6.2.45
-        version: 6.2.45
+        specifier: ^6.2.46
+        version: 6.2.46
       '@wip/shared':
         specifier: workspace:*
         version: link:../shared
@@ -660,8 +660,8 @@ packages:
     resolution: {integrity: sha512-nTkRMgxFlIKQIIYGvhO2JMsLSQ1aHPHblHfFgxgoBrGK8Ao/8wxc4eNOIv/+t8dMXliZd7mREVr6la4aXXXg5A==}
     engines: {node: '>=18.0.0'}
 
-  '@oclif/plugin-help@6.2.45':
-    resolution: {integrity: sha512-avWOKYmjANtyu8ipju/kopIIrSrbS/scJjiZTpBp/HKEHNm46v5riOo5LQj6MZ4bYJVQEoyHPg/2Seig5Ilkjw==}
+  '@oclif/plugin-help@6.2.46':
+    resolution: {integrity: sha512-KmuMFt/fURCVxor0rrRjEqs2nLN0Y3ixcixo/M5VjKcN920gbuw5T+AF23FBeyUDuW/Dg79YPcTWy/Rtz0Dg/A==}
     engines: {node: '>=18.0.0'}
 
   '@oozcitak/dom@2.0.2':
@@ -4829,7 +4829,7 @@ snapshots:
       wordwrap: 1.0.0
       wrap-ansi: 7.0.0
 
-  '@oclif/plugin-help@6.2.45':
+  '@oclif/plugin-help@6.2.46':
     dependencies:
       '@oclif/core': 4.11.0
 

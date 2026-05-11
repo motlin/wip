@@ -141,8 +141,8 @@ importers:
         specifier: ^1.9.1
         version: 1.9.1
       '@tanstack/query-sync-storage-persister':
-        specifier: ^5.100.9
-        version: 5.100.9
+        specifier: ^5.100.10
+        version: 5.100.10
       '@tanstack/react-query':
         specifier: ^5.100.10
         version: 5.100.10(react@19.2.6)
@@ -1617,11 +1617,14 @@ packages:
   '@tanstack/query-devtools@5.100.10':
     resolution: {integrity: sha512-3DmJf25hDPus5IpVvp6ujXv6bKV2zPzI9vpbAmpJigsL/H6DPvPjmf7/Q9yVKEke//8fgeQ45abjgnLuyYxAiw==}
 
+  '@tanstack/query-persist-client-core@5.100.10':
+    resolution: {integrity: sha512-O9Pey40DhTTDBABS0bHr+KNL5/VMf6PrqjexS8WoDDtnkaoWM+y0MSe0V9E5W+BwvkjM33mB3aYcCxa175gZTQ==}
+
   '@tanstack/query-persist-client-core@5.100.9':
     resolution: {integrity: sha512-sCPZZp3D9sOeqcA4SDxjUIm4wVq8PwHebH4ouFZetwjT4xvGjT/cLBQ4Sst+BFcFuk745pCPkf3T4MFliLHECQ==}
 
-  '@tanstack/query-sync-storage-persister@5.100.9':
-    resolution: {integrity: sha512-v3cShfFtrxiLwc8b/fjQbUO4wIT//wLT5x4WWl8k/11s2ZyW9qpXE4xFWhiuAHCvKLluF0iI7ZnhT7BAlihwgg==}
+  '@tanstack/query-sync-storage-persister@5.100.10':
+    resolution: {integrity: sha512-DKEQkz7S7gtJ7KFvfAhZOd8p8SKSIgg/jGWzKzEgE8L2ienGx5/qMuTr8S/Al21TC6M9/uOmFOeFJl4J71RZnA==}
 
   '@tanstack/react-query-devtools@5.100.10':
     resolution: {integrity: sha512-zes0+o9ef5rAZXJ9f/SeaLs2nufJaeVkZkl/Or9NGrWVF41kL9Od9ED9nCwtQlgiF2VGtrzhEw5AU/igAO+aAg==}
@@ -5684,14 +5687,18 @@ snapshots:
 
   '@tanstack/query-devtools@5.100.10': {}
 
+  '@tanstack/query-persist-client-core@5.100.10':
+    dependencies:
+      '@tanstack/query-core': 5.100.10
+
   '@tanstack/query-persist-client-core@5.100.9':
     dependencies:
       '@tanstack/query-core': 5.100.9
 
-  '@tanstack/query-sync-storage-persister@5.100.9':
+  '@tanstack/query-sync-storage-persister@5.100.10':
     dependencies:
-      '@tanstack/query-core': 5.100.9
-      '@tanstack/query-persist-client-core': 5.100.9
+      '@tanstack/query-core': 5.100.10
+      '@tanstack/query-persist-client-core': 5.100.10
 
   '@tanstack/react-query-devtools@5.100.10(@tanstack/react-query@5.100.10(react@19.2.6))(react@19.2.6)':
     dependencies:

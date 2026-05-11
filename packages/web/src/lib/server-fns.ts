@@ -172,7 +172,7 @@ export const getProjects = createServerFn({ method: "GET" }).handler(async () =>
 
 const inflightChildrenRefresh = new Map<string, Promise<ProjectChildrenResult>>();
 
-async function refreshProjectChildren(projectName: string): Promise<ProjectChildrenResult> {
+export async function refreshProjectChildren(projectName: string): Promise<ProjectChildrenResult> {
   const existing = inflightChildrenRefresh.get(projectName);
   if (existing) return existing;
 

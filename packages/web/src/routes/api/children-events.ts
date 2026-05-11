@@ -5,6 +5,8 @@ export const Route = createFileRoute("/api/children-events")({
     handlers: {
       GET: async () => {
         const { childrenEmitter } = await import("../../lib/children-events.js");
+        const { startGitWatcher } = await import("../../lib/git-watcher.js");
+        void startGitWatcher();
 
         const stream = new ReadableStream({
           start(controller) {

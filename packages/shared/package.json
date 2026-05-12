@@ -33,7 +33,7 @@
     "@opentelemetry/exporter-trace-otlp-proto": "^0.217.0",
     "@opentelemetry/instrumentation-http": "^0.217.0",
     "@opentelemetry/sdk-node": "^0.217.0",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",
     "execa": "^9.6.1",
     "json5": "^2.2.3",

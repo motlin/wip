@@ -39,7 +39,7 @@
     "@pollyjs/persister-fs": "^6.0.6",
     "@rsbuild/core": "^2.0.5",
     "@storybook/addon-a11y": "^10.3.5",
-    "@storybook/addon-docs": "^10.3.5",
+    "@storybook/addon-docs": "^10.4.0",
     "@storybook/addon-vitest": "^10.3.5",
     "@storybook/react": "^10.3.5",
     "@storybook/react-vite": "^10.3.5",

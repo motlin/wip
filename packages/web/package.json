@@ -27,7 +27,7 @@
     "@wip/shared": "workspace:*",
     "ansi-to-html": "^0.7.2",
     "execa": "^9.6.1",
-    "lucide-react": "^1.14.0",
+    "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "zod": "^4.4.3"

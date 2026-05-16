@@ -46,7 +46,7 @@ check: install
 
 # Typecheck all packages
 [group('build')]
-typecheck: install
+typecheck: build
     pnpm run typecheck
 
 [group('build')]

@@ -34,7 +34,7 @@ jobs:
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: just typecheck-ci
+      - run: just typecheck
 
   build:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: just build-ci
+      - run: just build
 
   test:
     runs-on: ubuntu-latest
@@ -60,7 +60,7 @@ jobs:
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: just test-ci
+      - run: just test
 
   all-checks:
     name: All checks

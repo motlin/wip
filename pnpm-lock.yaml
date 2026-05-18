@@ -34,8 +34,8 @@ importers:
   packages/cli:
     dependencies:
       '@oclif/core':
-        specifier: ^4.11.2
-        version: 4.11.2
+        specifier: ^4.11.3
+        version: 4.11.3
       '@oclif/plugin-help':
         specifier: ^6.2.48
         version: 6.2.48
@@ -663,8 +663,8 @@ packages:
   '@neoconfetti/react@1.0.0':
     resolution: {integrity: sha512-klcSooChXXOzIm+SE5IISIAn3bYzYfPjbX7D7HoqZL84oAfgREeSg5vSIaSFH+DaGzzvImTyWe1OyrJ67vik4A==}
 
-  '@oclif/core@4.11.2':
-    resolution: {integrity: sha512-LWDalCgy+hYyAkLa9sMIXMXk6ws5RzQhVnkmfXtVIIyEEYigbXQ/9/x+s76p53MiXxNc6SJB7lfwkPF+SdzfMQ==}
+  '@oclif/core@4.11.3':
+    resolution: {integrity: sha512-gQCSYAtUhJilGKaSaZhqejH9X1dDu+jWQjLmtGOgN/XcKaAEPPSeT2mu1UvlvtPox1/NNRdlBcUa8KRKo2HnJQ==}
     engines: {node: '>=18.0.0'}
 
   '@oclif/plugin-help@6.2.48':
@@ -5140,7 +5140,7 @@ snapshots:
 
   '@neoconfetti/react@1.0.0': {}
 
-  '@oclif/core@4.11.2':
+  '@oclif/core@4.11.3':
     dependencies:
       ansi-escapes: 4.3.2
       ansis: 3.17.0
@@ -5163,7 +5163,7 @@ snapshots:
 
   '@oclif/plugin-help@6.2.48':
     dependencies:
-      '@oclif/core': 4.11.2
+      '@oclif/core': 4.11.3
 
   '@oozcitak/dom@2.0.2':
     dependencies:

@@ -13,7 +13,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.7",
     "c8": "^11.0.0",
     "typescript": "^6.0.3",
     "vite-plus": "catalog:"

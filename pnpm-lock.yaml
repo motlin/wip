@@ -135,8 +135,8 @@ importers:
         specifier: ^0.1.5
         version: 0.1.5(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@git-diff-view/shiki':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.1.5
+        version: 0.1.5
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -643,8 +643,8 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  '@git-diff-view/shiki@0.1.4':
-    resolution: {integrity: sha512-IV6zjZQP8zXVOQ07CMkmub8N0LMD2hWRxVynmtMmNJjYzb22587R7cJqIjGwYgg3DtyDIqke4T3LZ0H7uaIpLQ==}
+  '@git-diff-view/shiki@0.1.5':
+    resolution: {integrity: sha512-NkP9u4e3qhupc5O4HVMWbWVwtRZQboCDyJn5VB8BzmwS6f5hpdxaSAd50UNSC1MUZI3wu/Sf1skdd394ifepsQ==}
 
   '@grpc/grpc-js@1.14.3':
     resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
@@ -5077,7 +5077,7 @@ snapshots:
       reactivity-store: 0.4.0(react@19.2.6)
       use-sync-external-store: 1.6.0(react@19.2.6)
 
-  '@git-diff-view/shiki@0.1.4':
+  '@git-diff-view/shiki@0.1.5':
     dependencies:
       '@types/hast': 3.0.4
       shiki: 3.23.0

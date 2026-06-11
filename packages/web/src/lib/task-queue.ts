@@ -331,6 +331,10 @@ async function runRebaseTask(task: Task): Promise<void> {
     emit(task);
   };
 
+  if (task.upstreamRemote) {
+    await run(["fetch", task.upstreamRemote]);
+  }
+
   const checkout = await run(["checkout", task.branch]);
   if (checkout.exitCode !== 0) {
     finish("failed", `Failed to checkout ${task.branch}`);
@@ -521,6 +525,7 @@ export interface EnqueueRebaseOptions {
   shortSha: string;
   subject: string;
   branch: string;
+  upstreamRemote: string;
   upstreamRef: string;
   upstreamBranch?: string;
   remote: string;
@@ -541,6 +546,7 @@ export function enqueueRebase(opts: EnqueueRebaseOptions): Task {
     shortSha: opts.shortSha,
     subject: opts.subject,
     branch: opts.branch,
+    upstreamRemote: opts.upstreamRemote,
     upstreamRef: opts.upstreamRef,
     upstreamBranch: opts.upstreamBranch,
     remote: opts.remote,

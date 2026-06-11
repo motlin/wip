@@ -75,6 +75,7 @@ import {
 import { log } from "@wip/shared/services/logger-pino.js";
 import { tracedExeca } from "@wip/shared/services/traced-execa.js";
 import { getTracer } from "@wip/shared/services/telemetry.js";
+import { classifyGitChild } from "./classify.js";
 import { z } from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -1291,10 +1292,12 @@ export const rebaseLocal = createServerFn({ method: "POST" })
   .handler(async ({ data }) => rebaseLocalHandler(data));
 
 /**
- * Discovers every local branch that has diverged from its upstream (upstream is
- * not an ancestor) across all clean projects and enqueues one background rebase
- * task per branch. The tasks run serialized per project on the shared task queue,
- * so progress is visible on the Tasks page via SSE instead of blocking the click.
+ * Enqueues one background rebase task per branch that the UI classifies as
+ * `needs_rebase` (the same set the "Rebase All (N)" button counts), across all
+ * clean projects. This matches the displayed count rather than rebasing every
+ * diverged local branch — abandoned/snoozed/approved branches are excluded by
+ * classification. Tasks run serialized per project on the shared task queue, so
+ * progress is visible on the Tasks page via SSE instead of blocking the click.
  */
 export async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
   return traced("rebaseAllChildren", async () => {
@@ -1307,37 +1310,20 @@ export async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 
     for (const p of projects) {
       if (p.dirty || !p.hasTestConfigured) continue;
-      const env = await getMiseEnv(p.dir);
 
-      await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote], { reject: false, env });
-
-      const branchList = await tracedExeca(
-        "git",
-        [
-          "-C",
-          p.dir,
-          "for-each-ref",
-          "--format=%(refname:short)%00%(objectname)%00%(objectname:short)%00%(contents:subject)",
-          "refs/heads/",
-          "--sort=-committerdate",
-          `--no-contains=${p.upstreamRef}`,
-        ],
-        { reject: false, env },
-      );
-      if (branchList.exitCode !== 0 || !branchList.stdout.trim()) continue;
-
-      for (const line of branchList.stdout.split("\n").filter(Boolean)) {
-        const [branch, sha, shortSha, subject] = line.split("\0");
-        if (!branch || !sha) continue;
-        if (/^(main|master)$/.test(branch)) continue;
+      const children = await getProjectChildrenHandler(p.name);
+      for (const child of children) {
+        if (!child.branch) continue;
+        if (classifyGitChild(child, p) !== "needs_rebase") continue;
 
         const task = enqueueRebase({
           project: p.name,
           projectDir: p.dir,
-          sha,
-          shortSha: shortSha || sha.slice(0, 7),
-          subject: subject ?? "",
-          branch,
+          sha: child.sha,
+          shortSha: child.shortSha,
+          subject: child.subject,
+          branch: child.branch,
+          upstreamRemote: p.upstreamRemote,
           upstreamRef: p.upstreamRef,
           upstreamBranch: p.upstreamBranch ?? "main",
           remote: p.remote,

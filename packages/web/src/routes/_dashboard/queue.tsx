@@ -2,9 +2,7 @@ import { createFileRoute, Outlet, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Play, Loader2, GitBranch } from "lucide-react";
 import { useState, useMemo, useCallback, createContext, useContext } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { testAllChildren, rebaseAllBranches, getProjectChildren } from "../../lib/server-fns";
-import type { ProjectChildrenResult } from "../../lib/server-fns";
+import { testAllChildren, rebaseAllChildren } from "../../lib/server-fns";
 import { useHasActiveTests } from "../../lib/task-events-context";
 import { projectsQueryOptions } from "../../lib/queries";
 import { useWorkItems } from "../../lib/use-work-items";
@@ -81,7 +79,6 @@ export const Route = createFileRoute("/_dashboard/queue")({
 });
 
 function QueueLayout() {
-  const queryClient = useQueryClient();
   const { data: projects } = useSuspenseQuery(projectsQueryOptions());
   const workItems = useWorkItems(projects);
   const [testingAll, setTestingAll] = useState(false);
@@ -229,13 +226,12 @@ function QueueLayout() {
     setRebasingAll(true);
     setRebaseResult(null);
     try {
-      const result = await rebaseAllBranches();
-      setRebaseResult(result.message);
-      const refreshes = projects.map(async (p) => {
-        const fresh = await getProjectChildren({ data: { project: p.name } });
-        queryClient.setQueryData<ProjectChildrenResult>(["children", p.name], fresh);
-      });
-      await Promise.all(refreshes);
+      const queued = await rebaseAllChildren();
+      setRebaseResult(
+        queued.length === 0
+          ? "All branches are up to date"
+          : `Enqueued ${queued.length} rebase task${queued.length > 1 ? "s" : ""} — see Tasks`,
+      );
     } catch (e) {
       setRebaseResult(e instanceof Error ? e.message : "Rebase failed");
     } finally {

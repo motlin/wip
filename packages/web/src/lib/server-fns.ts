@@ -1290,101 +1290,68 @@ export const rebaseLocal = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
   .handler(async ({ data }) => rebaseLocalHandler(data));
 
-export const rebaseAllBranches = createServerFn({ method: "POST" }).handler(
-  async (): Promise<ActionResult> =>
-    tracedAction("rebaseAllBranches", async () => {
-      const projectsDirs = getProjectsDirs();
-      const projects = await discoverAllProjects(projectsDirs);
+/**
+ * Discovers every local branch that has diverged from its upstream (upstream is
+ * not an ancestor) across all clean projects and enqueues one background rebase
+ * task per branch. The tasks run serialized per project on the shared task queue,
+ * so progress is visible on the Tasks page via SSE instead of blocking the click.
+ */
+export async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
+  return traced("rebaseAllChildren", async () => {
+    const { enqueueRebase } = await import("./task-queue.js");
 
-      const results: string[] = [];
-      const errors: string[] = [];
+    const projectsDirs = getProjectsDirs();
+    const projects = await discoverAllProjects(projectsDirs);
 
-      for (const p of projects) {
-        if (p.dirty || !p.hasTestConfigured) continue;
-        const env = await getMiseEnv(p.dir);
+    const queued: TestJobStatus[] = [];
 
-        await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote], {
-          reject: false,
-          env,
+    for (const p of projects) {
+      if (p.dirty || !p.hasTestConfigured) continue;
+      const env = await getMiseEnv(p.dir);
+
+      await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote], { reject: false, env });
+
+      const branchList = await tracedExeca(
+        "git",
+        [
+          "-C",
+          p.dir,
+          "for-each-ref",
+          "--format=%(refname:short)%00%(objectname)%00%(objectname:short)%00%(contents:subject)",
+          "refs/heads/",
+          "--sort=-committerdate",
+          `--no-contains=${p.upstreamRef}`,
+        ],
+        { reject: false, env },
+      );
+      if (branchList.exitCode !== 0 || !branchList.stdout.trim()) continue;
+
+      for (const line of branchList.stdout.split("\n").filter(Boolean)) {
+        const [branch, sha, shortSha, subject] = line.split("\0");
+        if (!branch || !sha) continue;
+        if (/^(main|master)$/.test(branch)) continue;
+
+        const task = enqueueRebase({
+          project: p.name,
+          projectDir: p.dir,
+          sha,
+          shortSha: shortSha || sha.slice(0, 7),
+          subject: subject ?? "",
+          branch,
+          upstreamRef: p.upstreamRef,
+          upstreamBranch: p.upstreamBranch ?? "main",
+          remote: p.remote,
         });
-
-        const branchList = await tracedExeca(
-          "git",
-          [
-            "-C",
-            p.dir,
-            "for-each-ref",
-            "--format=%(refname:short)",
-            "refs/heads/",
-            "--sort=-committerdate",
-            `--no-contains=${p.upstreamRef}`,
-          ],
-          { reject: false, env },
-        );
-        if (branchList.exitCode !== 0 || !branchList.stdout.trim()) continue;
-
-        const branches = branchList.stdout
-          .split("\n")
-          .filter(Boolean)
-          .filter((b) => !/^(main|master)$/.test(b));
-
-        for (const branch of branches) {
-          const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", branch], {
-            reject: false,
-            env,
-          });
-          if (checkout.exitCode !== 0) continue;
-
-          const branchSha = (
-            await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], { reject: false, env })
-          ).stdout.trim();
-          const rebase = await tracedExeca(
-            "git",
-            ["-C", p.dir, "rebase", "--rebase-merges", "--update-refs", p.upstreamRef],
-            { reject: false, env },
-          );
-          if (rebase.exitCode !== 0) {
-            await tracedExeca("git", ["-C", p.dir, "rebase", "--abort"], { reject: false, env });
-            const upstreamSha = getCachedUpstreamSha(p.name);
-            if (upstreamSha && branchSha) {
-              cacheMergeStatus(p.name, branchSha, upstreamSha, 0, 1, false);
-            }
-            errors.push(`${p.name}/${branch}: conflicts`);
-            continue;
-          }
-
-          const push = await tracedExeca(
-            "git",
-            ["-C", p.dir, "push", p.remote, `${branch}:${branch}`, "--force-with-lease"],
-            { reject: false, env },
-          );
-          if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
-            errors.push(`${p.name}/${branch}: push failed`);
-            continue;
-          }
-
-          results.push(`${p.name}/${branch}`);
-        }
-
-        await tracedExeca("git", ["-C", p.dir, "checkout", p.upstreamBranch ?? "main"], {
-          reject: false,
-          env,
-        });
-        invalidatePrCache(p.name);
-        invalidateChildrenCache(p.name);
-        invalidateMergeStatus(p.name);
+        queued.push({ id: task.id, status: task.status, message: task.message });
       }
+    }
 
-      if (results.length === 0 && errors.length === 0) {
-        return { ok: true, message: "All branches are up to date" };
-      }
-      const msg =
-        results.length > 0
-          ? `Rebased ${results.length} branch${results.length > 1 ? "es" : ""}`
-          : "";
-      const errMsg = errors.length > 0 ? `${errors.length} failed: ${errors.join(", ")}` : "";
-      return { ok: errors.length === 0, message: [msg, errMsg].filter(Boolean).join(". ") };
-    }),
+    return queued;
+  });
+}
+
+export const rebaseAllChildren = createServerFn({ method: "POST" }).handler(async () =>
+  rebaseAllChildrenHandler(),
 );
 
 export async function refreshAllHandler(): Promise<ActionResult> {

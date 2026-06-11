@@ -27,7 +27,7 @@ import { resetGitHubRateLimit, markGitHubRateLimited } from "./rate-limit.js";
 
 function createTestGitRepo(owner: string, repo: string): string {
   const dir = mkdtempSync(join(tmpdir(), "wip-test-"));
-  execSync("git init --initial-branch=main", { cwd: dir, stdio: "ignore" });
+  execSync("git init -b main", { cwd: dir, stdio: "ignore" });
   execSync("git config user.email test@test.com", { cwd: dir, stdio: "ignore" });
   execSync("git config user.name Test", { cwd: dir, stdio: "ignore" });
   execSync(`git remote add origin https://github.com/${owner}/${repo}.git`, {
@@ -55,7 +55,7 @@ describe("getRepoOwnerAndName", () => {
 
   it("parses SSH remote URL", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "wip-test-"));
-    execSync("git init --initial-branch=main", { cwd: tempDir, stdio: "ignore" });
+    execSync("git init -b main", { cwd: tempDir, stdio: "ignore" });
     execSync("git remote add origin git@github.com:myorg/myrepo.git", {
       cwd: tempDir,
       stdio: "ignore",
@@ -499,7 +499,7 @@ describe("pruneRemote", () => {
 
     // Working repo pointing at the bare remote
     tempDir = mkdtempSync(join(tmpdir(), "wip-test-"));
-    execSync("git init --initial-branch=main", { cwd: tempDir, stdio: "ignore" });
+    execSync("git init -b main", { cwd: tempDir, stdio: "ignore" });
     execSync("git config user.email test@test.com", { cwd: tempDir, stdio: "ignore" });
     execSync("git config user.name Test", { cwd: tempDir, stdio: "ignore" });
     execFileSync("git", ["remote", "add", "origin", remoteDir], {
@@ -510,7 +510,6 @@ describe("pruneRemote", () => {
     // Push main to the bare remote so there's something for origin/HEAD to reference
     writeFileSync(join(tempDir, "file.txt"), "hello");
     execSync("git add . && git commit -m initial", { cwd: tempDir, stdio: "ignore" });
-    execSync("git branch -M main", { cwd: tempDir, stdio: "ignore" });
     execSync("git push origin main", { cwd: tempDir, stdio: "ignore" });
     execSync("git fetch origin", { cwd: tempDir, stdio: "ignore" });
 

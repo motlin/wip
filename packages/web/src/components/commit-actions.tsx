@@ -30,7 +30,7 @@ import {
   forcePush,
   renameBranch,
   applyFixes,
-  rebaseLocal,
+  rebaseChild,
   getCommitDiff,
   createPr,
   commitWorkingTree,
@@ -41,7 +41,6 @@ import {
 } from "../lib/server-fns";
 import { snoozedQueryOptions } from "../lib/queries";
 import { useMergeStatus } from "../lib/merge-events-context";
-import { suppressMergeUpdates } from "../lib/use-merge-events";
 import { applyRenameToChild } from "../lib/branch-rename";
 import type { ActionResult, GitChildResult, SnoozedChild, Category } from "@wip/shared";
 import type { ProjectChildrenResult } from "../lib/server-fns";
@@ -517,22 +516,17 @@ function ItemActions({ item, category, layout = "column" }: ItemActionsProps) {
     setRebasingLocal(true);
     setError(null);
     try {
-      const result = await rebaseLocal({
+      // Enqueue a background rebase task; progress and completion show on the
+      // Tasks page and via the rebase toast, consistent with "Rebase All".
+      await rebaseChild({
         data: {
           project: item.project,
           branch: branch,
         },
       });
-      showActionToasts("Rebase", result);
-      if (result.ok) {
-        suppressMergeUpdates(item.project, item.sha);
-        cache.updateItem(item.sha, (i) => ({ ...i, needsRebase: false, commitsBehind: 0 }));
-      } else {
-        setError(result.message);
-      }
     } catch (e) {
       showActionError("Rebase", e);
-      setError(e instanceof Error ? e.message : "Failed to rebase locally");
+      setError(e instanceof Error ? e.message : "Failed to enqueue rebase");
     } finally {
       setRebasingLocal(false);
     }

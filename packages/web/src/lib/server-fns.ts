@@ -1292,6 +1292,46 @@ export const rebaseLocal = createServerFn({ method: "POST" })
   .handler(async ({ data }) => rebaseLocalHandler(data));
 
 /**
+ * Enqueues a single background rebase task for one branch, so the per-card
+ * "Rebase" action runs on the shared task queue (visible on the Tasks page via
+ * SSE) instead of blocking the click, consistent with "Rebase All".
+ */
+export async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJobStatus> {
+  return traced("rebaseChild", async () => {
+    const { enqueueRebase } = await import("./task-queue.js");
+    const p = await resolveProject(data.project);
+
+    const logResult = await tracedExeca(
+      "git",
+      ["-C", p.dir, "log", "-1", "--format=%H%x00%h%x00%s", `refs/heads/${data.branch}`],
+      { reject: false },
+    );
+    const fields = logResult.stdout.split("\0");
+    const sha = fields[0]?.trim() || "";
+    const shortSha = fields[1]?.trim() || sha.slice(0, 7);
+    const subject = fields[2]?.trim() || "";
+
+    const task = enqueueRebase({
+      project: p.name,
+      projectDir: p.dir,
+      sha,
+      shortSha,
+      subject,
+      branch: data.branch,
+      upstreamRemote: p.upstreamRemote,
+      upstreamRef: p.upstreamRef,
+      upstreamBranch: p.upstreamBranch ?? "main",
+      remote: p.remote,
+    });
+    return { id: task.id, status: task.status, message: task.message };
+  });
+}
+
+export const rebaseChild = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
+  .handler(async ({ data }) => rebaseChildHandler(data));
+
+/**
  * Enqueues one background rebase task per branch that the UI classifies as
  * `needs_rebase` (the same set the "Rebase All (N)" button counts), across all
  * clean projects. This matches the displayed count rather than rebasing every

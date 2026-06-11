@@ -357,18 +357,25 @@ async function runRebaseTask(task: Task): Promise<void> {
     return;
   }
 
-  if (task.remote) {
-    const push = await run([
-      "push",
-      task.remote,
-      `${task.branch}:${task.branch}`,
-      "--force-with-lease",
-    ]);
-    if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
-      if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
-      finish("failed", `${task.branch}: rebased but push failed`);
-      return;
-    }
+  // Push to the branch's own configured remote — NOT task.remote (a GitHub slug
+  // like "owner/repo", not a git remote name) and NOT necessarily upstreamRemote
+  // (a fork's branches may track "origin" while it rebases onto "upstream").
+  const branchRemote =
+    (
+      await execa("git", ["-C", task.projectDir, "config", `branch.${task.branch}.remote`], {
+        reject: false,
+      })
+    ).stdout.trim() || "origin";
+  const push = await run([
+    "push",
+    branchRemote,
+    `${task.branch}:${task.branch}`,
+    "--force-with-lease",
+  ]);
+  if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
+    if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
+    finish("failed", `${task.branch}: rebased but push failed`);
+    return;
   }
 
   invalidatePrCache(task.project);

@@ -30,12 +30,22 @@ describe("statusToTransition", () => {
     }
   });
 
-  it("returns undefined for non-test task types", () => {
+  it("returns undefined for claude task types", () => {
     const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
     for (const status of allStatuses) {
       expect(statusToTransition(status, "claude")).toBeUndefined();
-      expect(statusToTransition(status, "rebase")).toBeUndefined();
     }
+  });
+
+  it("maps queued and running to rebase for rebase tasks", () => {
+    expect(statusToTransition("queued", "rebase")).toBe("rebase");
+    expect(statusToTransition("running", "rebase")).toBe("rebase");
+  });
+
+  it("returns undefined for terminal rebase statuses", () => {
+    expect(statusToTransition("passed", "rebase")).toBeUndefined();
+    expect(statusToTransition("failed", "rebase")).toBeUndefined();
+    expect(statusToTransition("cancelled", "rebase")).toBeUndefined();
   });
 
   it("defaults to test task type when not specified", () => {

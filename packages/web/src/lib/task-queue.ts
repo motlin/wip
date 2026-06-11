@@ -1,9 +1,12 @@
 import { execa } from "execa";
 import {
+  cacheMergeStatus,
   getCacheDir,
+  getCachedUpstreamSha,
   getMiseEnv,
   getTestLogDir,
   invalidateChildrenCache,
+  invalidateMergeStatus,
   invalidatePrCache,
   recordTestResult,
   type TaskType,
@@ -29,6 +32,8 @@ export interface Task {
   branch?: string;
   command?: string;
   upstreamRemote?: string;
+  upstreamRef?: string;
+  upstreamBranch?: string;
   remote?: string;
   createBranch?: boolean;
   status: TaskStatus;
@@ -86,6 +91,13 @@ export function statusToTransition(
       case "queued":
       case "running":
         return "push";
+    }
+  }
+  if (taskType === "rebase") {
+    switch (status) {
+      case "queued":
+      case "running":
+        return "rebase";
     }
   }
   return undefined;
@@ -168,11 +180,15 @@ async function runTask(task: Task): Promise<void> {
       return runTestTask(task);
     case "claude":
       return runClaudeTask(task);
+    case "rebase":
+      return runRebaseTask(task);
     case "push":
       // Push tasks are started directly in registerTask and never enter the project queue
       throw new Error("Push tasks must not reach the project queue");
-    default:
-      throw new Error(`Task type "${task.taskType}" is not yet implemented`);
+    default: {
+      const unhandled: never = task.taskType;
+      throw new Error(`Task type "${String(unhandled)}" is not yet implemented`);
+    }
   }
 }
 
@@ -286,6 +302,77 @@ async function runClaudeTask(task: Task): Promise<void> {
       ? `${task.shortSha} ${task.command} completed`
       : `${task.shortSha} ${task.command} failed (exit ${result.exitCode})`;
   emit(task);
+}
+
+async function runRebaseTask(task: Task): Promise<void> {
+  if (!task.branch) throw new Error("Rebase task requires a branch");
+  if (!task.upstreamRef) throw new Error("Rebase task requires upstreamRef");
+
+  const env = await getMiseEnv(task.projectDir);
+  const logDir = path.join(getCacheDir(), "rebase-logs", task.project);
+  fs.mkdirSync(logDir, { recursive: true });
+  const captured: string[] = [];
+
+  const run = async (args: string[]) => {
+    const result = await execa("git", ["-C", task.projectDir, ...args], { reject: false, env });
+    const out = [result.stdout, result.stderr].filter(Boolean).join("\n");
+    if (out) {
+      emitLog(task, out + "\n");
+      captured.push(out);
+    }
+    return result;
+  };
+
+  const finish = (status: TaskStatus, message: string): void => {
+    fs.writeFileSync(path.join(logDir, `${task.sha}.log`), captured.join("\n") + "\n");
+    task.status = status;
+    task.message = message;
+    task.finishedAt = Date.now();
+    emit(task);
+  };
+
+  const checkout = await run(["checkout", task.branch]);
+  if (checkout.exitCode !== 0) {
+    finish("failed", `Failed to checkout ${task.branch}`);
+    return;
+  }
+
+  const branchSha = (
+    await execa("git", ["-C", task.projectDir, "rev-parse", "HEAD"], { reject: false, env })
+  ).stdout.trim();
+
+  const rebase = await run(["rebase", "--rebase-merges", "--update-refs", task.upstreamRef]);
+  if (rebase.exitCode !== 0) {
+    await run(["rebase", "--abort"]);
+    const upstreamSha = getCachedUpstreamSha(task.project);
+    if (upstreamSha && branchSha) {
+      cacheMergeStatus(task.project, branchSha, upstreamSha, 0, 1, false);
+    }
+    if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
+    finish("failed", `${task.branch}: rebase conflicts`);
+    return;
+  }
+
+  if (task.remote) {
+    const push = await run([
+      "push",
+      task.remote,
+      `${task.branch}:${task.branch}`,
+      "--force-with-lease",
+    ]);
+    if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
+      if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
+      finish("failed", `${task.branch}: rebased but push failed`);
+      return;
+    }
+  }
+
+  invalidatePrCache(task.project);
+  invalidateChildrenCache(task.project);
+  invalidateMergeStatus(task.project);
+
+  if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
+  finish("passed", `Rebased ${task.branch} onto ${task.upstreamRef}`);
 }
 
 async function runPushTask(task: Task): Promise<void> {
@@ -424,6 +511,41 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
     status: "running",
     queuedAt: Date.now(),
     startedAt: Date.now(),
+  });
+}
+
+export interface EnqueueRebaseOptions {
+  project: string;
+  projectDir: string;
+  sha: string;
+  shortSha: string;
+  subject: string;
+  branch: string;
+  upstreamRef: string;
+  upstreamBranch?: string;
+  remote: string;
+}
+
+export function enqueueRebase(opts: EnqueueRebaseOptions): Task {
+  const existing = findTask(opts.sha, opts.project, "rebase");
+  if (existing && (existing.status === "queued" || existing.status === "running")) {
+    return existing;
+  }
+
+  return registerTask({
+    id: String(nextId++),
+    taskType: "rebase",
+    project: opts.project,
+    projectDir: opts.projectDir,
+    sha: opts.sha,
+    shortSha: opts.shortSha,
+    subject: opts.subject,
+    branch: opts.branch,
+    upstreamRef: opts.upstreamRef,
+    upstreamBranch: opts.upstreamBranch,
+    remote: opts.remote,
+    status: "queued",
+    queuedAt: Date.now(),
   });
 }
 

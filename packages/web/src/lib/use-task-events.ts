@@ -108,6 +108,14 @@ export function useTaskEvents() {
           pushToast({ level: "error", message: "Push failed", detail: data.message });
         }
       }
+
+      if (data.taskType === "rebase") {
+        if (data.status === "passed") {
+          pushToast({ level: "success", message: data.message ?? "Rebase complete" });
+        } else if (data.status === "failed") {
+          pushToast({ level: "error", message: "Rebase failed", detail: data.message });
+        }
+      }
     };
 
     return () => es.close();

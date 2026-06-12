@@ -2,6 +2,10 @@ import { defineConfig, type Plugin } from "vite-plus";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const webRoot = path.dirname(fileURLToPath(import.meta.url));
 
 // Stub server-only modules so Vite's dev client doesn't walk into execa → unicorn-magic
 function stubServerModules(): Plugin {
@@ -31,6 +35,7 @@ function stubServerModules(): Plugin {
 }
 
 export default defineConfig({
+  root: webRoot,
   resolve: {
     tsconfigPaths: true,
   },

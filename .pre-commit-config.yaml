@@ -20,6 +20,13 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
 
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        types: [yaml]
+        exclude: "^(node_modules/|\\.llm/|\\.claude/|\\.remember/|\\.serena/|\\.playwright-mcp/|dist/|coverage/|storybook-static/|pnpm-lock\\.yaml)"
+
   - repo: local
     hooks:
       - id: markdownlint-cli2
@@ -28,9 +35,3 @@ repos:
         language: system
         types: [markdown]
         exclude: "^(node_modules/|\\.llm/|\\.claude/|\\.remember/|\\.serena/|\\.playwright-mcp/|dist/|coverage/|storybook-static/|CLAUDE\\.md|AGENTS\\.md)"
-      - id: yamllint
-        name: yamllint
-        entry: yamllint
-        language: system
-        types: [yaml]
-        exclude: "^(node_modules/|\\.llm/|\\.claude/|\\.remember/|\\.serena/|\\.playwright-mcp/|dist/|coverage/|storybook-static/|pnpm-lock\\.yaml)"

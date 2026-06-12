@@ -96,6 +96,15 @@ async function createTestGitRepo(prefix = "wip-test-"): Promise<string> {
   await execa("git", ["init", "--initial-branch=main"], { cwd: dir });
   await execa("git", ["config", "user.email", "test@test.com"], { cwd: dir });
   await execa("git", ["config", "user.name", "Test User"], { cwd: dir });
+  await execa(
+    "git",
+    [
+      "config",
+      "alias.children",
+      "!PARENT=$(git rev-parse ${1:-HEAD}); git rev-list --all --parents | awk -v p=\"$PARENT\" 'NF==2 && $2==p {print $1}'; :",
+    ],
+    { cwd: dir },
+  );
   await execa("git", ["commit", "--allow-empty", "-m", "Initial commit"], { cwd: dir });
   return dir;
 }

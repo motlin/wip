@@ -21,6 +21,9 @@ install:
 build: install
     pnpm run build
 
+[group('build')]
+build-ci: build
+
 # Build the shared package only
 [group('build')]
 build-shared: install
@@ -46,10 +49,16 @@ check: install
 typecheck: install
     pnpm run typecheck
 
+[group('build')]
+typecheck-ci: build
+
 # Run tests
 [group('test')]
 test: build
     pnpm -r run test
+
+[group('test')]
+test-ci: test
 
 # Run all pre-commit checks
 [group('build')]

@@ -1237,6 +1237,12 @@ async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJobStatus
 		const {enqueueRebase} = await import("./task-queue.js");
 		const p = await resolveProject(data.project);
 
+		if (isDashboardRepo(p.dir)) {
+			throw new Error(
+				`Refusing to rebase a branch in ${p.name}: it is the repo the dashboard runs from, and checking out its branches would disrupt the server`,
+			);
+		}
+
 		const logResult = await tracedExeca(
 			"git",
 			["-C", p.dir, "log", "-1", "--format=%H%x00%h%x00%s", `refs/heads/${data.branch}`],
@@ -1268,12 +1274,24 @@ export const rebaseChild = createServerFn({method: "POST"})
 	.handler(async ({data}) => rebaseChildHandler(data));
 
 /**
+ * Returns true if `dir` is (or contains) the repo the dashboard server itself is
+ * running from. Rebasing that repo would check out its branches and disrupt the
+ * running server (and in dev, swap out the source it serves), so it is excluded
+ * from bulk rebase.
+ */
+function isDashboardRepo(dir: string): boolean {
+	const rel = path.relative(dir, process.cwd());
+	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/**
  * Enqueues one background rebase task per branch that the UI classifies as
  * `needs_rebase` (the same set the "Rebase All (N)" button counts), across all
- * clean projects. This matches the displayed count rather than rebasing every
- * diverged local branch — abandoned/snoozed/approved branches are excluded by
- * classification. Tasks run serialized per project on the shared task queue, so
- * progress is visible on the Tasks page via SSE instead of blocking the click.
+ * clean projects except the dashboard's own repo. This matches the displayed
+ * count rather than rebasing every diverged local branch — abandoned/snoozed/
+ * approved branches are excluded by classification. Tasks run serialized per
+ * project on the shared task queue, so progress is visible on the Tasks page via
+ * SSE instead of blocking the click.
  */
 async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("rebaseAllChildren", async () => {
@@ -1286,6 +1304,7 @@ async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 
 		for (const p of projects) {
 			if (p.dirty || !p.hasTestConfigured) continue;
+			if (isDashboardRepo(p.dir)) continue;
 
 			const children = await getProjectChildrenHandler(p.name);
 			for (const child of children) {

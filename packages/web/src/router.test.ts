@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vite-plus/test";
+import { describe, it, expect, vi } from "vitest";
 
 // Mock the dependencies that router.tsx imports
 vi.mock("@tanstack/react-query-persist-client", () => ({

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
 vi.mock("@wip/shared", () => ({
   discoverAllProjects: vi.fn(),

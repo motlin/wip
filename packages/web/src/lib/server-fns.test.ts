@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vite-plus/test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Polly, type PollyConfig } from "@pollyjs/core";
 import { tmpdir } from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";

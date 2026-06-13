@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { GitHubIssue, GitHubProjectItem } from "@wip/shared";
 
 vi.mock("@wip/shared", async () => {

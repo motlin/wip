@@ -160,7 +160,7 @@ importers:
         version: 1.130.17(@tanstack/react-query@5.101.0(react@19.2.7))(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.13)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/react-start':
         specifier: ^1.168.25
-        version: 1.168.25(@rsbuild/core@2.0.12)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.168.25(@rsbuild/core@2.0.15)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@wip/shared':
         specifier: workspace:*
         version: link:../shared
@@ -196,8 +196,8 @@ importers:
         specifier: ^6.0.6
         version: 6.0.6
       '@rsbuild/core':
-        specifier: ^2.0.12
-        version: 2.0.12
+        specifier: ^2.0.15
+        version: 2.0.15
       '@storybook/addon-a11y':
         specifier: ^10.4.4
         version: 10.4.4(storybook@10.4.5(@testing-library/dom@10.4.1)(@types/react@19.2.17)(prettier@3.8.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vite-plus@0.1.24(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(@vitest/coverage-v8@4.1.9(@voidzero-dev/vite-plus-test@0.1.15(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)))
@@ -1537,8 +1537,8 @@ packages:
       rollup:
         optional: true
 
-  '@rsbuild/core@2.0.12':
-    resolution: {integrity: sha512-6f0M9TO4pAeM/VAshg9PajYK4IbfUB21Xun2kT0q3/SbBQ607KzkQZ6fmReuKUKCLbo26tGnbgg5P77eDDcfaA==}
+  '@rsbuild/core@2.0.15':
+    resolution: {integrity: sha512-O8vmMhZu1YImO6jOqt/K/vlJSvkq7UtSq5YM1DIlcEd9LW8Gf6/dkQ1B2KPI6F+hSMFBnTTTumdcIowSLCw97g==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -5721,7 +5721,7 @@ snapshots:
       estree-walker: 2.0.2
       picomatch: 4.0.4
 
-  '@rsbuild/core@2.0.12':
+  '@rsbuild/core@2.0.15':
     dependencies:
       '@rspack/core': 2.0.8(@swc/helpers@0.5.23)
       '@swc/helpers': 0.5.23
@@ -6096,14 +6096,14 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
-  '@tanstack/react-start-rsc@0.1.24(@rsbuild/core@2.0.12)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-start-rsc@0.1.24(@rsbuild/core@2.0.15)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@tanstack/react-router': 1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-core': 1.171.13
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-client-core': 1.170.12
       '@tanstack/start-fn-stubs': 1.162.0
-      '@tanstack/start-plugin-core': 1.171.17(@rsbuild/core@2.0.12)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
+      '@tanstack/start-plugin-core': 1.171.17(@rsbuild/core@2.0.15)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
       '@tanstack/start-server-core': 1.169.14
       '@tanstack/start-storage-context': 1.167.15
       pathe: 2.0.3
@@ -6129,21 +6129,21 @@ snapshots:
     transitivePeerDependencies:
       - crossws
 
-  '@tanstack/react-start@1.168.25(@rsbuild/core@2.0.12)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-start@1.168.25(@rsbuild/core@2.0.15)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@tanstack/react-router': 1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/react-start-client': 1.168.13(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@tanstack/react-start-rsc': 0.1.24(@rsbuild/core@2.0.12)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-start-rsc': 0.1.24(@rsbuild/core@2.0.15)(@rspack/core@2.0.8(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/react-start-server': 1.167.19(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-client-core': 1.170.12
-      '@tanstack/start-plugin-core': 1.171.17(@rsbuild/core@2.0.12)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
+      '@tanstack/start-plugin-core': 1.171.17(@rsbuild/core@2.0.15)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
       '@tanstack/start-server-core': 1.169.14
       pathe: 2.0.3
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
     optionalDependencies:
-      '@rsbuild/core': 2.0.12
+      '@rsbuild/core': 2.0.15
       vite: '@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)'
     transitivePeerDependencies:
       - '@rspack/core'
@@ -6180,7 +6180,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.18(@rsbuild/core@2.0.12)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))':
+  '@tanstack/router-plugin@1.168.18(@rsbuild/core@2.0.15)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/template': 7.29.7
@@ -6192,7 +6192,7 @@ snapshots:
       unplugin: 3.0.0
       zod: 4.4.3
     optionalDependencies:
-      '@rsbuild/core': 2.0.12
+      '@rsbuild/core': 2.0.15
       '@tanstack/react-router': 1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       vite: '@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)'
     transitivePeerDependencies:
@@ -6220,14 +6220,14 @@ snapshots:
 
   '@tanstack/start-fn-stubs@1.162.0': {}
 
-  '@tanstack/start-plugin-core@1.171.17(@rsbuild/core@2.0.12)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))':
+  '@tanstack/start-plugin-core@1.171.17(@rsbuild/core@2.0.15)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))':
     dependencies:
       '@babel/code-frame': 7.27.1
       '@babel/core': 7.29.7
       '@babel/types': 7.29.7
       '@tanstack/router-core': 1.171.13
       '@tanstack/router-generator': 1.167.17
-      '@tanstack/router-plugin': 1.168.18(@rsbuild/core@2.0.12)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
+      '@tanstack/router-plugin': 1.168.18(@rsbuild/core@2.0.15)(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-server-core': 1.169.14
       exsolve: 1.0.8
@@ -6243,7 +6243,7 @@ snapshots:
       xmlbuilder2: 4.0.3
       zod: 4.4.3
     optionalDependencies:
-      '@rsbuild/core': 2.0.12
+      '@rsbuild/core': 2.0.15
       vite: '@voidzero-dev/vite-plus-core@0.1.24(@types/node@25.9.3)(esbuild@0.27.7)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)'
     transitivePeerDependencies:
       - '@tanstack/react-router'

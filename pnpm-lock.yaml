@@ -34,8 +34,8 @@ importers:
   packages/cli:
     dependencies:
       '@oclif/core':
-        specifier: ^4.11.6
-        version: 4.11.6
+        specifier: ^4.11.7
+        version: 4.11.7
       '@oclif/plugin-help':
         specifier: ^6.2.50
         version: 6.2.50
@@ -647,12 +647,12 @@ packages:
   '@neoconfetti/react@1.0.0':
     resolution: {integrity: sha512-klcSooChXXOzIm+SE5IISIAn3bYzYfPjbX7D7HoqZL84oAfgREeSg5vSIaSFH+DaGzzvImTyWe1OyrJ67vik4A==}
 
-  '@oclif/core@4.11.4':
-    resolution: {integrity: sha512-URwiQ5ALx/sJ2iH4vzXEd+H4K6NAI7LRs6Jag3hrgKEpGmaE6alfRC8qjO4GIgb6A3ACaJumqP9twi/M9ywdHQ==}
-    engines: {node: '>=18.0.0'}
-
   '@oclif/core@4.11.6':
     resolution: {integrity: sha512-8OTkBkWA0HJz2bSIQI0AoiIeL7ok4bZhUaJNEzfLu+iAn3liAyj4KmXRdXAUZBCjPEfdBTpyxKDAg1l/BDJKVg==}
+    engines: {node: '>=18.0.0'}
+
+  '@oclif/core@4.11.7':
+    resolution: {integrity: sha512-LHii7kSaLvv5bpbS09I7BlI1AQa3Kak/QDyyZOik79ET8tQyt1U5O38al+sYkMxi139105w5gS+aWe+5BlJ0yQ==}
     engines: {node: '>=18.0.0'}
 
   '@oclif/plugin-help@6.2.50':
@@ -4965,7 +4965,7 @@ snapshots:
 
   '@neoconfetti/react@1.0.0': {}
 
-  '@oclif/core@4.11.4':
+  '@oclif/core@4.11.6':
     dependencies:
       ansi-escapes: 4.3.2
       ansis: 3.17.0
@@ -4986,7 +4986,7 @@ snapshots:
       wordwrap: 1.0.0
       wrap-ansi: 7.0.0
 
-  '@oclif/core@4.11.6':
+  '@oclif/core@4.11.7':
     dependencies:
       ansi-escapes: 4.3.2
       ansis: 3.17.0
@@ -5009,7 +5009,7 @@ snapshots:
 
   '@oclif/plugin-help@6.2.50':
     dependencies:
-      '@oclif/core': 4.11.4
+      '@oclif/core': 4.11.6
 
   '@oozcitak/dom@2.0.2':
     dependencies:

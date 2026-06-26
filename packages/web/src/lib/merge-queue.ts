@@ -10,7 +10,7 @@ import {
 } from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
 
-export interface MergeStatusEvent {
+interface MergeStatusEvent {
 	project: string;
 	sha: string;
 	commitsBehind: number;

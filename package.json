@@ -8,15 +8,29 @@
 	},
 	"type": "module",
 	"scripts": {
+		"preinstall": "npx only-allow pnpm",
 		"build": "pnpm -r run build",
 		"typecheck": "pnpm -r run typecheck",
+		"oxlint": "vp lint . --fix",
+		"oxlint:ci": "vp lint . --format github",
+		"fmt": "vp fmt",
+		"fmt:ci": "vp fmt --check",
+		"fallow": "fallow fix --yes",
+		"fallow:ci": "fallow dead-code",
+		"test": "node node_modules/vitest/dist/cli.js",
+		"test:run": "node node_modules/vitest/dist/cli.js run",
 		"prepare": "vp config"
 	},
 	"devDependencies": {
+		"@typescript/native-preview": "^7.0.0-dev.20260611.2",
 		"@vitest/coverage-v8": "^4.1.9",
 		"c8": "^11.0.0",
+		"fallow": "^2.95.0",
+		"markdownlint-cli2": "^0.22.1",
 		"typescript": "^6.0.3",
-		"vite-plus": "catalog:"
+		"vite": "catalog:",
+		"vite-plus": "catalog:",
+		"vitest": "catalog:"
 	},
 	"packageManager": "pnpm@11.1.1",
 	"pnpm": {

@@ -1,0 +1,26 @@
+{
+	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+	"workspaces": {
+		"patterns": ["packages/*"]
+	},
+	// src/stories/**/*.mdx mirrors the Storybook stories glob in
+	// packages/web/.storybook/main.ts; fallow's storybook plugin only detects
+	// *.stories.* files, not docs pages.
+	"entry": [
+		"packages/shared/src/index.{ts,tsx,js,jsx}",
+		"packages/web/src/client.tsx",
+		"packages/web/src/server.ts",
+		"packages/web/src/router.tsx",
+		"packages/web/src/routes/**/*.{ts,tsx}",
+		"packages/web/src/stories/**/*.mdx",
+		"packages/cli/bin/**/*.js",
+		"packages/cli/src/commands/**/*.{ts,tsx}"
+	],
+	"ignorePatterns": ["**/dist/**", "**/.output/**", "**/node_modules/**"],
+	"duplicates": {
+		"minOccurrences": 3
+	},
+	"rules": {
+		"unused-dependencies": "warn"
+	}
+}

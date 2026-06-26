@@ -6,7 +6,6 @@ import type {ProjectChildrenResult} from "./server-fns";
 import {pushToast} from "./toast-store";
 
 export type {TaskEvent};
-export type JobEvent = TaskEvent;
 
 const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
 	queued: "running",

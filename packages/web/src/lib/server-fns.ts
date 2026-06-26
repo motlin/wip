@@ -48,7 +48,6 @@ import type {
 } from "@wip/shared";
 import {
 	type ActionResult,
-	type Category,
 	type SnoozedChild,
 	PushChildInputSchema,
 	type PushChildInput,
@@ -68,7 +67,6 @@ import {
 	type RebaseLocalInput,
 	TaskQueueJobSchema,
 	type TaskQueueJob,
-	type TestQueueJob,
 	RunClaudeCommandInputSchema,
 	planProject,
 	resolveAdvanceConcurrency,
@@ -110,7 +108,7 @@ async function tracedAction(name: string, fn: () => Promise<ActionResult>): Prom
 	};
 }
 
-export type {ActionResult, Category, SnoozedChild, GitChildResult, TestQueueJob};
+export type {ActionResult, SnoozedChild, GitChildResult};
 
 export type ProjectChildrenResult = GitChildResult[];
 

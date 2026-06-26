@@ -596,9 +596,6 @@ function cancelTask(id: string): {ok: boolean; message: string} {
 	return {ok: false, message: "Unknown task status"};
 }
 
-export type JobStatus = TaskStatus;
-export type TestJob = Task;
-export type JobEvent = TaskEvent;
 export const enqueueTest = (
 	project: string,
 	projectDir: string,

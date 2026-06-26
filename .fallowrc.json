@@ -22,5 +22,31 @@
 	},
 	"rules": {
 		"unused-dependencies": "warn"
-	}
+	},
+	// Per-project: deps fallow can't see statically because they load via config
+	// or runtime strings rather than imports.
+	"ignoreDependencies": [
+		// Loaded via oclif's `oclif.plugins` config, not a static import.
+		"@oclif/plugin-help",
+		// Loaded by pino at runtime via a transport `target` string.
+		"pino-pretty",
+		// Storybook/diff-view tooling resolved by their plugin systems, not imports.
+		"@git-diff-view/shiki",
+		"@storybook/addon-vitest",
+		"eslint-plugin-storybook"
+	],
+	// Per-project: Handler Extraction Pattern (see CLAUDE.md) exports handlers so
+	// tests can import and call them directly, bypassing createServerFn.
+	"ignoreExports": [
+		{
+			"file": "packages/web/src/lib/server-fns.ts",
+			"exports": [
+				"testAllChildrenHandler",
+				"rebaseChildHandler",
+				"rebaseAllChildrenHandler",
+				"refreshAllHandler",
+				"rebaseLocalHandler"
+			]
+		}
+	]
 }

@@ -7,8 +7,10 @@ allowBuilds:
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@latest
   vite-plus: latest
-  vitest: npm:@voidzero-dev/vite-plus-test@^0.1.15
-onlyBuiltDependencies: better-sqlite3
+  vitest: npm:@voidzero-dev/vite-plus-test@latest
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
 overrides:
   vite: "catalog:"
   vitest: "catalog:"

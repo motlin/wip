@@ -18,12 +18,6 @@ export interface BrowserLogEntry {
 	timestamp: string;
 }
 
-export function writeBrowserLog(entry: BrowserLogEntry): void {
-	ensureLogDir();
-	const line = `[${entry.timestamp}] [${entry.level.toUpperCase().padEnd(5)}] [browser] ${entry.message}\n`;
-	fs.appendFileSync(LOG_FILE, line);
-}
-
 export function writeBrowserLogs(entries: BrowserLogEntry[]): void {
 	ensureLogDir();
 	const lines = entries

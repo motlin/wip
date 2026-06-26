@@ -16,6 +16,7 @@ default:
 install:
     vp install
     just ensure-sqlite-native
+    vp fmt CLAUDE.md
 
 # Verify better-sqlite3 native modules match the active Node runtime
 [group('setup')]
@@ -79,9 +80,21 @@ test: build
 [group('test')]
 test-ci: test
 
+# Run fallow codebase intelligence (dead code, duplication, drift)
+[group('build')]
+fallow: install
+    vp run {{ if ci != "" { "fallow:ci" } else { "fallow" } }}
+
+# Run pre-commit hooks on all files (same as CI's pre-commit job)
+[group('build')]
+pre-commit: install
+    pre-commit run --all-files
+
 # Run all pre-commit checks
 [group('build')]
-precommit: check build typecheck test
+[arg("quick", long, value="true", help="Skip tests")]
+precommit quick="": check build fallow pre-commit
+    {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
 
 # Start web dashboard dev server

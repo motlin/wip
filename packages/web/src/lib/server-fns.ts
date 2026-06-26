@@ -613,7 +613,7 @@ export const testChild = createServerFn({method: "POST"})
 			}),
 	);
 
-export async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
+async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("testAllChildren", async () => {
 		const {enqueueTest} = await import("./task-queue.js");
 
@@ -676,20 +676,6 @@ export async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
 }
 
 export const testAllChildren = createServerFn({method: "POST"}).handler(async () => testAllChildrenHandler());
-
-export const getProjectDir = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
-	.handler(
-		async ({data}): Promise<string | null> =>
-			traced("getProjectDir", async () => {
-				try {
-					return (await resolveProject(data.project)).dir;
-				} catch (error: unknown) {
-					log.general.error({project: data.project, error}, "Project resolution failed");
-					return null;
-				}
-			}),
-	);
 
 export interface FileDiff {
 	oldFileName: string;
@@ -931,9 +917,6 @@ export const getTaskQueue = createServerFn({method: "GET"}).handler(
 			return Array.from(tasks.values()).map((t) => TaskQueueJobSchema.parse(t));
 		}),
 );
-
-// Backward-compatible alias
-export const getTestQueue = getTaskQueue;
 
 export const cancelTestFn = createServerFn({method: "POST"})
 	.inputValidator((input: unknown) => CancelTestInputSchema.parse(input))
@@ -1249,16 +1232,12 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 	});
 }
 
-export const rebaseLocal = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
-	.handler(async ({data}) => rebaseLocalHandler(data));
-
 /**
  * Enqueues a single background rebase task for one branch, so the per-card
  * "Rebase" action runs on the shared task queue (visible on the Tasks page via
  * SSE) instead of blocking the click, consistent with "Rebase All".
  */
-export async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJobStatus> {
+async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJobStatus> {
 	return traced("rebaseChild", async () => {
 		const {enqueueRebase} = await import("./task-queue.js");
 		const p = await resolveProject(data.project);
@@ -1301,7 +1280,7 @@ export const rebaseChild = createServerFn({method: "POST"})
  * classification. Tasks run serialized per project on the shared task queue, so
  * progress is visible on the Tasks page via SSE instead of blocking the click.
  */
-export async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
+async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("rebaseAllChildren", async () => {
 		const {enqueueRebase} = await import("./task-queue.js");
 
@@ -1346,7 +1325,7 @@ export interface AdvanceAllInput {
 	dryRun?: boolean;
 }
 
-export async function advanceAllHandler(input: AdvanceAllInput = {}): Promise<ReportNode> {
+async function advanceAllHandler(input: AdvanceAllInput = {}): Promise<ReportNode> {
 	return traced("advanceAll", async () => {
 		const include = input.include ?? [];
 		const exclude = input.exclude ?? [];
@@ -1394,7 +1373,7 @@ export const advanceAll = createServerFn({method: "POST"})
 	)
 	.handler(async ({data}) => advanceAllHandler(data));
 
-export async function refreshAllHandler(): Promise<ActionResult> {
+async function refreshAllHandler(): Promise<ActionResult> {
 	return tracedAction("refreshAll", async () => {
 		cachedProjects = null;
 		cachedProjectsTime = 0;

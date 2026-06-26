@@ -58,9 +58,6 @@ export const taskQueueQueryOptions = () =>
 		staleTime: 5_000,
 	});
 
-// Backward-compatible alias
-export const testQueueQueryOptions = taskQueueQueryOptions;
-
 export const workingTreeDiffQueryOptions = (project: string) =>
 	queryOptions({
 		queryKey: ["workingTreeDiff", project],

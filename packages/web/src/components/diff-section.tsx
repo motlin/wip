@@ -1,4 +1,4 @@
-import {useMemo, useState} from "react";
+import {useMemo} from "react";
 import {DiffView, DiffModeEnum} from "@git-diff-view/react";
 import {DiffFile} from "@git-diff-view/core";
 import "@git-diff-view/react/styles/diff-view.css";
@@ -212,34 +212,6 @@ export function DiffToolbar({
 					No Wrap
 				</button>
 			</div>
-		</div>
-	);
-}
-
-export function DiffPanel({files, stat}: {files: FileDiff[]; stat: string}) {
-	const [mode, setMode] = useState<"split" | "unified">("split");
-	const [wrap, setWrap] = useState(false);
-	const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-	const theme = isDark ? "dark" : "light";
-
-	return (
-		<div>
-			<div className="mb-4 flex items-center justify-between">
-				<h2 className="text-sm font-semibold text-text-200">Diff</h2>
-				<DiffToolbar mode={mode} setMode={setMode} wrap={wrap} setWrap={setWrap} />
-			</div>
-			{stat && (
-				<pre className="mb-4 overflow-auto rounded-lg bg-bg-200 p-3 font-mono text-xs text-text-300">
-					{stat}
-				</pre>
-			)}
-			{files.length === 0 ? (
-				<p className="text-sm text-text-500">No files changed.</p>
-			) : (
-				files.map((file) => (
-					<FileDiffSection key={file.newFileName} file={file} theme={theme} mode={mode} wrap={wrap} />
-				))
-			)}
 		</div>
 	);
 }

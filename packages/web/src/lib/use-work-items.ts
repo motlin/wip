@@ -25,34 +25,6 @@ export interface WorkItems {
 	todos: TodoItem[];
 }
 
-export interface WorkItemCounts {
-	gitChildren: number;
-	issues: number;
-	projectItems: number;
-	todos: number;
-	total: number;
-	projectCount: number;
-}
-
-export function useWorkItemCounts(projects: ProjectInfo[]): WorkItemCounts {
-	const workItems = useWorkItems(projects);
-	return useMemo(
-		() => ({
-			gitChildren: workItems.gitChildren.length,
-			issues: workItems.issues.length,
-			projectItems: workItems.projectItems.length,
-			todos: workItems.todos.length,
-			total:
-				workItems.gitChildren.length +
-				workItems.issues.length +
-				workItems.projectItems.length +
-				workItems.todos.length,
-			projectCount: workItems.projectCount,
-		}),
-		[workItems],
-	);
-}
-
 export function useWorkItems(projects: ProjectInfo[]): WorkItems & {projectCount: number} {
 	const childQueries = useSuspenseQueries({
 		queries: projects.map((p) => projectChildrenQueryOptions(p.name)),

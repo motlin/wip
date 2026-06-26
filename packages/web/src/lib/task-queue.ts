@@ -543,7 +543,7 @@ export function enqueueRebase(opts: EnqueueRebaseOptions): Task {
 	});
 }
 
-export function findTask(sha: string, project: string, taskType?: TaskType): Task | undefined {
+function findTask(sha: string, project: string, taskType?: TaskType): Task | undefined {
 	for (const task of tasks.values()) {
 		if (task.sha === sha && task.project === project) {
 			if (taskType === undefined || task.taskType === taskType) return task;
@@ -560,7 +560,7 @@ export function getAllTasks(): Map<string, Task> {
 	return tasks;
 }
 
-export function cancelTask(id: string): {ok: boolean; message: string} {
+function cancelTask(id: string): {ok: boolean; message: string} {
 	const task = tasks.get(id);
 	if (!task) return {ok: false, message: "Task not found"};
 	if (task.status === "passed" || task.status === "failed" || task.status === "cancelled") {
@@ -608,6 +608,4 @@ export const enqueueTest = (
 	branch?: string,
 ) => enqueueTask("test", project, projectDir, sha, shortSha, subject, branch);
 export const cancelTest = cancelTask;
-export const findJob = (sha: string, project: string) => findTask(sha, project, "test");
-export const getAllActiveJobs = getAllActiveTasks;
 export const getAllJobs = getAllTasks;

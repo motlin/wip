@@ -15,10 +15,6 @@ export interface MergeStatusEvent {
 const SUPPRESSION_MS = 5_000;
 const recentManualUpdates = new Map<string, number>();
 
-export function suppressMergeUpdates(project: string, sha: string): void {
-	recentManualUpdates.set(`${project}:${sha}`, Date.now());
-}
-
 export function useMergeEvents() {
 	const [statuses, setStatuses] = useState<Map<string, MergeStatusEvent>>(new Map());
 	const queryClient = useQueryClient();

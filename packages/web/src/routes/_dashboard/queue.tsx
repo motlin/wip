@@ -56,7 +56,7 @@ export interface QueueContextValue {
 	visibleCategories: Category[];
 }
 
-export const QueueContext = createContext<QueueContextValue | null>(null);
+const QueueContext = createContext<QueueContextValue | null>(null);
 
 export function useQueueContext(): QueueContextValue {
 	const context = useContext(QueueContext);

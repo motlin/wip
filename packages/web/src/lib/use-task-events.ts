@@ -142,5 +142,3 @@ export function useTaskEvents() {
 
 	return {tasks, getTask, getJob, getLog, hasActiveTasks, hasActiveJobs};
 }
-
-export const useTestEvents = useTaskEvents;

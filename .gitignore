@@ -10,3 +10,4 @@ logs/
 .llm/
 packages/web/public/mockups/
 *.png
+.fallow/

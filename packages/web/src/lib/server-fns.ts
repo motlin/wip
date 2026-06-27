@@ -70,6 +70,12 @@ import {
 	type TaskQueueJob,
 	type TestQueueJob,
 	RunClaudeCommandInputSchema,
+	advanceProject,
+	createGitActions,
+	planProject,
+	resolveAdvanceConcurrency,
+	matchesFilters,
+	type ReportNode,
 } from "@wip/shared";
 
 import {log} from "@wip/shared/services/logger-pino.js";
@@ -1333,6 +1339,60 @@ export async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 }
 
 export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async () => rebaseAllChildrenHandler());
+
+export interface AdvanceAllInput {
+	include?: string[];
+	exclude?: string[];
+	dryRun?: boolean;
+}
+
+export async function advanceAllHandler(input: AdvanceAllInput = {}): Promise<ReportNode> {
+	return traced("advanceAll", async () => {
+		const include = input.include ?? [];
+		const exclude = input.exclude ?? [];
+		const autonomy = input.dryRun ? "dry-run" : "run";
+		const projects = await discoverAllProjects(getProjectsDirs());
+
+		const children: ReportNode[] = [];
+		for (const p of projects) {
+			if (!matchesFilters(p.name, include, exclude)) continue;
+			if (p.dirty || p.detachedHead || !p.hasTestConfigured) {
+				children.push({
+					label: p.name,
+					status: "skipped",
+					detail: p.dirty ? "dirty" : p.detachedHead ? "detached head" : "no test configured",
+					children: [],
+				});
+				continue;
+			}
+
+			const plan = await planProject({project: p.name, dir: p.dir, upstreamRef: p.upstreamRef});
+			if (plan.units.length === 0 && !plan.baseline.needsTest) continue;
+
+			const actions = await createGitActions({dir: p.dir, upstreamRef: p.upstreamRef});
+			const node = await advanceProject(plan, actions, {
+				autonomy,
+				perRepoConcurrency: resolveAdvanceConcurrency(p.name, p.dir),
+			});
+			children.push(node);
+		}
+
+		const anyRed = children.some((c) => c.status === "red");
+		return {label: `advance (${autonomy})`, status: anyRed ? "red" : "green", children};
+	});
+}
+
+export const advanceAll = createServerFn({method: "POST"})
+	.inputValidator((input: unknown) =>
+		z
+			.object({
+				include: z.array(z.string()).optional(),
+				exclude: z.array(z.string()).optional(),
+				dryRun: z.boolean().optional(),
+			})
+			.parse(input ?? {}),
+	)
+	.handler(async ({data}) => advanceAllHandler(data));
 
 export async function refreshAllHandler(): Promise<ActionResult> {
 	return tracedAction("refreshAll", async () => {

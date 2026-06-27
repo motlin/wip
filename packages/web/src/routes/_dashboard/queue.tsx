@@ -1,8 +1,8 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {Play, Loader2, GitBranch} from "lucide-react";
+import {Play, Loader2, GitBranch, Rocket} from "lucide-react";
 import {useState, useMemo, useCallback, createContext, useContext} from "react";
-import {testAllChildren, rebaseAllChildren} from "../../lib/server-fns";
+import {testAllChildren, rebaseAllChildren, advanceAll} from "../../lib/server-fns";
 import {useHasActiveTests} from "../../lib/task-events-context";
 import {projectsQueryOptions} from "../../lib/queries";
 import {useWorkItems} from "../../lib/use-work-items";
@@ -80,6 +80,7 @@ function QueueLayout() {
 	const [testAllError, setTestAllError] = useState<string | null>(null);
 	const [rebasingAll, setRebasingAll] = useState(false);
 	const [rebaseResult, setRebaseResult] = useState<string | null>(null);
+	const [advancingAll, setAdvancingAll] = useState(false);
 	const hasActiveTests = useHasActiveTests();
 	const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -231,6 +232,24 @@ function QueueLayout() {
 			setRebaseResult(e instanceof Error ? e.message : "Rebase failed");
 		} finally {
 			setRebasingAll(false);
+		}
+	};
+
+	const handleAdvanceAll = async () => {
+		setAdvancingAll(true);
+		setRebaseResult(null);
+		try {
+			const report = await advanceAll({data: {}});
+			const stuck = report.children.filter((c) => c.status === "red").length;
+			setRebaseResult(
+				stuck === 0
+					? `Advanced ${report.children.length} project${report.children.length === 1 ? "" : "s"} — all green`
+					: `Advanced ${report.children.length} project${report.children.length === 1 ? "" : "s"}, ${stuck} with red branches`,
+			);
+		} catch (e) {
+			setRebaseResult(e instanceof Error ? e.message : "Advance failed");
+		} finally {
+			setAdvancingAll(false);
 		}
 	};
 
@@ -420,6 +439,23 @@ function QueueLayout() {
 									Table
 								</Link>
 							</div>
+							<button
+								type="button"
+								onClick={handleAdvanceAll}
+								disabled={advancingAll}
+								className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+									advancingAll
+										? "bg-purple-600/80 text-white"
+										: "bg-purple-600 hover:bg-purple-700 text-white"
+								}`}
+							>
+								{advancingAll ? (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								) : (
+									<Rocket className="h-4 w-4" />
+								)}
+								{advancingAll ? "Advancing..." : "Advance All"}
+							</button>
 							{needsRebaseCount > 0 && (
 								<button
 									type="button"

@@ -94,7 +94,7 @@ export {
 	type UnitRef,
 } from "./lib/advance-progress.js";
 export {renderTree, type NodeStatus, type ReportNode} from "./lib/advance-report.js";
-export {resolveAdvanceConcurrency, parseAdvanceConcurrency} from "./lib/advance-config.js";
+export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from "./lib/advance-config.js";
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
 export {
 	AdvanceScheduler,

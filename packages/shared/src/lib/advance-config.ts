@@ -28,3 +28,23 @@ export function parseAdvanceConcurrency(dir: string): number | null {
 export function resolveAdvanceConcurrency(project: string, dir: string): number {
 	return getAdvanceConfig(project) ?? parseAdvanceConcurrency(dir) ?? DEFAULT_CONCURRENCY;
 }
+
+function patternMatches(name: string, pattern: string): boolean {
+	if (pattern.includes("*")) {
+		const re = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
+		return re.test(name);
+	}
+	return name.includes(pattern);
+}
+
+/**
+ * Project selection for an advance run. A name is included when no include
+ * patterns are given or at least one matches, and excluded when any exclude
+ * pattern matches (exclude wins). Patterns are substrings, or globs when they
+ * contain `*`.
+ */
+export function matchesFilters(name: string, include: string[], exclude: string[]): boolean {
+	if (exclude.some((pattern) => patternMatches(name, pattern))) return false;
+	if (include.length === 0) return true;
+	return include.some((pattern) => patternMatches(name, pattern));
+}

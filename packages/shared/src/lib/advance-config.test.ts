@@ -3,7 +3,7 @@ import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 
-import {resolveAdvanceConcurrency, parseAdvanceConcurrency} from "./advance-config.js";
+import {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from "./advance-config.js";
 import {initDb, resetDb, setAdvanceConfig, getAdvanceConfig} from "./db.js";
 
 describe("advance-config", () => {
@@ -47,5 +47,22 @@ describe("advance-config", () => {
 		setAdvanceConfig("proj", 8);
 		expect(getAdvanceConfig("proj")).toBe(8);
 		expect(resolveAdvanceConcurrency("proj", dir)).toBe(8);
+	});
+});
+
+describe("matchesFilters", () => {
+	it("includes everything when no filters are given", () => {
+		expect(matchesFilters("anything", [], [])).toBe(true);
+	});
+
+	it("restricts to include patterns (substring or glob) when present", () => {
+		expect(matchesFilters("liftwizard", ["lift"], [])).toBe(true);
+		expect(matchesFilters("avalon-online", ["lift"], [])).toBe(false);
+		expect(matchesFilters("rust-template", ["*-template"], [])).toBe(true);
+		expect(matchesFilters("rust-template-sync", ["*-template"], [])).toBe(false);
+	});
+
+	it("lets exclude win over include", () => {
+		expect(matchesFilters("avalon-online-template-sync", ["*-template-sync"], ["avalon*"])).toBe(false);
 	});
 });

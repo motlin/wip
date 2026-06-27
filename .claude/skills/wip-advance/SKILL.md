@@ -15,6 +15,15 @@ concurrency, whether the baseline needs testing) come from the `wip advance` CLI
 root (L1) of the tree: it turns that plan into project subagents, gates how fast they spawn by live
 machine load, and renders the final report.
 
+## Resolve the `wip` binary
+
+Do not rely on a `wip` alias on PATH — it is often stale (pointing at a pre-monorepo path). Use the
+monorepo binary directly. This skill's base directory is `<repo>/.claude/skills/wip-advance`, so the
+binary is `<repo>/packages/cli/bin/run.js`; set `WIP="<repo>/packages/cli/bin/run.js"` (resolving
+`<repo>` from the injected base directory) and invoke it as `"$WIP" advance …`. Always read the
+CLI's JSON from **stdout only** and discard stderr (`… --json 2>/dev/null`) — the CLI logs debug
+output to stderr, and merging it (`2>&1`) corrupts the JSON.
+
 ## Tool choice: mechanical vs. Claude
 
 Use the **mechanical** command for anything deterministic; only spend a subagent where judgment over
@@ -28,19 +37,22 @@ file contents is required.
 
 ## Compute the plan
 
-Run `wip advance plan --json`, passing the user's filters as repeated `--include` / `--exclude`
-globs (or a single project name as the positional argument). The output is one entry per advanceable
-project: `{ project, dir, upstreamRef, upstreamRemote, upstreamBranch, concurrency, baseline:
-{ sha, needsTest }, units: [{ id, branch, tipSha, chain, dependsOn, worktreeRequired }] }`.
+Run `"$WIP" advance plan --json 2>/dev/null`, passing the user's filters as repeated `--include` /
+`--exclude` globs (or a single project name as the positional argument). The output is one entry per
+advanceable project: `{ project, dir, upstreamRef, upstreamRemote, upstreamBranch, concurrency,
+baseline: { sha, needsTest }, units: [{ id, branch, tipSha, chain, dependsOn, worktreeRequired }] }`.
+Discovery scans every repo under the projects dir, so always pass the user's filters to keep it
+focused, and expect it to take a little while.
 
 If the list is empty, report that there is nothing to advance and stop.
 
 ## Fan out one subagent per project
 
 Spawn an `advance-project` subagent per project, passing that project's full plan entry as JSON in
-the prompt. Spawn in waves rather than all at once: before each wave run `wip advance admit --json`
-and only start more projects while it reports `ok: true`; otherwise wait for a running project to
-finish first. Always keep at least one project advancing so a loaded machine still progresses.
+the prompt. Spawn in waves rather than all at once: before each wave run
+`"$WIP" advance admit --json 2>/dev/null` and only start more projects while it reports `ok: true`;
+otherwise wait for a running project to finish first. Always keep at least one project advancing so a
+loaded machine still progresses.
 
 Each `advance-project` subagent returns a project report node (the project plus a ✅/❌/🛑/⏭️/⚠️
 result for every branch it touched).

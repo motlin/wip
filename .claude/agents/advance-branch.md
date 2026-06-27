@@ -11,10 +11,13 @@ commits green (or determine it is stuck), then return a single branch report nod
 
 ## Work in an isolated checkout when required
 
-If `worktreeRequired` is true, the branch is not the repo's current checkout, so create a worktree
-for it before doing anything (`wip` provides worktree handling; otherwise
-`git -C <dir> worktree add`). Run all of this branch's work in that worktree and remove it when done.
-If `worktreeRequired` is false, work in `dir` directly.
+If `worktreeRequired` is true, the branch is not the repo's current checkout, so it cannot be checked
+out in `dir` without disturbing other workers. Create a dedicated worktree with
+`git -C <dir> worktree add <path> <branch>` and do all of this branch's work there, removing it with
+`git -C <dir> worktree remove --force <path>` when done. If `worktreeRequired` is false, work in
+`dir`. Run the test/fix commands below from inside whichever working directory you settled on (the
+`just`/git-test recipes act on the current directory), and load the repo's environment first
+(direnv/mise) so the tests see the right toolchain.
 
 ## Run the test-and-fix loop
 

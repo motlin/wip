@@ -77,7 +77,12 @@ export default class Advance extends Command {
 			const plan = await planProject({project: p.name, dir: p.dir, upstreamRef: p.upstreamRef});
 			if (plan.units.length === 0 && !plan.baseline.needsTest) continue;
 
-			const actions = await createGitActions({dir: p.dir, upstreamRef: p.upstreamRef});
+			const actions = await createGitActions({
+				dir: p.dir,
+				upstreamRef: p.upstreamRef,
+				autonomy,
+				project: p.name,
+			});
 			const node = await advanceProject(plan, actions, {
 				autonomy,
 				globalConcurrency: flags["global-concurrency"],

@@ -26,6 +26,10 @@ function plan(...units: AdvanceUnit[]): AdvancePlan {
 	};
 }
 
+function planNeedsBaseline(...units: AdvanceUnit[]): AdvancePlan {
+	return {...plan(...units), baseline: {sha: "base", needsTest: true}};
+}
+
 const okRebase = {ok: true, conflict: false, log: ""};
 
 function actions(overrides: Partial<AdvanceActions> = {}): AdvanceActions {
@@ -35,6 +39,8 @@ function actions(overrides: Partial<AdvanceActions> = {}): AdvanceActions {
 		resolveConflicts: async () => ({ok: true, log: ""}),
 		fix: async () => ({changed: true, log: ""}),
 		absorb: async () => ({ok: true, log: ""}),
+		cleanup: async () => {},
+		prepareBaseline: async () => "green",
 		...overrides,
 	};
 }
@@ -118,5 +124,83 @@ describe("advanceProject", () => {
 		const byBranch = Object.fromEntries(report.children.map((c) => [c.label, c.status]));
 		expect(byBranch["a"]).toBe("stuck");
 		expect(byBranch["b"]).toBe("skipped");
+	});
+
+	it("cleans up every unit when the run finishes green", async () => {
+		const cleaned: string[] = [];
+		await advanceProject(
+			plan(unit("a"), unit("b")),
+			actions({
+				cleanup: async (u) => {
+					cleaned.push(u.id);
+				},
+			}),
+			opts,
+		);
+		expect(cleaned.sort()).toStrictEqual(["a", "b"]);
+	});
+
+	it("cleans up a unit even when it gets stuck", async () => {
+		const cleaned: string[] = [];
+		await advanceProject(
+			plan(unit("a")),
+			actions({
+				test: async () => ({green: false, log: "FAIL Foo.bar"}),
+				fix: async () => ({changed: false, log: ""}),
+				cleanup: async (u) => {
+					cleaned.push(u.id);
+				},
+			}),
+			opts,
+		);
+		expect(cleaned).toStrictEqual(["a"]);
+	});
+
+	it("marks the project upstream_fixed when the baseline was repaired", async () => {
+		const report = await advanceProject(
+			planNeedsBaseline(unit("a"), unit("b")),
+			actions({prepareBaseline: async () => "fixed"}),
+			opts,
+		);
+		expect(report.status).toBe("upstream_fixed");
+		expect(report.children.map((c) => c.status)).toStrictEqual(["green", "green"]);
+	});
+
+	it("skips every unit and reports red when the baseline is broken and unfixable", async () => {
+		let testedUnits = 0;
+		const report = await advanceProject(
+			planNeedsBaseline(unit("a"), unit("b")),
+			actions({
+				prepareBaseline: async () => "red",
+				test: async () => {
+					testedUnits += 1;
+					return {green: true, log: ""};
+				},
+			}),
+			opts,
+		);
+		expect(report.status).toBe("red");
+		expect(report.detail).toBe("upstream broken");
+		expect(report.children.map((c) => c.status)).toStrictEqual(["skipped", "skipped"]);
+		expect(report.children.map((c) => c.detail)).toStrictEqual([
+			"skipped: upstream broken",
+			"skipped: upstream broken",
+		]);
+		expect(testedUnits).toBe(0);
+	});
+
+	it("does not check the baseline when the plan says it is already green", async () => {
+		let prepared = 0;
+		await advanceProject(
+			plan(unit("a")),
+			actions({
+				prepareBaseline: async () => {
+					prepared += 1;
+					return "green";
+				},
+			}),
+			opts,
+		);
+		expect(prepared).toBe(0);
 	});
 });

@@ -107,6 +107,14 @@ export {
 export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
 export {
+	advanceProject,
+	createGitActions,
+	type Autonomy,
+	type AdvanceEvent,
+	type AdvanceActions,
+	type AdvanceProjectOptions,
+} from "./lib/advance.js";
+export {
 	GitHubIssueSchema,
 	GitHubIssueLabelSchema,
 	type GitHubIssue,

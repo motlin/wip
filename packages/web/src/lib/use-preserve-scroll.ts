@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import {useEffect, useRef} from "react";
 
 /**
  * Preserves window scroll position across mobile Chrome tab switches.
@@ -9,54 +9,52 @@ import { useEffect, useRef } from "react";
  * across several frames to survive async data re-renders.
  */
 export function usePreserveScroll() {
-  const savedY = useRef(0);
-  const restoreUntil = useRef(0);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+	const savedY = useRef(0);
+	const restoreUntil = useRef(0);
+	const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  useEffect(() => {
-    const clearTimers = () => {
-      for (const t of timersRef.current) clearTimeout(t);
-      timersRef.current = [];
-    };
+	useEffect(() => {
+		const clearTimers = () => {
+			for (const t of timersRef.current) clearTimeout(t);
+			timersRef.current = [];
+		};
 
-    const onScroll = () => {
-      if (Date.now() < restoreUntil.current) return;
-      savedY.current = window.scrollY;
-    };
+		const onScroll = () => {
+			if (Date.now() < restoreUntil.current) return;
+			savedY.current = window.scrollY;
+		};
 
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        savedY.current = window.scrollY;
-        return;
-      }
+		const onVisibilityChange = () => {
+			if (document.hidden) {
+				savedY.current = window.scrollY;
+				return;
+			}
 
-      const y = savedY.current;
-      if (y <= 0) return;
+			const y = savedY.current;
+			if (y <= 0) return;
 
-      clearTimers();
+			clearTimers();
 
-      restoreUntil.current = Date.now() + 2000;
-      window.scrollTo(0, y);
+			restoreUntil.current = Date.now() + 2000;
+			window.scrollTo(0, y);
 
-      const timers = [50, 150, 300, 600, 1000].map((ms) =>
-        setTimeout(() => window.scrollTo(0, y), ms),
-      );
-      timers.push(
-        setTimeout(() => {
-          restoreUntil.current = 0;
-          clearTimers();
-        }, 2000),
-      );
-      timersRef.current = timers;
-    };
+			const timers = [50, 150, 300, 600, 1000].map((ms) => setTimeout(() => window.scrollTo(0, y), ms));
+			timers.push(
+				setTimeout(() => {
+					restoreUntil.current = 0;
+					clearTimers();
+				}, 2000),
+			);
+			timersRef.current = timers;
+		};
 
-    window.addEventListener("scroll", onScroll, { passive: true });
-    document.addEventListener("visibilitychange", onVisibilityChange);
+		window.addEventListener("scroll", onScroll, {passive: true});
+		document.addEventListener("visibilitychange", onVisibilityChange);
 
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      clearTimers();
-    };
-  }, []);
+		return () => {
+			window.removeEventListener("scroll", onScroll);
+			document.removeEventListener("visibilitychange", onVisibilityChange);
+			clearTimers();
+		};
+	}, []);
 }

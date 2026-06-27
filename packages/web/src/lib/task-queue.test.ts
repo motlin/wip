@@ -1,54 +1,54 @@
-import { describe, it, expect } from "vitest";
-import { statusToTransition } from "./task-queue";
-import type { TaskStatus } from "./task-queue";
+import {describe, it, expect} from "vitest";
+import {statusToTransition} from "./task-queue";
+import type {TaskStatus} from "./task-queue";
 
 describe("statusToTransition", () => {
-  it("maps queued to run_test for test tasks", () => {
-    expect(statusToTransition("queued", "test")).toBe("run_test");
-  });
+	it("maps queued to run_test for test tasks", () => {
+		expect(statusToTransition("queued", "test")).toBe("run_test");
+	});
 
-  it("maps running to run_test for test tasks", () => {
-    expect(statusToTransition("running", "test")).toBe("run_test");
-  });
+	it("maps running to run_test for test tasks", () => {
+		expect(statusToTransition("running", "test")).toBe("run_test");
+	});
 
-  it("maps passed to test_pass for test tasks", () => {
-    expect(statusToTransition("passed", "test")).toBe("test_pass");
-  });
+	it("maps passed to test_pass for test tasks", () => {
+		expect(statusToTransition("passed", "test")).toBe("test_pass");
+	});
 
-  it("maps failed to test_fail for test tasks", () => {
-    expect(statusToTransition("failed", "test")).toBe("test_fail");
-  });
+	it("maps failed to test_fail for test tasks", () => {
+		expect(statusToTransition("failed", "test")).toBe("test_fail");
+	});
 
-  it("maps cancelled to cancel_test for test tasks", () => {
-    expect(statusToTransition("cancelled", "test")).toBe("cancel_test");
-  });
+	it("maps cancelled to cancel_test for test tasks", () => {
+		expect(statusToTransition("cancelled", "test")).toBe("cancel_test");
+	});
 
-  it("covers all TaskStatus values for test tasks", () => {
-    const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
-    for (const status of allStatuses) {
-      expect(statusToTransition(status, "test")).toBeDefined();
-    }
-  });
+	it("covers all TaskStatus values for test tasks", () => {
+		const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
+		for (const status of allStatuses) {
+			expect(statusToTransition(status, "test")).toBeDefined();
+		}
+	});
 
-  it("returns undefined for claude task types", () => {
-    const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
-    for (const status of allStatuses) {
-      expect(statusToTransition(status, "claude")).toBeUndefined();
-    }
-  });
+	it("returns undefined for claude task types", () => {
+		const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
+		for (const status of allStatuses) {
+			expect(statusToTransition(status, "claude")).toBeUndefined();
+		}
+	});
 
-  it("maps queued and running to rebase for rebase tasks", () => {
-    expect(statusToTransition("queued", "rebase")).toBe("rebase");
-    expect(statusToTransition("running", "rebase")).toBe("rebase");
-  });
+	it("maps queued and running to rebase for rebase tasks", () => {
+		expect(statusToTransition("queued", "rebase")).toBe("rebase");
+		expect(statusToTransition("running", "rebase")).toBe("rebase");
+	});
 
-  it("returns undefined for terminal rebase statuses", () => {
-    expect(statusToTransition("passed", "rebase")).toBeUndefined();
-    expect(statusToTransition("failed", "rebase")).toBeUndefined();
-    expect(statusToTransition("cancelled", "rebase")).toBeUndefined();
-  });
+	it("returns undefined for terminal rebase statuses", () => {
+		expect(statusToTransition("passed", "rebase")).toBeUndefined();
+		expect(statusToTransition("failed", "rebase")).toBeUndefined();
+		expect(statusToTransition("cancelled", "rebase")).toBeUndefined();
+	});
 
-  it("defaults to test task type when not specified", () => {
-    expect(statusToTransition("passed")).toBe("test_pass");
-  });
+	it("defaults to test task type when not specified", () => {
+		expect(statusToTransition("passed")).toBe("test_pass");
+	});
 });

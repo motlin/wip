@@ -1,6 +1,6 @@
-import { useTodoEvents } from "./use-todo-events";
+import {useTodoEvents} from "./use-todo-events";
 
-export function TodoEventsProvider({ children }: { children: React.ReactNode }) {
-  useTodoEvents();
-  return <>{children}</>;
+export function TodoEventsProvider({children}: {children: React.ReactNode}) {
+	useTodoEvents();
+	return <>{children}</>;
 }

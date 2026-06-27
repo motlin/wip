@@ -1,4 +1,4 @@
-import { log } from "../services/logger-pino.js";
+import {log} from "../services/logger-pino.js";
 
 /**
  * Shared rate limit tracking for GitHub API calls.
@@ -12,23 +12,18 @@ let rateLimitUntil = 0;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 export function isGitHubRateLimited(): boolean {
-  return Date.now() < rateLimitUntil;
+	return Date.now() < rateLimitUntil;
 }
 
 export function markGitHubRateLimited(): void {
-  rateLimitUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
-  log.subprocess.debug(
-    { cooldownMs: RATE_LIMIT_COOLDOWN_MS },
-    "GitHub API rate limit detected, entering cooldown",
-  );
+	rateLimitUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+	log.subprocess.debug({cooldownMs: RATE_LIMIT_COOLDOWN_MS}, "GitHub API rate limit detected, entering cooldown");
 }
 
 export function resetGitHubRateLimit(): void {
-  rateLimitUntil = 0;
+	rateLimitUntil = 0;
 }
 
 export function detectRateLimitError(message: string): boolean {
-  return (
-    message.includes("API rate limit") || message.includes("rate limit") || message.includes("403")
-  );
+	return message.includes("API rate limit") || message.includes("rate limit") || message.includes("403");
 }

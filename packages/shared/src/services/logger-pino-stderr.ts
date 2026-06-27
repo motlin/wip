@@ -1,9 +1,9 @@
 import pino from "pino";
 
 export type StderrLog = {
-  subprocess: pino.Logger;
-  progress: pino.Logger;
-  general: pino.Logger;
+	subprocess: pino.Logger;
+	progress: pino.Logger;
+	general: pino.Logger;
 };
 
 /**
@@ -12,25 +12,25 @@ export type StderrLog = {
  * dependencies (pino, pino-pretty) are never evaluated in the browser.
  */
 export function createStderrLog(): StderrLog {
-  const base = pino(
-    { level: "debug" },
-    pino.transport({
-      target: "pino-pretty",
-      options: {
-        destination: 2,
-        sync: true,
-        colorize: true,
-        translateTime: "HH:MM:ss.l",
-        ignore: "pid,hostname,category,cmd,args,duration",
-        messageFormat: "{msg}",
-        singleLine: true,
-      },
-    }),
-  );
+	const base = pino(
+		{level: "debug"},
+		pino.transport({
+			target: "pino-pretty",
+			options: {
+				destination: 2,
+				sync: true,
+				colorize: true,
+				translateTime: "HH:MM:ss.l",
+				ignore: "pid,hostname,category,cmd,args,duration",
+				messageFormat: "{msg}",
+				singleLine: true,
+			},
+		}),
+	);
 
-  return {
-    subprocess: base.child({ category: "subprocess" }),
-    progress: base.child({ category: "progress" }),
-    general: base.child({ category: "general" }),
-  };
+	return {
+		subprocess: base.child({category: "subprocess"}),
+		progress: base.child({category: "progress"}),
+		general: base.child({category: "general"}),
+	};
 }

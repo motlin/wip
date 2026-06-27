@@ -1,6 +1,6 @@
-import { useChildrenEvents } from "./use-children-events";
+import {useChildrenEvents} from "./use-children-events";
 
-export function ChildrenEventsProvider({ children }: { children: React.ReactNode }) {
-  useChildrenEvents();
-  return <>{children}</>;
+export function ChildrenEventsProvider({children}: {children: React.ReactNode}) {
+	useChildrenEvents();
+	return <>{children}</>;
 }

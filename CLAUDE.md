@@ -23,10 +23,10 @@
 
 - **In-memory SQLite**: Call `initDb(":memory:")` in `beforeEach` and `resetDb()` in `afterEach`. Each test gets a fresh database with no disk I/O.
 - **File-based debug DB**: Set `TEST_DB_FILE` to persist the database to a file for inspection:
-  ```
-  TEST_DB_FILE=/tmp/debug.db vitest run -t "test name"
-  sqlite3 /tmp/debug.db '.tables'
-  ```
+    ```
+    TEST_DB_FILE=/tmp/debug.db vitest run -t "test name"
+    sqlite3 /tmp/debug.db '.tables'
+    ```
 - **Polly.js recordings**: HTTP fixtures are committed to `packages/shared/src/__recordings__/`. Set `POLLY_RECORD=true` to capture new fixtures (requires valid `gh auth` or `GITHUB_TOKEN`).
 - **GitHubClient test mode**: Call `setGitHubClient(createTestClient())` to use a client with no auth. Polly.js intercepts fetch at the network level and replays from recordings.
 - **Server function tests**: Import functions directly, seed the DB and project cache. No HTTP server needed.
@@ -50,6 +50,6 @@
 
 ## Code Style
 
-- 2-space indentation
+- Tab indentation (width 4); YAML uses 2-space indentation
 - Double quotes for strings
 - Imports use `.js` extensions (TypeScript with ESM)

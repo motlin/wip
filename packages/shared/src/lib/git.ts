@@ -90,7 +90,7 @@ export function isSkippable(message: string): boolean {
 	return SKIPPABLE_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
-async function getPatchId(dir: string, sha: string): Promise<string> {
+export async function getPatchId(dir: string, sha: string): Promise<string> {
 	const start = performance.now();
 	const formatPatch = await tracedExeca("git", ["-C", dir, "diff-tree", "-p", sha], {
 		reject: false,

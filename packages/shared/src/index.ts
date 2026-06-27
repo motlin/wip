@@ -36,6 +36,7 @@ export {
 	getRemoteBranchInfo,
 	pruneRemote,
 	getRepoOwnerAndName,
+	getPatchId,
 } from "./lib/git.js";
 export {
 	type SnoozedItem,
@@ -80,8 +81,31 @@ export {
 	getCachedTodos,
 	cacheTodos,
 	invalidateTodosCache,
+	getAdvanceConfig,
+	getAllAdvanceConfig,
+	setAdvanceConfig,
 } from "./lib/db.js";
 export {suggestBranchNames} from "./lib/branch-namer.js";
+export {
+	normalizeFailureSignature,
+	changeIdentity,
+	RunMemory,
+	type AttemptKind,
+	type UnitRef,
+} from "./lib/advance-progress.js";
+export {renderTree, type NodeStatus, type ReportNode} from "./lib/advance-report.js";
+export {resolveAdvanceConcurrency, parseAdvanceConcurrency} from "./lib/advance-config.js";
+export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
+export {
+	AdvanceScheduler,
+	createSystemProbe,
+	type SchedulableUnit,
+	type ResourceProbe,
+	type SchedulerOptions,
+	type UnitOutcome,
+} from "./lib/advance-scheduler.js";
+export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
+export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
 export {
 	GitHubIssueSchema,
 	GitHubIssueLabelSchema,

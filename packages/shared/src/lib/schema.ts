@@ -304,6 +304,20 @@ export const cacheFreshness = sqliteTable("cache_freshness", {
 	lastRefreshed: text("last_refreshed").notNull(),
 });
 
+export const advanceConfig = sqliteTable(
+	"advance_config",
+	{
+		project: text("project").notNull(),
+		concurrency: integer("concurrency").notNull(),
+		systemFrom: text("system_from").notNull(),
+		systemTo: text("system_to").notNull().default(FAR_FUTURE),
+	},
+	(table) => ({
+		pk: primaryKey({columns: [table.project, table.systemTo]}),
+		activeIdx: index("advance_config_active_idx").on(table.project, table.systemTo),
+	}),
+);
+
 export const projectCache = sqliteTable(
 	"project_cache",
 	{

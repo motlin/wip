@@ -10,6 +10,7 @@ import type {GitHubProjectItem} from "./github-projects.js";
 import * as schema from "./schema.js";
 import {log} from "../services/logger-pino.js";
 import {
+	advanceConfig,
 	branchNames,
 	cacheFreshness,
 	childrenCache,
@@ -394,6 +395,17 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			last_refreshed TEXT NOT NULL
 		)
 	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS advance_config (
+			project TEXT NOT NULL,
+			concurrency INTEGER NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, system_to)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS advance_config_active_idx ON advance_config (project, system_to)`);
 
 	db = drizzle(sqlite, {schema});
 
@@ -1414,6 +1426,50 @@ export function invalidateMergeStatus(project: string): void {
 		.set({systemTo: now()})
 		.where(and(eq(mergeStatus.project, project), eq(mergeStatus.systemTo, FAR_FUTURE)))
 		.run();
+}
+
+// --- Advance per-repo concurrency override ---
+
+export function getAdvanceConfig(project: string): number | null {
+	const d = getDb();
+	const row = d
+		.select()
+		.from(advanceConfig)
+		.where(and(eq(advanceConfig.project, project), eq(advanceConfig.systemTo, FAR_FUTURE)))
+		.get();
+	return row?.concurrency ?? null;
+}
+
+export function getAllAdvanceConfig(): Array<{project: string; concurrency: number}> {
+	const d = getDb();
+	return d
+		.select({project: advanceConfig.project, concurrency: advanceConfig.concurrency})
+		.from(advanceConfig)
+		.where(eq(advanceConfig.systemTo, FAR_FUTURE))
+		.all();
+}
+
+export function setAdvanceConfig(project: string, concurrency: number): void {
+	const d = getDb();
+	const timestamp = now();
+	d.transaction((tx) => {
+		const existing = tx
+			.select()
+			.from(advanceConfig)
+			.where(and(eq(advanceConfig.project, project), eq(advanceConfig.systemTo, FAR_FUTURE)))
+			.get();
+
+		if (existing && existing.concurrency === concurrency) return;
+
+		if (existing) {
+			tx.update(advanceConfig)
+				.set({systemTo: timestamp})
+				.where(and(eq(advanceConfig.project, project), eq(advanceConfig.systemTo, FAR_FUTURE)))
+				.run();
+		}
+
+		tx.insert(advanceConfig).values({project, concurrency, systemFrom: timestamp}).run();
+	});
 }
 
 // --- Project cache ---

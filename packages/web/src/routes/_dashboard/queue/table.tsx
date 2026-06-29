@@ -3,7 +3,7 @@ import {useState, useMemo} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
 import {isGitChildPullRequest, isGitChildBranch} from "../../../lib/git-child-discriminators";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../../../lib/category-actions";
-import {useQueueContext, bucketCount} from "../queue";
+import {useQueueContext, bucketCount} from "../../../lib/queue-context";
 
 type ItemType = "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
 

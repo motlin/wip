@@ -1,12 +1,13 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {Play, Loader2, GitBranch, ClipboardList} from "lucide-react";
-import {useState, useMemo, useCallback, createContext, useContext} from "react";
+import {useState, useMemo, useCallback} from "react";
 import {testAllChildren, rebaseAllChildren} from "../../lib/server-fns";
 import {useHasActiveTests} from "../../lib/task-events-context";
 import {projectsQueryOptions} from "../../lib/queries";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
+import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
 import {classifyGitChild, classifyIssue, classifyTodo} from "../../lib/classify";
 import type {Category} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotClass} from "../../lib/category-actions";
@@ -34,37 +35,6 @@ const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
 ]);
 
 const MAX_VISIBLE_PROJECTS = 8;
-
-export function bucketCount(items: ColumnItems): number {
-	return (
-		(items.gitChildren?.length ?? 0) +
-		(items.issues?.length ?? 0) +
-		(items.projectItems?.length ?? 0) +
-		(items.todos?.length ?? 0)
-	);
-}
-
-export interface QueueContextValue {
-	grouped: Record<Category, ColumnItems>;
-	totalCount: number;
-	readyToTestCount: number;
-	needsRebaseCount: number;
-	projectCount: number;
-	selectedCategory: Category | null;
-	selectedProject: string | null;
-	filterByProject: (items: ColumnItems) => ColumnItems;
-	visibleCategories: Category[];
-}
-
-const QueueContext = createContext<QueueContextValue | null>(null);
-
-export function useQueueContext(): QueueContextValue {
-	const context = useContext(QueueContext);
-	if (!context) {
-		throw new Error("useQueueContext must be used within QueueContext.Provider");
-	}
-	return context;
-}
 
 export const Route = createFileRoute("/_dashboard/queue")({
 	head: () => ({

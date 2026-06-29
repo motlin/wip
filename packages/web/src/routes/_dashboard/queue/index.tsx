@@ -7,7 +7,7 @@ import {PullRequestCard} from "../../../components/pull-request-card";
 import {IssueCard} from "../../../components/issue-card";
 import {ProjectBoardItemCard} from "../../../components/project-board-item-card";
 import {TodoCard} from "../../../components/todo-card";
-import {useQueueContext, bucketCount} from "../queue";
+import {useQueueContext, bucketCount} from "../../../lib/queue-context";
 
 export const Route = createFileRoute("/_dashboard/queue/")({
 	component: QueueCards,

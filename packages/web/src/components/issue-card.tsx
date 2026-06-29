@@ -2,6 +2,7 @@ import {CircleDot} from "lucide-react";
 import {Link} from "@tanstack/react-router";
 import type {IssueResult, Category} from "@wip/shared";
 import {CategoryBadge} from "./category-badge";
+import {LabelList} from "./label-list";
 
 export function IssueCard({issue, category}: {issue: IssueResult; category?: Category}) {
 	return (
@@ -32,23 +33,7 @@ export function IssueCard({issue, category}: {issue: IssueResult; category?: Cat
 			>
 				{issue.title}
 			</Link>
-			{issue.labels.length > 0 && (
-				<div className="mt-1.5 flex flex-wrap gap-1">
-					{issue.labels.map((label) => (
-						<span
-							key={label.name}
-							className="rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-tight"
-							style={{
-								backgroundColor: `#${label.color}20`,
-								color: `#${label.color}`,
-								border: `1px solid #${label.color}40`,
-							}}
-						>
-							{label.name}
-						</span>
-					))}
-				</div>
-			)}
+			<LabelList labels={issue.labels} size="compact" />
 		</div>
 	);
 }

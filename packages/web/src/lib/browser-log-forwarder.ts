@@ -8,10 +8,12 @@ interface BufferedEntry {
 
 const FLUSH_INTERVAL_MS = 2000;
 const MAX_BUFFER_SIZE = 50;
+const MAX_REPEATED_ENTRIES = 3;
 
 let buffer: BufferedEntry[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let installed = false;
+const repeatedEntryCounts = new Map<string, number>();
 
 function flush(): void {
 	if (buffer.length === 0) return;
@@ -46,6 +48,10 @@ function pushEntry(level: LogLevel, args: unknown[]): void {
 			}
 		})
 		.join(" ");
+	const repeatKey = `${level}:${message}`;
+	const repeatedEntryCount = repeatedEntryCounts.get(repeatKey) ?? 0;
+	if (repeatedEntryCount >= MAX_REPEATED_ENTRIES) return;
+	repeatedEntryCounts.set(repeatKey, repeatedEntryCount + 1);
 
 	buffer.push({
 		level,

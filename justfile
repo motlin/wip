@@ -61,7 +61,7 @@ format: install
 
 # Run checks (format + lint + typecheck)
 [group('build')]
-check: install
+check: build
     vp check {{ if ci != "" { "" } else { "--fix" } }}
 
 # Typecheck all packages

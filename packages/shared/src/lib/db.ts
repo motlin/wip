@@ -32,6 +32,8 @@ import {
 } from "./schema.js";
 
 const APP_NAME = "wip";
+const DB_BUSY_TIMEOUT_MS = 5000;
+const WRITE_TRANSACTION_CONFIG = {behavior: "immediate"} as const;
 
 function getDbPath(): string {
 	const xdgData = process.env.XDG_DATA_HOME ?? path.join(process.env.HOME ?? "", ".local", "share");
@@ -66,6 +68,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	const dbPath = customDbPath ?? getDbPath();
 	const sqlite = new DatabaseConstructor(dbPath);
 	sqlite.pragma("journal_mode = WAL");
+	sqlite.pragma(`busy_timeout = ${DB_BUSY_TIMEOUT_MS}`);
 
 	// Migrate from old schema if needed
 	const tableInfo = sqlite.prepare("PRAGMA table_info('snoozed')").all() as Array<{name: string}>;
@@ -455,7 +458,7 @@ export function snoozeItem(
 				systemTo: FAR_FUTURE,
 			})
 			.run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 export function unsnoozeItem(sha: string, project: string): void {
@@ -582,7 +585,7 @@ export function setBranchName(sha: string, project: string, name: string): void 
 		}
 
 		tx.insert(branchNames).values({sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // Test result functions
@@ -664,7 +667,7 @@ export function recordTestResult(
 				systemTo: FAR_FUTURE,
 			})
 			.run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- Cache freshness (non-temporal polling metadata) ---
@@ -905,7 +908,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				}
 			}
 		}
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 	markCacheFresh(`pr-statuses:${project}`);
 }
 
@@ -921,7 +924,7 @@ export function invalidatePrCache(project: string): void {
 			.set({systemTo: timestamp})
 			.where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
 			.run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- Mise env cache ---
@@ -958,7 +961,7 @@ export function cacheMiseEnv(dir: string, env: Record<string, string>): void {
 		}
 
 		tx.insert(miseEnvCache).values({dir, env: serialized, systemFrom: timestamp}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- GitHub login cache ---
@@ -982,7 +985,7 @@ export function cacheGhLogin(login: string): void {
 		}
 
 		tx.insert(ghLoginCache).values({login, systemFrom: timestamp}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- GitHub issues cache ---
@@ -1135,7 +1138,7 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 				tx.delete(githubIssueLabels).where(inArray(githubIssueLabels.systemFrom, orphanedSystemFroms)).run();
 			}
 		}
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 	markCacheFresh("github-issues");
 }
 
@@ -1297,7 +1300,7 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 					.run();
 			}
 		}
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 	markCacheFresh("github-project-items");
 }
 
@@ -1338,7 +1341,7 @@ export function cacheUpstreamSha(project: string, ref: string, sha: string): voi
 		}
 
 		tx.insert(upstreamRefs).values({project, ref, sha, systemFrom: timestamp}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- Merge status ---
@@ -1417,7 +1420,7 @@ export function cacheMergeStatus(
 				systemFrom: timestamp,
 			})
 			.run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 export function invalidateMergeStatus(project: string): void {
@@ -1469,7 +1472,7 @@ export function setAdvanceConfig(project: string, concurrency: number): void {
 		}
 
 		tx.insert(advanceConfig).values({project, concurrency, systemFrom: timestamp}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- Project cache ---
@@ -1557,7 +1560,7 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
 					.run();
 			}
 		}
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- Children cache ---
@@ -1594,7 +1597,7 @@ export function cacheChildren(project: string, children: GitChildResult[]): void
 		}
 
 		tx.insert(childrenCache).values({project, childrenJson: serialized, systemFrom: timestamp}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 	markCacheFresh(`children:${project}`);
 }
 
@@ -1641,7 +1644,7 @@ export function cacheTodos(project: string, todos: TodoItem[]): void {
 		}
 
 		tx.insert(todosCache).values({project, todosJson: serialized, systemFrom: timestamp}).run();
-	});
+	}, WRITE_TRANSACTION_CONFIG);
 	markCacheFresh(`todos:${project}`);
 }
 

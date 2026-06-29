@@ -1,6 +1,7 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {ArrowLeft, ExternalLink, LayoutGrid} from "lucide-react";
+import {LabelList} from "../components/label-list";
 import {boardItemByNumberQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/board-item/$project/$number")({
@@ -64,23 +65,7 @@ function BoardItemDetail() {
 					<span className="text-xs text-text-400">{item.type.replace("_", " ").toLowerCase()}</span>
 				</div>
 
-				{item.labels.length > 0 && (
-					<div className="mt-3 flex flex-wrap gap-1.5">
-						{item.labels.map((label) => (
-							<span
-								key={label.name}
-								className="rounded-full px-2 py-0.5 text-xs font-medium"
-								style={{
-									backgroundColor: `#${label.color}20`,
-									color: `#${label.color}`,
-									border: `1px solid #${label.color}40`,
-								}}
-							>
-								{label.name}
-							</span>
-						))}
-					</div>
-				)}
+				<LabelList labels={item.labels} size="detail" />
 
 				{item.url && (
 					<div className="mt-4 border-t border-border-300/20 pt-4">

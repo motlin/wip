@@ -1,6 +1,7 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {ArrowLeft, CircleDot, ExternalLink} from "lucide-react";
+import {LabelList} from "../components/label-list";
 import {issueByNumberQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/issue/$project/$number")({
@@ -54,23 +55,7 @@ function IssueDetail() {
 
 				<h1 className="mt-3 text-lg font-semibold text-text-100">{issue.title}</h1>
 
-				{issue.labels.length > 0 && (
-					<div className="mt-3 flex flex-wrap gap-1.5">
-						{issue.labels.map((label) => (
-							<span
-								key={label.name}
-								className="rounded-full px-2 py-0.5 text-xs font-medium"
-								style={{
-									backgroundColor: `#${label.color}20`,
-									color: `#${label.color}`,
-									border: `1px solid #${label.color}40`,
-								}}
-							>
-								{label.name}
-							</span>
-						))}
-					</div>
-				)}
+				<LabelList labels={issue.labels} size="detail" />
 
 				<div className="mt-4 border-t border-border-300/20 pt-4">
 					<a

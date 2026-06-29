@@ -1,6 +1,7 @@
 import {LayoutGrid} from "lucide-react";
 import {Link} from "@tanstack/react-router";
 import type {ProjectItemResult} from "@wip/shared";
+import {LabelList} from "./label-list";
 
 export function ProjectBoardItemCard({item}: {item: ProjectItemResult}) {
 	return (
@@ -42,23 +43,7 @@ export function ProjectBoardItemCard({item}: {item: ProjectItemResult}) {
 					{item.status}
 				</span>
 			</div>
-			{item.labels.length > 0 && (
-				<div className="mt-1.5 flex flex-wrap gap-1">
-					{item.labels.map((label) => (
-						<span
-							key={label.name}
-							className="rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-tight"
-							style={{
-								backgroundColor: `#${label.color}20`,
-								color: `#${label.color}`,
-								border: `1px solid #${label.color}40`,
-							}}
-						>
-							{label.name}
-						</span>
-					))}
-				</div>
-			)}
+			<LabelList labels={item.labels} size="compact" />
 		</div>
 	);
 }

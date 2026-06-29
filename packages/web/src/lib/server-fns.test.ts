@@ -5,7 +5,7 @@ import {mkdtemp, rm} from "node:fs/promises";
 import {join} from "node:path";
 import {execa} from "execa";
 
-import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient} from "@wip/shared";
+import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, recordTestResult} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {seedProjectCache, resetProjectCache} from "./server-fns.js";
 
@@ -362,6 +362,80 @@ describe("getTestQueue (underlying logic)", () => {
 		expect(found!.branch).toBe("feature-branch");
 		expect(["queued", "running"]).toContain(found!.status);
 		expect(typeof found!.queuedAt).toBe("number");
+	});
+});
+
+// -- generateAdvancePlanForProjects() --
+
+describe("generateAdvancePlanForProjects", () => {
+	it("returns skipped projects for dirty, detached head, and missing test config", async () => {
+		const {generateAdvancePlanForProjects} = await import("./server-fns.js");
+		const projects = [
+			makeProject({name: "dirty-project", dir: "/missing/dirty", dirty: true}),
+			makeProject({name: "detached-project", dir: "/missing/detached", detachedHead: true}),
+			makeProject({name: "untested-project", dir: "/missing/untested", hasTestConfigured: false}),
+		];
+
+		const plan = await generateAdvancePlanForProjects(projects);
+
+		expect(plan.projects).toHaveLength(3);
+		expect(plan.projects.map((project) => [project.project, project.status, project.detail])).toStrictEqual([
+			["dirty-project", "skipped", "dirty"],
+			["detached-project", "skipped", "detached head"],
+			["untested-project", "skipped", "no test configured"],
+		]);
+		expect(plan.projects.every((project) => project.branches.length === 0)).toBe(true);
+	});
+
+	it("returns noop when a project has no branch units and the baseline is cached green", async () => {
+		const {generateAdvancePlanForProjects} = await import("./server-fns.js");
+		const dir = await createTestGitRepo();
+		const baselineSha = (await execa("git", ["-C", dir, "rev-parse", "main"])).stdout.trim();
+		recordTestResult(baselineSha, "noop-project", "passed", 0, 10);
+
+		const plan = await generateAdvancePlanForProjects([
+			makeProject({name: "noop-project", dir, upstreamRef: "main"}),
+		]);
+
+		expect(plan.projects).toHaveLength(1);
+		expect(plan.projects[0]).toMatchObject({
+			project: "noop-project",
+			status: "noop",
+			baselineNeedsTest: false,
+			branches: [],
+		});
+	});
+
+	it("returns ready branch summaries for planned branch units", async () => {
+		const {generateAdvancePlanForProjects} = await import("./server-fns.js");
+		const dir = await createTestGitRepo();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/advance-plan"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
+		const tipSha = (await execa("git", ["-C", dir, "rev-parse", "feature/advance-plan"])).stdout.trim();
+
+		const plan = await generateAdvancePlanForProjects([
+			makeProject({name: "ready-project", dir, upstreamRef: "main", upstreamBranch: "main"}),
+		]);
+
+		expect(plan.projects).toHaveLength(1);
+		expect(plan.projects[0]).toMatchObject({
+			project: "ready-project",
+			status: "ready",
+			baselineNeedsTest: true,
+			concurrency: 1,
+		});
+		expect(plan.projects[0]!.branches).toStrictEqual([
+			{
+				project: "ready-project",
+				branch: "feature/advance-plan",
+				tipSha,
+				shortSha: tipSha.slice(0, 7),
+				ownedCommitCount: 1,
+				dependsOn: [],
+				worktreeRequired: false,
+				expectedActions: ["rebase", "test", "resolve-conflicts", "fix-failure"],
+			},
+		]);
 	});
 });
 

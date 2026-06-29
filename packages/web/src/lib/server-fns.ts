@@ -70,12 +70,9 @@ import {
 	type TaskQueueJob,
 	type TestQueueJob,
 	RunClaudeCommandInputSchema,
-	advanceProject,
-	createGitActions,
 	planProject,
 	resolveAdvanceConcurrency,
 	matchesFilters,
-	type ReportNode,
 } from "@wip/shared";
 
 import {log} from "@wip/shared/services/logger-pino.js";
@@ -1319,59 +1316,126 @@ async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 
 export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async () => rebaseAllChildrenHandler());
 
-export interface AdvanceAllInput {
+export type AdvancePlanAction = "rebase" | "test" | "resolve-conflicts" | "fix-failure";
+
+export interface AdvancePlanBranchSummary {
+	project: string;
+	branch: string;
+	tipSha: string;
+	shortSha: string;
+	ownedCommitCount: number;
+	dependsOn: string[];
+	worktreeRequired: boolean;
+	expectedActions: AdvancePlanAction[];
+}
+
+export interface AdvancePlanProjectSummary {
+	project: string;
+	projectDir: string;
+	upstreamRef: string;
+	upstreamRemote: string;
+	upstreamBranch: string;
+	remote: string;
+	status: "ready" | "skipped" | "noop";
+	detail?: string;
+	baselineNeedsTest: boolean;
+	concurrency: number;
+	branches: AdvancePlanBranchSummary[];
+}
+
+export interface AdvancePlanSummary {
+	generatedAt: number;
+	projects: AdvancePlanProjectSummary[];
+}
+
+export interface GenerateAdvancePlanInput {
 	include?: string[];
 	exclude?: string[];
-	dryRun?: boolean;
 }
 
-async function advanceAllHandler(input: AdvanceAllInput = {}): Promise<ReportNode> {
-	return traced("advanceAll", async () => {
-		const include = input.include ?? [];
-		const exclude = input.exclude ?? [];
-		const autonomy = input.dryRun ? "dry-run" : "run";
-		const projects = await discoverAllProjects(getProjectsDirs());
+const advanceProjectPlanActions: AdvancePlanAction[] = ["rebase", "test", "resolve-conflicts", "fix-failure"];
 
-		const children: ReportNode[] = [];
-		for (const p of projects) {
-			if (!matchesFilters(p.name, include, exclude)) continue;
-			if (p.dirty || p.detachedHead || !p.hasTestConfigured) {
-				children.push({
-					label: p.name,
-					status: "skipped",
-					detail: p.dirty ? "dirty" : p.detachedHead ? "detached head" : "no test configured",
-					children: [],
-				});
-				continue;
-			}
+function skipReason(project: ProjectInfo): string | undefined {
+	if (project.dirty) return "dirty";
+	if (project.detachedHead) return "detached head";
+	if (!project.hasTestConfigured) return "no test configured";
+	return undefined;
+}
 
-			const plan = await planProject({project: p.name, dir: p.dir, upstreamRef: p.upstreamRef});
-			if (plan.units.length === 0 && !plan.baseline.needsTest) continue;
+export async function generateAdvancePlanForProjects(
+	projects: ProjectInfo[],
+	input: GenerateAdvancePlanInput = {},
+): Promise<AdvancePlanSummary> {
+	const include = input.include ?? [];
+	const exclude = input.exclude ?? [];
+	const projectSummaries: AdvancePlanProjectSummary[] = [];
 
-			const actions = await createGitActions({dir: p.dir, upstreamRef: p.upstreamRef});
-			const node = await advanceProject(plan, actions, {
-				autonomy,
-				perRepoConcurrency: resolveAdvanceConcurrency(p.name, p.dir),
+	for (const project of projects) {
+		if (!matchesFilters(project.name, include, exclude)) continue;
+
+		const detail = skipReason(project);
+		if (detail) {
+			projectSummaries.push({
+				project: project.name,
+				projectDir: project.dir,
+				upstreamRef: project.upstreamRef,
+				upstreamRemote: project.upstreamRemote,
+				upstreamBranch: project.upstreamBranch ?? "main",
+				remote: project.remote,
+				status: "skipped",
+				detail,
+				baselineNeedsTest: false,
+				concurrency: resolveAdvanceConcurrency(project.name, project.dir),
+				branches: [],
 			});
-			children.push(node);
+			continue;
 		}
 
-		const anyRed = children.some((c) => c.status === "red");
-		return {label: `advance (${autonomy})`, status: anyRed ? "red" : "green", children};
-	});
+		const plan = await planProject({project: project.name, dir: project.dir, upstreamRef: project.upstreamRef});
+		const status = plan.units.length === 0 && !plan.baseline.needsTest ? "noop" : "ready";
+
+		projectSummaries.push({
+			project: project.name,
+			projectDir: project.dir,
+			upstreamRef: project.upstreamRef,
+			upstreamRemote: project.upstreamRemote,
+			upstreamBranch: project.upstreamBranch ?? "main",
+			remote: project.remote,
+			status,
+			baselineNeedsTest: plan.baseline.needsTest,
+			concurrency: resolveAdvanceConcurrency(project.name, project.dir),
+			branches: plan.units.map((unit) => ({
+				project: unit.project,
+				branch: unit.branch,
+				tipSha: unit.tipSha,
+				shortSha: unit.tipSha.slice(0, 7),
+				ownedCommitCount: unit.chain.length,
+				dependsOn: unit.dependsOn,
+				worktreeRequired: unit.worktreeRequired,
+				expectedActions: advanceProjectPlanActions,
+			})),
+		});
+	}
+
+	return {generatedAt: Date.now(), projects: projectSummaries};
 }
 
-export const advanceAll = createServerFn({method: "POST"})
+async function generateAdvancePlanHandler(input: GenerateAdvancePlanInput = {}): Promise<AdvancePlanSummary> {
+	return traced("generateAdvancePlan", async () =>
+		generateAdvancePlanForProjects(await discoverAllProjects(getProjectsDirs()), input),
+	);
+}
+
+export const generateAdvancePlan = createServerFn({method: "POST"})
 	.inputValidator((input: unknown) =>
 		z
 			.object({
 				include: z.array(z.string()).optional(),
 				exclude: z.array(z.string()).optional(),
-				dryRun: z.boolean().optional(),
 			})
 			.parse(input ?? {}),
 	)
-	.handler(async ({data}) => advanceAllHandler(data));
+	.handler(async ({data}) => generateAdvancePlanHandler(data));
 
 async function refreshAllHandler(): Promise<ActionResult> {
 	return tracedAction("refreshAll", async () => {

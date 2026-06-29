@@ -12,6 +12,7 @@ import {
 	getCommitDiff,
 	getWorkingTreeDiff,
 	getTestLog,
+	generateAdvancePlan,
 } from "./server-fns";
 
 export const projectsQueryOptions = () =>
@@ -56,6 +57,13 @@ export const taskQueueQueryOptions = () =>
 		queryKey: ["taskQueue"],
 		queryFn: () => getTaskQueue(),
 		staleTime: 5_000,
+	});
+
+export const advancePlanQueryOptions = () =>
+	queryOptions({
+		queryKey: ["advancePlan"],
+		queryFn: () => generateAdvancePlan({data: {}}),
+		staleTime: 30_000,
 	});
 
 export const workingTreeDiffQueryOptions = (project: string) =>

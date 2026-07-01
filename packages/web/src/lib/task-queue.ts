@@ -65,6 +65,12 @@ const tasks = new Map<string, Task>();
 const projectQueues = new Map<string, string[]>();
 const runningProjects = new Set<string>();
 const runningProcesses = new Map<string, {kill: () => void}>();
+const inFlight = new Set<Promise<unknown>>();
+
+function track(promise: Promise<unknown>): void {
+	inFlight.add(promise);
+	void promise.finally(() => inFlight.delete(promise));
+}
 
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
@@ -154,7 +160,7 @@ function processQueue(project: string): void {
 	task.startedAt = Date.now();
 	emit(task);
 
-	runTask(task)
+	const running = runTask(task)
 		.then(() => {
 			queue.shift();
 			runningProjects.delete(project);
@@ -169,6 +175,7 @@ function processQueue(project: string): void {
 			runningProjects.delete(project);
 			processQueue(project);
 		});
+	track(running);
 }
 
 async function runTask(task: Task): Promise<void> {
@@ -423,12 +430,13 @@ function registerTask(task: Task): Task {
 	emit(task);
 
 	if (task.taskType === "push") {
-		void runPushTask(task).catch((err) => {
+		const pushing = runPushTask(task).catch((err) => {
 			task.status = "failed";
 			task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
 			task.finishedAt = Date.now();
 			emit(task);
 		});
+		track(pushing);
 	} else {
 		if (!projectQueues.has(task.project)) {
 			projectQueues.set(task.project, []);
@@ -606,3 +614,19 @@ export const enqueueTest = (
 ) => enqueueTask("test", project, projectDir, sha, shortSha, subject, branch);
 export const cancelTest = cancelTask;
 export const getAllJobs = getAllTasks;
+
+export async function resetQueue(): Promise<void> {
+	for (const task of tasks.values()) {
+		if (task.status === "queued" || task.status === "running") {
+			cancelTask(task.id);
+		}
+	}
+	while (inFlight.size) {
+		await Promise.allSettled(inFlight);
+	}
+	tasks.clear();
+	projectQueues.clear();
+	runningProjects.clear();
+	runningProcesses.clear();
+	nextId = 1;
+}

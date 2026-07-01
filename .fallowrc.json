@@ -47,6 +47,10 @@
 				"refreshAllHandler",
 				"rebaseLocalHandler"
 			]
+		},
+		{
+			"file": "packages/web/src/lib/task-queue.ts",
+			"exports": ["resetQueue"]
 		}
 	]
 }

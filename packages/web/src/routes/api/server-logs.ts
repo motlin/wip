@@ -1,5 +1,7 @@
 import {createFileRoute} from "@tanstack/react-router";
 
+const loggingEnabled = () => process.env["WIP_SUBPROCESS_LOGGING"] === "true";
+
 export const Route = createFileRoute("/api/server-logs")({
 	server: {
 		handlers: {
@@ -21,6 +23,19 @@ export const Route = createFileRoute("/api/server-logs")({
 								doCleanup();
 							}
 						}
+
+						function sendEvent(event: string, data: unknown) {
+							if (closed) return;
+							try {
+								controller.enqueue(
+									encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+								);
+							} catch {
+								doCleanup();
+							}
+						}
+
+						sendEvent("status", {loggingEnabled: loggingEnabled()});
 
 						for (const entry of getRecentLogs()) {
 							send(entry);

@@ -37,6 +37,10 @@ const CATEGORY_CLASS: Record<string, string> = {
 type LevelFilter = "all" | "debug" | "info" | "warn" | "error";
 type CategoryFilter = "all" | "subprocess" | "progress" | "general";
 
+interface ServerLogStatus {
+	loggingEnabled: boolean;
+}
+
 const LEVEL_MIN: Record<LevelFilter, number> = {
 	all: 0,
 	debug: 20,
@@ -69,11 +73,18 @@ function DebugLogs() {
 	const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
 	const [search, setSearch] = useState("");
 	const [connected, setConnected] = useState(false);
+	const [loggingEnabled, setLoggingEnabled] = useState<boolean | null>(null);
 
 	useEffect(() => {
 		const es = new EventSource("/api/server-logs");
 		es.onopen = () => setConnected(true);
 		es.onerror = () => setConnected(false);
+		const handleStatus = (event: MessageEvent<string>) => {
+			const status = JSON.parse(event.data) as ServerLogStatus;
+			setLoggingEnabled(status.loggingEnabled);
+			setConnected(true);
+		};
+		es.addEventListener("status", handleStatus);
 		es.onmessage = (event) => {
 			const entry = JSON.parse(event.data) as LogEntry;
 			setEntries((prev) => {
@@ -82,6 +93,7 @@ function DebugLogs() {
 			});
 		};
 		return () => {
+			es.removeEventListener("status", handleStatus);
 			es.close();
 		};
 	}, []);
@@ -102,6 +114,15 @@ function DebugLogs() {
 	const clear = () => {
 		setEntries([]);
 	};
+
+	const emptyMessage =
+		entries.length > 0
+			? "No entries match the current filters."
+			: !connected
+				? "Connecting to server log stream..."
+				: loggingEnabled === false
+					? "Waiting for log entries. Set WIP_SUBPROCESS_LOGGING=true to enable the logger."
+					: "Waiting for log entries. Server logging is enabled.";
 
 	return (
 		<div className="flex h-[calc(100vh-2.5rem)] flex-col">
@@ -176,11 +197,7 @@ function DebugLogs() {
 				className="relative flex-1 overflow-auto bg-bg-000 font-mono text-xs scrollbar-thin"
 			>
 				{filtered.length === 0 ? (
-					<p className="p-4 text-sm text-text-500">
-						{entries.length === 0
-							? "Waiting for log entries. Set WIP_SUBPROCESS_LOGGING=true to enable the logger."
-							: "No entries match the current filters."}
-					</p>
+					<p className="p-4 text-sm text-text-500">{emptyMessage}</p>
 				) : (
 					<ul className="divide-y divide-border-300/20">
 						{filtered.map((entry, i) => {

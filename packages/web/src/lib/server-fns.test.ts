@@ -8,6 +8,7 @@ import {execa} from "execa";
 import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, recordTestResult} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {seedProjectCache, resetProjectCache} from "./server-fns.js";
+import {resetQueue} from "./task-queue.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FetchAdapter = require("@pollyjs/adapter-fetch");
@@ -123,6 +124,7 @@ afterEach(async () => {
 	}
 	resetGitHubClient();
 	resetProjectCache();
+	await resetQueue();
 	resetDb();
 
 	// Clean up temporary git repos

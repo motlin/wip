@@ -329,7 +329,7 @@ export async function getProjectChildrenHandler(project: string): Promise<Projec
 }
 
 export const getProjectChildren = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(async ({data}) => getProjectChildrenHandler(data.project));
 
 const inflightTodosRefresh = new Map<string, Promise<SharedTodoItem[]>>();
@@ -369,7 +369,7 @@ async function refreshProjectTodos(projectName: string): Promise<SharedTodoItem[
 }
 
 export const getProjectTodos = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(
 		async ({data}): Promise<SharedTodoItem[]> =>
 			traced("getProjectTodos", async () => {
@@ -421,7 +421,7 @@ export const getProjectItemsFn = createServerFn({method: "GET"}).handler(async (
 );
 
 export const getIssueByNumber = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
 	.handler(
 		async ({data}): Promise<IssueResult | null> =>
 			traced("getIssueByNumber", async () => {
@@ -439,7 +439,7 @@ export const getIssueByNumber = createServerFn({method: "GET"})
 	);
 
 export const getProjectItemByNumber = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
 	.handler(
 		async ({data}): Promise<ProjectItemResult | null> =>
 			traced("getProjectItemByNumber", async () => {
@@ -505,11 +505,11 @@ export async function pushChildHandler(data: PushChildInput): Promise<TestJobSta
 }
 
 export const pushChild = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => PushChildInputSchema.parse(input))
+	.validator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}) => pushChildHandler(data));
 
 export const createPr = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => CreatePrInputSchema.parse(input))
+	.validator((input: unknown) => CreatePrInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("createPr", async () => {
@@ -561,7 +561,7 @@ export interface TestJobStatus {
 }
 
 export const testChild = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => TestChildInputSchema.parse(input))
+	.validator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<TestJobStatus> =>
 			traced("testChild", async () => {
@@ -681,7 +681,7 @@ export interface FileDiff {
 }
 
 export const getCommitDiff = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
 	.handler(
 		async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> =>
 			traced("getCommitDiff", async () => {
@@ -757,7 +757,7 @@ export const getCommitDiff = createServerFn({method: "GET"})
 	);
 
 export const getWorkingTreeDiff = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(
 		async ({data}): Promise<{files: FileDiff[]; stat: string}> =>
 			traced("getWorkingTreeDiff", async () => {
@@ -824,7 +824,7 @@ export const getWorkingTreeDiff = createServerFn({method: "GET"})
 	);
 
 export const commitWorkingTree = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("commitWorkingTree", async () => {
@@ -846,7 +846,7 @@ export const commitWorkingTree = createServerFn({method: "POST"})
 	);
 
 export const getTestLog = createServerFn({method: "GET"})
-	.inputValidator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
 	.handler(
 		async ({data}): Promise<{log: string | null; tail: string | null}> =>
 			traced("getTestLog", async () => {
@@ -863,7 +863,7 @@ export const getTestLog = createServerFn({method: "GET"})
 	);
 
 export const snoozeChildFn = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => SnoozeChildInputSchema.parse(input))
+	.validator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("snoozeChildFn", async () => {
@@ -887,7 +887,7 @@ export const snoozeChildFn = createServerFn({method: "POST"})
 	);
 
 export const unsnoozeChildFn = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
+	.validator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("unsnoozeChildFn", async () => {
@@ -914,7 +914,7 @@ export const getTaskQueue = createServerFn({method: "GET"}).handler(
 );
 
 export const cancelTestFn = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => CancelTestInputSchema.parse(input))
+	.validator((input: unknown) => CancelTestInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("cancelTestFn", async () => {
@@ -925,7 +925,7 @@ export const cancelTestFn = createServerFn({method: "POST"})
 	);
 
 export const runClaudeCommand = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => RunClaudeCommandInputSchema.parse(input))
+	.validator((input: unknown) => RunClaudeCommandInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<TestJobStatus> =>
 			traced("runClaudeCommand", async () => {
@@ -946,7 +946,7 @@ export const runClaudeCommand = createServerFn({method: "POST"})
 	);
 
 export const refreshChild = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => RefreshChildInputSchema.parse(input))
+	.validator((input: unknown) => RefreshChildInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("refreshChild", async () => {
@@ -957,7 +957,7 @@ export const refreshChild = createServerFn({method: "POST"})
 	);
 
 export const createBranch = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => CreateBranchInputSchema.parse(input))
+	.validator((input: unknown) => CreateBranchInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("createBranch", async () => {
@@ -976,7 +976,7 @@ export const createBranch = createServerFn({method: "POST"})
 	);
 
 export const deleteBranch = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => DeleteBranchInputSchema.parse(input))
+	.validator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("deleteBranch", async () => {
@@ -997,7 +997,7 @@ export const deleteBranch = createServerFn({method: "POST"})
 	);
 
 export const forcePush = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => ForcePushInputSchema.parse(input))
+	.validator((input: unknown) => ForcePushInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("forcePush", async () => {
@@ -1027,7 +1027,7 @@ export const forcePush = createServerFn({method: "POST"})
 	);
 
 export const mergePr = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => MergePrInputSchema.parse(input))
+	.validator((input: unknown) => MergePrInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("mergePr", async () => {
@@ -1051,7 +1051,7 @@ export const mergePr = createServerFn({method: "POST"})
 	);
 
 export const renameBranch = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => RenameBranchInputSchema.parse(input))
+	.validator((input: unknown) => RenameBranchInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("renameBranch", async () => {
@@ -1072,7 +1072,7 @@ export const renameBranch = createServerFn({method: "POST"})
 	);
 
 export const applyFixes = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => ApplyFixesInputSchema.parse(input))
+	.validator((input: unknown) => ApplyFixesInputSchema.parse(input))
 	.handler(
 		async ({data}): Promise<ActionResult> =>
 			tracedAction("applyFixes", async () => {
@@ -1270,7 +1270,7 @@ async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJobStatus
 }
 
 export const rebaseChild = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) => RebaseLocalInputSchema.parse(input))
+	.validator((input: unknown) => RebaseLocalInputSchema.parse(input))
 	.handler(async ({data}) => rebaseChildHandler(data));
 
 /**
@@ -1444,7 +1444,7 @@ async function generateAdvancePlanHandler(input: GenerateAdvancePlanInput = {}):
 }
 
 export const generateAdvancePlan = createServerFn({method: "POST"})
-	.inputValidator((input: unknown) =>
+	.validator((input: unknown) =>
 		z
 			.object({
 				include: z.array(z.string()).optional(),

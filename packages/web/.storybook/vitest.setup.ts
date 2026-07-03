@@ -1,7 +1,9 @@
-import {beforeAll} from "vitest";
+import {beforeAll, expect} from "vitest";
 import {setProjectAnnotations} from "@storybook/react";
 import * as projectAnnotations from "./preview";
-import "@testing-library/jest-dom/vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
+
+expect.extend(matchers);
 
 const project = setProjectAnnotations([projectAnnotations]);
 

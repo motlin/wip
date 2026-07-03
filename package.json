@@ -19,7 +19,7 @@
 		"fallow:ci": "fallow dead-code",
 		"test": "node node_modules/vitest/dist/cli.js",
 		"test:run": "node node_modules/vitest/dist/cli.js run",
-		"prepare": "vp config"
+		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
 	"devDependencies": {
 		"@typescript/native-preview": "^7.0.0-dev.20260701.1",

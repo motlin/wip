@@ -1,5 +1,5 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
-import {useSuspenseQuery} from "@tanstack/react-query";
+import {useSuspenseQuery, useQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
@@ -21,7 +21,7 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "lucide-react";
-import {taskQueueQueryOptions} from "../lib/queries";
+import {taskQueueQueryOptions, runAllCountsQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/tasks")({
 	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(taskQueueQueryOptions()),
@@ -269,9 +269,11 @@ function groupTasks(
 function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
 	const {tasks: liveJobs} = useTaskEvents();
+	const {data: runCounts} = useQuery(runAllCountsQueryOptions());
 	const [testingAll, setTestingAll] = useState(false);
 	const [groupBy, setGroupBy] = useState<GroupBy>("project");
 	const hasActiveTests = useHasActiveTests();
+	const readyToTest = runCounts?.readyToTest ?? 0;
 
 	const allJobs = mergeJobs(serverJobs, liveJobs);
 	const groups = groupTasks(allJobs, groupBy);
@@ -362,7 +364,13 @@ function Tasks() {
 						) : (
 							<Play className="h-4 w-4" />
 						)}
-						{hasActiveTests ? "Tasks Running..." : "Run All Tests"}
+						{hasActiveTests
+							? "Tasks Running..."
+							: testingAll
+								? "Queueing..."
+								: readyToTest > 0
+									? `Run All Tests (${readyToTest})`
+									: "Run All Tests"}
 					</button>
 				</div>
 			</div>

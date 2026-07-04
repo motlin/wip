@@ -77,6 +77,7 @@ import {log} from "@wip/shared/services/logger-pino.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import {classifyGitChild} from "./classify.js";
+import type {EnqueueRebaseOptions} from "./task-queue.js";
 import {z} from "zod";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -608,69 +609,106 @@ export const testChild = createServerFn({method: "POST"})
 			}),
 	);
 
+const backgroundEnqueues = new Set<Promise<unknown>>();
+
+// Run a heavy discover-and-enqueue routine in the background so the POST returns
+// immediately. Tasks stream to the client via the task-queue SSE feed as they are
+// enqueued, instead of the click blocking until every project has been scanned.
+function launchBackgroundEnqueue(name: string, run: () => Promise<unknown>): void {
+	const promise = run()
+		.catch((err) => {
+			log.general.error({err}, `${name} background enqueue failed`);
+		})
+		.finally(() => {
+			backgroundEnqueues.delete(promise);
+		});
+	backgroundEnqueues.add(promise);
+}
+
+interface PlannedTest {
+	project: string;
+	projectDir: string;
+	sha: string;
+	shortSha: string;
+	subject: string;
+	branch?: string;
+}
+
+// Discover the untested child commits that "Run All Tests" would enqueue, without
+// touching the task queue. Shared by the background enqueue and the count query so
+// the button's (N) always matches what a click actually queues.
+async function planTestAll(): Promise<PlannedTest[]> {
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
+
+	clearExpiredSnoozes();
+	const snoozedSet = getSnoozedSet();
+
+	const SKIP_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
+	const planned: PlannedTest[] = [];
+
+	for (const p of projects) {
+		if (!p.hasTestConfigured) continue;
+
+		const headSha = p.dirty
+			? (await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})).stdout.trim()
+			: undefined;
+
+		const childShas = await getChildren(p.dir, p.upstreamRef);
+		if (childShas.length === 0) continue;
+
+		const testResults = getTestResultsForProject(p.name);
+
+		const untested = childShas.filter((sha) => {
+			if (testResults.has(sha)) return false;
+			if (snoozedSet.has(`${p.name}:${sha}`)) return false;
+			if (p.dirty && sha === headSha) return false;
+			return true;
+		});
+		if (untested.length === 0) continue;
+
+		const logResult = await tracedExeca(
+			"git",
+			["-C", p.dir, "log", "--stdin", "--no-walk", "--format=%H%x00%h%x00%s%x00%B%x00%D%x1e"],
+			{input: untested.join("\n"), reject: false},
+		);
+		if (logResult.exitCode !== 0) continue;
+
+		for (const record of logResult.stdout.split("\x1e")) {
+			const trimmed = record.replace(/^\n+/, "");
+			if (!trimmed) continue;
+			const splitFields = trimmed.split("\0");
+			const sha = splitFields[0] ?? "";
+			const shortSha = splitFields[1] ?? "";
+			const subject = splitFields[2] ?? "";
+			const fullMessage = splitFields[3] ?? "";
+			const decoration = splitFields[4] ?? "";
+			if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
+
+			const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
+			const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
+
+			planned.push({project: p.name, projectDir: p.dir, sha, shortSha, subject, branch});
+		}
+	}
+	return planned;
+}
+
 async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("testAllChildren", async () => {
 		const {enqueueTest} = await import("./task-queue.js");
-
-		const projectsDirs = getProjectsDirs();
-		const projects = await discoverAllProjects(projectsDirs);
-
-		clearExpiredSnoozes();
-		const snoozedSet = getSnoozedSet();
-
-		const SKIP_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
-		const queued: TestJobStatus[] = [];
-
-		for (const p of projects) {
-			if (!p.hasTestConfigured) continue;
-
-			const headSha = p.dirty
-				? (await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})).stdout.trim()
-				: undefined;
-
-			const childShas = await getChildren(p.dir, p.upstreamRef);
-			if (childShas.length === 0) continue;
-
-			const testResults = getTestResultsForProject(p.name);
-
-			const untested = childShas.filter((sha) => {
-				if (testResults.has(sha)) return false;
-				if (snoozedSet.has(`${p.name}:${sha}`)) return false;
-				if (p.dirty && sha === headSha) return false;
-				return true;
-			});
-			if (untested.length === 0) continue;
-
-			const logResult = await tracedExeca(
-				"git",
-				["-C", p.dir, "log", "--stdin", "--no-walk", "--format=%H%x00%h%x00%s%x00%B%x00%D%x1e"],
-				{input: untested.join("\n"), reject: false},
-			);
-			if (logResult.exitCode !== 0) continue;
-
-			for (const record of logResult.stdout.split("\x1e")) {
-				const trimmed = record.replace(/^\n+/, "");
-				if (!trimmed) continue;
-				const splitFields = trimmed.split("\0");
-				const sha = splitFields[0] ?? "";
-				const shortSha = splitFields[1] ?? "";
-				const subject = splitFields[2] ?? "";
-				const fullMessage = splitFields[3] ?? "";
-				const decoration = splitFields[4] ?? "";
-				if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
-
-				const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
-				const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
-
-				const job = enqueueTest(p.name, p.dir, sha, shortSha, subject, branch);
-				queued.push({id: job.id, status: job.status, message: job.message});
-			}
-		}
-		return queued;
+		const planned = await planTestAll();
+		return planned.map((t) => {
+			const job = enqueueTest(t.project, t.projectDir, t.sha, t.shortSha, t.subject, t.branch);
+			return {id: job.id, status: job.status, message: job.message};
+		});
 	});
 }
 
-export const testAllChildren = createServerFn({method: "POST"}).handler(async () => testAllChildrenHandler());
+export const testAllChildren = createServerFn({method: "POST"}).handler(async () => {
+	launchBackgroundEnqueue("testAllChildren", testAllChildrenHandler);
+	return {started: true} as const;
+});
 
 export interface FileDiff {
 	oldFileName: string;
@@ -1293,45 +1331,73 @@ function isDashboardRepo(dir: string): boolean {
  * project on the shared task queue, so progress is visible on the Tasks page via
  * SSE instead of blocking the click.
  */
+// Discover the branches that "Rebase All" would enqueue, without touching the task
+// queue. Shared by the background enqueue and the count query.
+async function planRebaseAll(): Promise<EnqueueRebaseOptions[]> {
+	const projectsDirs = getProjectsDirs();
+	const projects = await discoverAllProjects(projectsDirs);
+
+	const planned: EnqueueRebaseOptions[] = [];
+
+	for (const p of projects) {
+		if (p.dirty || !p.hasTestConfigured) continue;
+		if (isDashboardRepo(p.dir)) continue;
+
+		const children = await getProjectChildrenHandler(p.name);
+		for (const child of children) {
+			if (!child.branch) continue;
+			if (classifyGitChild(child, p) !== "needs_rebase") continue;
+
+			planned.push({
+				project: p.name,
+				projectDir: p.dir,
+				sha: child.sha,
+				shortSha: child.shortSha,
+				subject: child.subject,
+				branch: child.branch,
+				upstreamRemote: p.upstreamRemote,
+				upstreamRef: p.upstreamRef,
+				upstreamBranch: p.upstreamBranch ?? "main",
+				remote: p.remote,
+			});
+		}
+	}
+
+	return planned;
+}
+
 async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("rebaseAllChildren", async () => {
 		const {enqueueRebase} = await import("./task-queue.js");
-
-		const projectsDirs = getProjectsDirs();
-		const projects = await discoverAllProjects(projectsDirs);
-
-		const queued: TestJobStatus[] = [];
-
-		for (const p of projects) {
-			if (p.dirty || !p.hasTestConfigured) continue;
-			if (isDashboardRepo(p.dir)) continue;
-
-			const children = await getProjectChildrenHandler(p.name);
-			for (const child of children) {
-				if (!child.branch) continue;
-				if (classifyGitChild(child, p) !== "needs_rebase") continue;
-
-				const task = enqueueRebase({
-					project: p.name,
-					projectDir: p.dir,
-					sha: child.sha,
-					shortSha: child.shortSha,
-					subject: child.subject,
-					branch: child.branch,
-					upstreamRemote: p.upstreamRemote,
-					upstreamRef: p.upstreamRef,
-					upstreamBranch: p.upstreamBranch ?? "main",
-					remote: p.remote,
-				});
-				queued.push({id: task.id, status: task.status, message: task.message});
-			}
-		}
-
-		return queued;
+		const planned = await planRebaseAll();
+		return planned.map((opts) => {
+			const task = enqueueRebase(opts);
+			return {id: task.id, status: task.status, message: task.message};
+		});
 	});
 }
 
-export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async () => rebaseAllChildrenHandler());
+export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async () => {
+	launchBackgroundEnqueue("rebaseAllChildren", rebaseAllChildrenHandler);
+	return {started: true} as const;
+});
+
+export interface RunAllCounts {
+	readyToTest: number;
+	needsRebase: number;
+}
+
+// Read-only estimate of how much work the "Run All Tests" / "Rebase All" buttons will
+// queue, so the tasks page can show the count before the click. Runs the same
+// discovery as the enqueue paths but never mutates the queue.
+async function runAllCountsHandler(): Promise<RunAllCounts> {
+	return traced("runAllCounts", async () => {
+		const [tests, rebases] = await Promise.all([planTestAll(), planRebaseAll()]);
+		return {readyToTest: tests.length, needsRebase: rebases.length};
+	});
+}
+
+export const runAllCounts = createServerFn({method: "GET"}).handler(async () => runAllCountsHandler());
 
 export type AdvancePlanAction = "rebase" | "test" | "resolve-conflicts" | "fix-failure";
 

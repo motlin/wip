@@ -191,11 +191,11 @@ function QueueLayout() {
 		setRebasingAll(true);
 		setRebaseResult(null);
 		try {
-			const queued = await rebaseAllChildren();
+			await rebaseAllChildren();
 			setRebaseResult(
-				queued.length === 0
+				needsRebaseCount === 0
 					? "All branches are up to date"
-					: `Enqueued ${queued.length} rebase task${queued.length > 1 ? "s" : ""} — see Tasks`,
+					: `Enqueuing ${needsRebaseCount} rebase task${needsRebaseCount > 1 ? "s" : ""} — see Tasks`,
 			);
 		} catch (e) {
 			setRebaseResult(e instanceof Error ? e.message : "Rebase failed");

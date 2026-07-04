@@ -13,6 +13,7 @@ import {
 	getWorkingTreeDiff,
 	getTestLog,
 	generateAdvancePlan,
+	runAllCounts,
 } from "./server-fns";
 
 export const projectsQueryOptions = () =>
@@ -57,6 +58,13 @@ export const taskQueueQueryOptions = () =>
 		queryKey: ["taskQueue"],
 		queryFn: () => getTaskQueue(),
 		staleTime: 5_000,
+	});
+
+export const runAllCountsQueryOptions = () =>
+	queryOptions({
+		queryKey: ["runAllCounts"],
+		queryFn: () => runAllCounts(),
+		staleTime: 10_000,
 	});
 
 export const advancePlanQueryOptions = () =>

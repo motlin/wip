@@ -22,7 +22,7 @@
 		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
 	"devDependencies": {
-		"@typescript/native-preview": "^7.0.0-dev.20260701.1",
+		"@typescript/native-preview": "^7.0.0-dev.20260704.1",
 		"@vitest/coverage-v8": "^4.1.9",
 		"fallow": "^3.0.0",
 		"markdownlint-cli2": "^0.23.0",

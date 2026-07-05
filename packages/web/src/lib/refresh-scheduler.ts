@@ -29,8 +29,45 @@ const MAX_CONCURRENT_REFRESHES = 2;
 
 const queued: RefreshJob[] = [];
 const queuedKeys = new Set<string>();
-const runningKeys = new Set<string>();
+const running = new Map<string, {kind: RefreshKind; project: string}>();
 const inFlight = new Set<Promise<void>>();
+
+export interface RefreshJobSummary {
+	kind: RefreshKind;
+	project: string;
+}
+
+export interface RefreshSchedulerState {
+	slots: number;
+	running: RefreshJobSummary[];
+	queued: RefreshJobSummary[];
+}
+
+type SchedulerStateListener = (state: RefreshSchedulerState) => void;
+const stateListeners = new Set<SchedulerStateListener>();
+
+/** Live queue snapshot, for the Tasks page's background-refresh panel. */
+export function getSchedulerState(): RefreshSchedulerState {
+	return {
+		slots: MAX_CONCURRENT_REFRESHES,
+		running: [...running.values()],
+		queued: queued.map((job) => ({kind: job.kind, project: job.project})),
+	};
+}
+
+/** Subscribe to queue changes (enqueue, start, settle). Returns an unsubscribe function. */
+export function onSchedulerStateChange(listener: SchedulerStateListener): () => void {
+	stateListeners.add(listener);
+	return () => stateListeners.delete(listener);
+}
+
+function emitSchedulerState(): void {
+	if (stateListeners.size === 0) return;
+	const state = getSchedulerState();
+	for (const listener of stateListeners) {
+		listener(state);
+	}
+}
 
 type RefreshErrorListener = (event: RefreshErrorEvent) => void;
 const errorListeners = new Set<RefreshErrorListener>();
@@ -52,14 +89,16 @@ function jobKey(kind: RefreshKind, project: string): string {
 }
 
 export function runningRefreshCount(): number {
-	return runningKeys.size;
+	return running.size;
 }
 
 function pump(): void {
-	while (runningKeys.size < MAX_CONCURRENT_REFRESHES && queued.length > 0) {
+	let changed = false;
+	while (running.size < MAX_CONCURRENT_REFRESHES && queued.length > 0) {
 		const job = queued.shift()!;
 		queuedKeys.delete(job.key);
-		runningKeys.add(job.key);
+		running.set(job.key, {kind: job.kind, project: job.project});
+		changed = true;
 
 		const promise = job
 			.run()
@@ -69,12 +108,14 @@ function pump(): void {
 				emitRefreshError({kind: job.kind, project: job.project, message});
 			})
 			.finally(() => {
-				runningKeys.delete(job.key);
+				running.delete(job.key);
 				inFlight.delete(promise);
+				emitSchedulerState();
 				pump();
 			});
 		inFlight.add(promise);
 	}
+	if (changed) emitSchedulerState();
 }
 
 /**
@@ -86,12 +127,13 @@ export function enqueueRefresh(options: {kind: RefreshKind; project: string; run
 	queued: boolean;
 } {
 	const key = jobKey(options.kind, options.project);
-	if (queuedKeys.has(key) || runningKeys.has(key)) {
+	if (queuedKeys.has(key) || running.has(key)) {
 		return {queued: false};
 	}
 
 	queued.push({key, kind: options.kind, project: options.project, run: options.run});
 	queuedKeys.add(key);
+	emitSchedulerState();
 	queueMicrotask(pump);
 	return {queued: true};
 }
@@ -103,8 +145,9 @@ export async function resetScheduler(): Promise<void> {
 	while (inFlight.size > 0) {
 		await Promise.allSettled(inFlight);
 	}
-	runningKeys.clear();
+	running.clear();
 	errorListeners.clear();
+	stateListeners.clear();
 }
 
 /**

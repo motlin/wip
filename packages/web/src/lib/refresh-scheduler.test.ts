@@ -2,7 +2,9 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
 import {
 	enqueueRefresh,
+	getSchedulerState,
 	onRefreshError,
+	onSchedulerStateChange,
 	resetScheduler,
 	runningRefreshCount,
 	startPeriodicSweep,
@@ -172,6 +174,49 @@ describe("enqueueRefresh", () => {
 
 		expect(firstRun).toHaveBeenCalledTimes(1);
 		expect(secondRun).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("scheduler state", () => {
+	it("reports running and queued jobs with slot capacity", async () => {
+		const gates = [deferred(), deferred(), deferred()];
+		for (const [index, gate] of gates.entries()) {
+			enqueueRefresh({kind: "children", project: `project-${index}`, run: () => gate.promise});
+		}
+		await settle();
+
+		expect(getSchedulerState()).toStrictEqual({
+			slots: 2,
+			running: [
+				{kind: "children", project: "project-0"},
+				{kind: "children", project: "project-1"},
+			],
+			queued: [{kind: "children", project: "project-2"}],
+		});
+
+		for (const gate of gates) {
+			gate.resolve();
+		}
+		await settle();
+
+		expect(getSchedulerState()).toStrictEqual({slots: 2, running: [], queued: []});
+	});
+
+	it("notifies state listeners on enqueue, start, and settle", async () => {
+		const snapshots: Array<{running: number; queued: number}> = [];
+		onSchedulerStateChange((state) => {
+			snapshots.push({running: state.running.length, queued: state.queued.length});
+		});
+
+		const gate = deferred();
+		enqueueRefresh({kind: "children", project: "alpha", run: () => gate.promise});
+		await settle();
+		gate.resolve();
+		await settle();
+
+		expect(snapshots.at(0)).toStrictEqual({running: 0, queued: 1});
+		expect(snapshots.at(-1)).toStrictEqual({running: 0, queued: 0});
+		expect(snapshots.some((s) => s.running === 1)).toBe(true);
 	});
 });
 

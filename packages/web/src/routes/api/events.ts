@@ -15,7 +15,8 @@ export const Route = createFileRoute("/api/events")({
 				const {projectEmitter} = await import("../../lib/project-events.js");
 				const {childrenEmitter} = await import("../../lib/children-events.js");
 				const {todoEmitter} = await import("../../lib/todo-events.js");
-				const {onRefreshError} = await import("../../lib/refresh-scheduler.js");
+				const {getSchedulerState, onRefreshError, onSchedulerStateChange} =
+					await import("../../lib/refresh-scheduler.js");
 				const {ensureBackgroundRefresh} = await import("../../lib/background-refresh.js");
 				const {getProjects} = await import("../../lib/server-fns.js");
 				const {log} = await import("@wip/shared/services/logger-pino.js");
@@ -54,6 +55,7 @@ export const Route = createFileRoute("/api/events")({
 							.catch((error: unknown) => {
 								log.general.error({error}, "events stream: initial project send failed");
 							});
+						send("refresh-state", getSchedulerState());
 
 						const onTask = (event: unknown) => send("task", event);
 						const onMerge = (event: unknown) => send("merge", event);
@@ -66,6 +68,9 @@ export const Route = createFileRoute("/api/events")({
 						childrenEmitter.on("children", onChildren);
 						todoEmitter.on("todos", onTodos);
 						const unsubscribeErrors = onRefreshError((event) => send("refresh-error", event));
+						const unsubscribeSchedulerState = onSchedulerStateChange((state) =>
+							send("refresh-state", state),
+						);
 
 						const keepalive = setInterval(() => {
 							if (closed) return;
@@ -85,6 +90,7 @@ export const Route = createFileRoute("/api/events")({
 							childrenEmitter.off("children", onChildren);
 							todoEmitter.off("todos", onTodos);
 							unsubscribeErrors();
+							unsubscribeSchedulerState();
 							clearInterval(keepalive);
 							try {
 								controller.close();

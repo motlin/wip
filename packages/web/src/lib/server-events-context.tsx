@@ -2,6 +2,7 @@ import {createContext, useCallback, useContext, useEffect, useState} from "react
 import {useQueryClient, type QueryClient} from "@tanstack/react-query";
 import type {GitChildResult, ProjectInfo, SnoozedChild, TestStatus, TodoItem, Transition} from "@wip/shared";
 import type {TaskEvent} from "./task-queue";
+import type {RefreshSchedulerState} from "./refresh-scheduler";
 import type {ProjectChildrenResult} from "./server-fns";
 import {filterSnoozedChildren} from "./snoozed-filter";
 import {pushToast} from "./toast-store";
@@ -47,7 +48,8 @@ type ServerEvent =
 	| {channel: "projects"; data: ProjectInfo[]}
 	| {channel: "children"; data: ChildrenEvent}
 	| {channel: "todos"; data: TodoEvent}
-	| {channel: "refresh-error"; data: RefreshErrorEvent};
+	| {channel: "refresh-error"; data: RefreshErrorEvent}
+	| {channel: "refresh-state"; data: RefreshSchedulerState};
 
 const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
 	queued: "running",
@@ -92,12 +94,15 @@ function applyTaskSideEffects(queryClient: QueryClient, data: TaskEvent) {
 	}
 }
 
+const EMPTY_SCHEDULER_STATE: RefreshSchedulerState = {slots: 0, running: [], queued: []};
+
 interface ServerEventsContextValue {
 	tasks: Map<string, TaskEvent>;
 	getTask: (sha: string, project: string) => TaskEvent | undefined;
 	getLog: (sha: string, project: string) => string | undefined;
 	hasActiveTasks: boolean;
 	getMergeStatus: (sha: string, project: string) => MergeStatusEvent | undefined;
+	refreshSchedulerState: RefreshSchedulerState;
 }
 
 const ServerEventsContext = createContext<ServerEventsContextValue>({
@@ -106,12 +111,14 @@ const ServerEventsContext = createContext<ServerEventsContextValue>({
 	getLog: () => undefined,
 	hasActiveTasks: false,
 	getMergeStatus: () => undefined,
+	refreshSchedulerState: EMPTY_SCHEDULER_STATE,
 });
 
 export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 	const [tasks, setTasks] = useState<Map<string, TaskEvent>>(new Map());
 	const [logs, setLogs] = useState<Map<string, string>>(new Map());
 	const [mergeStatuses, setMergeStatuses] = useState<Map<string, MergeStatusEvent>>(new Map());
+	const [refreshSchedulerState, setRefreshSchedulerState] = useState<RefreshSchedulerState>(EMPTY_SCHEDULER_STATE);
 	const queryClient = useQueryClient();
 
 	useEffect(() => {
@@ -192,6 +199,10 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 					queryClient.setQueryData(["todos", parsed.data.project], parsed.data.todos);
 					return;
 				}
+				case "refresh-state": {
+					setRefreshSchedulerState(parsed.data);
+					return;
+				}
 				case "refresh-error": {
 					pushToast({
 						level: "error",
@@ -221,7 +232,9 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 	const hasActiveTasks = Array.from(tasks.values()).some((t) => t.status === "queued" || t.status === "running");
 
 	return (
-		<ServerEventsContext.Provider value={{tasks, getTask, getLog, hasActiveTasks, getMergeStatus}}>
+		<ServerEventsContext.Provider
+			value={{tasks, getTask, getLog, hasActiveTasks, getMergeStatus, refreshSchedulerState}}
+		>
 			{children}
 		</ServerEventsContext.Provider>
 	);
@@ -241,6 +254,11 @@ export function useHasActiveTests(): boolean {
 
 export function useMergeStatus(sha: string, project: string): MergeStatusEvent | undefined {
 	return useContext(ServerEventsContext).getMergeStatus(sha, project);
+}
+
+/** Live background-refresh queue state, for the Tasks page's scheduler panel. */
+export function useRefreshSchedulerState(): RefreshSchedulerState {
+	return useContext(ServerEventsContext).refreshSchedulerState;
 }
 
 /** Full live task map plus lookups, for the Tasks and Advance Plan pages. */

@@ -4,6 +4,7 @@ import {useState} from "react";
 import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
 import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context";
+import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel";
 import {
 	Clock,
 	Play,
@@ -373,6 +374,8 @@ function Tasks() {
 					</button>
 				</div>
 			</div>
+
+			<RefreshSchedulerPanel />
 
 			{allJobs.length === 0 ? (
 				<div className="rounded-lg border border-border-300/50 bg-bg-100 p-8 text-center text-text-500">

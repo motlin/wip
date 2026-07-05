@@ -21,6 +21,7 @@ import {
 	getCachedUpstreamSha,
 	cacheUpstreamSha,
 } from "./db.js";
+import {mapWithConcurrency} from "./concurrency.js";
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from "./rate-limit.js";
 import {
 	MergeStateStatusSchema,
@@ -38,6 +39,9 @@ const MiseEnvSchema = z.record(z.string(), z.string());
 const inflightPrRequests = new Map<string, Promise<PrStatuses>>();
 
 const SKIPPABLE_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
+
+// Cap for repo-independent git fan-outs (project discovery).
+const DISCOVERY_CONCURRENCY = 8;
 
 export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 	const cached = getCachedMiseEnv(dir);
@@ -1152,51 +1156,51 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 		gitDirs.push({name: entry.name, dir});
 	}
 
-	// Gather per-project info in parallel — each project's git calls are independent
-	const results = await Promise.all(
-		gitDirs.map(async ({name, dir}) => {
-			const {upstreamRemote, upstreamBranch} = parseEnvrc(dir);
-			const upstreamRef = `${upstreamRemote}/${upstreamBranch}`;
+	// Gather per-project info with bounded concurrency — each project's git calls
+	// are independent, but an unbounded fan-out spawns hundreds of subprocesses
+	// at once on a large projects dir.
+	const results = await mapWithConcurrency(gitDirs, DISCOVERY_CONCURRENCY, async ({name, dir}) => {
+		const {upstreamRemote, upstreamBranch} = parseEnvrc(dir);
+		const upstreamRef = `${upstreamRemote}/${upstreamBranch}`;
 
-			if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
+		if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
 
-			const [canonicalRepo, originUrl, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
-				getCanonicalRepo(dir, upstreamRemote),
-				git(dir, "remote", "get-url", "origin"),
-				isDirty(dir),
-				isDetachedHead(dir),
-				git(dir, "branch", "--list"),
-				hasTestConfigured(dir),
-			]);
+		const [canonicalRepo, originUrl, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
+			getCanonicalRepo(dir, upstreamRemote),
+			git(dir, "remote", "get-url", "origin"),
+			isDirty(dir),
+			isDetachedHead(dir),
+			git(dir, "branch", "--list"),
+			hasTestConfigured(dir),
+		]);
 
-			const ghRemote = `${canonicalRepo.owner}/${canonicalRepo.name}`;
-			const originParsed = parseRemoteUrl(originUrl);
-			const originRemote = originParsed ? `${originParsed.owner}/${originParsed.name}` : ghRemote;
-			const branchCount = branchList
-				.split("\n")
-				.filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
-				.filter(Boolean).length;
+		const ghRemote = `${canonicalRepo.owner}/${canonicalRepo.name}`;
+		const originParsed = parseRemoteUrl(originUrl);
+		const originRemote = originParsed ? `${originParsed.owner}/${originParsed.name}` : ghRemote;
+		const branchCount = branchList
+			.split("\n")
+			.filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
+			.filter(Boolean).length;
 
-			const rebaseInProgress =
-				fs.existsSync(path.join(dir, ".git", "rebase-merge")) ||
-				fs.existsSync(path.join(dir, ".git", "rebase-apply"));
+		const rebaseInProgress =
+			fs.existsSync(path.join(dir, ".git", "rebase-merge")) ||
+			fs.existsSync(path.join(dir, ".git", "rebase-apply"));
 
-			return {
-				name,
-				dir,
-				remote: ghRemote,
-				originRemote,
-				upstreamRemote,
-				upstreamBranch,
-				upstreamRef,
-				dirty: dirtyFlag,
-				detachedHead: detached,
-				branchCount,
-				hasTestConfigured: hasTest,
-				rebaseInProgress,
-			} satisfies ProjectInfo;
-		}),
-	);
+		return {
+			name,
+			dir,
+			remote: ghRemote,
+			originRemote,
+			upstreamRemote,
+			upstreamBranch,
+			upstreamRef,
+			dirty: dirtyFlag,
+			detachedHead: detached,
+			branchCount,
+			hasTestConfigured: hasTest,
+			rebaseInProgress,
+		} satisfies ProjectInfo;
+	});
 
 	return results.filter((p): p is ProjectInfo => p !== null);
 }

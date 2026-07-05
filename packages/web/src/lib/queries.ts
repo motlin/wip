@@ -14,6 +14,7 @@ import {
 	getTestLog,
 	generateAdvancePlan,
 	runAllCounts,
+	getSystemStatus,
 } from "./server-fns";
 
 export const projectsQueryOptions = () =>
@@ -65,6 +66,14 @@ export const runAllCountsQueryOptions = () =>
 		queryKey: ["runAllCounts"],
 		queryFn: () => runAllCounts(),
 		staleTime: 10_000,
+	});
+
+export const systemStatusQueryOptions = () =>
+	queryOptions({
+		queryKey: ["systemStatus"],
+		queryFn: () => getSystemStatus(),
+		staleTime: 30_000,
+		refetchInterval: 60_000,
 	});
 
 export const advancePlanQueryOptions = () =>

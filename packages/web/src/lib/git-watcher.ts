@@ -2,14 +2,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {log} from "@wip/shared/services/logger-pino.js";
 import type {ProjectInfo} from "@wip/shared";
+import {isWatcherSuppressed} from "./watch-suppression.js";
 
 const DEBOUNCE_MS = 500;
-const IGNORED_GIT_PATHS = new Set(["objects", "logs", "lfs", "hooks"]);
-const IGNORED_FILE_SUFFIXES = [".lock", "COMMIT_EDITMSG", "FETCH_HEAD", "ORIG_HEAD"];
+// `index` matters: git rewrites it on nearly every read-ish operation
+// (status, diff), so reacting to it loops the watcher against our own
+// refreshes and anything else touching the repo.
+const IGNORED_FILE_SUFFIXES = [".lock", "COMMIT_EDITMSG", "FETCH_HEAD", "ORIG_HEAD", "index"];
 
 interface WatchedProject {
 	name: string;
-	watcher: fs.FSWatcher;
+	watchers: fs.FSWatcher[];
 	debounceTimer: NodeJS.Timeout | null;
 }
 
@@ -18,8 +21,6 @@ let started = false;
 let refresh: ((projectName: string) => Promise<unknown>) | null = null;
 
 function shouldIgnore(relPath: string): boolean {
-	const firstSegment = relPath.split(path.sep)[0];
-	if (firstSegment && IGNORED_GIT_PATHS.has(firstSegment)) return true;
 	return IGNORED_FILE_SUFFIXES.some((suffix) => relPath.endsWith(suffix));
 }
 
@@ -27,6 +28,9 @@ function triggerRefresh(project: WatchedProject): void {
 	if (project.debounceTimer) clearTimeout(project.debounceTimer);
 	project.debounceTimer = setTimeout(() => {
 		project.debounceTimer = null;
+		// Checked at fire time, not event time: our own refresh work (fetch,
+		// prune) writes into .git and would otherwise loop the watcher forever.
+		if (isWatcherSuppressed(project.name)) return;
 		refresh?.(project.name).catch((error) => {
 			log.general.error({project: project.name, error}, "git-watcher refresh failed");
 		});
@@ -37,19 +41,32 @@ function watchProject(p: ProjectInfo): WatchedProject | null {
 	const gitDir = path.join(p.dir, ".git");
 	if (!fs.existsSync(gitDir)) return null;
 
+	// Watch only ref state, never the whole .git dir: a recursive watch on
+	// sixty repos (objects/, index churn) drove fseventsd to a full core all
+	// by itself. HEAD + packed-refs live in .git (non-recursive); branch tips
+	// live under .git/refs (small, safe to watch recursively).
 	try {
 		const project: WatchedProject = {
 			name: p.name,
-			watcher: fs.watch(gitDir, {recursive: true}, (_event, filename) => {
-				if (!filename) return;
-				if (shouldIgnore(filename)) return;
-				triggerRefresh(project);
-			}),
+			watchers: [],
 			debounceTimer: null,
 		};
-		project.watcher.on("error", (error) => {
-			log.general.error({project: p.name, error}, "git-watcher fs.watch error");
-		});
+		const onChange = (_event: string, filename: string | Buffer | null) => {
+			if (!filename) return;
+			if (shouldIgnore(String(filename))) return;
+			triggerRefresh(project);
+		};
+
+		project.watchers.push(fs.watch(gitDir, {recursive: false}, onChange));
+		const refsDir = path.join(gitDir, "refs");
+		if (fs.existsSync(refsDir)) {
+			project.watchers.push(fs.watch(refsDir, {recursive: true}, onChange));
+		}
+		for (const watcher of project.watchers) {
+			watcher.on("error", (error) => {
+				log.general.error({project: p.name, error}, "git-watcher fs.watch error");
+			});
+		}
 		return project;
 	} catch (error) {
 		log.general.error({project: p.name, error}, "git-watcher failed to watch .git");
@@ -59,7 +76,9 @@ function watchProject(p: ProjectInfo): WatchedProject | null {
 
 function unwatchProject(project: WatchedProject): void {
 	if (project.debounceTimer) clearTimeout(project.debounceTimer);
-	project.watcher.close();
+	for (const watcher of project.watchers) {
+		watcher.close();
+	}
 }
 
 function syncWatchers(projects: ProjectInfo[]): void {
@@ -83,9 +102,12 @@ export async function startGitWatcher(): Promise<void> {
 	if (started) return;
 	started = true;
 
-	const {getProjects, refreshProjectChildren} = await import("./server-fns.js");
+	const {getProjects} = await import("./server-fns.js");
 	const {projectEmitter} = await import("./project-events.js");
-	refresh = refreshProjectChildren;
+	const {enqueueProjectRefresh} = await import("./background-refresh.js");
+	refresh = async (projectName: string) => {
+		enqueueProjectRefresh(projectName, {force: true});
+	};
 
 	projectEmitter.on("projects", (projects: ProjectInfo[]) => {
 		syncWatchers(projects);

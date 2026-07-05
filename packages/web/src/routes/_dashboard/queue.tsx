@@ -3,11 +3,12 @@ import {useSuspenseQuery} from "@tanstack/react-query";
 import {Play, Loader2, GitBranch, ClipboardList} from "lucide-react";
 import {useState, useMemo, useCallback} from "react";
 import {testAllChildren, rebaseAllChildren} from "../../lib/server-fns";
-import {useHasActiveTests} from "../../lib/task-events-context";
+import {useHasActiveTests} from "../../lib/server-events-context";
 import {projectsQueryOptions} from "../../lib/queries";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
+import {SystemStatus} from "../../components/system-status";
 import {classifyGitChild, classifyIssue, classifyTodo} from "../../lib/classify";
 import type {Category} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotClass} from "../../lib/category-actions";
@@ -372,6 +373,7 @@ function QueueLayout() {
 							<span className="text-sm text-text-500">
 								{totalCount} items across {workItems.projectCount} projects
 							</span>
+							<SystemStatus />
 						</div>
 						<div className="flex items-center gap-2">
 							{/* View toggle */}

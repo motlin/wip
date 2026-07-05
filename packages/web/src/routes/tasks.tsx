@@ -3,8 +3,7 @@ import {useSuspenseQuery, useQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
-import {useTaskEvents, type TaskEvent} from "../lib/use-task-events";
-import {useHasActiveTests} from "../lib/task-events-context";
+import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context";
 import {
 	Clock,
 	Play,
@@ -268,7 +267,7 @@ function groupTasks(
 
 function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
-	const {tasks: liveJobs} = useTaskEvents();
+	const {tasks: liveJobs} = useAllTasks();
 	const {data: runCounts} = useQuery(runAllCountsQueryOptions());
 	const [testingAll, setTestingAll] = useState(false);
 	const [groupBy, setGroupBy] = useState<GroupBy>("project");

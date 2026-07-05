@@ -21,7 +21,11 @@ function applyTheme(theme: Theme) {
 }
 
 export function useTheme() {
-	const [theme, setThemeState] = useState<Theme>(() => getStoredTheme() ?? getSystemTheme());
+	// Always start from the server default. Reading localStorage in the
+	// initializer makes the hydration render differ from the SSR HTML, and the
+	// resulting mismatch throws away the whole server-rendered tree. The
+	// effects below sync to the real preference right after hydration.
+	const [theme, setThemeState] = useState<Theme>("light");
 
 	const setTheme = useCallback((t: Theme) => {
 		localStorage.setItem("theme", t);

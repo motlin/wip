@@ -8,16 +8,13 @@ import {
 	findIncompleteTodoTasks,
 	getAllSnoozedForDisplay,
 	getBranchNames,
-	getChildren,
 	getChildCommits,
 	getMiseEnv,
 	getPrStatuses,
 	getProjectsDirs,
 	getRemoteBranchInfo,
-	pruneRemote,
 	getSnoozedSet,
 	getTestLogDir,
-	getTestResultsForProject,
 	invalidatePrCache,
 	invalidateIssuesCache,
 	invalidateProjectItemsCache,
@@ -35,6 +32,8 @@ import {
 	cacheChildren,
 	invalidateChildrenCache,
 	isCacheFresh,
+	getCacheFreshnessByPrefix,
+	getGitHubRateLimitState,
 	getCachedTodos,
 	cacheTodos,
 	invalidateTodosCache,
@@ -74,6 +73,7 @@ import {
 } from "@wip/shared";
 
 import {log} from "@wip/shared/services/logger-pino.js";
+import {enqueueRefresh} from "./refresh-scheduler.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import {classifyGitChild} from "./classify.js";
@@ -153,7 +153,13 @@ async function ensureProjects(): Promise<void> {
 	if (fromDb) {
 		cachedProjects = fromDb;
 		cachedProjectsTime = Date.now();
-		refreshProjectCache().catch(() => {});
+		enqueueRefresh({
+			kind: "discovery",
+			project: "",
+			run: async () => {
+				await refreshProjectCache();
+			},
+		});
 		return;
 	}
 	await refreshProjectCache();
@@ -179,132 +185,132 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 	const existing = inflightChildrenRefresh.get(projectName);
 	if (existing) return existing;
 
-	const promise = traced("refreshProjectChildren", async () => {
-		let p: ProjectInfo;
-		try {
-			p = await resolveProject(projectName);
-		} catch (error: unknown) {
-			log.general.error({project: projectName, error}, "Project resolution failed");
-			return [];
-		}
-
-		const prStatuses = await getPrStatuses(p.dir, p.name, p.upstreamRemote);
-
-		const upstreamSha = getCachedUpstreamSha(p.name);
-		const mergeStatusMap = new Map<
-			string,
-			{commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}
-		>();
-		if (upstreamSha) {
-			for (const ms of getCachedMergeStatuses(p.name, upstreamSha)) {
-				mergeStatusMap.set(ms.sha, ms);
+	const {suppressWatcherEvents} = await import("./watch-suppression.js");
+	const promise = suppressWatcherEvents(projectName, () =>
+		traced("refreshProjectChildren", async () => {
+			let p: ProjectInfo;
+			try {
+				p = await resolveProject(projectName);
+			} catch (error: unknown) {
+				log.general.error({project: projectName, error}, "Project resolution failed");
+				return [];
 			}
-		}
 
-		// Prune stale remote tracking refs so deleted GitHub branches stop being
-		// reported as `pushedToRemote: true`. Runs before reading branch state in
-		// parallel below — both `getChildCommits` and `getRemoteBranchInfo` read
-		// `git branch -r`, so a single prune cleans up both reads.
-		await pruneRemote(p.dir, p.upstreamRemote);
+			const prStatuses = await getPrStatuses(p.dir, p.name, p.upstreamRemote);
 
-		const [children, remoteBranchInfo] = await Promise.all([
-			getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap),
-			getRemoteBranchInfo(p.dir),
-		]);
-
-		// Discover branches that need rebase (upstream is not an ancestor)
-		const needsRebaseBranches = await getNeedsRebaseBranches(
-			p.dir,
-			p.upstreamRef,
-			p.name,
-			prStatuses,
-			remoteBranchInfo.remoteBranches,
-			remoteBranchInfo.remoteBranchRefs,
-			mergeStatusMap,
-		);
-
-		clearExpiredSnoozes();
-		const snoozedSet = getSnoozedSet();
-		const seen = new Set<string>();
-		const allChildren = [...children, ...needsRebaseBranches].filter((c) => {
-			if (snoozedSet.has(`${p.name}:${c.sha}`)) return false;
-			if (seen.has(c.sha)) return false;
-			seen.add(c.sha);
-			return true;
-		});
-
-		// Collect all children that need branch name suggestions and fetch cached names up front
-		const defaultBranchPattern = /^(main|master)$/;
-		const namingKeys = allChildren
-			.filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
-			.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir}));
-		const cachedNames = namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
-
-		// Fire off background naming for any uncached items
-		const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
-		if (uncachedKeys.length > 0) {
-			suggestBranchNames(uncachedKeys).catch(() => {});
-		}
-
-		const headSha = (await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})).stdout.trim();
-
-		const results: GitChildResult[] = allChildren.map((child) => {
-			// Read failure tail for failed tests
-			let failureTail: string | undefined;
-			if (child.testStatus === "failed") {
-				const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
-				if (fs.existsSync(logPath)) {
-					const content = fs.readFileSync(logPath, "utf-8").trimEnd();
-					const lines = content.split("\n");
-					failureTail = lines.slice(-5).join("\n");
+			const upstreamSha = getCachedUpstreamSha(p.name);
+			const mergeStatusMap = new Map<
+				string,
+				{commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}
+			>();
+			if (upstreamSha) {
+				for (const ms of getCachedMergeStatuses(p.name, upstreamSha)) {
+					mergeStatusMap.set(ms.sha, ms);
 				}
 			}
 
-			const ms = mergeStatusMap.get(child.sha);
-			const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
+			const [children, remoteBranchInfo] = await Promise.all([
+				getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap),
+				getRemoteBranchInfo(p.dir),
+			]);
 
-			return {
-				project: p.name,
-				remote: p.remote,
-				originRemote: p.originRemote,
-				sha: child.sha,
-				shortSha: child.shortSha,
-				subject: child.subject,
-				date: child.date,
-				branch: child.branch,
-				testStatus: child.testStatus,
-				checkStatus: child.checkStatus,
-				skippable: child.skippable,
-				pushedToRemote: child.pushedToRemote,
-				localAhead: child.localAhead,
-				needsRebase: child.needsRebase,
-				reviewStatus: child.reviewStatus,
-				prUrl: child.prUrl,
-				prNumber: child.prNumber,
-				failedChecks: child.failedChecks,
-				commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
-				commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
-				rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
-				mergeStateStatus: child.mergeStateStatus,
-				alreadyOnRemote: child.alreadyOnRemote,
-				failureTail,
-				suggestedBranch: child.branch && !defaultBranchPattern.test(child.branch) ? undefined : suggestedBranch,
-				blockReason:
-					child.branch && p.dirty && child.sha === headSha
-						? `Working tree is dirty — commit changes in ${p.name} before testing`
-						: undefined,
-				blockCommand:
-					child.branch && p.dirty && child.sha === headSha
-						? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
-						: undefined,
-			};
-		});
+			// Discover branches that need rebase (upstream is not an ancestor)
+			const needsRebaseBranches = await getNeedsRebaseBranches(
+				p.dir,
+				p.upstreamRef,
+				p.name,
+				prStatuses,
+				remoteBranchInfo.remoteBranches,
+				remoteBranchInfo.remoteBranchRefs,
+				mergeStatusMap,
+			);
 
-		cacheChildren(projectName, results);
-		const {childrenEmitter} = await import("./children-events.js");
-		childrenEmitter.emit("children", {project: projectName, children: results});
-		return results;
-	});
+			clearExpiredSnoozes();
+			const snoozedSet = getSnoozedSet();
+			const seen = new Set<string>();
+			const allChildren = [...children, ...needsRebaseBranches].filter((c) => {
+				if (snoozedSet.has(`${p.name}:${c.sha}`)) return false;
+				if (seen.has(c.sha)) return false;
+				seen.add(c.sha);
+				return true;
+			});
+
+			// Collect all children that need branch name suggestions and fetch cached names up front
+			const defaultBranchPattern = /^(main|master)$/;
+			const namingKeys = allChildren
+				.filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
+				.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir}));
+			const cachedNames = namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
+
+			// Fire off background naming for any uncached items
+			const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
+			if (uncachedKeys.length > 0) {
+				suggestBranchNames(uncachedKeys).catch(() => {});
+			}
+
+			const headSha = (
+				await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})
+			).stdout.trim();
+
+			const results: GitChildResult[] = allChildren.map((child) => {
+				// Read failure tail for failed tests
+				let failureTail: string | undefined;
+				if (child.testStatus === "failed") {
+					const logPath = path.join(getTestLogDir(p.name), `${child.sha}.log`);
+					if (fs.existsSync(logPath)) {
+						const content = fs.readFileSync(logPath, "utf-8").trimEnd();
+						const lines = content.split("\n");
+						failureTail = lines.slice(-5).join("\n");
+					}
+				}
+
+				const ms = mergeStatusMap.get(child.sha);
+				const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
+
+				return {
+					project: p.name,
+					remote: p.remote,
+					originRemote: p.originRemote,
+					sha: child.sha,
+					shortSha: child.shortSha,
+					subject: child.subject,
+					date: child.date,
+					branch: child.branch,
+					testStatus: child.testStatus,
+					checkStatus: child.checkStatus,
+					skippable: child.skippable,
+					pushedToRemote: child.pushedToRemote,
+					localAhead: child.localAhead,
+					needsRebase: child.needsRebase,
+					reviewStatus: child.reviewStatus,
+					prUrl: child.prUrl,
+					prNumber: child.prNumber,
+					failedChecks: child.failedChecks,
+					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
+					commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
+					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+					mergeStateStatus: child.mergeStateStatus,
+					alreadyOnRemote: child.alreadyOnRemote,
+					failureTail,
+					suggestedBranch:
+						child.branch && !defaultBranchPattern.test(child.branch) ? undefined : suggestedBranch,
+					blockReason:
+						child.branch && p.dirty && child.sha === headSha
+							? `Working tree is dirty — commit changes in ${p.name} before testing`
+							: undefined,
+					blockCommand:
+						child.branch && p.dirty && child.sha === headSha
+							? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
+							: undefined,
+				};
+			});
+
+			cacheChildren(projectName, results);
+			const {childrenEmitter} = await import("./children-events.js");
+			childrenEmitter.emit("children", {project: projectName, children: results});
+			return results;
+		}),
+	);
 
 	inflightChildrenRefresh.set(projectName, promise);
 	try {
@@ -314,15 +320,21 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 	}
 }
 
-const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
-const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
+export const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
+export const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export async function getProjectChildrenHandler(project: string): Promise<ProjectChildrenResult> {
 	return traced("getProjectChildren", async () => {
 		const cached = getCachedChildren(project);
 		if (cached) {
 			if (isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS)) return cached;
-			refreshProjectChildren(project).catch(() => {});
+			enqueueRefresh({
+				kind: "children",
+				project,
+				run: async () => {
+					await refreshProjectChildren(project);
+				},
+			});
 			return cached;
 		}
 		return refreshProjectChildren(project);
@@ -335,7 +347,7 @@ export const getProjectChildren = createServerFn({method: "GET"})
 
 const inflightTodosRefresh = new Map<string, Promise<SharedTodoItem[]>>();
 
-async function refreshProjectTodos(projectName: string): Promise<SharedTodoItem[]> {
+export async function refreshProjectTodos(projectName: string): Promise<SharedTodoItem[]> {
 	const existing = inflightTodosRefresh.get(projectName);
 	if (existing) return existing;
 
@@ -377,37 +389,18 @@ export const getProjectTodos = createServerFn({method: "GET"})
 				const cached = getCachedTodos(data.project);
 				if (cached) {
 					if (isCacheFresh(`todos:${data.project}`, TODOS_CACHE_TTL_MS)) return cached;
-					refreshProjectTodos(data.project).catch(() => {});
+					enqueueRefresh({
+						kind: "todos",
+						project: data.project,
+						run: async () => {
+							await refreshProjectTodos(data.project);
+						},
+					});
 					return cached;
 				}
 				return refreshProjectTodos(data.project);
 			}),
 	);
-
-let inflightRefreshAll: Promise<void> | null = null;
-
-export async function refreshAllCaches(): Promise<void> {
-	if (inflightRefreshAll) return inflightRefreshAll;
-
-	inflightRefreshAll = (async () => {
-		await ensureProjects();
-		const projects = cachedProjects!;
-		for (const p of projects) {
-			try {
-				await refreshProjectChildren(p.name);
-				await refreshProjectTodos(p.name);
-			} catch (e) {
-				log.general.error({project: p.name, error: e}, "Background cache refresh failed");
-			}
-		}
-	})();
-
-	try {
-		await inflightRefreshAll;
-	} finally {
-		inflightRefreshAll = null;
-	}
-}
 
 export const getIssues = createServerFn({method: "GET"}).handler(async () =>
 	traced("getIssues", async () => {
@@ -580,27 +573,22 @@ export const testChild = createServerFn({method: "POST"})
 				const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
 				const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
 
-				// Validate transition: run_test can be done from ready_to_test or test_failed
-				// We can't fully classify without more data, so we check the basic conditions
-				// Only check dirty state if operating on HEAD
+				// Reject invalid transitions loudly — the card renders the thrown
+				// message, instead of enqueueing a test that cannot run.
+				// Only check dirty state if operating on HEAD.
 				const headSha = (
 					await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})
 				).stdout.trim();
 				if (p.dirty && data.sha === headSha) {
-					log.subprocess.debug(
-						{project: data.project, sha: data.sha},
-						"Cannot run test: project has local changes",
+					throw new Error(
+						`Cannot run test: ${data.project} has uncommitted changes — commit them first (cd ${p.dir} && claude --permission-mode acceptEdits /git:commit)`,
 					);
-				} else if (p.detachedHead && data.sha === headSha) {
-					log.subprocess.debug(
-						{project: data.project, sha: data.sha},
-						"Cannot run test: project in detached HEAD state",
-					);
-				} else if (!p.hasTestConfigured) {
-					log.subprocess.debug(
-						{project: data.project, sha: data.sha},
-						"Cannot run test: no test configured for project",
-					);
+				}
+				if (p.detachedHead && data.sha === headSha) {
+					throw new Error(`Cannot run test: ${data.project} is in detached HEAD state`);
+				}
+				if (!p.hasTestConfigured) {
+					throw new Error(`Cannot run test: no test configured for ${data.project}`);
 				}
 
 				const {enqueueTest} = await import("./task-queue.js");
@@ -634,61 +622,38 @@ interface PlannedTest {
 	branch?: string;
 }
 
+/**
+ * How planners read a project's children. Count queries use cached children
+ * only (no subprocess or API work on a GET path); the click handlers use the
+ * regular cached-or-refresh read so what gets enqueued reflects reality.
+ */
+type ChildrenReader = (project: ProjectInfo) => Promise<ProjectChildrenResult>;
+
+const readCachedChildren: ChildrenReader = async (p) => getCachedChildren(p.name) ?? [];
+const readFreshChildren: ChildrenReader = async (p) => getProjectChildrenHandler(p.name);
+
 // Discover the untested child commits that "Run All Tests" would enqueue, without
-// touching the task queue. Shared by the background enqueue and the count query so
-// the button's (N) always matches what a click actually queues.
-async function planTestAll(): Promise<PlannedTest[]> {
-	const projectsDirs = getProjectsDirs();
-	const projects = await discoverAllProjects(projectsDirs);
+// touching the task queue. Uses the same classification as the queue UI so the
+// button's (N) always matches what a click actually queues.
+async function planTestAll(readChildren: ChildrenReader): Promise<PlannedTest[]> {
+	await ensureProjects();
+	const projects = cachedProjects!;
 
-	clearExpiredSnoozes();
-	const snoozedSet = getSnoozedSet();
-
-	const SKIP_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
 	const planned: PlannedTest[] = [];
-
 	for (const p of projects) {
 		if (!p.hasTestConfigured) continue;
 
-		const headSha = p.dirty
-			? (await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})).stdout.trim()
-			: undefined;
-
-		const childShas = await getChildren(p.dir, p.upstreamRef);
-		if (childShas.length === 0) continue;
-
-		const testResults = getTestResultsForProject(p.name);
-
-		const untested = childShas.filter((sha) => {
-			if (testResults.has(sha)) return false;
-			if (snoozedSet.has(`${p.name}:${sha}`)) return false;
-			if (p.dirty && sha === headSha) return false;
-			return true;
-		});
-		if (untested.length === 0) continue;
-
-		const logResult = await tracedExeca(
-			"git",
-			["-C", p.dir, "log", "--stdin", "--no-walk", "--format=%H%x00%h%x00%s%x00%B%x00%D%x1e"],
-			{input: untested.join("\n"), reject: false},
-		);
-		if (logResult.exitCode !== 0) continue;
-
-		for (const record of logResult.stdout.split("\x1e")) {
-			const trimmed = record.replace(/^\n+/, "");
-			if (!trimmed) continue;
-			const splitFields = trimmed.split("\0");
-			const sha = splitFields[0] ?? "";
-			const shortSha = splitFields[1] ?? "";
-			const subject = splitFields[2] ?? "";
-			const fullMessage = splitFields[3] ?? "";
-			const decoration = splitFields[4] ?? "";
-			if (SKIP_PATTERNS.some((pat) => fullMessage.includes(pat))) continue;
-
-			const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
-			const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
-
-			planned.push({project: p.name, projectDir: p.dir, sha, shortSha, subject, branch});
+		const children = await readChildren(p);
+		for (const child of children) {
+			if (classifyGitChild(child, p) !== "ready_to_test") continue;
+			planned.push({
+				project: p.name,
+				projectDir: p.dir,
+				sha: child.sha,
+				shortSha: child.shortSha,
+				subject: child.subject,
+				branch: child.branch,
+			});
 		}
 	}
 	return planned;
@@ -697,7 +662,7 @@ async function planTestAll(): Promise<PlannedTest[]> {
 async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("testAllChildren", async () => {
 		const {enqueueTest} = await import("./task-queue.js");
-		const planned = await planTestAll();
+		const planned = await planTestAll(readFreshChildren);
 		return planned.map((t) => {
 			const job = enqueueTest(t.project, t.projectDir, t.sha, t.shortSha, t.subject, t.branch);
 			return {id: job.id, status: job.status, message: job.message};
@@ -990,6 +955,9 @@ export const refreshChild = createServerFn({method: "POST"})
 			tracedAction("refreshChild", async () => {
 				invalidatePrCache(data.project);
 				invalidateChildrenCache(data.project);
+				// Do the refresh before answering, so "Refreshed" is true and the
+				// client's follow-up read returns the fresh cache.
+				await refreshProjectChildren(data.project);
 				return {ok: true, message: `Refreshed ${data.project}`};
 			}),
 	);
@@ -1333,9 +1301,9 @@ function isDashboardRepo(dir: string): boolean {
  */
 // Discover the branches that "Rebase All" would enqueue, without touching the task
 // queue. Shared by the background enqueue and the count query.
-async function planRebaseAll(): Promise<EnqueueRebaseOptions[]> {
-	const projectsDirs = getProjectsDirs();
-	const projects = await discoverAllProjects(projectsDirs);
+async function planRebaseAll(readChildren: ChildrenReader): Promise<EnqueueRebaseOptions[]> {
+	await ensureProjects();
+	const projects = cachedProjects!;
 
 	const planned: EnqueueRebaseOptions[] = [];
 
@@ -1343,7 +1311,7 @@ async function planRebaseAll(): Promise<EnqueueRebaseOptions[]> {
 		if (p.dirty || !p.hasTestConfigured) continue;
 		if (isDashboardRepo(p.dir)) continue;
 
-		const children = await getProjectChildrenHandler(p.name);
+		const children = await readChildren(p);
 		for (const child of children) {
 			if (!child.branch) continue;
 			if (classifyGitChild(child, p) !== "needs_rebase") continue;
@@ -1369,7 +1337,7 @@ async function planRebaseAll(): Promise<EnqueueRebaseOptions[]> {
 async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
 	return traced("rebaseAllChildren", async () => {
 		const {enqueueRebase} = await import("./task-queue.js");
-		const planned = await planRebaseAll();
+		const planned = await planRebaseAll(readFreshChildren);
 		return planned.map((opts) => {
 			const task = enqueueRebase(opts);
 			return {id: task.id, status: task.status, message: task.message};
@@ -1392,7 +1360,10 @@ export interface RunAllCounts {
 // discovery as the enqueue paths but never mutates the queue.
 async function runAllCountsHandler(): Promise<RunAllCounts> {
 	return traced("runAllCounts", async () => {
-		const [tests, rebases] = await Promise.all([planTestAll(), planRebaseAll()]);
+		const [tests, rebases] = await Promise.all([
+			planTestAll(readCachedChildren),
+			planRebaseAll(readCachedChildren),
+		]);
 		return {readyToTest: tests.length, needsRebase: rebases.length};
 	});
 }
@@ -1504,9 +1475,10 @@ export async function generateAdvancePlanForProjects(
 }
 
 async function generateAdvancePlanHandler(input: GenerateAdvancePlanInput = {}): Promise<AdvancePlanSummary> {
-	return traced("generateAdvancePlan", async () =>
-		generateAdvancePlanForProjects(await discoverAllProjects(getProjectsDirs()), input),
-	);
+	return traced("generateAdvancePlan", async () => {
+		await ensureProjects();
+		return generateAdvancePlanForProjects(cachedProjects!, input);
+	});
 }
 
 export const generateAdvancePlan = createServerFn({method: "POST"})
@@ -1538,3 +1510,22 @@ async function refreshAllHandler(): Promise<ActionResult> {
 }
 
 export const refreshAll = createServerFn({method: "POST"}).handler(async () => refreshAllHandler());
+
+export interface SystemStatus {
+	/** Epoch ms until which GitHub API calls are suppressed, or null when healthy. */
+	rateLimitedUntil: number | null;
+	/** Per-project children cache last-refreshed timestamps (DB format, UTC). */
+	childrenRefreshedAt: Record<string, string>;
+}
+
+async function getSystemStatusHandler(): Promise<SystemStatus> {
+	return traced("getSystemStatus", async () => {
+		const rateLimit = getGitHubRateLimitState();
+		return {
+			rateLimitedUntil: rateLimit.until,
+			childrenRefreshedAt: Object.fromEntries(getCacheFreshnessByPrefix("children:")),
+		};
+	});
+}
+
+export const getSystemStatus = createServerFn({method: "GET"}).handler(async () => getSystemStatusHandler());

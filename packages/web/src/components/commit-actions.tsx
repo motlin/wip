@@ -40,13 +40,13 @@ import {
 	runClaudeCommand,
 } from "../lib/server-fns";
 import {snoozedQueryOptions} from "../lib/queries";
-import {useMergeStatus} from "../lib/merge-events-context";
+import {useMergeStatus} from "../lib/server-events-context";
 import {applyRenameToChild} from "../lib/branch-rename";
 import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns";
 import {CATEGORIES} from "../lib/category-actions";
 import {GitHubIcon} from "./github-icon";
-import {useTestJob} from "../lib/task-events-context";
+import {useTestJob} from "../lib/server-events-context";
 import {pushToast, toastLogs} from "../lib/toast-store";
 
 const SNOOZE_PRESETS = [

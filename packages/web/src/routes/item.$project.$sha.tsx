@@ -33,7 +33,7 @@ import {classifyCommit, classifyBranch, classifyPullRequest} from "../lib/classi
 import {applyTransition} from "@wip/shared";
 import {CATEGORIES, categoryTextClass} from "../lib/category-actions";
 import {branchRemoteUrl} from "../lib/branch-rename";
-import {useTestJob, useTestLog} from "../lib/task-events-context";
+import {useTestJob, useTestLog} from "../lib/server-events-context";
 import {useAutoTail} from "../lib/use-auto-tail";
 
 export const Route = createFileRoute("/item/$project/$sha")({

@@ -64,6 +64,7 @@ export {
 	invalidatePrCache,
 	isCacheFresh,
 	markCacheFresh,
+	getCacheFreshnessByPrefix,
 	getCachedMiseEnv,
 	cacheMiseEnv,
 	getCachedGhLogin,
@@ -224,7 +225,10 @@ export {
 	markGitHubRateLimited,
 	resetGitHubRateLimit,
 	detectRateLimitError,
+	getGitHubRateLimitState,
+	type GitHubRateLimitState,
 } from "./lib/rate-limit.js";
+export {mapWithConcurrency} from "./lib/concurrency.js";
 export {
 	type LogCategory,
 	type LogEntry,

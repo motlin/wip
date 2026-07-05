@@ -9,6 +9,8 @@ import {
 	cachePrStatuses,
 	getCachedPrStatuses,
 	isCacheFresh,
+	markCacheFresh,
+	getCacheFreshnessByPrefix,
 	invalidatePrCache,
 	cacheMergeStatus,
 	getCachedMergeStatuses,
@@ -573,6 +575,21 @@ describe("Cache TTL expiry", () => {
 
 		// But the data is still there
 		expect(getCachedPrStatuses("test-project")).not.toBeNull();
+	});
+
+	it("getCacheFreshnessByPrefix returns matching keys with the prefix stripped", () => {
+		markCacheFresh("children:alpha");
+		markCacheFresh("children:beta");
+		markCacheFresh("todos:alpha");
+
+		const freshness = getCacheFreshnessByPrefix("children:");
+
+		expect([...freshness.keys()].sort()).toStrictEqual(["alpha", "beta"]);
+		expect(freshness.get("alpha")).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+	});
+
+	it("getCacheFreshnessByPrefix returns an empty map when nothing matches", () => {
+		expect(getCacheFreshnessByPrefix("children:")).toStrictEqual(new Map());
 	});
 });
 

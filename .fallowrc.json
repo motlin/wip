@@ -51,6 +51,10 @@
 		{
 			"file": "packages/web/src/lib/task-queue.ts",
 			"exports": ["resetQueue"]
+		},
+		{
+			"file": "packages/web/src/lib/merge-queue.ts",
+			"exports": ["*"]
 		}
 	]
 }

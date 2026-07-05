@@ -1,5 +1,5 @@
 import DatabaseConstructor from "better-sqlite3";
-import {and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql} from "drizzle-orm";
+import {and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql} from "drizzle-orm";
 import {drizzle, type BetterSQLite3Database} from "drizzle-orm/better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -690,6 +690,21 @@ export function markCacheFresh(cacheKey: string): void {
 		.values({cacheKey, lastRefreshed: now()})
 		.onConflictDoUpdate({target: cacheFreshness.cacheKey, set: {lastRefreshed: now()}})
 		.run();
+}
+
+/**
+ * Last-refreshed timestamps for every cache key starting with `prefix`,
+ * keyed by the remainder of the key (e.g. prefix "children:" → project name).
+ * Powers the "updated Xm ago" staleness display.
+ */
+export function getCacheFreshnessByPrefix(prefix: string): Map<string, string> {
+	const d = getDb();
+	const rows = d
+		.select({cacheKey: cacheFreshness.cacheKey, lastRefreshed: cacheFreshness.lastRefreshed})
+		.from(cacheFreshness)
+		.where(like(cacheFreshness.cacheKey, `${prefix}%`))
+		.all();
+	return new Map(rows.map((row) => [row.cacheKey.slice(prefix.length), row.lastRefreshed]));
 }
 
 // PR status cache functions

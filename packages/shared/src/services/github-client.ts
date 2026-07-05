@@ -1,5 +1,6 @@
 import {execa} from "execa";
 
+import {markGitHubRateLimited} from "../lib/rate-limit.js";
 import {log} from "./logger-pino.js";
 
 export interface GitHubClient {
@@ -25,6 +26,14 @@ async function getToken(): Promise<string> {
 	return cachedToken;
 }
 
+function rateLimitResetEpochMs(response: Response): number | undefined {
+	const reset = response.headers.get("x-ratelimit-reset");
+	if (!reset) return undefined;
+	const epochSeconds = Number(reset);
+	if (!Number.isFinite(epochSeconds) || epochSeconds <= 0) return undefined;
+	return epochSeconds * 1000;
+}
+
 function createProductionClient(): GitHubClient {
 	return {
 		async graphql(query: string, variables?: Record<string, unknown>): Promise<unknown> {
@@ -46,8 +55,15 @@ function createProductionClient(): GitHubClient {
 				if (response.status === 401) {
 					throw new Error(`GitHub API authentication failed (401): ${body}`);
 				}
-				if (response.status === 403) {
-					throw new Error(`GitHub API forbidden/rate-limited (403): ${body}`);
+				if (response.status === 403 || response.status === 429) {
+					// A 403 is only a rate limit when GitHub says so — other 403s
+					// (token scopes, SAML, forbidden repos) must not trigger the
+					// global cooldown.
+					if (response.headers.get("x-ratelimit-remaining") === "0" || /rate limit/i.test(body)) {
+						markGitHubRateLimited(rateLimitResetEpochMs(response));
+						throw new Error(`GitHub API rate limited (${response.status}): ${body}`);
+					}
+					throw new Error(`GitHub API forbidden (403): ${body}`);
 				}
 				if (response.status >= 500) {
 					throw new Error(`GitHub API server error (${response.status}): ${body}`);
@@ -55,7 +71,14 @@ function createProductionClient(): GitHubClient {
 				throw new Error(`GitHub API error (${response.status}): ${body}`);
 			}
 
-			return response.json();
+			const payload = (await response.json()) as {errors?: Array<{type?: string; message?: string}>};
+			// GraphQL rate limits arrive as HTTP 200 with an errors array.
+			const rateLimitedError = payload.errors?.find((e) => e.type === "RATE_LIMITED");
+			if (rateLimitedError) {
+				markGitHubRateLimited(rateLimitResetEpochMs(response));
+				throw new Error(`GitHub API rate limited (GraphQL RATE_LIMITED): ${rateLimitedError.message ?? ""}`);
+			}
+			return payload;
 		},
 	};
 }

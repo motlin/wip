@@ -1,8 +1,6 @@
 import {describe, it, expect, vi, beforeEach, type Mock} from "vitest";
 
 vi.mock("@wip/shared", () => ({
-	discoverAllProjects: vi.fn(),
-	getProjectsDirs: vi.fn(),
 	fetchUpstreamRef: vi.fn(),
 	computeMergeStatus: vi.fn(),
 	getChildren: vi.fn(),
@@ -10,20 +8,16 @@ vi.mock("@wip/shared", () => ({
 	getCachedMergeStatuses: vi.fn(),
 }));
 
-import {
-	discoverAllProjects,
-	getProjectsDirs,
-	fetchUpstreamRef,
-	computeMergeStatus,
-	getChildren,
-	cacheMergeStatus,
-	getCachedMergeStatuses,
-} from "@wip/shared";
-import type {ProjectInfo} from "@wip/shared";
-import {mergeStatusToTransition, checkProject, checkAllProjects, emitter} from "./merge-queue";
+vi.mock("./server-fns.js", () => ({
+	getProjects: vi.fn(),
+}));
 
-const mockGetProjectsDirs = getProjectsDirs as Mock;
-const mockDiscoverAllProjects = discoverAllProjects as Mock;
+import {fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from "@wip/shared";
+import type {ProjectInfo} from "@wip/shared";
+import {getProjects} from "./server-fns.js";
+import {mergeStatusToTransition, checkProject, emitter} from "./merge-queue";
+
+const mockGetProjects = getProjects as unknown as Mock;
 const mockFetchUpstreamRef = fetchUpstreamRef as Mock;
 const mockGetChildren = getChildren as Mock;
 const mockGetCachedMergeStatuses = getCachedMergeStatuses as Mock;
@@ -81,8 +75,7 @@ describe("checkProject", () => {
 	});
 
 	it("does nothing when the project is not found", async () => {
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([makeProject({name: "other"})]);
+		mockGetProjects.mockResolvedValue([makeProject({name: "other"})]);
 
 		await checkProject("nonexistent");
 
@@ -91,8 +84,7 @@ describe("checkProject", () => {
 
 	it("does nothing when fetchUpstreamRef returns no sha", async () => {
 		const project = makeProject();
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([project]);
+		mockGetProjects.mockResolvedValue([project]);
 		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: ""});
 
 		await checkProject("test-project");
@@ -102,8 +94,7 @@ describe("checkProject", () => {
 
 	it("emits cached merge status for known child SHAs", async () => {
 		const project = makeProject();
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([project]);
+		mockGetProjects.mockResolvedValue([project]);
 		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
 		mockGetChildren.mockResolvedValue(["child-1"]);
 		mockGetCachedMergeStatuses.mockReturnValue([
@@ -136,8 +127,7 @@ describe("checkProject", () => {
 
 	it("computes and caches merge status for uncached child SHAs", async () => {
 		const project = makeProject();
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([project]);
+		mockGetProjects.mockResolvedValue([project]);
 		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
 		mockGetChildren.mockResolvedValue(["child-2"]);
 		mockGetCachedMergeStatuses.mockReturnValue([]);
@@ -168,8 +158,7 @@ describe("checkProject", () => {
 
 	it("processes a mix of cached and uncached children", async () => {
 		const project = makeProject();
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([project]);
+		mockGetProjects.mockResolvedValue([project]);
 		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
 		mockGetChildren.mockResolvedValue(["cached-sha", "fresh-sha"]);
 		mockGetCachedMergeStatuses.mockReturnValue([
@@ -197,64 +186,5 @@ describe("checkProject", () => {
 		expect(events[1]).toMatchObject({sha: "fresh-sha", transition: "rebase"});
 		expect(mockComputeMergeStatus).toHaveBeenCalledTimes(1);
 		expect(mockCacheMergeStatus).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("checkAllProjects", () => {
-	beforeEach(() => {
-		vi.resetAllMocks();
-		emitter.removeAllListeners();
-	});
-
-	it("checks all discovered projects", async () => {
-		const p1 = makeProject({name: "proj-a", dir: "/tmp/proj-a"});
-		const p2 = makeProject({name: "proj-b", dir: "/tmp/proj-b"});
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([p1, p2]);
-		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "abc"});
-		mockGetChildren.mockResolvedValue([]);
-		mockGetCachedMergeStatuses.mockReturnValue([]);
-
-		await checkAllProjects();
-
-		expect(mockFetchUpstreamRef).toHaveBeenCalledTimes(2);
-	});
-
-	it("continues checking remaining projects when one throws", async () => {
-		const p1 = makeProject({name: "broken", dir: "/tmp/broken"});
-		const p2 = makeProject({name: "good", dir: "/tmp/good"});
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([p1, p2]);
-		mockFetchUpstreamRef
-			.mockRejectedValueOnce(new Error("network failure"))
-			.mockResolvedValueOnce({changed: false, sha: "abc"});
-		mockGetChildren.mockResolvedValue([]);
-		mockGetCachedMergeStatuses.mockReturnValue([]);
-
-		await checkAllProjects();
-
-		expect(mockFetchUpstreamRef).toHaveBeenCalledTimes(2);
-	});
-
-	it("deduplicates concurrent calls", async () => {
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([]);
-
-		const first = checkAllProjects();
-		const second = checkAllProjects();
-
-		await Promise.all([first, second]);
-
-		expect(mockDiscoverAllProjects).toHaveBeenCalledTimes(1);
-	});
-
-	it("allows a new call after the previous one completes", async () => {
-		mockGetProjectsDirs.mockReturnValue(["/tmp/projects"]);
-		mockDiscoverAllProjects.mockResolvedValue([]);
-
-		await checkAllProjects();
-		await checkAllProjects();
-
-		expect(mockDiscoverAllProjects).toHaveBeenCalledTimes(2);
 	});
 });

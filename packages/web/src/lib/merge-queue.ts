@@ -1,13 +1,5 @@
 import {EventEmitter} from "node:events";
-import {
-	discoverAllProjects,
-	getProjectsDirs,
-	fetchUpstreamRef,
-	computeMergeStatus,
-	getChildren,
-	cacheMergeStatus,
-	getCachedMergeStatuses,
-} from "@wip/shared";
+import {fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
 
 interface MergeStatusEvent {
@@ -71,37 +63,12 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 }
 
 export async function checkProject(projectName: string): Promise<void> {
-	const projectsDirs = getProjectsDirs();
-	const projects = await discoverAllProjects(projectsDirs);
+	const {getProjects} = await import("./server-fns.js");
+	const projects = await getProjects();
 	const p = projects.find((proj) => proj.name === projectName);
 	if (!p) return;
-	await checkProjectInfo(p);
-}
-
-let inflightCheckAll: Promise<void> | null = null;
-
-export async function checkAllProjects(): Promise<void> {
-	if (inflightCheckAll) return inflightCheckAll;
-
-	inflightCheckAll = (async () => {
-		const projectsDirs = getProjectsDirs();
-		const projects = await discoverAllProjects(projectsDirs);
-
-		for (const p of projects) {
-			try {
-				await checkProjectInfo(p);
-			} catch (e) {
-				console.error(
-					`[merge-queue] Failed to check merge status for ${p.name}:`,
-					e instanceof Error ? e.message : e,
-				);
-			}
-		}
-	})();
-
-	try {
-		await inflightCheckAll;
-	} finally {
-		inflightCheckAll = null;
-	}
+	// fetchUpstreamRef writes into .git — suppress the watcher so computing
+	// merge status never re-triggers a refresh of the same project.
+	const {suppressWatcherEvents} = await import("./watch-suppression.js");
+	await suppressWatcherEvents(projectName, () => checkProjectInfo(p));
 }

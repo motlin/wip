@@ -17,7 +17,7 @@ import {
 import {advancePlanQueryOptions} from "../lib/queries";
 import {rebaseChild, runClaudeCommand, testChild} from "../lib/server-fns";
 import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary, TestJobStatus} from "../lib/server-fns";
-import {useTaskEvents, type TaskEvent} from "../lib/use-task-events";
+import {useAllTasks, type TaskEvent} from "../lib/server-events-context";
 
 export const Route = createFileRoute("/advance-plan")({
 	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(advancePlanQueryOptions()),
@@ -100,7 +100,7 @@ function taskMessage(result: TestJobStatus): string {
 
 function AdvancePlanPage() {
 	const query = useSuspenseQuery(advancePlanQueryOptions());
-	const {getTask} = useTaskEvents();
+	const {getTask} = useAllTasks();
 	const [refreshing, setRefreshing] = useState(false);
 	const [pendingAction, setPendingAction] = useState<string | null>(null);
 	const [messages, setMessages] = useState<Record<string, ActionMessage>>({});

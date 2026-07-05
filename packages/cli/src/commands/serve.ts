@@ -1,5 +1,6 @@
 import {Command, Flags} from "@oclif/core";
 import {execa} from "execa";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 
@@ -10,7 +11,7 @@ interface ServeJson {
 }
 
 export default class Serve extends Command {
-	static override description = "Start the WIP dashboard web UI";
+	static override description = "Serve the production build of the WIP dashboard web UI";
 
 	static enableJsonFlag = true;
 
@@ -41,9 +42,14 @@ export default class Serve extends Command {
 			return {port: flags.port, webDir, dryRun: true};
 		}
 
+		const serverBuild = path.join(webDir, "dist", "server", "server.js");
+		if (!fs.existsSync(serverBuild)) {
+			this.error(`No production build at ${serverBuild} — run \`just build\` first.`);
+		}
+
 		this.log(`Starting WIP dashboard on http://localhost:${flags.port}`);
 
-		await execa("npx", ["vite", "--port", String(flags.port)], {
+		await execa("node", ["serve.mjs", "--port", String(flags.port)], {
 			cwd: webDir,
 			stdio: "inherit",
 		});

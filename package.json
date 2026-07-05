@@ -15,8 +15,9 @@
 		"oxlint:ci": "vp lint . --format github",
 		"fmt": "vp fmt",
 		"fmt:ci": "vp fmt --check",
-		"fallow": "fallow fix --yes",
+		"fallow": "fallow dead-code",
 		"fallow:ci": "fallow dead-code",
+		"fallow:fix": "fallow fix --yes",
 		"test": "node node_modules/vitest/dist/cli.js",
 		"test:run": "node node_modules/vitest/dist/cli.js run",
 		"prepare": "VITE_GIT_HOOKS=0 vp config"

@@ -30,6 +30,10 @@ async function settle(): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+async function waitForCoalesce(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
 beforeEach(async () => {
 	await resetScheduler();
 });
@@ -202,7 +206,7 @@ describe("scheduler state", () => {
 		expect(getSchedulerState()).toStrictEqual({slots: 2, running: [], queued: []});
 	});
 
-	it("notifies state listeners on enqueue, start, and settle", async () => {
+	it("notifies state listeners with coalesced snapshots ending in the final state", async () => {
 		const snapshots: Array<{running: number; queued: number}> = [];
 		onSchedulerStateChange((state) => {
 			snapshots.push({running: state.running.length, queued: state.queued.length});
@@ -210,13 +214,33 @@ describe("scheduler state", () => {
 
 		const gate = deferred();
 		enqueueRefresh({kind: "children", project: "alpha", run: () => gate.promise});
-		await settle();
+		await waitForCoalesce();
 		gate.resolve();
-		await settle();
+		await waitForCoalesce();
 
-		expect(snapshots.at(0)).toStrictEqual({running: 0, queued: 1});
+		expect(snapshots.length).toBeGreaterThan(0);
+		expect(snapshots.at(0)).toStrictEqual({running: 1, queued: 0});
 		expect(snapshots.at(-1)).toStrictEqual({running: 0, queued: 0});
-		expect(snapshots.some((s) => s.running === 1)).toBe(true);
+	});
+
+	it("does not re-broadcast an unchanged state", async () => {
+		onSchedulerStateChange(() => {});
+		const gate = deferred();
+		enqueueRefresh({kind: "children", project: "alpha", run: () => gate.promise});
+		gate.resolve();
+		await waitForCoalesce();
+
+		const snapshots: unknown[] = [];
+		onSchedulerStateChange((state) => snapshots.push(state));
+
+		const secondGate = deferred();
+		enqueueRefresh({kind: "children", project: "beta", run: () => secondGate.promise});
+		secondGate.resolve();
+		await waitForCoalesce();
+
+		// Job started and settled within one coalescing window: net state is
+		// unchanged (idle → idle), so nothing should have been broadcast.
+		expect(snapshots).toStrictEqual([]);
 	});
 });
 

@@ -1,30 +1,38 @@
-import {createContext, useCallback, useContext, useEffect, useState} from "react";
+import {useCallback, useEffect, useSyncExternalStore} from "react";
 import {useQueryClient, type QueryClient} from "@tanstack/react-query";
-import type {GitChildResult, ProjectInfo, SnoozedChild, TestStatus, TodoItem, Transition} from "@wip/shared";
+import type {GitChildResult, ProjectInfo, SnoozedChild, TestStatus, TodoItem} from "@wip/shared";
 import type {TaskEvent} from "./task-queue";
 import type {RefreshSchedulerState} from "./refresh-scheduler";
 import type {ProjectChildrenResult} from "./server-fns";
+import {createQueryUpdateBatcher} from "./query-update-batcher";
+import {
+	applyMergeEvent,
+	applySchedulerState,
+	applyTaskEvent,
+	getAllTasksSnapshot,
+	getMergeStatusSnapshot,
+	getSchedulerStateSnapshot,
+	getTaskLogSnapshot,
+	getTaskSnapshot,
+	hasActiveTasksSnapshot,
+	subscribeToStoreKey,
+	taskStoreKey,
+	type MergeStatusEvent,
+} from "./server-events-store";
 import {filterSnoozedChildren} from "./snoozed-filter";
 import {pushToast} from "./toast-store";
 
-export type {TaskEvent};
+export type {TaskEvent, MergeStatusEvent};
 
 /**
  * One EventSource for the whole app. Browsers cap HTTP/1.1 connections at six
- * per origin; the previous five parallel SSE streams (plus per-page extras)
- * starved every mutation POST — buttons hung forever with the request stuck
- * "pending" in the browser. All server push now multiplexes over a single
- * /api/events stream as {channel, data} envelopes.
+ * per origin; five parallel SSE streams starved every mutation POST. The
+ * stream feeds the per-key server-events-store (so a task update re-renders
+ * only its own card) and flushes children/todos into the query cache in
+ * batches (so a refresh burst is a handful of renders, not one per event).
  */
 
-export interface MergeStatusEvent {
-	project: string;
-	sha: string;
-	commitsBehind: number;
-	commitsAhead: number;
-	rebaseable: boolean | null;
-	transition?: Transition;
-}
+const QUERY_FLUSH_DELAY_MS = 300;
 
 interface ChildrenEvent {
 	project: string;
@@ -94,34 +102,25 @@ function applyTaskSideEffects(queryClient: QueryClient, data: TaskEvent) {
 	}
 }
 
-const EMPTY_SCHEDULER_STATE: RefreshSchedulerState = {slots: 0, running: [], queued: []};
-
-interface ServerEventsContextValue {
-	tasks: Map<string, TaskEvent>;
-	getTask: (sha: string, project: string) => TaskEvent | undefined;
-	getLog: (sha: string, project: string) => string | undefined;
-	hasActiveTasks: boolean;
-	getMergeStatus: (sha: string, project: string) => MergeStatusEvent | undefined;
-	refreshSchedulerState: RefreshSchedulerState;
-}
-
-const ServerEventsContext = createContext<ServerEventsContextValue>({
-	tasks: new Map(),
-	getTask: () => undefined,
-	getLog: () => undefined,
-	hasActiveTasks: false,
-	getMergeStatus: () => undefined,
-	refreshSchedulerState: EMPTY_SCHEDULER_STATE,
-});
-
 export function ServerEventsProvider({children}: {children: React.ReactNode}) {
-	const [tasks, setTasks] = useState<Map<string, TaskEvent>>(new Map());
-	const [logs, setLogs] = useState<Map<string, string>>(new Map());
-	const [mergeStatuses, setMergeStatuses] = useState<Map<string, MergeStatusEvent>>(new Map());
-	const [refreshSchedulerState, setRefreshSchedulerState] = useState<RefreshSchedulerState>(EMPTY_SCHEDULER_STATE);
 	const queryClient = useQueryClient();
 
 	useEffect(() => {
+		const childrenBatcher = createQueryUpdateBatcher<GitChildResult[]>((updates) => {
+			for (const [project, projectChildren] of updates) {
+				const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
+				queryClient.setQueryData(
+					["children", project],
+					filterSnoozedChildren(projectChildren, project, snoozed),
+				);
+			}
+		}, QUERY_FLUSH_DELAY_MS);
+		const todosBatcher = createQueryUpdateBatcher<TodoItem[]>((updates) => {
+			for (const [project, todos] of updates) {
+				queryClient.setQueryData(["todos", project], todos);
+			}
+		}, QUERY_FLUSH_DELAY_MS);
+
 		const es = new EventSource("/api/events");
 
 		es.onmessage = (event) => {
@@ -134,40 +133,15 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 
 			switch (parsed.channel) {
 				case "task": {
-					const data = parsed.data;
-					const key = `${data.project}:${data.sha}`;
-
-					if (data.type === "log" && data.log) {
-						setLogs((prev) => {
-							const next = new Map(prev);
-							next.set(key, (prev.get(key) ?? "") + data.log);
-							return next;
-						});
-						return;
+					applyTaskEvent(parsed.data);
+					if (parsed.data.type !== "log") {
+						applyTaskSideEffects(queryClient, parsed.data);
 					}
-
-					setTasks((prev) => {
-						const next = new Map(prev);
-						next.set(key, data);
-						return next;
-					});
-					if (data.status === "queued") {
-						setLogs((prev) => {
-							const next = new Map(prev);
-							next.delete(key);
-							return next;
-						});
-					}
-					applyTaskSideEffects(queryClient, data);
 					return;
 				}
 				case "merge": {
 					const data = parsed.data;
-					setMergeStatuses((prev) => {
-						const next = new Map(prev);
-						next.set(`${data.project}:${data.sha}`, data);
-						return next;
-					});
+					applyMergeEvent(data);
 					queryClient.setQueryData<ProjectChildrenResult>(["children", data.project], (old) => {
 						if (!old) return old;
 						return old.map(
@@ -189,18 +163,15 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 					return;
 				}
 				case "children": {
-					const data = parsed.data;
-					const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
-					const filtered = filterSnoozedChildren(data.children, data.project, snoozed);
-					queryClient.setQueryData(["children", data.project], filtered);
+					childrenBatcher.add(parsed.data.project, parsed.data.children);
 					return;
 				}
 				case "todos": {
-					queryClient.setQueryData(["todos", parsed.data.project], parsed.data.todos);
+					todosBatcher.add(parsed.data.project, parsed.data.todos);
 					return;
 				}
 				case "refresh-state": {
-					setRefreshSchedulerState(parsed.data);
+					applySchedulerState(parsed.data);
 					return;
 				}
 				case "refresh-error": {
@@ -214,55 +185,72 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 			}
 		};
 
-		return () => es.close();
+		return () => {
+			es.close();
+			childrenBatcher.cancel();
+			todosBatcher.cancel();
+		};
 	}, [queryClient]);
 
-	const getTask = useCallback(
-		(sha: string, project: string): TaskEvent | undefined => tasks.get(`${project}:${sha}`),
-		[tasks],
-	);
-	const getLog = useCallback(
-		(sha: string, project: string): string | undefined => logs.get(`${project}:${sha}`),
-		[logs],
-	);
-	const getMergeStatus = useCallback(
-		(sha: string, project: string): MergeStatusEvent | undefined => mergeStatuses.get(`${project}:${sha}`),
-		[mergeStatuses],
-	);
-	const hasActiveTasks = Array.from(tasks.values()).some((t) => t.status === "queued" || t.status === "running");
-
-	return (
-		<ServerEventsContext.Provider
-			value={{tasks, getTask, getLog, hasActiveTasks, getMergeStatus, refreshSchedulerState}}
-		>
-			{children}
-		</ServerEventsContext.Provider>
-	);
+	return <>{children}</>;
 }
 
 export function useTestJob(sha: string, project: string): TaskEvent | undefined {
-	return useContext(ServerEventsContext).getTask(sha, project);
+	const subscribe = useCallback(
+		(listener: () => void) => subscribeToStoreKey(`task:${taskStoreKey(project, sha)}`, listener),
+		[project, sha],
+	);
+	return useSyncExternalStore(
+		subscribe,
+		() => getTaskSnapshot(sha, project),
+		() => undefined,
+	);
 }
 
 export function useTestLog(sha: string, project: string): string | undefined {
-	return useContext(ServerEventsContext).getLog(sha, project);
+	const subscribe = useCallback(
+		(listener: () => void) => subscribeToStoreKey(`log:${taskStoreKey(project, sha)}`, listener),
+		[project, sha],
+	);
+	return useSyncExternalStore(
+		subscribe,
+		() => getTaskLogSnapshot(sha, project),
+		() => undefined,
+	);
 }
 
 export function useHasActiveTests(): boolean {
-	return useContext(ServerEventsContext).hasActiveTasks;
+	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("tasks", listener), []);
+	return useSyncExternalStore(subscribe, hasActiveTasksSnapshot, () => false);
 }
 
 export function useMergeStatus(sha: string, project: string): MergeStatusEvent | undefined {
-	return useContext(ServerEventsContext).getMergeStatus(sha, project);
+	const subscribe = useCallback(
+		(listener: () => void) => subscribeToStoreKey(`merge:${taskStoreKey(project, sha)}`, listener),
+		[project, sha],
+	);
+	return useSyncExternalStore(
+		subscribe,
+		() => getMergeStatusSnapshot(sha, project),
+		() => undefined,
+	);
 }
 
 /** Live background-refresh queue state, for the Tasks page's scheduler panel. */
 export function useRefreshSchedulerState(): RefreshSchedulerState {
-	return useContext(ServerEventsContext).refreshSchedulerState;
+	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("scheduler", listener), []);
+	return useSyncExternalStore(subscribe, getSchedulerStateSnapshot, getSchedulerStateSnapshot);
 }
 
 /** Full live task map plus lookups, for the Tasks and Advance Plan pages. */
-export function useAllTasks(): Pick<ServerEventsContextValue, "tasks" | "getTask" | "getLog" | "hasActiveTasks"> {
-	const {tasks, getTask, getLog, hasActiveTasks} = useContext(ServerEventsContext);
-	return {tasks, getTask, getLog, hasActiveTasks};
+export function useAllTasks(): {
+	tasks: Map<string, TaskEvent>;
+	getTask: (sha: string, project: string) => TaskEvent | undefined;
+	getLog: (sha: string, project: string) => string | undefined;
+	hasActiveTasks: boolean;
+} {
+	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("tasks", listener), []);
+	const tasks = useSyncExternalStore(subscribe, getAllTasksSnapshot, getAllTasksSnapshot);
+	const hasActiveTasks = useSyncExternalStore(subscribe, hasActiveTasksSnapshot, () => false);
+	return {tasks, getTask: getTaskSnapshot, getLog: getTaskLogSnapshot, hasActiveTasks};
 }

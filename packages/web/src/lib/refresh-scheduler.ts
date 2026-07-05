@@ -61,12 +61,27 @@ export function onSchedulerStateChange(listener: SchedulerStateListener): () => 
 	return () => stateListeners.delete(listener);
 }
 
+// Coalesce bursts: a page load can enqueue ~60 jobs and each job changes
+// state 2-3 times, which as individual broadcasts re-rendered every client.
+const SCHEDULER_STATE_COALESCE_MS = 100;
+let stateEmitPending = false;
+let lastEmittedState = "";
+
 function emitSchedulerState(): void {
 	if (stateListeners.size === 0) return;
-	const state = getSchedulerState();
-	for (const listener of stateListeners) {
-		listener(state);
-	}
+	if (stateEmitPending) return;
+	stateEmitPending = true;
+	setTimeout(() => {
+		stateEmitPending = false;
+		if (stateListeners.size === 0) return;
+		const state = getSchedulerState();
+		const serialized = JSON.stringify(state);
+		if (serialized === lastEmittedState) return;
+		lastEmittedState = serialized;
+		for (const listener of stateListeners) {
+			listener(state);
+		}
+	}, SCHEDULER_STATE_COALESCE_MS);
 }
 
 type RefreshErrorListener = (event: RefreshErrorEvent) => void;
@@ -148,6 +163,7 @@ export async function resetScheduler(): Promise<void> {
 	running.clear();
 	errorListeners.clear();
 	stateListeners.clear();
+	lastEmittedState = "";
 }
 
 /**

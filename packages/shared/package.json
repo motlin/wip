@@ -46,7 +46,7 @@
 		"@pollyjs/persister-fs": "^6.0.6",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.9.3",
-		"@vitest/coverage-v8": "^4.1.9",
+		"@vitest/coverage-v8": "^4.1.10",
 		"typescript": "^6.0.3",
 		"vite-plus": "catalog:",
 		"vitest": "catalog:"

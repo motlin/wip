@@ -18,6 +18,16 @@ updates:
         patterns:
           - "vite"
           - "@vitejs/*"
+      tanstack-router-start:
+        patterns:
+          - "@tanstack/react-router"
+          - "@tanstack/react-router-with-query"
+          - "@tanstack/react-start"
+      tanstack-query:
+        patterns:
+          - "@tanstack/query-*"
+          - "@tanstack/react-query"
+          - "@tanstack/react-query-*"
       testing:
         patterns:
           - "vitest"

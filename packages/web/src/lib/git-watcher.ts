@@ -98,15 +98,19 @@ function syncWatchers(projects: ProjectInfo[]): void {
 	}
 }
 
-export async function startGitWatcher(): Promise<void> {
+/**
+ * The caller supplies onRepoChange (background-refresh passes its force-refresh
+ * enqueue) so this module never imports background-refresh back — that import
+ * cycle broke tree-shaking and risked initialization-order failures.
+ */
+export async function startGitWatcher(onRepoChange: (projectName: string) => void): Promise<void> {
 	if (started) return;
 	started = true;
 
 	const {getProjects} = await import("./server-fns.js");
 	const {projectEmitter} = await import("./project-events.js");
-	const {enqueueProjectRefresh} = await import("./background-refresh.js");
 	refresh = async (projectName: string) => {
-		enqueueProjectRefresh(projectName, {force: true});
+		onRepoChange(projectName);
 	};
 
 	projectEmitter.on("projects", (projects: ProjectInfo[]) => {

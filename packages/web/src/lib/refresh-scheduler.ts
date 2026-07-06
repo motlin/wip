@@ -8,7 +8,7 @@ import {log} from "@wip/shared/services/logger-pino.js";
  */
 export type RefreshKind = "children" | "todos" | "merge-status" | "discovery";
 
-export interface RefreshErrorEvent {
+interface RefreshErrorEvent {
 	kind: RefreshKind;
 	project: string;
 	message: string;

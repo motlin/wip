@@ -19,7 +19,7 @@ let cachedProjectNames: string[] = [];
  * its cache is still fresh, so the periodic sweep costs nothing while data is
  * current. Pass force=true (manual Refresh) to bypass the freshness gate.
  */
-export function enqueueProjectRefresh(project: string, options: {force?: boolean} = {}): void {
+function enqueueProjectRefresh(project: string, options: {force?: boolean} = {}): void {
 	const force = options.force === true;
 	enqueueRefresh({
 		kind: "children",
@@ -75,7 +75,7 @@ export function ensureBackgroundRefresh(): void {
 
 	void (async () => {
 		const {startGitWatcher} = await import("./git-watcher.js");
-		await startGitWatcher();
+		await startGitWatcher((projectName) => enqueueProjectRefresh(projectName, {force: true}));
 
 		const {getProjects} = await import("./server-fns.js");
 		const {projectEmitter} = await import("./project-events.js");

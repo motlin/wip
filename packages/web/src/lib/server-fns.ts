@@ -1350,7 +1350,7 @@ export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async 
 	return {started: true} as const;
 });
 
-export interface RunAllCounts {
+interface RunAllCounts {
 	readyToTest: number;
 	needsRebase: number;
 }
@@ -1511,7 +1511,7 @@ async function refreshAllHandler(): Promise<ActionResult> {
 
 export const refreshAll = createServerFn({method: "POST"}).handler(async () => refreshAllHandler());
 
-export interface SystemStatus {
+interface SystemStatus {
 	/** Epoch ms until which GitHub API calls are suppressed, or null when healthy. */
 	rateLimitedUntil: number | null;
 	/** Per-project children cache last-refreshed timestamps (DB format, UTC). */

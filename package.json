@@ -25,7 +25,7 @@
 	"devDependencies": {
 		"@typescript/native-preview": "^7.0.0-dev.20260704.1",
 		"@vitest/coverage-v8": "^4.1.10",
-		"fallow": "^3.0.0",
+		"fallow": "^3.2.0",
 		"markdownlint-cli2": "^0.23.0",
 		"typescript": "^6.0.3",
 		"vite": "catalog:",

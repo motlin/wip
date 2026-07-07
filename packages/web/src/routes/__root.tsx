@@ -1,12 +1,14 @@
 import {Outlet, createRootRouteWithContext, HeadContent, Scripts, Link} from "@tanstack/react-router";
 import {ReactQueryDevtools} from "@tanstack/react-query-devtools";
-import type {ReactNode} from "react";
+import {useEffect, useState, type ReactNode} from "react";
 import type {QueryClient} from "@tanstack/react-query";
 import {Sun, Moon} from "lucide-react";
 import appCss from "../styles/globals.css?url";
 import {ServerEventsProvider} from "../lib/server-events-context";
 import {useTheme} from "../lib/use-theme";
 import {Toaster} from "../components/toaster";
+
+type AgentationComponent = typeof import("agentation").Agentation;
 
 export const Route = createRootRouteWithContext<{queryClient: QueryClient}>()({
 	head: () => ({
@@ -85,10 +87,39 @@ function RootComponent() {
 					</nav>
 					<Outlet />
 					<Toaster />
+					<DevelopmentAgentation />
 				</div>
 			</ServerEventsProvider>
 		</RootDocument>
 	);
+}
+
+function DevelopmentAgentation() {
+	const [AgentationComponent, setAgentationComponent] = useState<AgentationComponent | null>(null);
+
+	useEffect(() => {
+		if (!import.meta.env.DEV) {
+			return;
+		}
+
+		let isMounted = true;
+
+		void import("agentation").then(({Agentation}) => {
+			if (isMounted) {
+				setAgentationComponent(() => Agentation);
+			}
+		});
+
+		return () => {
+			isMounted = false;
+		};
+	}, []);
+
+	if (!AgentationComponent) {
+		return null;
+	}
+
+	return <AgentationComponent />;
 }
 
 function RootError({error}: {error: unknown}) {

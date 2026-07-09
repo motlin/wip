@@ -27,7 +27,7 @@
 		"@vitest/coverage-v8": "^4.1.10",
 		"fallow": "^3.2.0",
 		"markdownlint-cli2": "^0.23.0",
-		"typescript": "^6.0.3",
+		"typescript": "^7.0.2",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
 		"vitest": "catalog:"

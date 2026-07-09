@@ -481,6 +481,40 @@ export async function pushChildHandler(data: PushChildInput): Promise<TestJobSta
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
+		const env = await getMiseEnv(p.dir);
+
+		const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
+			reject: false,
+			env,
+		});
+		if (fetch.exitCode !== 0) {
+			return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
+		}
+
+		const branch = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${data.branch}^{commit}`], {
+			reject: false,
+			env,
+		});
+		if (branch.exitCode !== 0) {
+			return {ok: false, message: `Could not resolve branch ${data.branch}: ${branch.stderr}`};
+		}
+
+		const upstream = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${p.upstreamRef}^{commit}`], {
+			reject: false,
+			env,
+		});
+		if (upstream.exitCode !== 0) {
+			return {ok: false, message: `Could not resolve upstream ${p.upstreamRef}: ${upstream.stderr}`};
+		}
+
+		const containsUpstream = await tracedExeca(
+			"git",
+			["-C", p.dir, "merge-base", "--is-ancestor", p.upstreamRef, data.branch],
+			{reject: false, env},
+		);
+		if (containsUpstream.exitCode !== 0) {
+			return {ok: false, message: `${data.branch} is behind ${p.upstreamRef}; rebase before creating a PR`};
+		}
 
 		let headRefName = data.branch;
 		if (p.upstreamRemote !== "origin") {

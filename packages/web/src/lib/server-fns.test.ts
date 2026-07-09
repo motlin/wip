@@ -108,6 +108,13 @@ async function createTestGitRepo(prefix = "wip-test-"): Promise<string> {
 	return dir;
 }
 
+async function createBareRemote(prefix = "wip-remote-"): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), prefix));
+	tmpDirs.push(dir);
+	await execa("git", ["init", "--bare", "--initial-branch=main"], {cwd: dir});
+	return dir;
+}
+
 // -- Shared setup/teardown --
 
 let pollyStop: (() => Promise<void>) | undefined;
@@ -1321,6 +1328,86 @@ describe("pushChildHandler", () => {
 
 		expect(result.id).toBeDefined();
 		expect(result.status).toBe("running");
+	});
+});
+
+describe("createPrHandler", () => {
+	it("refuses to create a PR for a branch behind upstream", async () => {
+		const dir = await createTestGitRepo();
+		const remoteDir = await createBareRemote();
+		await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+		await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/create-pr"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
+		await execa("git", ["-C", dir, "push", "-u", "origin", "feature/create-pr"]);
+		await execa("git", ["-C", dir, "checkout", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Upstream work"]);
+		await execa("git", ["-C", dir, "push", "origin", "main"]);
+		await execa("git", ["-C", dir, "checkout", "feature/create-pr"]);
+
+		seedProjectCache([makeProject({name: "create-pr-behind", dir, remote: "alice/example-repo"})]);
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({
+			project: "create-pr-behind",
+			branch: "feature/create-pr",
+			title: "Feature work",
+			draft: true,
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.message).toContain("feature/create-pr is behind origin/main");
+		expect(result.message).toContain("rebase before creating a PR");
+	});
+
+	it("creates a PR when the branch contains upstream", async () => {
+		const dir = await createTestGitRepo();
+		const remoteDir = await createBareRemote();
+		await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+		await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/current-pr"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Current feature work"]);
+		await execa("git", ["-C", dir, "push", "-u", "origin", "feature/current-pr"]);
+
+		seedProjectCache([makeProject({name: "create-pr-current", dir, remote: "alice/example-repo"})]);
+
+		const {polly, stop} = setupPolly({name: "createPrHandler-current-branch"});
+		pollyStop = stop;
+		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
+			const body = JSON.parse(req.body as string) as {query: string; variables?: Record<string, unknown>};
+			if (body.query.includes("createPullRequest")) {
+				expect(body.variables).toMatchObject({
+					baseRefName: "main",
+					headRefName: "feature/current-pr",
+					title: "Current feature work",
+					body: "",
+					draft: true,
+				});
+				res.status(200).json({
+					data: {
+						createPullRequest: {
+							pullRequest: {url: "https://example.com/alice/example-repo/pull/100"},
+						},
+					},
+				});
+				return;
+			}
+			res.status(200).json({data: {repository: {id: "REPOSITORY_100"}}});
+		});
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({
+			project: "create-pr-current",
+			branch: "feature/current-pr",
+			title: "Current feature work",
+			draft: true,
+		});
+
+		expect(result).toMatchObject({
+			ok: true,
+			message: "Created PR: https://example.com/alice/example-repo/pull/100",
+			compareUrl: "https://example.com/alice/example-repo/pull/100",
+		});
 	});
 });
 

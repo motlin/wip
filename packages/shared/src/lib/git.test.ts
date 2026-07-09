@@ -16,6 +16,7 @@ import {
 	parseRemoteBranchOutput,
 	computeMergeStatus,
 	getChildren,
+	getChildCommits,
 	getNeedsRebaseBranches,
 	getRemoteBranchInfo,
 	pruneRemote,
@@ -787,6 +788,26 @@ describe("getChildren", {timeout: 30_000}, () => {
 
 		const result = await getChildren(tempDir, parentSha);
 		expect(result.sort()).toStrictEqual([childA, childB].sort());
+	});
+
+	it("records the local branch containing an intermediate child commit", async () => {
+		tempDir = createTestGitRepo("owner", "repo");
+		writeFileSync(join(tempDir, "file.txt"), "hello");
+		execSync("git add . && git commit -m 'initial'", {cwd: tempDir, stdio: "ignore"});
+		setupChildrenAlias(tempDir);
+		const upstreamSha = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
+
+		execSync("git checkout -b feature-stack", {cwd: tempDir, stdio: "ignore"});
+		writeFileSync(join(tempDir, "first.txt"), "first");
+		execSync("git add . && git commit -m 'first stack commit'", {cwd: tempDir, stdio: "ignore"});
+		const firstSha = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
+		writeFileSync(join(tempDir, "second.txt"), "second");
+		execSync("git add . && git commit -m 'second stack commit'", {cwd: tempDir, stdio: "ignore"});
+
+		const result = await getChildCommits(tempDir, upstreamSha, false);
+		const firstChild = result.find((child) => child.sha === firstSha);
+		expect(firstChild?.branch).toBeUndefined();
+		expect(firstChild?.containingBranch).toBe("feature-stack");
 	});
 });
 

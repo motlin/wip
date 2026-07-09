@@ -279,6 +279,7 @@ export const ChildCommitSchema = z.object({
 	rebaseable: z.boolean().optional(),
 	mergeStateStatus: MergeStateStatusSchema.optional(),
 	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
+	containingBranch: branchSchema.optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
@@ -343,6 +344,7 @@ export const GitChildResultSchema = z.object({
 	rebaseable: z.boolean().optional(),
 	mergeStateStatus: MergeStateStatusSchema.optional(),
 	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
+	containingBranch: branchSchema.optional(),
 	failureTail: z.string().optional(),
 	suggestedBranch: branchSchema.optional(),
 	blockReason: z.string().optional(),

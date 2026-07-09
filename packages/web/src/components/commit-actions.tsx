@@ -263,7 +263,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 		return () => window.removeEventListener("scroll", handleScroll, true);
 	}, [snoozeOpen, deleteConfirmOpen, renameOpen, fixesConfirmOpen]);
 
-	const pushLabel = "Push";
+	const pushLabel = item.containingBranch ? "Push Split" : "Push";
 
 	const handlePush = async () => {
 		setError(null);

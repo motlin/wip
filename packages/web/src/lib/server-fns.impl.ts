@@ -285,6 +285,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
 					mergeStateStatus: child.mergeStateStatus,
 					alreadyOnRemote: child.alreadyOnRemote,
+					containingBranch: child.containingBranch,
 					failureTail,
 					suggestedBranch:
 						child.branch && !defaultBranchPattern.test(child.branch) ? undefined : suggestedBranch,

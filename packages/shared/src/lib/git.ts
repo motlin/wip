@@ -361,6 +361,22 @@ export function parseBranch(decoration: string): string | undefined {
 	return undefined;
 }
 
+function parseContainingBranch(output: string, defaultBranch?: string): string | undefined {
+	const excludedBranches = new Set(["main", "master"]);
+	if (defaultBranch) excludedBranches.add(defaultBranch);
+
+	const branches = output
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((branch) => branch && !excludedBranches.has(branch));
+	return branches.length === 1 ? branches[0] : undefined;
+}
+
+async function findContainingBranch(dir: string, sha: string, defaultBranch?: string): Promise<string | undefined> {
+	const output = await git(dir, "branch", "--format", "%(refname:short)", "--contains", sha);
+	return parseContainingBranch(output, defaultBranch);
+}
+
 const CheckRunContextSchema = z.object({
 	__typename: z.literal("CheckRun"),
 	name: z.string(),
@@ -987,6 +1003,7 @@ export async function getChildCommits(
 				if (matchedBranch) alreadyOnRemote = {branch: matchedBranch};
 			}
 		}
+		const containingBranch = branch ? undefined : await findContainingBranch(dir, sha, defaultBranch);
 
 		children.push({
 			sha,
@@ -1009,6 +1026,7 @@ export async function getChildCommits(
 			rebaseable,
 			mergeStateStatus,
 			alreadyOnRemote,
+			containingBranch,
 		});
 	}
 

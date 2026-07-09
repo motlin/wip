@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 import {useRef, useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
-import {applyTransition, type GitChildResult, type Category} from "@wip/shared";
+import type {GitChildResult} from "@wip/shared";
+import {applyTransition, type Category} from "@wip/shared/schemas.js";
 import {cancelTestFn} from "../lib/server-fns";
 import {useTestJob} from "../lib/server-events-context";
 import {useMergeStatus} from "../lib/server-events-context";

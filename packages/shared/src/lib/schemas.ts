@@ -217,6 +217,17 @@ export function applyTransition(from: Category, transition: Transition): Categor
 	return match?.to;
 }
 
+export function mapProjectStatusToCategory(status: string): Category {
+	const lower = status.toLowerCase().trim();
+
+	if (lower === "done" || lower === "closed" || lower === "completed") return "approved";
+	if (lower === "in progress" || lower === "active" || lower === "doing" || lower === "started")
+		return "checks_running";
+	if (lower === "in review" || lower === "review") return "checks_passed";
+
+	return "untriaged";
+}
+
 // Reusable validated string schemas
 const shaSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const shortShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/);

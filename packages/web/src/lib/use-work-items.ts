@@ -15,7 +15,7 @@ import type {
 	GitHubIssue,
 	GitHubProjectItem,
 } from "@wip/shared";
-import {mapProjectStatusToCategory} from "@wip/shared";
+import {mapProjectStatusToCategory} from "@wip/shared/schemas.js";
 import type {ProjectChildrenResult} from "./server-fns";
 
 export interface WorkItems {

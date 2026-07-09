@@ -2,7 +2,7 @@ import {z} from "zod";
 
 import {getGitHubClient} from "../services/github-client.js";
 import {log} from "../services/logger-pino.js";
-import {type Category, LabelSchema} from "./schemas.js";
+import {LabelSchema} from "./schemas.js";
 import {getCachedProjectItems, cacheProjectItems, isCacheFresh, invalidateProjectItemsCacheDb} from "./db.js";
 import {detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited} from "./rate-limit.js";
 
@@ -257,42 +257,6 @@ async function fetchViewerLogin(): Promise<string | undefined> {
 	} catch {
 		return undefined;
 	}
-}
-
-/**
- * Map a GitHub Project status string to a kanban Category.
- * Common status names: Todo, In Progress, In Review, Done.
- */
-const KNOWN_PROJECT_STATUSES = new Set([
-	"todo",
-	"backlog",
-	"new",
-	"triage",
-	"in progress",
-	"active",
-	"doing",
-	"started",
-	"in review",
-	"review",
-	"done",
-	"closed",
-	"completed",
-]);
-
-export function mapProjectStatusToCategory(status: string): Category {
-	const lower = status.toLowerCase().trim();
-
-	if (!lower || KNOWN_PROJECT_STATUSES.has(lower)) {
-		/* known or empty */
-	} else log.subprocess.debug({status}, `Unknown project board status: "${status}"`);
-
-	if (lower === "done" || lower === "closed" || lower === "completed") return "approved";
-	if (lower === "in progress" || lower === "active" || lower === "doing" || lower === "started")
-		return "checks_running";
-	if (lower === "in review" || lower === "review") return "checks_passed";
-
-	// Default: treat as untriaged (Todo, Backlog, New, etc.)
-	return "untriaged";
 }
 
 const PROJECT_ITEMS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes

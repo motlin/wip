@@ -10,6 +10,10 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
+		"./schemas.js": {
+			"types": "./src/lib/schemas.ts",
+			"import": "./src/lib/schemas.ts"
+		},
 		"./services/telemetry.js": {
 			"types": "./src/services/telemetry.ts",
 			"import": "./src/services/telemetry.ts"

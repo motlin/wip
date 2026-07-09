@@ -30,7 +30,7 @@ import {
 	snoozedQueryOptions,
 } from "../lib/queries";
 import {classifyCommit, classifyBranch, classifyPullRequest} from "../lib/classify";
-import {applyTransition} from "@wip/shared";
+import {applyTransition} from "@wip/shared/schemas.js";
 import {CATEGORIES, categoryTextClass} from "../lib/category-actions";
 import {branchRemoteUrl} from "../lib/branch-rename";
 import {useTestJob, useTestLog} from "../lib/server-events-context";

@@ -2,7 +2,7 @@ import {createFileRoute, Link, useNavigate} from "@tanstack/react-router";
 import {z} from "zod";
 import {ArrowLeft} from "lucide-react";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../lib/category-actions";
-import {STATE_MACHINE, type Category} from "@wip/shared";
+import {STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
 
 const statesSearchSchema = z.object({
 	state: z.string().optional(),

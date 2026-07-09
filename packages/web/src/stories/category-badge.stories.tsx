@@ -1,5 +1,5 @@
 import type {Meta, StoryObj} from "@storybook/react-vite";
-import {CategorySchema} from "@wip/shared";
+import {CategorySchema} from "@wip/shared/schemas.js";
 import {CategoryBadge} from "../components/category-badge.js";
 
 const meta: Meta<typeof CategoryBadge> = {

@@ -1,4 +1,10 @@
-import {type Category, type Transition, CategorySchema, getTransitionsFrom, STATE_MACHINE} from "@wip/shared";
+import {
+	type Category,
+	type Transition,
+	CategorySchema,
+	getTransitionsFrom,
+	STATE_MACHINE,
+} from "@wip/shared/schemas.js";
 
 export type Action =
 	| "open_pr_link"

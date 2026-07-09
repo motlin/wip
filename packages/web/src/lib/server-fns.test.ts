@@ -7,7 +7,7 @@ import {execa} from "execa";
 
 import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, recordTestResult} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
-import {seedProjectCache, resetProjectCache} from "./server-fns.js";
+import {seedProjectCache, resetProjectCache} from "./server-fns.impl.js";
 import {resetQueue} from "./task-queue.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -147,12 +147,12 @@ describe("server-fns test harness", () => {
 		const project = makeProject({name: "test-project", dir});
 		seedProjectCache([project]);
 
-		// Import getProjects handler indirectly to verify the cache is seeded.
+		// Import getProjectsHandler handler indirectly to verify the cache is seeded.
 		// The handler reads from the module-level cachedProjects variable.
-		const {getProjects} = await import("./server-fns.js");
-		// getProjects is wrapped by createServerFn; we cannot call it directly.
+		const {getProjectsHandler} = await import("./server-fns.impl.js");
+		// getProjectsHandler is wrapped by createServerFn; we cannot call it directly.
 		// This test just verifies the harness wiring is correct.
-		expect(getProjects).toBeDefined();
+		expect(getProjectsHandler).toBeDefined();
 	});
 
 	it("creates a temporary git repo with an initial commit", async () => {
@@ -185,21 +185,21 @@ describe("server-fns test harness", () => {
 	});
 });
 
-// -- getProjects() --
+// -- getProjectsHandler() --
 
-describe("getProjects (underlying logic)", () => {
+describe("getProjectsHandler (underlying logic)", () => {
 	it("returns seeded projects from cache", async () => {
 		const dir = await createTestGitRepo();
 		const project = makeProject({name: "alpha", dir});
 		seedProjectCache([project]);
 
-		// getProjects handler reads from the module-level cachedProjects.
+		// getProjectsHandler handler reads from the module-level cachedProjects.
 		// We verify the seeded data round-trips correctly.
-		const {seedProjectCache: _seed, resetProjectCache: _reset, ...mod} = await import("./server-fns.js");
+		const {seedProjectCache: _seed, resetProjectCache: _reset, ...mod} = await import("./server-fns.impl.js");
 		// The module re-exports seedProjectCache/resetProjectCache but the actual
 		// ensureProjects() pathway returns cachedProjects. We already seeded it,
-		// so test by checking the cache variable indirectly through getProjects being defined.
-		expect(mod.getProjects).toBeDefined();
+		// so test by checking the cache variable indirectly through getProjectsHandler being defined.
+		expect(mod.getProjectsHandler).toBeDefined();
 
 		// Direct assertion: seed two projects, read them back
 		const dir2 = await createTestGitRepo();
@@ -208,7 +208,7 @@ describe("getProjects (underlying logic)", () => {
 
 		// The getCachedProjectList/setCachedProjectList functions go through the DB.
 		// seedProjectCache only sets the in-memory cache.
-		// We can verify by checking the imported module's getProjects is wired.
+		// We can verify by checking the imported module's getProjectsHandler is wired.
 		// Since we can't call createServerFn handlers, verify the seed took hold
 		// by importing and checking that seedProjectCache populates correctly.
 		const {getCachedProjectList, setCachedProjectList} = await import("@wip/shared");
@@ -371,7 +371,7 @@ describe("getTestQueue (underlying logic)", () => {
 
 describe("generateAdvancePlanForProjects", () => {
 	it("returns skipped projects for dirty, detached head, and missing test config", async () => {
-		const {generateAdvancePlanForProjects} = await import("./server-fns.js");
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
 		const projects = [
 			makeProject({name: "dirty-project", dir: "/missing/dirty", dirty: true}),
 			makeProject({name: "detached-project", dir: "/missing/detached", detachedHead: true}),
@@ -390,7 +390,7 @@ describe("generateAdvancePlanForProjects", () => {
 	});
 
 	it("returns noop when a project has no branch units and the baseline is cached green", async () => {
-		const {generateAdvancePlanForProjects} = await import("./server-fns.js");
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
 		const dir = await createTestGitRepo();
 		const baselineSha = (await execa("git", ["-C", dir, "rev-parse", "main"])).stdout.trim();
 		recordTestResult(baselineSha, "noop-project", "passed", 0, 10);
@@ -409,7 +409,7 @@ describe("generateAdvancePlanForProjects", () => {
 	});
 
 	it("returns ready branch summaries for planned branch units", async () => {
-		const {generateAdvancePlanForProjects} = await import("./server-fns.js");
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
 		const dir = await createTestGitRepo();
 		await execa("git", ["-C", dir, "checkout", "-b", "feature/advance-plan"]);
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
@@ -722,9 +722,9 @@ describe("cancelTestFn (underlying logic via task-queue)", () => {
 	});
 });
 
-// -- pushChild (underlying logic with mocked tracedExeca) --
+// -- pushChildHandler (underlying logic with mocked tracedExeca) --
 
-describe("pushChild (underlying logic with mocked tracedExeca)", () => {
+describe("pushChildHandler (underlying logic with mocked tracedExeca)", () => {
 	it("creates branch and pushes when no branch provided", async () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
@@ -775,17 +775,17 @@ describe("pushChild (underlying logic with mocked tracedExeca)", () => {
 		}));
 
 		// Re-import server-fns to pick up the mock
-		const {pushChild: _pushChild} = await import("./server-fns.js");
+		const {pushChildHandler: _pushChild} = await import("./server-fns.impl.js");
 
 		const dir = await createTestGitRepo();
 		const project = makeProject({name: "push-proj", dir});
 		seedProjectCache([project]);
 
 		// Since we cannot call createServerFn handlers directly, verify the underlying
-		// tracedExeca calls that pushChild would make by testing the mock wiring.
+		// tracedExeca calls that pushChildHandler would make by testing the mock wiring.
 		const {tracedExeca: mockedExeca} = await import("@wip/shared/services/traced-execa.js");
 
-		// Simulate what pushChild does: rev-parse HEAD, log, branch create, push
+		// Simulate what pushChildHandler does: rev-parse HEAD, log, branch create, push
 		await mockedExeca("git", ["-C", dir, "rev-parse", "HEAD"], {reject: false});
 		await mockedExeca("git", ["-C", dir, "log", "-1", "--format=%h%x00%s", "abc123"], {
 			reject: false,
@@ -849,7 +849,7 @@ describe("pushChild (underlying logic with mocked tracedExeca)", () => {
 
 		const {tracedExeca: mockedExeca} = await import("@wip/shared/services/traced-execa.js");
 
-		// Simulate pushChild with existing branch: should skip branch creation
+		// Simulate pushChildHandler with existing branch: should skip branch creation
 		const dir = await createTestGitRepo();
 		await mockedExeca("git", ["-C", dir, "rev-parse", "HEAD"], {reject: false});
 		await mockedExeca("git", ["-C", dir, "log", "-1", "--format=%h%x00%s", "bbb123"], {
@@ -1112,7 +1112,7 @@ describe("getProjectChildrenHandler", () => {
 		const project = makeProject({name: "handler-array-test", dir});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("handler-array-test");
 		expect(Array.isArray(result)).toBe(true);
 	});
@@ -1122,7 +1122,7 @@ describe("getProjectChildrenHandler", () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "other-project", dir})]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("nonexistent-project");
 		expect(result).toStrictEqual([]);
 	});
@@ -1134,7 +1134,7 @@ describe("getProjectChildrenHandler", () => {
 		const project = makeProject({name: "children-test", dir, upstreamRef: "main~1"});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("children-test");
 		expect(result.length).toBeGreaterThanOrEqual(1);
 		expect(result[0]!.project).toBe("children-test");
@@ -1158,7 +1158,7 @@ describe("getProjectChildrenHandler", () => {
 		});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("block-test");
 
 		// The HEAD commit on the feature-block branch should have a blockReason
@@ -1187,7 +1187,7 @@ describe("getProjectChildrenHandler", () => {
 		});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("no-block-test");
 
 		const headSha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
@@ -1222,7 +1222,7 @@ describe("getProjectChildrenHandler", () => {
 		});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("ci-fail-test");
 		const child = result.find((c) => c.branch === "ci-fail");
 		expect(child).toBeDefined();
@@ -1256,7 +1256,7 @@ describe("getProjectChildrenHandler", () => {
 		});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("merge-state-test");
 		const child = result.find((c) => c.branch === "blocked-pr");
 		expect(child).toBeDefined();
@@ -1278,7 +1278,7 @@ describe("getProjectChildrenHandler", () => {
 		});
 		seedProjectCache([project]);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.js");
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("snooze-filter-test");
 		const snoozedChild = result.find((c) => c.sha === sha);
 		expect(snoozedChild).toBeUndefined();
@@ -1295,7 +1295,7 @@ describe("pushChildHandler", () => {
 
 		seedProjectCache([makeProject({name: "push-enqueue-handler", dir})]);
 
-		const {pushChildHandler} = await import("./server-fns.js");
+		const {pushChildHandler} = await import("./server-fns.impl.js");
 		const result = await pushChildHandler({
 			project: "push-enqueue-handler",
 			sha,
@@ -1313,7 +1313,7 @@ describe("pushChildHandler", () => {
 
 		seedProjectCache([makeProject({name: "push-branch-derive", dir})]);
 
-		const {pushChildHandler} = await import("./server-fns.js");
+		const {pushChildHandler} = await import("./server-fns.impl.js");
 		const result = await pushChildHandler({
 			project: "push-branch-derive",
 			sha,
@@ -1344,7 +1344,7 @@ describe("rebaseLocalHandler", () => {
 
 		seedProjectCache([makeProject({name: "rebase-handler-test", dir, upstreamRef: "main"})]);
 
-		const {rebaseLocalHandler} = await import("./server-fns.js");
+		const {rebaseLocalHandler} = await import("./server-fns.impl.js");
 		const result = await rebaseLocalHandler({
 			project: "rebase-handler-test",
 			branch: "feature/rebase-me",
@@ -1359,7 +1359,7 @@ describe("rebaseLocalHandler", () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "checkout-fail-test", dir})]);
 
-		const {rebaseLocalHandler} = await import("./server-fns.js");
+		const {rebaseLocalHandler} = await import("./server-fns.impl.js");
 		const result = await rebaseLocalHandler({
 			project: "checkout-fail-test",
 			branch: "nonexistent-branch",
@@ -1388,7 +1388,7 @@ describe("rebaseLocalHandler", () => {
 
 		seedProjectCache([makeProject({name: "rebase-conflict-test", dir, upstreamRef: "main"})]);
 
-		const {rebaseLocalHandler} = await import("./server-fns.js");
+		const {rebaseLocalHandler} = await import("./server-fns.impl.js");
 		const result = await rebaseLocalHandler({
 			project: "rebase-conflict-test",
 			branch: "conflict-branch",

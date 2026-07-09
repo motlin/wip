@@ -39,14 +39,8 @@
 	// tests can import and call them directly, bypassing createServerFn.
 	"ignoreExports": [
 		{
-			"file": "packages/web/src/lib/server-fns.ts",
-			"exports": [
-				"testAllChildrenHandler",
-				"rebaseChildHandler",
-				"rebaseAllChildrenHandler",
-				"refreshAllHandler",
-				"rebaseLocalHandler"
-			]
+			"file": "packages/web/src/lib/server-fns.impl.ts",
+			"exports": ["*"]
 		},
 		{
 			"file": "packages/web/src/lib/task-queue.ts",

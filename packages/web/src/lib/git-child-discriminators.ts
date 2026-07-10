@@ -1,12 +1,7 @@
 import type {GitChildResult} from "@wip/shared";
 
 export function isGitChildPullRequest(child: GitChildResult): boolean {
-	return (
-		child.branch !== undefined &&
-		child.prUrl !== undefined &&
-		child.prNumber != null &&
-		child.reviewStatus !== "no_pr"
-	);
+	return child.branch !== undefined && child.prUrl !== undefined && child.prNumber != null;
 }
 
 export function isGitChildBranch(child: GitChildResult): boolean {

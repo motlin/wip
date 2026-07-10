@@ -3,7 +3,14 @@ import {describe, it, expect} from "vitest";
 import type {GitChildResult, IssueResult, ProjectInfo, TodoItem} from "@wip/shared";
 import {STATE_MACHINE, CategorySchema} from "@wip/shared";
 
-import {classifyBranch, classifyCommit, classifyIssue, classifyPullRequest, classifyTodo} from "./classify";
+import {
+	classifyBranch,
+	classifyCommit,
+	classifyGitChild,
+	classifyIssue,
+	classifyPullRequest,
+	classifyTodo,
+} from "./classify";
 
 function makePR(overrides: Partial<GitChildResult> = {}): GitChildResult {
 	return {
@@ -252,6 +259,14 @@ describe("classifyBranch", () => {
 
 	it("returns no_test when no test configured", () => {
 		expect(classifyBranch(makeBranch(), makeProject({hasTestConfigured: false}))).toBe("no_test");
+	});
+});
+
+describe("classifyGitChild", () => {
+	it("classifies a PR with no reviews as an existing PR, not needs PR", () => {
+		expect(
+			classifyGitChild(makePR({checkStatus: "failed", reviewStatus: "no_pr", localAhead: false}), makeProject()),
+		).toBe("checks_failed");
 	});
 });
 

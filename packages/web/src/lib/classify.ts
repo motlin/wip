@@ -2,6 +2,7 @@ import type {Category, GitChildResult, IssueResult, TodoItem, ProjectInfo} from 
 import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminators";
 
 export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {
+	if (child.kind === "upstream_ci") return "checks_failed";
 	if (isGitChildPullRequest(child)) return classifyPullRequest(child, project);
 	if (isGitChildBranch(child)) return classifyBranch(child, project);
 	return classifyCommit(child, project);

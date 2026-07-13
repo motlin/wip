@@ -429,6 +429,22 @@ const PrGraphQLResponseSchema = z.object({
 	data: z
 		.object({
 			repository: z.object({
+				url: z.string().url().optional(),
+				ref: z
+					.object({
+						target: z.object({
+							oid: z.string(),
+							committedDate: z.string(),
+							statusCheckRollup: z
+								.object({
+									state: z.string().nullable(),
+									contexts: z.object({nodes: z.array(StatusCheckContextSchema)}),
+								})
+								.nullable(),
+						}),
+					})
+					.nullable()
+					.optional(),
 				pullRequests: z.object({
 					nodes: z.array(GraphQLPrNodeSchema),
 				}),
@@ -445,6 +461,18 @@ export interface PrStatuses {
 	behind: Map<string, boolean>;
 	prNumbers: Map<string, number>;
 	mergeStateStatuses: Map<string, MergeStateStatus>;
+	baseBranches: BaseBranchStatus[];
+}
+
+export interface BaseBranchStatus {
+	remote: string;
+	repository: string;
+	repositoryUrl: string;
+	branch: string;
+	sha: string;
+	date: string;
+	checkStatus: CheckStatus;
+	failedChecks: Array<{name: string; url?: string}>;
 }
 
 const AGGREGATE_STATE_TO_CHECK_STATUS: Record<string, CheckStatus> = {
@@ -486,8 +514,27 @@ function extractFailedChecks(contexts: StatusCheckContext[]): Array<{name: strin
 }
 
 const PR_GRAPHQL_QUERY = `
-query($owner: String!, $name: String!) {
+query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
   repository(owner: $owner, name: $name) {
+    url
+    ref(qualifiedName: $qualifiedBaseRef) {
+      target {
+        ... on Commit {
+          oid
+          committedDate
+          statusCheckRollup {
+            state
+            contexts(first: 100) {
+              nodes {
+                __typename
+                ... on CheckRun { name conclusion detailsUrl }
+                ... on StatusContext { context state targetUrl }
+              }
+            }
+          }
+        }
+      }
+    }
     pullRequests(first: 100, states: OPEN) {
       nodes {
         headRefName
@@ -629,7 +676,7 @@ async function getCanonicalRepo(dir: string, upstreamRemote?: string): Promise<{
 	return origin;
 }
 
-function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
+function buildPrStatusesFromCached(cached: CachedPrStatus[], baseBranches: BaseBranchStatus[] = []): PrStatuses {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
 	const urls = new Map<string, string>();
@@ -649,7 +696,7 @@ function buildPrStatusesFromCached(cached: CachedPrStatus[]): PrStatuses {
 			if (parsed.success) mergeStateStatuses.set(s.branch, parsed.data);
 		}
 	}
-	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses};
+	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses, baseBranches};
 }
 
 function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
@@ -670,7 +717,7 @@ function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
 			if (parsed.success) mergeStateStatuses.set(s.branch, parsed.data);
 		}
 	}
-	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses};
+	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses, baseBranches: []};
 }
 
 function emptyPrStatuses(): PrStatuses {
@@ -682,6 +729,7 @@ function emptyPrStatuses(): PrStatuses {
 		behind: new Map(),
 		prNumbers: new Map(),
 		mergeStateStatuses: new Map(),
+		baseBranches: [],
 	};
 }
 
@@ -693,12 +741,19 @@ function emptyPrStatuses(): PrStatuses {
  * API request rather than each firing their own GraphQL query.
  */
 const PR_CACHE_TTL_MS = 10 * 60 * 1000;
+const baseBranchStatusCache = new Map<string, BaseBranchStatus[]>();
 
-export async function getPrStatuses(dir: string, projectName?: string, upstreamRemote?: string): Promise<PrStatuses> {
+export async function getPrStatuses(
+	dir: string,
+	projectName?: string,
+	upstreamRemote?: string,
+	upstreamBranch = "main",
+): Promise<PrStatuses> {
 	// Fast path: cache is fresh, return current state directly
 	if (projectName && isCacheFresh(`pr-statuses:${projectName}`, PR_CACHE_TTL_MS)) {
 		const cached = getCachedPrStatuses(projectName);
-		if (cached) return buildPrStatusesFromCached(cached);
+		const baseBranches = baseBranchStatusCache.get(projectName);
+		if (cached) return buildPrStatusesFromCached(cached, baseBranches);
 	}
 
 	// If rate limited, return cached data with degraded check statuses
@@ -718,7 +773,7 @@ export async function getPrStatuses(dir: string, projectName?: string, upstreamR
 		return inflight;
 	}
 
-	const promise = fetchPrStatusesFromApi(dir, projectName, upstreamRemote);
+	const promise = fetchPrStatusesFromApi(dir, projectName, upstreamRemote, upstreamBranch);
 	inflightPrRequests.set(dedupeKey, promise);
 	try {
 		return await promise;
@@ -727,11 +782,39 @@ export async function getPrStatuses(dir: string, projectName?: string, upstreamR
 	}
 }
 
-async function fetchPrStatusesFromApi(dir: string, projectName?: string, upstreamRemote?: string): Promise<PrStatuses> {
+function getBaseBranchStatus(
+	response: z.infer<typeof PrGraphQLResponseSchema>,
+	remote: string,
+	repository: string,
+	branch: string,
+): BaseBranchStatus | undefined {
+	const repositoryData = response.data?.repository;
+	const target = repositoryData?.ref?.target;
+	if (!repositoryData?.url || !target) return undefined;
+	const rollup = target.statusCheckRollup;
+	return {
+		remote,
+		repository,
+		repositoryUrl: repositoryData.url,
+		branch,
+		sha: target.oid,
+		date: target.committedDate.slice(0, 10),
+		checkStatus: mapAggregateState(rollup?.state ?? null),
+		failedChecks: extractFailedChecks(rollup?.contexts.nodes ?? []),
+	};
+}
+
+async function fetchPrStatusesFromApi(
+	dir: string,
+	projectName?: string,
+	upstreamRemote?: string,
+	upstreamBranch = "main",
+): Promise<PrStatuses> {
 	const ghLogin = await getGhLogin();
 
 	type PrNode = z.infer<typeof GraphQLPrNodeSchema>;
 	let allPrs: PrNode[] = [];
+	const baseBranches: BaseBranchStatus[] = [];
 	try {
 		const canonical = await getCanonicalRepo(dir, upstreamRemote);
 		const client = getGitHubClient();
@@ -740,9 +823,17 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string, upstrea
 		const raw = await client.graphql(PR_GRAPHQL_QUERY, {
 			owner: canonical.owner,
 			name: canonical.name,
+			qualifiedBaseRef: `refs/heads/${upstreamBranch}`,
 		});
 		const response = PrGraphQLResponseSchema.parse(raw);
 		allPrs = response.data?.repository.pullRequests.nodes ?? [];
+		const canonicalBase = getBaseBranchStatus(
+			response,
+			upstreamRemote ?? "origin",
+			`${canonical.owner}/${canonical.name}`,
+			upstreamBranch,
+		);
+		if (canonicalBase) baseBranches.push(canonicalBase);
 
 		// Also query origin repo if it differs from canonical (catches fork-only PRs)
 		const originUrl = await git(dir, "remote", "get-url", "origin");
@@ -752,9 +843,17 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string, upstrea
 				const originRaw = await client.graphql(PR_GRAPHQL_QUERY, {
 					owner: origin.owner,
 					name: origin.name,
+					qualifiedBaseRef: `refs/heads/${upstreamBranch}`,
 				});
 				const originResponse = PrGraphQLResponseSchema.parse(originRaw);
 				const originPrs = originResponse.data?.repository.pullRequests.nodes ?? [];
+				const originBase = getBaseBranchStatus(
+					originResponse,
+					"origin",
+					`${origin.owner}/${origin.name}`,
+					upstreamBranch,
+				);
+				if (originBase) baseBranches.push(originBase);
 				// Merge: upstream PRs take priority, add origin PRs for branches not already covered
 				const upstreamBranches = new Set(allPrs.map((pr) => pr.headRefName));
 				for (const pr of originPrs) {
@@ -845,9 +944,10 @@ async function fetchPrStatusesFromApi(dir: string, projectName?: string, upstrea
 	// Cache the results
 	if (projectName) {
 		cachePrStatuses(projectName, toCache);
+		baseBranchStatusCache.set(projectName, baseBranches);
 	}
 
-	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses};
+	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses, baseBranches};
 }
 
 export async function fetchUpstreamRef(

@@ -1,11 +1,11 @@
 import {createFileRoute, useNavigate} from "@tanstack/react-router";
 import {useState, useMemo} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {isGitChildPullRequest, isGitChildBranch} from "../../../lib/git-child-discriminators";
+import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi} from "../../../lib/git-child-discriminators";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../../../lib/category-actions";
 import {useQueueContext, bucketCount} from "../../../lib/queue-context";
 
-type ItemType = "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
+type ItemType = "ci" | "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
 
 interface FlatRow {
 	key: string;
@@ -23,7 +23,13 @@ interface FlatRow {
 }
 
 function gitChildToRow(child: GitChildResult, category: Category): FlatRow {
-	const type: ItemType = isGitChildPullRequest(child) ? "pr" : isGitChildBranch(child) ? "branch" : "commit";
+	const type: ItemType = isGitChildUpstreamCi(child)
+		? "ci"
+		: isGitChildPullRequest(child)
+			? "pr"
+			: isGitChildBranch(child)
+				? "branch"
+				: "commit";
 	return {
 		key: `git-${child.sha}`,
 		type,
@@ -91,10 +97,11 @@ function todoToRow(todo: TodoItem, category: Category, index: number): FlatRow {
 	};
 }
 
-type TypeFilter = "all" | "pr" | "branch" | "commit" | "issue" | "todo";
+type TypeFilter = "all" | "ci" | "pr" | "branch" | "commit" | "issue" | "todo";
 
 const TYPE_FILTERS: {value: TypeFilter; label: string}[] = [
 	{value: "all", label: "All"},
+	{value: "ci", label: "CI"},
 	{value: "pr", label: "PRs"},
 	{value: "branch", label: "Branches"},
 	{value: "commit", label: "Commits"},
@@ -135,6 +142,7 @@ const HEADER_CLASS =
 	"border-b-2 border-border-300 px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500";
 
 function itemLink(row: FlatRow): string | undefined {
+	if (row.type === "ci") return undefined;
 	if (row.sha) return `/item/${row.project}/${row.sha}`;
 	if (row.issueNumber) return `/issue/${row.project}/${row.issueNumber}`;
 	return undefined;
@@ -153,6 +161,7 @@ function QueueTable() {
 		const result: {category: Category; rows: FlatRow[]}[] = [];
 		const counts: Record<TypeFilter, number> = {
 			all: 0,
+			ci: 0,
 			pr: 0,
 			branch: 0,
 			commit: 0,
@@ -171,7 +180,8 @@ function QueueTable() {
 				const row = gitChildToRow(child, category);
 				rows.push(row);
 				counts.all++;
-				if (row.type === "pr") counts.pr++;
+				if (row.type === "ci") counts.ci++;
+				else if (row.type === "pr") counts.pr++;
 				else if (row.type === "branch") counts.branch++;
 				else counts.commit++;
 			}
@@ -352,7 +362,7 @@ function RowActions({row}: {row: FlatRow}) {
 	const actions: string[] = [];
 
 	if (row.prUrl) {
-		actions.push("Open PR");
+		actions.push(row.type === "ci" ? "Open Actions" : "Open PR");
 	} else if (row.type === "branch" || row.type === "commit") {
 		if (row.category === "pushed_no_pr") {
 			actions.push("Create PR");
@@ -364,7 +374,7 @@ function RowActions({row}: {row: FlatRow}) {
 		actions.push(llmCommand);
 	}
 
-	if (!actions.some((a) => a === "Open PR" || a === "Create PR")) {
+	if (!actions.some((a) => a === "Open Actions" || a === "Open PR" || a === "Create PR")) {
 		actions.push("Snooze");
 	}
 

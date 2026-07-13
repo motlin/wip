@@ -1,5 +1,10 @@
 import {createFileRoute} from "@tanstack/react-router";
-import {isGitChildPullRequest, isGitChildBranch, isGitChildCommit} from "../../../lib/git-child-discriminators";
+import {
+	isGitChildPullRequest,
+	isGitChildBranch,
+	isGitChildCommit,
+	isGitChildUpstreamCi,
+} from "../../../lib/git-child-discriminators";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../../../lib/category-actions";
 import {CommitCard} from "../../../components/commit-card";
 import {BranchCard} from "../../../components/branch-card";
@@ -7,6 +12,7 @@ import {PullRequestCard} from "../../../components/pull-request-card";
 import {IssueCard} from "../../../components/issue-card";
 import {ProjectBoardItemCard} from "../../../components/project-board-item-card";
 import {TodoCard} from "../../../components/todo-card";
+import {UpstreamCiCard} from "../../../components/upstream-ci-card";
 import {useQueueContext, bucketCount} from "../../../lib/queue-context";
 
 export const Route = createFileRoute("/_dashboard/queue/")({
@@ -33,6 +39,9 @@ function QueueCards() {
 							<span className="ml-2 font-normal text-text-500">{count}</span>
 						</h2>
 						<div className="flex flex-col gap-2">
+							{items.gitChildren?.filter(isGitChildUpstreamCi).map((item) => (
+								<UpstreamCiCard key={`${item.remote}-${item.sha}`} item={item} category={category} />
+							))}
 							{items.gitChildren
 								?.filter((c) => isGitChildPullRequest(c))
 								.map((pr) => (

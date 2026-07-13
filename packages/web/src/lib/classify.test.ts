@@ -263,6 +263,10 @@ describe("classifyBranch", () => {
 });
 
 describe("classifyGitChild", () => {
+	it("classifies failed base-branch CI as blocking checks", () => {
+		expect(classifyGitChild(makePR({kind: "upstream_ci"}), makeProject())).toBe("checks_failed");
+	});
+
 	it("classifies a PR with no reviews as an existing PR, not needs PR", () => {
 		expect(
 			classifyGitChild(makePR({checkStatus: "failed", reviewStatus: "no_pr", localAhead: false}), makeProject()),

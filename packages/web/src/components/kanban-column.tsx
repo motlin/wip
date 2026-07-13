@@ -1,5 +1,10 @@
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {isGitChildPullRequest, isGitChildBranch, isGitChildCommit} from "../lib/git-child-discriminators";
+import {
+	isGitChildPullRequest,
+	isGitChildBranch,
+	isGitChildCommit,
+	isGitChildUpstreamCi,
+} from "../lib/git-child-discriminators";
 import {CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions";
 import {CommitCard} from "./commit-card";
 import {BranchCard} from "./branch-card";
@@ -7,6 +12,7 @@ import {PullRequestCard} from "./pull-request-card";
 import {IssueCard} from "./issue-card";
 import {ProjectBoardItemCard} from "./project-board-item-card";
 import {TodoCard} from "./todo-card";
+import {UpstreamCiCard} from "./upstream-ci-card";
 
 export interface ColumnItems {
 	gitChildren?: GitChildResult[];
@@ -27,6 +33,7 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 	const pullRequests = items.gitChildren?.filter(isGitChildPullRequest) ?? [];
 	const branches = items.gitChildren?.filter(isGitChildBranch) ?? [];
 	const commits = items.gitChildren?.filter(isGitChildCommit) ?? [];
+	const upstreamCiItems = items.gitChildren?.filter(isGitChildUpstreamCi) ?? [];
 
 	return (
 		<div className={`flex min-w-0 flex-col rounded-xl ${categoryColumnClass(category)} p-3`}>
@@ -39,6 +46,9 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 				</span>
 			</div>
 			<div className="flex flex-col gap-2 overflow-y-auto">
+				{upstreamCiItems.map((item) => (
+					<UpstreamCiCard key={`${item.remote}-${item.sha}`} item={item} category={category} />
+				))}
 				{pullRequests.map((pr) => (
 					<PullRequestCard key={pr.sha} pr={pr} category={category} />
 				))}

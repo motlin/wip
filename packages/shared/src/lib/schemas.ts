@@ -320,6 +320,7 @@ export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 // Flat git child result: all fields from ChildCommit (minus `behind`) plus server-computed fields.
 // Client discriminates by checking child.branch and child.prUrl.
 export const GitChildResultSchema = z.object({
+	kind: z.literal("upstream_ci").optional(),
 	project: z.string(),
 	remote: z.string(),
 	originRemote: z.string(),

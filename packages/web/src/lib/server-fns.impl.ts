@@ -190,7 +190,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				return [];
 			}
 
-			const prStatuses = await getPrStatuses(p.dir, p.name, p.upstreamRemote);
+			const prStatuses = await getPrStatuses(p.dir, p.name, p.upstreamRemote, p.upstreamBranch);
 
 			const upstreamSha = getCachedUpstreamSha(p.name);
 			const mergeStatusMap = new Map<
@@ -299,6 +299,34 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 							: undefined,
 				};
 			});
+			const failedBases = prStatuses.baseBranches.filter((base) => base.checkStatus === "failed");
+			const firstFailedBase = failedBases[0];
+			if (firstFailedBase) {
+				const failedChecks = failedBases
+					.flatMap((base) => base.failedChecks)
+					.filter(
+						(check, index, checks) =>
+							checks.findIndex((candidate) => candidate.name === check.name) === index,
+					);
+				results.push({
+					kind: "upstream_ci",
+					project: p.name,
+					remote: failedBases.map((base) => base.repository).join(", "),
+					originRemote: p.originRemote,
+					sha: firstFailedBase.sha,
+					shortSha: firstFailedBase.sha.slice(0, 7),
+					subject: `Fix failing CI on ${failedBases.map((base) => `${base.remote}/${base.branch}`).join(" and ")}`,
+					date: firstFailedBase.date,
+					branch: firstFailedBase.branch,
+					testStatus: "unknown",
+					checkStatus: "failed",
+					skippable: false,
+					pushedToRemote: true,
+					reviewStatus: "no_pr",
+					prUrl: `${firstFailedBase.repositoryUrl}/actions`,
+					failedChecks,
+				});
+			}
 
 			cacheChildren(projectName, results);
 			const {childrenEmitter} = await import("./children-events.js");

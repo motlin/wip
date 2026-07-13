@@ -119,6 +119,26 @@ describe("getPrStatuses", () => {
 			res.status(200).json({
 				data: {
 					repository: {
+						url: "https://example.com/alice/repo",
+						ref: {
+							target: {
+								oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+								committedDate: "2000-01-01T00:00:00.000Z",
+								statusCheckRollup: {
+									state: "FAILURE",
+									contexts: {
+										nodes: [
+											{
+												__typename: "CheckRun",
+												name: "build",
+												conclusion: "FAILURE",
+												detailsUrl: "https://example.com/actions/build",
+											},
+										],
+									},
+								},
+							},
+						},
 						pullRequests: {
 							nodes: [
 								{
@@ -155,10 +175,23 @@ describe("getPrStatuses", () => {
 		expect(statuses.urls.get("feature-branch")).toBe("https://github.com/owner/repo/pull/1");
 		expect(statuses.prNumbers.get("feature-branch")).toBe(1);
 		expect(statuses.mergeStateStatuses.get("feature-branch")).toBe("CLEAN");
+		expect(statuses.baseBranches).toStrictEqual([
+			{
+				remote: "origin",
+				repository: "owner/repo",
+				repositoryUrl: "https://example.com/alice/repo",
+				branch: "main",
+				sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				date: "2000-01-01",
+				checkStatus: "failed",
+				failedChecks: [{name: "build", url: "https://example.com/actions/build"}],
+			},
+		]);
 
 		// Second call should use cache (no additional HTTP calls)
 		const cached = await getPrStatuses(tempDir, "test-project");
 		expect(cached.review.get("feature-branch")).toBe("approved");
+		expect(cached.baseBranches).toStrictEqual(statuses.baseBranches);
 		expect(callCount).toBe(3); // viewer login + fork-parent check + PR statuses, no fourth call
 	});
 

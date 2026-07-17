@@ -1,6 +1,7 @@
 import {execa} from "execa";
 
 import {log} from "../services/logger-pino.js";
+import {createGate} from "./concurrency.js";
 import {getBranchNames, setBranchName} from "./db.js";
 
 interface NamingRequest {
@@ -10,6 +11,13 @@ interface NamingRequest {
 	dir: string;
 }
 
+// One process-wide budget for `claude -p` branch naming. Every caller (per-child
+// suggestion, the unawaited refresh fan-out, the CLI) draws from this, so a burst
+// of concurrent project refreshes can never spawn more than a handful of heavy
+// claude processes at once — the escape hatch that pegged the machine.
+const NAMING_GATE_LIMIT = 3;
+const namingGate = createGate(NAMING_GATE_LIMIT);
+
 export async function nameBranch(req: NamingRequest): Promise<string | null> {
 	const prompt = `You are naming a git branch for a single commit.
 
@@ -18,11 +26,13 @@ Run: git -C ${req.dir} show --stat ${req.sha}
 Then output a single descriptive kebab-case branch name (3-6 words) that captures WHAT changed specifically. Be concrete — "deprecate-commons-lang2-dependency" not "deprecate". No prefixes, no explanation, just the branch name.`;
 
 	const start = performance.now();
-	const result = await execa("claude", ["-p", "--no-session-persistence", prompt], {
-		reject: false,
-		timeout: 60_000,
-		input: "",
-	});
+	const result = await namingGate(() =>
+		execa("claude", ["-p", "--no-session-persistence", prompt], {
+			reject: false,
+			timeout: 60_000,
+			input: "",
+		}),
+	);
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug(
 		{cmd: "claude", args: ["-p", "..."], duration},
@@ -61,19 +71,16 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
 		}
 	}
 
-	// Run claude -p calls in parallel (max 3 concurrent to avoid overload)
-	const CONCURRENCY = 3;
-	for (let i = 0; i < uncached.length; i += CONCURRENCY) {
-		const batch = uncached.slice(i, i + CONCURRENCY);
-		const names = await Promise.all(batch.map((req) => nameBranch(req)));
-		for (let j = 0; j < batch.length; j++) {
-			const name = names[j];
-			const batchItem = batch[j];
-			if (name && batchItem) {
-				const key = `${batchItem.project}:${batchItem.sha}`;
-				result.set(key, name);
-				setBranchName(batchItem.sha, batchItem.project, name);
-			}
+	// nameBranch draws from the module-global naming gate, so fire them all at
+	// once and let that shared budget — not a per-call batch — bound the fan-out.
+	const names = await Promise.all(uncached.map((req) => nameBranch(req)));
+	for (let i = 0; i < uncached.length; i++) {
+		const name = names[i];
+		const req = uncached[i];
+		if (name && req) {
+			const key = `${req.project}:${req.sha}`;
+			result.set(key, name);
+			setBranchName(req.sha, req.project, name);
 		}
 	}
 

@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 
-import {mapWithConcurrency} from "./concurrency.js";
+import {createGate, mapWithConcurrency} from "./concurrency.js";
 
 interface Deferred {
 	promise: Promise<void>;
@@ -59,5 +59,50 @@ describe("mapWithConcurrency", () => {
 				return value;
 			}),
 		).rejects.toThrow("boom");
+	});
+});
+
+describe("createGate", () => {
+	it("throws when the limit is below one", () => {
+		expect(() => createGate(0)).toThrow(/at least 1/);
+	});
+
+	it("returns the wrapped result", async () => {
+		const gate = createGate(2);
+		await expect(gate(async () => 42)).resolves.toBe(42);
+	});
+
+	it("never runs more than the limit concurrently, even across independent calls", async () => {
+		const gate = createGate(2);
+		const gates = [deferred(), deferred(), deferred(), deferred(), deferred()];
+		let running = 0;
+		let maxRunning = 0;
+
+		// Each call is independent (unlike mapWithConcurrency's single batch) — the
+		// gate is shared module-global state, so all five draw from the same budget.
+		const all = gates.map((g) =>
+			gate(async () => {
+				running += 1;
+				maxRunning = Math.max(maxRunning, running);
+				await g.promise;
+				running -= 1;
+			}),
+		);
+
+		await settle();
+		expect(maxRunning).toBe(2);
+
+		for (const g of gates) {
+			g.resolve();
+		}
+		await Promise.all(all);
+		expect(maxRunning).toBe(2);
+	});
+
+	it("releases its slot when the wrapped fn throws", async () => {
+		const gate = createGate(1);
+		await expect(gate(async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+		// If the slot leaked, this second call would hang forever.
+		await expect(gate(async () => "recovered")).resolves.toBe("recovered");
 	});
 });

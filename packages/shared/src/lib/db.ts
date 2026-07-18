@@ -1,6 +1,22 @@
 import DatabaseConstructor from "better-sqlite3";
-import {and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql} from "drizzle-orm";
+import {
+	and,
+	desc,
+	eq,
+	gte,
+	inArray,
+	isNotNull,
+	isNull,
+	like,
+	lte,
+	or,
+	sql,
+	type InferInsertModel,
+	type InferSelectModel,
+	type SQL,
+} from "drizzle-orm";
 import {drizzle, type BetterSQLite3Database} from "drizzle-orm/better-sqlite3";
+import type {SQLiteColumn, SQLiteTable} from "drizzle-orm/sqlite-core";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -429,6 +445,39 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	return db;
 }
 
+/**
+ * Temporal upsert for single-row-per-key tables: select the current live row
+ * (system_to = FAR_FUTURE), skip the write entirely if it is unchanged,
+ * otherwise close it (system_to = now) and insert the replacement row.
+ */
+function temporalUpsert<TTable extends SQLiteTable & {systemTo: SQLiteColumn}>(args: {
+	table: TTable;
+	keyWhere?: SQL;
+	isUnchanged: (existing: InferSelectModel<TTable>) => boolean;
+	newRow: Omit<InferInsertModel<TTable>, "systemFrom" | "systemTo">;
+}): void {
+	const d = getDb();
+	const timestamp = now();
+	const activeWhere = and(args.keyWhere, eq(args.table.systemTo, FAR_FUTURE));
+
+	d.transaction((tx) => {
+		const existing = tx.select().from(args.table).where(activeWhere).get() as InferSelectModel<TTable> | undefined;
+
+		if (existing && args.isUnchanged(existing)) return;
+
+		if (existing) {
+			tx.update(args.table)
+				.set({systemTo: timestamp} as Partial<InferInsertModel<TTable>>)
+				.where(activeWhere)
+				.run();
+		}
+
+		tx.insert(args.table)
+			.values({...args.newRow, systemFrom: timestamp} as InferInsertModel<TTable>)
+			.run();
+	}, WRITE_TRANSACTION_CONFIG);
+}
+
 export type SnoozedItem = typeof snoozed.$inferSelect;
 
 export function snoozeItem(
@@ -557,35 +606,12 @@ export function getBranchNames(keys: Array<{sha: string; project: string}>): Map
 }
 
 export function setBranchName(sha: string, project: string, name: string): void {
-	const d = getDb();
-	const timestamp = now();
-
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(branchNames)
-			.where(
-				and(eq(branchNames.sha, sha), eq(branchNames.project, project), eq(branchNames.systemTo, FAR_FUTURE)),
-			)
-			.get();
-
-		if (existing && existing.name === name) return;
-
-		if (existing) {
-			tx.update(branchNames)
-				.set({systemTo: timestamp})
-				.where(
-					and(
-						eq(branchNames.sha, sha),
-						eq(branchNames.project, project),
-						eq(branchNames.systemTo, FAR_FUTURE),
-					),
-				)
-				.run();
-		}
-
-		tx.insert(branchNames).values({sha, project, name, systemFrom: timestamp, systemTo: FAR_FUTURE}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: branchNames,
+		keyWhere: and(eq(branchNames.sha, sha), eq(branchNames.project, project)),
+		isUnchanged: (existing) => existing.name === name,
+		newRow: {sha, project, name},
+	});
 }
 
 // Test result functions
@@ -615,59 +641,13 @@ export function recordTestResult(
 	durationMs: number,
 	testName = "default",
 ): void {
-	const d = getDb();
-	const timestamp = now();
-
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(testResults)
-			.where(
-				and(
-					eq(testResults.sha, sha),
-					eq(testResults.project, project),
-					eq(testResults.testName, testName),
-					eq(testResults.systemTo, FAR_FUTURE),
-				),
-			)
-			.get();
-
-		if (
-			existing &&
-			existing.status === status &&
-			existing.exitCode === exitCode &&
-			existing.durationMs === durationMs
-		) {
-			return;
-		}
-
-		if (existing) {
-			tx.update(testResults)
-				.set({systemTo: timestamp})
-				.where(
-					and(
-						eq(testResults.sha, sha),
-						eq(testResults.project, project),
-						eq(testResults.testName, testName),
-						eq(testResults.systemTo, FAR_FUTURE),
-					),
-				)
-				.run();
-		}
-
-		tx.insert(testResults)
-			.values({
-				sha,
-				project,
-				testName,
-				status,
-				exitCode,
-				durationMs,
-				systemFrom: timestamp,
-				systemTo: FAR_FUTURE,
-			})
-			.run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: testResults,
+		keyWhere: and(eq(testResults.sha, sha), eq(testResults.project, project), eq(testResults.testName, testName)),
+		isUnchanged: (existing) =>
+			existing.status === status && existing.exitCode === exitCode && existing.durationMs === durationMs,
+		newRow: {sha, project, testName, status, exitCode, durationMs},
+	});
 }
 
 // --- Cache freshness (non-temporal polling metadata) ---
@@ -956,27 +936,13 @@ export function getCachedMiseEnv(dir: string): Record<string, string> | null {
 }
 
 export function cacheMiseEnv(dir: string, env: Record<string, string>): void {
-	const d = getDb();
-	const timestamp = now();
 	const serialized = JSON.stringify(env);
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(miseEnvCache)
-			.where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
-			.get();
-
-		if (existing && existing.env === serialized) return;
-
-		if (existing) {
-			tx.update(miseEnvCache)
-				.set({systemTo: timestamp})
-				.where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
-				.run();
-		}
-
-		tx.insert(miseEnvCache).values({dir, env: serialized, systemFrom: timestamp}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: miseEnvCache,
+		keyWhere: eq(miseEnvCache.dir, dir),
+		isUnchanged: (existing) => existing.env === serialized,
+		newRow: {dir, env: serialized},
+	});
 }
 
 // --- GitHub login cache ---
@@ -988,19 +954,11 @@ export function getCachedGhLogin(): string | null {
 }
 
 export function cacheGhLogin(login: string): void {
-	const d = getDb();
-	const timestamp = now();
-	d.transaction((tx) => {
-		const existing = tx.select().from(ghLoginCache).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).get();
-
-		if (existing && existing.login === login) return;
-
-		if (existing) {
-			tx.update(ghLoginCache).set({systemTo: timestamp}).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).run();
-		}
-
-		tx.insert(ghLoginCache).values({login, systemFrom: timestamp}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: ghLoginCache,
+		isUnchanged: (existing) => existing.login === login,
+		newRow: {login},
+	});
 }
 
 // --- GitHub issues cache ---
@@ -1337,26 +1295,12 @@ export function getCachedUpstreamSha(project: string): string | null {
 }
 
 export function cacheUpstreamSha(project: string, ref: string, sha: string): void {
-	const d = getDb();
-	const timestamp = now();
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(upstreamRefs)
-			.where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE)))
-			.get();
-
-		if (existing && existing.ref === ref && existing.sha === sha) return;
-
-		if (existing) {
-			tx.update(upstreamRefs)
-				.set({systemTo: timestamp})
-				.where(and(eq(upstreamRefs.project, project), eq(upstreamRefs.systemTo, FAR_FUTURE)))
-				.run();
-		}
-
-		tx.insert(upstreamRefs).values({project, ref, sha, systemFrom: timestamp}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: upstreamRefs,
+		keyWhere: eq(upstreamRefs.project, project),
+		isUnchanged: (existing) => existing.ref === ref && existing.sha === sha,
+		newRow: {project, ref, sha},
+	});
 }
 
 // --- Merge status ---
@@ -1390,52 +1334,16 @@ export function cacheMergeStatus(
 	commitsBehind: number,
 	rebaseable: boolean | null,
 ): void {
-	const d = getDb();
-	const timestamp = now();
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(mergeStatus)
-			.where(
-				and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha), eq(mergeStatus.systemTo, FAR_FUTURE)),
-			)
-			.get();
-
-		if (
-			existing &&
+	temporalUpsert({
+		table: mergeStatus,
+		keyWhere: and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha)),
+		isUnchanged: (existing) =>
 			existing.upstreamSha === upstreamSha &&
 			existing.commitsAhead === commitsAhead &&
 			existing.commitsBehind === commitsBehind &&
-			existing.rebaseable === rebaseable
-		) {
-			return;
-		}
-
-		if (existing) {
-			tx.update(mergeStatus)
-				.set({systemTo: timestamp})
-				.where(
-					and(
-						eq(mergeStatus.project, project),
-						eq(mergeStatus.sha, sha),
-						eq(mergeStatus.systemTo, FAR_FUTURE),
-					),
-				)
-				.run();
-		}
-
-		tx.insert(mergeStatus)
-			.values({
-				project,
-				sha,
-				upstreamSha,
-				commitsAhead,
-				commitsBehind,
-				rebaseable,
-				systemFrom: timestamp,
-			})
-			.run();
-	}, WRITE_TRANSACTION_CONFIG);
+			existing.rebaseable === rebaseable,
+		newRow: {project, sha, upstreamSha, commitsAhead, commitsBehind, rebaseable},
+	});
 }
 
 export function invalidateMergeStatus(project: string): void {
@@ -1468,26 +1376,12 @@ export function getAllAdvanceConfig(): Array<{project: string; concurrency: numb
 }
 
 export function setAdvanceConfig(project: string, concurrency: number): void {
-	const d = getDb();
-	const timestamp = now();
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(advanceConfig)
-			.where(and(eq(advanceConfig.project, project), eq(advanceConfig.systemTo, FAR_FUTURE)))
-			.get();
-
-		if (existing && existing.concurrency === concurrency) return;
-
-		if (existing) {
-			tx.update(advanceConfig)
-				.set({systemTo: timestamp})
-				.where(and(eq(advanceConfig.project, project), eq(advanceConfig.systemTo, FAR_FUTURE)))
-				.run();
-		}
-
-		tx.insert(advanceConfig).values({project, concurrency, systemFrom: timestamp}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: advanceConfig,
+		keyWhere: eq(advanceConfig.project, project),
+		isUnchanged: (existing) => existing.concurrency === concurrency,
+		newRow: {project, concurrency},
+	});
 }
 
 // --- Project cache ---
@@ -1592,27 +1486,13 @@ export function getCachedChildren(project: string): GitChildResult[] | null {
 }
 
 export function cacheChildren(project: string, children: GitChildResult[]): void {
-	const d = getDb();
-	const timestamp = now();
 	const serialized = JSON.stringify(children);
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(childrenCache)
-			.where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
-			.get();
-
-		if (existing && existing.childrenJson === serialized) return;
-
-		if (existing) {
-			tx.update(childrenCache)
-				.set({systemTo: timestamp})
-				.where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
-				.run();
-		}
-
-		tx.insert(childrenCache).values({project, childrenJson: serialized, systemFrom: timestamp}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: childrenCache,
+		keyWhere: eq(childrenCache.project, project),
+		isUnchanged: (existing) => existing.childrenJson === serialized,
+		newRow: {project, childrenJson: serialized},
+	});
 	markCacheFresh(`children:${project}`);
 }
 
@@ -1639,27 +1519,13 @@ export function getCachedTodos(project: string): TodoItem[] | null {
 }
 
 export function cacheTodos(project: string, todos: TodoItem[]): void {
-	const d = getDb();
-	const timestamp = now();
 	const serialized = JSON.stringify(todos);
-	d.transaction((tx) => {
-		const existing = tx
-			.select()
-			.from(todosCache)
-			.where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
-			.get();
-
-		if (existing && existing.todosJson === serialized) return;
-
-		if (existing) {
-			tx.update(todosCache)
-				.set({systemTo: timestamp})
-				.where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
-				.run();
-		}
-
-		tx.insert(todosCache).values({project, todosJson: serialized, systemFrom: timestamp}).run();
-	}, WRITE_TRANSACTION_CONFIG);
+	temporalUpsert({
+		table: todosCache,
+		keyWhere: eq(todosCache.project, project),
+		isUnchanged: (existing) => existing.todosJson === serialized,
+		newRow: {project, todosJson: serialized},
+	});
 	markCacheFresh(`todos:${project}`);
 }
 

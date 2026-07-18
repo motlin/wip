@@ -1,6 +1,4 @@
-import {useQueryClient} from "@tanstack/react-query";
 import {Loader2, Clock, Diff, X, GitBranch, AlertCircle, XCircle} from "lucide-react";
-import {useRef, useEffect} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
@@ -27,25 +25,9 @@ function relativeTime(dateStr: string): string {
 }
 
 export function PullRequestCard({pr, category}: {pr: GitChildResult; category: Category}) {
-	const queryClient = useQueryClient();
+	// Test status flows into the ["children"] cache through the single SSE
+	// writer (server-events-apply); this card only reads.
 	const testJob = useTestJob(pr.sha, pr.project);
-	const prevTestStatus = useRef(testJob?.status);
-
-	useEffect(() => {
-		if (prevTestStatus.current && (prevTestStatus.current === "queued" || prevTestStatus.current === "running")) {
-			if (testJob?.status === "passed" || testJob?.status === "failed") {
-				const testStatus = testJob.status as "passed" | "failed";
-				queryClient.setQueryData<import("../lib/server-fns").ProjectChildrenResult>(
-					["children", pr.project],
-					(old) => {
-						if (!old) return old;
-						return old.map((c) => (c.sha === pr.sha ? {...c, testStatus} : c));
-					},
-				);
-			}
-		}
-		prevTestStatus.current = testJob?.status;
-	}, [testJob?.status, queryClient, pr.project, pr.sha]);
 
 	const effectiveCategory = testJob?.transition
 		? (applyTransition(category, testJob.transition) ?? category)

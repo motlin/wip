@@ -19,9 +19,11 @@ import * as path from "node:path";
 import {workQueue} from "./shared-work-queue.js";
 import type {JobHandle} from "./work-queue.js";
 
+import type {TaskEvent, TaskStatus} from "./server-events-schema.js";
+
 export type {TaskType};
 
-export type TaskStatus = "queued" | "running" | "passed" | "failed" | "cancelled";
+export type {TaskEvent, TaskStatus};
 
 export interface Task {
 	id: string;
@@ -44,22 +46,6 @@ export interface Task {
 	queuedAt: number;
 	startedAt?: number;
 	finishedAt?: number;
-}
-
-export interface TaskEvent {
-	id: string;
-	taskType: TaskType;
-	sha: string;
-	project: string;
-	shortSha: string;
-	subject: string;
-	branch?: string;
-	status: TaskStatus;
-	transition?: Transition;
-	message?: string;
-	compareUrl?: string;
-	type?: "status" | "log";
-	log?: string;
 }
 
 let nextId = 1;

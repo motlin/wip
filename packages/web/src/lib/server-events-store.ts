@@ -1,6 +1,5 @@
-import type {Transition} from "@wip/shared";
 import type {RefreshSchedulerState} from "./refresh-scheduler";
-import type {TaskEvent} from "./task-queue";
+import type {MergeStatusEvent, TaskEvent} from "./server-events-schema";
 
 /**
  * Client-side store for server-pushed state, subscribed via
@@ -11,14 +10,7 @@ import type {TaskEvent} from "./task-queue";
  * subscriptions only the card whose sha actually changed re-renders.
  */
 
-export interface MergeStatusEvent {
-	project: string;
-	sha: string;
-	commitsBehind: number;
-	commitsAhead: number;
-	rebaseable: boolean | null;
-	transition?: Transition;
-}
+export type {MergeStatusEvent};
 
 const EMPTY_SCHEDULER_STATE: RefreshSchedulerState = {slots: 0, running: [], queued: []};
 

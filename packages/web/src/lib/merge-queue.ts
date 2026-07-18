@@ -1,15 +1,7 @@
 import {EventEmitter} from "node:events";
 import {fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
-
-interface MergeStatusEvent {
-	project: string;
-	sha: string;
-	commitsBehind: number;
-	commitsAhead: number;
-	rebaseable: boolean | null;
-	transition?: Transition;
-}
+import type {MergeStatusEvent} from "./server-events-schema.js";
 
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);

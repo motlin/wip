@@ -1,4 +1,3 @@
-import {useQueryClient} from "@tanstack/react-query";
 import {
 	Loader2,
 	Clock,
@@ -12,7 +11,7 @@ import {
 	Cloud,
 	HardDrive,
 } from "lucide-react";
-import {useRef, useEffect, useState} from "react";
+import {useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
@@ -38,26 +37,10 @@ function relativeTime(dateStr: string): string {
 }
 
 export function BranchCard({branch, category}: {branch: GitChildResult; category: Category}) {
-	const queryClient = useQueryClient();
+	// Test status flows into the ["children"] cache through the single SSE
+	// writer (server-events-apply); this card only reads.
 	const testJob = useTestJob(branch.sha, branch.project);
-	const prevTestStatus = useRef(testJob?.status);
 	const [copied, setCopied] = useState(false);
-
-	useEffect(() => {
-		if (prevTestStatus.current && (prevTestStatus.current === "queued" || prevTestStatus.current === "running")) {
-			if (testJob?.status === "passed" || testJob?.status === "failed") {
-				const testStatus = testJob.status as "passed" | "failed";
-				queryClient.setQueryData<import("../lib/server-fns").ProjectChildrenResult>(
-					["children", branch.project],
-					(old) => {
-						if (!old) return old;
-						return old.map((c) => (c.sha === branch.sha ? {...c, testStatus} : c));
-					},
-				);
-			}
-		}
-		prevTestStatus.current = testJob?.status;
-	}, [testJob?.status, queryClient, branch.project, branch.sha]);
 
 	useEffect(() => {
 		if (!copied) return;

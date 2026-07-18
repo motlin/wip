@@ -69,6 +69,7 @@ import {
 
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh} from "./refresh-scheduler.js";
+import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import {classifyGitChild} from "./classify.js";
@@ -703,13 +704,7 @@ export function launchTestAllChildren(): void {
 	launchBackgroundEnqueue("testAllChildren", testAllChildrenHandler);
 }
 
-export interface FileDiff {
-	oldFileName: string;
-	newFileName: string;
-	hunks: string;
-	oldContent: string;
-	newContent: string;
-}
+export type {FileDiff} from "./diff-parser.js";
 
 export async function getCommitDiffHandler(data: {
 	project: string;
@@ -735,49 +730,18 @@ export async function getCommitDiffHandler(data: {
 			return {files: [], stat: "", subject: `git show failed: ${diffResult.stderr}`};
 		}
 
-		// Split raw diff into per-file chunks
-		const rawDiff = diffResult.stdout;
-		const fileDiffs = rawDiff.split(/^(?=diff --git )/m).filter(Boolean);
-
-		const files: FileDiff[] = [];
-		for (const chunk of fileDiffs) {
-			const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
-			if (!headerMatch) continue;
-			const oldFileName = headerMatch[1] ?? "";
-			const newFileName = headerMatch[2] ?? "";
-
-			// Pass full chunk including diff --git header — @git-diff-view/core needs it
-			const hunks = chunk;
-
-			// Detect new/deleted files from --- and +++ lines to avoid fetching nonexistent content
-			const isNewFile = /^--- \/dev\/null$/m.test(chunk);
-			const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
-
-			// Fetch old and new file content for syntax highlighting.
-			// Use stripFinalNewline: false so the content matches the diff hunks exactly.
-			const [oldResult, newResult] = await Promise.all([
-				isNewFile
-					? {exitCode: 0, stdout: ""}
-					: tracedExeca("git", ["-C", p.dir, "show", `${data.sha}^:${oldFileName}`], {
-							reject: false,
-							stripFinalNewline: false,
-						}),
-				isDeletedFile
-					? {exitCode: 0, stdout: ""}
-					: tracedExeca("git", ["-C", p.dir, "show", `${data.sha}:${newFileName}`], {
-							reject: false,
-							stripFinalNewline: false,
-						}),
-			]);
-
-			files.push({
-				oldFileName,
-				newFileName,
-				hunks,
-				oldContent: oldResult.exitCode === 0 ? oldResult.stdout : "",
-				newContent: newResult.exitCode === 0 ? newResult.stdout : "",
+		// Fetch file content with stripFinalNewline: false so it matches the diff hunks exactly.
+		const showFile = async (ref: string): Promise<string> => {
+			const result = await tracedExeca("git", ["-C", p.dir, "show", ref], {
+				reject: false,
+				stripFinalNewline: false,
 			});
-		}
+			return result.exitCode === 0 ? result.stdout : "";
+		};
+		const files = await parseDiffFiles(diffResult.stdout, {
+			old: (fileName) => showFile(`${data.sha}^:${fileName}`),
+			new: (fileName) => showFile(`${data.sha}:${fileName}`),
+		});
 
 		return {
 			files,
@@ -801,48 +765,25 @@ export async function getWorkingTreeDiffHandler(project: string): Promise<{files
 			return {files: [], stat: ""};
 		}
 
-		const rawDiff = diffResult.stdout;
-		const fileDiffs = rawDiff.split(/^(?=diff --git )/m).filter(Boolean);
-
-		const files: FileDiff[] = [];
-		for (const chunk of fileDiffs) {
-			const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
-			if (!headerMatch) continue;
-			const oldFileName = headerMatch[1] ?? "";
-			const newFileName = headerMatch[2] ?? "";
-			const isNewFile = /^--- \/dev\/null$/m.test(chunk);
-			const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
-
-			const [oldResult, newResult] = await Promise.all([
-				isNewFile
-					? {exitCode: 0, stdout: ""}
-					: tracedExeca("git", ["-C", p.dir, "show", `HEAD:${oldFileName}`], {
-							reject: false,
-							stripFinalNewline: false,
-						}),
-				isDeletedFile
-					? {exitCode: 0, stdout: ""}
-					: tracedExeca("git", ["-C", p.dir, "cat-file", "-p", `:${newFileName}`], {
-							reject: false,
-							stripFinalNewline: false,
-						}).then((r) =>
-							r.exitCode === 0
-								? r
-								: tracedExeca("git", ["-C", p.dir, "show", `HEAD:${newFileName}`], {
-										reject: false,
-										stripFinalNewline: false,
-									}),
-						),
-			]);
-
-			files.push({
-				oldFileName,
-				newFileName,
-				hunks: chunk,
-				oldContent: oldResult.exitCode === 0 ? oldResult.stdout : "",
-				newContent: newResult.exitCode === 0 ? newResult.stdout : "",
+		const showFile = async (ref: string): Promise<string> => {
+			const result = await tracedExeca("git", ["-C", p.dir, "show", ref], {
+				reject: false,
+				stripFinalNewline: false,
 			});
-		}
+			return result.exitCode === 0 ? result.stdout : "";
+		};
+		const files = await parseDiffFiles(diffResult.stdout, {
+			old: (fileName) => showFile(`HEAD:${fileName}`),
+			// Prefer the index copy (staged content); fall back to HEAD for unstaged-only files.
+			new: async (fileName) => {
+				const staged = await tracedExeca("git", ["-C", p.dir, "cat-file", "-p", `:${fileName}`], {
+					reject: false,
+					stripFinalNewline: false,
+				});
+				if (staged.exitCode === 0) return staged.stdout;
+				return showFile(`HEAD:${fileName}`);
+			},
+		});
 
 		return {
 			files,

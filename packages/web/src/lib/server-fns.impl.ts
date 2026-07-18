@@ -1034,16 +1034,16 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 			);
 		}
 
+		// No explicit pushRemote: this handler used to push to p.remote, but that is
+		// the GitHub "owner/repo" slug, not a git remote name, so the push silently
+		// failed. Let the operation resolve the branch's configured git remote
+		// (falling back to "origin"), same as the task queue's rebase.
 		const result = await rebaseBranchOntoUpstream(p.dir, {
 			branch: data.branch,
 			project: data.project,
 			upstreamRef: p.upstreamRef,
 			upstreamRemote: p.upstreamRemote,
 			fetchBranch: p.upstreamBranch ?? "main",
-			// Known discrepancy: p.remote is the GitHub "owner/repo" slug, not a git
-			// remote name, but this handler has always pushed to it. The task queue's
-			// rebase resolves the branch's configured git remote instead.
-			pushRemote: p.remote,
 			env,
 		});
 		if (!result.ok) {

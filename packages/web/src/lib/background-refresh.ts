@@ -1,5 +1,6 @@
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, startPeriodicSweep} from "./refresh-scheduler.js";
+import {createWatchGate} from "./watch-gate.js";
 
 /**
  * Once-only bootstrap for all background data maintenance. SSE routes call
@@ -13,6 +14,26 @@ const PRUNE_REMOTE_TTL_MS = 30 * 60 * 1000;
 
 let started = false;
 let cachedProjectNames: string[] = [];
+
+/**
+ * Snapshot of a repo's ref state: branch tips plus resolved HEAD. Cheap local
+ * git call (no network), fired at most once per debounced watcher event, so it
+ * intentionally runs outside the work-queue budget.
+ */
+async function refSnapshot(project: string): Promise<string> {
+	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+	const {getProjects} = await import("./server-fns.js");
+	const p = (await getProjects()).find((proj) => proj.name === project);
+	if (!p) return "";
+	const [refs, head] = await Promise.all([
+		tracedExeca("git", ["-C", p.dir, "for-each-ref", "--format=%(refname)%(objectname)"], {reject: false}),
+		tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false}),
+	]);
+	if (refs.exitCode !== 0 || head.exitCode !== 0) return "";
+	return `${head.stdout}\n${refs.stdout}`;
+}
+
+const watchGate = createWatchGate(refSnapshot);
 
 /**
  * Enqueue the full refresh set for one project. Each kind skips itself when
@@ -44,6 +65,9 @@ function enqueueProjectRefresh(project: string, options: {force?: boolean} = {})
 			}
 
 			await refreshProjectChildren(project);
+			// Absorb this refresh's own ref writes (fetch, prune) so the watcher
+			// echo they cause compares equal and gets dropped.
+			await watchGate.recordRefreshed(project);
 		},
 	});
 	enqueueRefresh({
@@ -65,6 +89,8 @@ function enqueueProjectRefresh(project: string, options: {force?: boolean} = {})
 			const {checkProject} = await import("./merge-queue.js");
 			await checkProject(project);
 			markCacheFresh(`merge-status:${project}`);
+			// checkProject fetches the upstream ref — absorb that write too.
+			await watchGate.recordRefreshed(project);
 		},
 	});
 }
@@ -80,7 +106,19 @@ export function ensureBackgroundRefresh(): void {
 		workQueue.setProbe(createSystemProbe());
 
 		const {startGitWatcher} = await import("./git-watcher.js");
-		await startGitWatcher((projectName) => enqueueProjectRefresh(projectName, {force: true}));
+		// The gate drops fires whose ref state matches the last refresh — our own
+		// fetch/prune writes echo through fs.watch, and the old time-based
+		// suppression raced FSEvents delivery, looping refreshes forever.
+		await startGitWatcher((projectName) => {
+			void watchGate
+				.shouldRefresh(projectName)
+				.then((changed) => {
+					if (changed) enqueueProjectRefresh(projectName, {force: true});
+				})
+				.catch((error: unknown) => {
+					log.general.error({project: projectName, error}, "watch-gate check failed");
+				});
+		});
 
 		const {getProjects} = await import("./server-fns.js");
 		const {projectEmitter} = await import("./project-events.js");

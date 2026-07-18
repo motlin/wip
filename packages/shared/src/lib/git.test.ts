@@ -5,7 +5,6 @@ import {tmpdir} from "node:os";
 import {execSync, execFileSync} from "node:child_process";
 
 import {
-	getPrStatuses,
 	getRepoOwnerAndName,
 	isDirty,
 	isDetachedHead,
@@ -21,6 +20,7 @@ import {
 	getRemoteBranchInfo,
 	pruneRemote,
 } from "./git.js";
+import {getPrStatuses} from "./github-pr-status.js";
 import {initDb, resetDb} from "./db.js";
 import {setGitHubClient, resetGitHubClient, createTestClient} from "../services/github-client.js";
 import {setupPolly} from "../test/setup-polly.js";

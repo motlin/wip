@@ -11,13 +11,11 @@ export {
 	unsetConfigValue,
 } from "./lib/config.js";
 export {
-	type PrStatuses,
 	type RemoteBranchInfo,
 	discoverProjects,
 	discoverAllProjects,
 	getChildren,
 	getChildCommits,
-	getPrStatuses,
 	isDirty,
 	isDetachedHead,
 	hasUpstreamRef,
@@ -38,6 +36,7 @@ export {
 	getRepoOwnerAndName,
 	getPatchId,
 } from "./lib/git.js";
+export {type PrStatuses, getPrStatuses} from "./lib/github-pr-status.js";
 export {
 	type SnoozedItem,
 	type BranchNameItem,

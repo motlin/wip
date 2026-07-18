@@ -273,7 +273,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	}
 
 	async function reset(): Promise<void> {
-		for (const job of [...queued]) {
+		for (const job of queued) {
 			remove(job);
 			job.settle();
 		}

@@ -51,6 +51,22 @@ let nextId = 1;
 const tasks = new Map<string, Task>();
 const jobHandles = new Map<string, JobHandle>();
 
+// The registry keeps finished tasks so the Tasks page can show history, but a
+// long-lived server enqueues forever — retain only the most recent terminal
+// tasks; queued/running tasks are never dropped.
+const TERMINAL_TASK_RETENTION = 200;
+
+export function pruneTerminalTasks(registry: Map<string, Task>, keep: number): void {
+	const terminal = [...registry.values()].filter(
+		(task) => task.status === "passed" || task.status === "failed" || task.status === "cancelled",
+	);
+	if (terminal.length <= keep) return;
+	terminal.sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
+	for (const task of terminal.slice(0, terminal.length - keep)) {
+		registry.delete(task.id);
+	}
+}
+
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
 
@@ -350,6 +366,7 @@ async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 }
 
 function registerTask(task: Task): Task {
+	pruneTerminalTasks(tasks, TERMINAL_TASK_RETENTION);
 	tasks.set(task.id, task);
 	emit(task);
 

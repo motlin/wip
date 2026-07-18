@@ -9,7 +9,7 @@ import {
 	getCachedGhLogin,
 	cacheGhLogin,
 } from "./db.js";
-import {git, parseRemoteUrl} from "./git-command.js";
+import {git, parseRemoteUrl} from "./git-exec.js";
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from "./rate-limit.js";
 import {MergeStateStatusSchema, type CheckStatus, type MergeStateStatus, type ReviewStatus} from "./schemas.js";
 

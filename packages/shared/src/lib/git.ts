@@ -15,7 +15,7 @@ import {
 	cacheUpstreamSha,
 } from "./db.js";
 import {mapWithConcurrency} from "./concurrency.js";
-import {git, parseRemoteUrl} from "./git-command.js";
+import {git, parseRemoteUrl} from "./git-exec.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
 import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
 

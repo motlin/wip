@@ -1,4 +1,5 @@
 import {
+	applyFixesToBranch,
 	captureLogs,
 	clearExpiredSnoozes,
 	discoverAllProjects,
@@ -22,8 +23,8 @@ import {
 	unsnoozeItem,
 	getCachedUpstreamSha,
 	getCachedMergeStatuses,
-	cacheMergeStatus,
 	invalidateMergeStatus,
+	rebaseBranchOntoUpstream,
 	getNeedsRebaseBranches,
 	getCachedProjectList,
 	setCachedProjectList,
@@ -1009,91 +1010,12 @@ export async function applyFixesHandler(data: ApplyFixesInput): Promise<ActionRe
 
 		const env = await getMiseEnv(p.dir);
 
-		await tracedExeca("git", ["-C", p.dir, "fetch", "origin"], {reject: false, env});
-
-		const branchListResult = await tracedExeca(
-			"git",
-			["-C", p.dir, "branch", "-r", "--list", `origin/fix-${data.prNumber}-*`],
-			{reject: false, env},
-		);
-		if (branchListResult.exitCode !== 0 || !branchListResult.stdout.trim()) {
-			return {ok: false, message: `No fix branches found for PR #${data.prNumber}`};
+		const result = await applyFixesToBranch(p.dir, {branch: data.branch, prNumber: data.prNumber, env});
+		if (result.ok) {
+			invalidatePrCache(data.project);
+			invalidateChildrenCache(data.project);
 		}
-
-		const fixBranches = branchListResult.stdout
-			.split("\n")
-			.map((b) => b.trim())
-			.filter(Boolean);
-		if (fixBranches.length === 0) {
-			return {ok: false, message: `No fix branches found for PR #${data.prNumber}`};
-		}
-
-		const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", data.branch], {
-			reject: false,
-			env,
-		});
-		if (checkout.exitCode !== 0) {
-			return {ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}`};
-		}
-
-		const appliedFixes: string[] = [];
-		for (const fixBranch of fixBranches) {
-			const cp = await tracedExeca("git", ["-C", p.dir, "cherry-pick", "--no-commit", fixBranch], {
-				reject: false,
-				env,
-			});
-			if (cp.exitCode !== 0) {
-				await tracedExeca("git", ["-C", p.dir, "cherry-pick", "--abort"], {
-					reject: false,
-					env,
-				});
-				await tracedExeca("git", ["-C", p.dir, "reset", "--hard", "HEAD"], {
-					reject: false,
-					env,
-				});
-				continue;
-			}
-			appliedFixes.push(fixBranch.replace("origin/", ""));
-		}
-
-		if (appliedFixes.length === 0) {
-			return {
-				ok: false,
-				message: "All fix cherry-picks had conflicts — manual resolution needed",
-			};
-		}
-
-		const diffIndex = await tracedExeca("git", ["-C", p.dir, "diff", "--cached", "--quiet"], {
-			reject: false,
-			env,
-		});
-		if (diffIndex.exitCode === 0) {
-			return {ok: false, message: "Fix branches had no changes to apply"};
-		}
-
-		const amend = await tracedExeca("git", ["-C", p.dir, "commit", "--amend", "--no-edit"], {
-			reject: false,
-			env,
-		});
-		if (amend.exitCode !== 0) {
-			return {ok: false, message: `Failed to amend commit: ${amend.stderr}`};
-		}
-
-		const push = await tracedExeca(
-			"git",
-			["-C", p.dir, "push", "origin", `${data.branch}:${data.branch}`, "--force-with-lease"],
-			{reject: false, env},
-		);
-		if (push.exitCode !== 0) {
-			return {ok: false, message: `Amended commit but failed to push: ${push.stderr}`};
-		}
-
-		invalidatePrCache(data.project);
-		invalidateChildrenCache(data.project);
-		return {
-			ok: true,
-			message: `Applied fixes from ${appliedFixes.join(", ")} and force-pushed to ${data.branch}`,
-		};
+		return result;
 	});
 }
 
@@ -1102,11 +1024,6 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 		const p = await resolveProject(data.project);
 
 		const env = await getMiseEnv(p.dir);
-
-		await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch ?? "main"], {
-			reject: false,
-			env,
-		});
 
 		// Validate transition: rebase is allowed from needs_rebase state
 		// Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
@@ -1117,42 +1034,31 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 			);
 		}
 
-		const checkout = await tracedExeca("git", ["-C", p.dir, "checkout", data.branch], {
-			reject: false,
+		const result = await rebaseBranchOntoUpstream(p.dir, {
+			branch: data.branch,
+			project: data.project,
+			upstreamRef: p.upstreamRef,
+			upstreamRemote: p.upstreamRemote,
+			fetchBranch: p.upstreamBranch ?? "main",
+			// Known discrepancy: p.remote is the GitHub "owner/repo" slug, not a git
+			// remote name, but this handler has always pushed to it. The task queue's
+			// rebase resolves the branch's configured git remote instead.
+			pushRemote: p.remote,
 			env,
 		});
-		if (checkout.exitCode !== 0) {
-			return {ok: false, message: `Failed to checkout ${data.branch}: ${checkout.stderr}`};
-		}
-
-		const branchSha = (
-			await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false, env})
-		).stdout.trim();
-		const rebase = await tracedExeca("git", ["-C", p.dir, "rebase", p.upstreamRef], {
-			reject: false,
-			env,
-		});
-		if (rebase.exitCode !== 0) {
-			await tracedExeca("git", ["-C", p.dir, "rebase", "--abort"], {reject: false, env});
-			const upstreamSha = getCachedUpstreamSha(data.project);
-			if (upstreamSha && branchSha) {
-				cacheMergeStatus(data.project, branchSha, upstreamSha, 0, 1, false);
+		if (!result.ok) {
+			if (result.stage === "checkout") {
+				return {ok: false, message: `Failed to checkout ${data.branch}: ${result.stderr}`};
 			}
-			return {ok: false, message: `Rebase failed with conflicts: ${rebase.stderr}`};
-		}
-
-		const push = await tracedExeca(
-			"git",
-			["-C", p.dir, "push", p.remote, `${data.branch}:${data.branch}`, "--force-with-lease"],
-			{reject: false, env},
-		);
-		if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
-			return {ok: false, message: `Rebased but failed to push: ${push.stderr}`};
+			if (result.stage === "rebase") {
+				return {ok: false, message: `Rebase failed with conflicts: ${result.stderr}`};
+			}
+			return {ok: false, message: `Rebased but failed to push: ${result.stderr}`};
 		}
 
 		invalidatePrCache(data.project);
 		invalidateMergeStatus(data.project);
-		return {ok: true, message: `Rebased ${data.branch} onto ${p.upstreamRef}`};
+		return {ok: true, message: result.message};
 	});
 }
 

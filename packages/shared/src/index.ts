@@ -36,6 +36,13 @@ export {
 	getRepoOwnerAndName,
 	getPatchId,
 } from "./lib/git.js";
+export {
+	type ApplyFixesOptions,
+	type RebaseBranchOptions,
+	type RebaseBranchResult,
+	applyFixesToBranch,
+	rebaseBranchOntoUpstream,
+} from "./lib/git-workflows.js";
 export {type PrStatuses, getPrStatuses} from "./lib/github-pr-status.js";
 export {
 	type SnoozedItem,

@@ -1,13 +1,12 @@
 import {execa} from "execa";
 import {
-	cacheMergeStatus,
 	getCacheDir,
-	getCachedUpstreamSha,
 	getMiseEnv,
 	getTestLogDir,
 	invalidateChildrenCache,
 	invalidateMergeStatus,
 	invalidatePrCache,
+	rebaseBranchOntoUpstream,
 	recordTestResult,
 	type TaskType,
 	type Transition,
@@ -263,16 +262,6 @@ async function runRebaseTask(task: Task): Promise<void> {
 	fs.mkdirSync(logDir, {recursive: true});
 	const captured: string[] = [];
 
-	const run = async (args: string[]) => {
-		const result = await execa("git", ["-C", task.projectDir, ...args], {reject: false, env});
-		const out = [result.stdout, result.stderr].filter(Boolean).join("\n");
-		if (out) {
-			emitLog(task, out + "\n");
-			captured.push(out);
-		}
-		return result;
-	};
-
 	const finish = (status: TaskStatus, message: string): void => {
 		fs.writeFileSync(path.join(logDir, `${task.sha}.log`), captured.join("\n") + "\n");
 		task.status = status;
@@ -281,45 +270,32 @@ async function runRebaseTask(task: Task): Promise<void> {
 		emit(task);
 	};
 
-	if (task.upstreamRemote) {
-		await run(["fetch", task.upstreamRemote]);
-	}
+	// Push-remote resolution is left to the operation's branch-config fallback —
+	// NOT task.remote (a GitHub slug like "owner/repo", not a git remote name)
+	// and NOT necessarily upstreamRemote (a fork's branches may track "origin"
+	// while it rebases onto "upstream").
+	const result = await rebaseBranchOntoUpstream(task.projectDir, {
+		branch: task.branch,
+		project: task.project,
+		upstreamRef: task.upstreamRef,
+		upstreamRemote: task.upstreamRemote,
+		rebaseMerges: true,
+		restoreBranch: task.upstreamBranch,
+		env,
+		onOutput: (chunk) => {
+			emitLog(task, chunk + "\n");
+			captured.push(chunk);
+		},
+	});
 
-	const checkout = await run(["checkout", task.branch]);
-	if (checkout.exitCode !== 0) {
-		finish("failed", `Failed to checkout ${task.branch}`);
-		return;
-	}
-
-	const branchSha = (
-		await execa("git", ["-C", task.projectDir, "rev-parse", "HEAD"], {reject: false, env})
-	).stdout.trim();
-
-	const rebase = await run(["rebase", "--rebase-merges", "--update-refs", task.upstreamRef]);
-	if (rebase.exitCode !== 0) {
-		await run(["rebase", "--abort"]);
-		const upstreamSha = getCachedUpstreamSha(task.project);
-		if (upstreamSha && branchSha) {
-			cacheMergeStatus(task.project, branchSha, upstreamSha, 0, 1, false);
+	if (!result.ok) {
+		if (result.stage === "checkout") {
+			finish("failed", `Failed to checkout ${task.branch}`);
+		} else if (result.stage === "rebase") {
+			finish("failed", `${task.branch}: rebase conflicts`);
+		} else {
+			finish("failed", `${task.branch}: rebased but push failed`);
 		}
-		if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
-		finish("failed", `${task.branch}: rebase conflicts`);
-		return;
-	}
-
-	// Push to the branch's own configured remote — NOT task.remote (a GitHub slug
-	// like "owner/repo", not a git remote name) and NOT necessarily upstreamRemote
-	// (a fork's branches may track "origin" while it rebases onto "upstream").
-	const branchRemote =
-		(
-			await execa("git", ["-C", task.projectDir, "config", `branch.${task.branch}.remote`], {
-				reject: false,
-			})
-		).stdout.trim() || "origin";
-	const push = await run(["push", branchRemote, `${task.branch}:${task.branch}`, "--force-with-lease"]);
-	if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
-		if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
-		finish("failed", `${task.branch}: rebased but push failed`);
 		return;
 	}
 
@@ -327,8 +303,7 @@ async function runRebaseTask(task: Task): Promise<void> {
 	invalidateChildrenCache(task.project);
 	invalidateMergeStatus(task.project);
 
-	if (task.upstreamBranch) await run(["checkout", task.upstreamBranch]);
-	finish("passed", `Rebased ${task.branch} onto ${task.upstreamRef}`);
+	finish("passed", result.message);
 }
 
 async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {

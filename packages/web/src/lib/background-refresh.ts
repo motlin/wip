@@ -74,6 +74,11 @@ export function ensureBackgroundRefresh(): void {
 	started = true;
 
 	void (async () => {
+		// Late-bound: the shared queue lives in client-safe code, createSystemProbe needs node:os.
+		const {createSystemProbe} = await import("@wip/shared");
+		const {workQueue} = await import("./shared-work-queue.js");
+		workQueue.setProbe(createSystemProbe());
+
 		const {startGitWatcher} = await import("./git-watcher.js");
 		await startGitWatcher((projectName) => enqueueProjectRefresh(projectName, {force: true}));
 

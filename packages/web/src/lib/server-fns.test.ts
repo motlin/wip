@@ -1295,7 +1295,7 @@ describe("getProjectChildrenHandler", () => {
 // -- pushChildHandler (direct handler tests) --
 
 describe("pushChildHandler", () => {
-	it("enqueues a push task and returns running status", async () => {
+	it("enqueues a push task", async () => {
 		const dir = await createTestGitRepo();
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Push this"]);
 		const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
@@ -1310,7 +1310,9 @@ describe("pushChildHandler", () => {
 		});
 
 		expect(result.id).toBeDefined();
-		expect(result.status).toBe("running");
+		// Pushes now go through the shared work queue instead of starting
+		// unconditionally, so a fresh push reports queued (or running once admitted).
+		expect(["queued", "running"]).toContain(result.status);
 	});
 
 	it("derives branch name when no branch is provided", async () => {
@@ -1327,7 +1329,7 @@ describe("pushChildHandler", () => {
 		});
 
 		expect(result.id).toBeDefined();
-		expect(result.status).toBe("running");
+		expect(["queued", "running"]).toContain(result.status);
 	});
 });
 

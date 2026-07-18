@@ -16,6 +16,8 @@ import {log} from "@wip/shared/services/logger-pino.js";
 import {EventEmitter} from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {workQueue} from "./shared-work-queue.js";
+import type {JobHandle} from "./work-queue.js";
 
 export type {TaskType};
 
@@ -62,15 +64,7 @@ export interface TaskEvent {
 
 let nextId = 1;
 const tasks = new Map<string, Task>();
-const projectQueues = new Map<string, string[]>();
-const runningProjects = new Set<string>();
-const runningProcesses = new Map<string, {kill: () => void}>();
-const inFlight = new Set<Promise<unknown>>();
-
-function track(promise: Promise<unknown>): void {
-	inFlight.add(promise);
-	void promise.finally(() => inFlight.delete(promise));
-}
+const jobHandles = new Map<string, JobHandle>();
 
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
@@ -141,54 +135,16 @@ function emitLog(task: Task, chunk: string): void {
 	emitter.emit("task", event);
 }
 
-function processQueue(project: string): void {
-	if (runningProjects.has(project)) return;
-
-	const queue = projectQueues.get(project);
-	if (!queue || queue.length === 0) return;
-
-	const taskId = queue[0];
-	if (!taskId) return;
-	const task = tasks.get(taskId);
-	if (!task) {
-		queue.shift();
-		return;
-	}
-
-	runningProjects.add(project);
-	task.status = "running";
-	task.startedAt = Date.now();
-	emit(task);
-
-	const running = runTask(task)
-		.then(() => {
-			queue.shift();
-			runningProjects.delete(project);
-			processQueue(project);
-		})
-		.catch((err) => {
-			task.status = "failed";
-			task.message = `${task.shortSha} failed: ${err instanceof Error ? err.message : "unknown error"}`;
-			task.finishedAt = Date.now();
-			emit(task);
-			queue.shift();
-			runningProjects.delete(project);
-			processQueue(project);
-		});
-	track(running);
-}
-
-async function runTask(task: Task): Promise<void> {
+async function runTask(task: Task, signal: AbortSignal): Promise<void> {
 	switch (task.taskType) {
 		case "test":
-			return runTestTask(task);
+			return runTestTask(task, signal);
 		case "claude":
-			return runClaudeTask(task);
+			return runClaudeTask(task, signal);
 		case "rebase":
 			return runRebaseTask(task);
 		case "push":
-			// Push tasks are started directly in registerTask and never enter the project queue
-			throw new Error("Push tasks must not reach the project queue");
+			return runPushTask(task, signal);
 		default: {
 			const unhandled: never = task.taskType;
 			throw new Error(`Task type "${String(unhandled)}" is not yet implemented`);
@@ -201,6 +157,7 @@ interface RunProcessOptions {
 	cmd: string;
 	args: string[];
 	logDir: string;
+	signal: AbortSignal;
 	env?: Record<string, string>;
 	cwd?: string;
 }
@@ -210,9 +167,11 @@ async function runProcess({
 	cmd,
 	args,
 	logDir,
+	signal,
 	env,
 	cwd,
 }: RunProcessOptions): Promise<{exitCode: number | undefined; duration: number} | undefined> {
+	if (signal.aborted) return undefined;
 	fs.mkdirSync(logDir, {recursive: true});
 
 	const start = performance.now();
@@ -222,7 +181,8 @@ async function runProcess({
 		cwd,
 		buffer: true,
 	});
-	runningProcesses.set(task.id, {kill: () => childProcess.kill("SIGTERM")});
+	const onAbort = () => childProcess.kill("SIGTERM");
+	signal.addEventListener("abort", onAbort, {once: true});
 
 	if (childProcess.stdout) {
 		childProcess.stdout.on("data", (chunk: Buffer) => {
@@ -236,7 +196,7 @@ async function runProcess({
 	}
 
 	const result = await childProcess;
-	runningProcesses.delete(task.id);
+	signal.removeEventListener("abort", onAbort);
 
 	if (task.status === "cancelled") return undefined;
 
@@ -250,7 +210,7 @@ async function runProcess({
 	return {exitCode: result.exitCode, duration};
 }
 
-async function runTestTask(task: Task): Promise<void> {
+async function runTestTask(task: Task, signal: AbortSignal): Promise<void> {
 	const miseEnv = await getMiseEnv(task.projectDir);
 	const args = ["-C", task.projectDir, "test", "run", "--retest", task.sha];
 
@@ -259,6 +219,7 @@ async function runTestTask(task: Task): Promise<void> {
 		cmd: "git",
 		args,
 		logDir: getTestLogDir(task.project),
+		signal,
 		env: miseEnv,
 	});
 	if (!result) return;
@@ -273,7 +234,7 @@ async function runTestTask(task: Task): Promise<void> {
 	emit(task);
 }
 
-async function runClaudeTask(task: Task): Promise<void> {
+async function runClaudeTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.command) throw new Error("Claude task requires a command");
 	if (!task.branch) throw new Error("Claude task requires a branch");
 
@@ -293,6 +254,7 @@ async function runClaudeTask(task: Task): Promise<void> {
 		cmd: "claude",
 		args: ["--print", task.command],
 		logDir: path.join(getCacheDir(), "claude-logs", task.project),
+		signal,
 		cwd: task.projectDir,
 	});
 	if (!result) return;
@@ -383,7 +345,7 @@ async function runRebaseTask(task: Task): Promise<void> {
 	finish("passed", `Rebased ${task.branch} onto ${task.upstreamRef}`);
 }
 
-async function runPushTask(task: Task): Promise<void> {
+async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.branch) throw new Error("Push task requires a branch");
 	if (!task.upstreamRemote) throw new Error("Push task requires upstreamRemote");
 
@@ -406,6 +368,7 @@ async function runPushTask(task: Task): Promise<void> {
 		cmd: "git",
 		args: ["-C", task.projectDir, "push", "-u", task.upstreamRemote, `${task.branch}:refs/heads/${task.branch}`],
 		logDir: path.join(getCacheDir(), "push-logs", task.project),
+		signal,
 	});
 	if (!result) return;
 
@@ -429,21 +392,33 @@ function registerTask(task: Task): Task {
 	tasks.set(task.id, task);
 	emit(task);
 
-	if (task.taskType === "push") {
-		const pushing = runPushTask(task).catch((err) => {
-			task.status = "failed";
-			task.message = `Push failed: ${err instanceof Error ? err.message : "unknown error"}`;
-			task.finishedAt = Date.now();
+	const handle = workQueue.enqueue({
+		coalesceKey: `task:${task.taskType}:${task.project}:${task.sha}`,
+		// Push gets a unique lane so it never waits behind a long test; every
+		// other type shares one lane per project, preserving the old per-project
+		// serial queue (a test and a rebase must not touch the same repo at once).
+		laneKey: task.taskType === "push" ? `push:${task.project}:${task.sha}` : `task:${task.project}`,
+		kind: task.taskType,
+		project: task.project,
+		// Tasks are user clicks; they jump ahead of queued background refreshes.
+		priority: "foreground",
+		run: async (signal) => {
+			if (task.status === "cancelled") return;
+			task.status = "running";
+			task.startedAt = Date.now();
 			emit(task);
-		});
-		track(pushing);
-	} else {
-		if (!projectQueues.has(task.project)) {
-			projectQueues.set(task.project, []);
-		}
-		projectQueues.get(task.project)!.push(task.id);
-		processQueue(task.project);
-	}
+			try {
+				await runTask(task, signal);
+			} catch (err) {
+				task.status = "failed";
+				task.message = `${task.shortSha} failed: ${err instanceof Error ? err.message : "unknown error"}`;
+				task.finishedAt = Date.now();
+				emit(task);
+			}
+		},
+	});
+	jobHandles.set(task.id, handle);
+	void handle.settled.finally(() => jobHandles.delete(task.id));
 
 	return task;
 }
@@ -508,9 +483,8 @@ export function enqueuePush(opts: EnqueuePushOptions): Task {
 		upstreamRemote: opts.upstreamRemote,
 		remote: opts.remote,
 		createBranch: opts.createBranch,
-		status: "running",
+		status: "queued",
 		queuedAt: Date.now(),
-		startedAt: Date.now(),
 	});
 }
 
@@ -575,33 +549,14 @@ function cancelTask(id: string): {ok: boolean; message: string} {
 		return {ok: false, message: `Task already ${task.status}`};
 	}
 
-	if (task.status === "queued") {
-		const queue = projectQueues.get(task.project);
-		if (queue) {
-			const idx = queue.indexOf(id);
-			if (idx !== -1) queue.splice(idx, 1);
-		}
-		task.status = "cancelled";
-		task.finishedAt = Date.now();
-		task.message = `${task.shortSha} cancelled`;
-		emit(task);
-		return {ok: true, message: task.message};
-	}
-
-	if (task.status === "running") {
-		const proc = runningProcesses.get(id);
-		if (proc) {
-			proc.kill();
-			runningProcesses.delete(id);
-		}
-		task.status = "cancelled";
-		task.finishedAt = Date.now();
-		task.message = `${task.shortSha} cancelled`;
-		emit(task);
-		return {ok: true, message: task.message};
-	}
-
-	return {ok: false, message: "Unknown task status"};
+	// One cancel path for both cases: the queue drops the job if it is still
+	// queued, or aborts its signal if it is running (runProcess kills the child).
+	task.status = "cancelled";
+	task.finishedAt = Date.now();
+	task.message = `${task.shortSha} cancelled`;
+	jobHandles.get(id)?.cancel();
+	emit(task);
+	return {ok: true, message: task.message};
 }
 
 export const enqueueTest = (
@@ -616,17 +571,14 @@ export const cancelTest = cancelTask;
 export const getAllJobs = getAllTasks;
 
 export async function resetQueue(): Promise<void> {
+	const settled = [...jobHandles.values()].map((handle) => handle.settled);
 	for (const task of tasks.values()) {
 		if (task.status === "queued" || task.status === "running") {
 			cancelTask(task.id);
 		}
 	}
-	while (inFlight.size) {
-		await Promise.allSettled(inFlight);
-	}
+	await Promise.allSettled(settled);
 	tasks.clear();
-	projectQueues.clear();
-	runningProjects.clear();
-	runningProcesses.clear();
+	jobHandles.clear();
 	nextId = 1;
 }

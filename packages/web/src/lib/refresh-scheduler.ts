@@ -1,136 +1,35 @@
-import {log} from "@wip/shared/services/logger-pino.js";
+import {workQueue} from "./shared-work-queue.js";
+import type {WorkQueueState} from "./work-queue.js";
 
 /**
- * Single server-side refresh pipeline. Every background refresh (children,
- * todos, merge status, project discovery) is enqueued here instead of running
- * ad hoc, so total subprocess/API fan-out stays bounded no matter how many
- * SSE connections, page loads, or watcher events fire at once.
+ * Refresh-flavored adapter over the shared WorkQueue. Every background refresh
+ * (children, todos, merge status, discovery) is enqueued into the one global
+ * pipeline, so refresh fan-out shares a budget with tests, rebases, and pushes
+ * instead of owning a private slot count.
  */
 export type RefreshKind = "children" | "todos" | "merge-status" | "discovery";
 
-interface RefreshErrorEvent {
-	kind: RefreshKind;
-	project: string;
-	message: string;
-}
+export type RefreshSchedulerState = WorkQueueState;
 
-interface RefreshJob {
-	key: string;
-	kind: RefreshKind;
-	project: string;
-	run: () => Promise<void>;
-}
-
-// Two, not four: each refresh job itself runs long serial chains of git
-// subprocesses (per-branch log/rev-parse, per-child rev-list/merge-tree), so
-// even a few concurrent jobs generate a high sustained spawn rate that pegs
-// the machine during cold-start catch-up.
-const MAX_CONCURRENT_REFRESHES = 2;
-
-const queued: RefreshJob[] = [];
-const queuedKeys = new Set<string>();
-const running = new Map<string, {kind: RefreshKind; project: string}>();
-const inFlight = new Set<Promise<void>>();
-
-export interface RefreshJobSummary {
-	kind: RefreshKind;
-	project: string;
-}
-
-export interface RefreshSchedulerState {
-	slots: number;
-	running: RefreshJobSummary[];
-	queued: RefreshJobSummary[];
-}
-
-type SchedulerStateListener = (state: RefreshSchedulerState) => void;
-const stateListeners = new Set<SchedulerStateListener>();
-
-/** Live queue snapshot, for the Tasks page's background-refresh panel. */
+/** Live queue snapshot, for the Tasks page's background-work panel. */
 export function getSchedulerState(): RefreshSchedulerState {
-	return {
-		slots: MAX_CONCURRENT_REFRESHES,
-		running: [...running.values()],
-		queued: queued.map((job) => ({kind: job.kind, project: job.project})),
-	};
+	return workQueue.getState();
 }
 
 /** Subscribe to queue changes (enqueue, start, settle). Returns an unsubscribe function. */
-export function onSchedulerStateChange(listener: SchedulerStateListener): () => void {
-	stateListeners.add(listener);
-	return () => stateListeners.delete(listener);
+export function onSchedulerStateChange(listener: (state: RefreshSchedulerState) => void): () => void {
+	return workQueue.onStateChange(listener);
 }
 
-// Coalesce bursts: a page load can enqueue ~60 jobs and each job changes
-// state 2-3 times, which as individual broadcasts re-rendered every client.
-const SCHEDULER_STATE_COALESCE_MS = 100;
-let stateEmitPending = false;
-let lastEmittedState = "";
-
-function emitSchedulerState(): void {
-	if (stateListeners.size === 0) return;
-	if (stateEmitPending) return;
-	stateEmitPending = true;
-	setTimeout(() => {
-		stateEmitPending = false;
-		if (stateListeners.size === 0) return;
-		const state = getSchedulerState();
-		const serialized = JSON.stringify(state);
-		if (serialized === lastEmittedState) return;
-		lastEmittedState = serialized;
-		for (const listener of stateListeners) {
-			listener(state);
-		}
-	}, SCHEDULER_STATE_COALESCE_MS);
-}
-
-type RefreshErrorListener = (event: RefreshErrorEvent) => void;
-const errorListeners = new Set<RefreshErrorListener>();
-
-/** Subscribe to refresh failures. Returns an unsubscribe function. No node:events — this module is statically imported from client-reachable code. */
-export function onRefreshError(listener: RefreshErrorListener): () => void {
-	errorListeners.add(listener);
-	return () => errorListeners.delete(listener);
-}
-
-function emitRefreshError(event: RefreshErrorEvent): void {
-	for (const listener of errorListeners) {
-		listener(event);
-	}
-}
-
-function jobKey(kind: RefreshKind, project: string): string {
-	return `${kind}:${project}`;
+/** Subscribe to job failures. Returns an unsubscribe function. */
+export function onRefreshError(
+	listener: (event: {kind: string; project: string; message: string}) => void,
+): () => void {
+	return workQueue.onJobError(listener);
 }
 
 export function runningRefreshCount(): number {
-	return running.size;
-}
-
-function pump(): void {
-	let changed = false;
-	while (running.size < MAX_CONCURRENT_REFRESHES && queued.length > 0) {
-		const job = queued.shift()!;
-		queuedKeys.delete(job.key);
-		running.set(job.key, {kind: job.kind, project: job.project});
-		changed = true;
-
-		const promise = job
-			.run()
-			.catch((error: unknown) => {
-				const message = error instanceof Error ? error.message : String(error);
-				log.general.error({kind: job.kind, project: job.project, error}, "Background refresh failed");
-				emitRefreshError({kind: job.kind, project: job.project, message});
-			})
-			.finally(() => {
-				running.delete(job.key);
-				inFlight.delete(promise);
-				emitSchedulerState();
-				pump();
-			});
-		inFlight.add(promise);
-	}
-	if (changed) emitSchedulerState();
+	return workQueue.runningCount();
 }
 
 /**
@@ -141,29 +40,20 @@ function pump(): void {
 export function enqueueRefresh(options: {kind: RefreshKind; project: string; run: () => Promise<void>}): {
 	queued: boolean;
 } {
-	const key = jobKey(options.kind, options.project);
-	if (queuedKeys.has(key) || running.has(key)) {
-		return {queued: false};
-	}
-
-	queued.push({key, kind: options.kind, project: options.project, run: options.run});
-	queuedKeys.add(key);
-	emitSchedulerState();
-	queueMicrotask(pump);
-	return {queued: true};
+	const key = `${options.kind}:${options.project}`;
+	const handle = workQueue.enqueue({
+		coalesceKey: key,
+		laneKey: key,
+		kind: options.kind,
+		project: options.project,
+		run: () => options.run(),
+	});
+	return {queued: !handle.coalesced};
 }
 
 /** Test-only: drop queued jobs, await in-flight jobs, and clear all state. */
 export async function resetScheduler(): Promise<void> {
-	queued.length = 0;
-	queuedKeys.clear();
-	while (inFlight.size > 0) {
-		await Promise.allSettled(inFlight);
-	}
-	running.clear();
-	errorListeners.clear();
-	stateListeners.clear();
-	lastEmittedState = "";
+	await workQueue.reset();
 }
 
 /**

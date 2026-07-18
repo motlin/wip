@@ -2,36 +2,17 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
 import {
 	enqueueRefresh,
-	getSchedulerState,
 	onRefreshError,
-	onSchedulerStateChange,
 	resetScheduler,
 	runningRefreshCount,
 	startPeriodicSweep,
 } from "./refresh-scheduler";
 
-interface Deferred {
-	promise: Promise<void>;
-	resolve: () => void;
-	reject: (error: Error) => void;
-}
-
-function deferred(): Deferred {
-	let resolve!: () => void;
-	let reject!: (error: Error) => void;
-	const promise = new Promise<void>((promiseResolve, promiseReject) => {
-		resolve = promiseResolve;
-		reject = promiseReject;
-	});
-	return {promise, resolve, reject};
-}
+// Queue mechanics (concurrency, lanes, priority, state broadcast) are covered
+// by work-queue.test.ts; these tests cover the refresh-flavored adapter.
 
 async function settle(): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-async function waitForCoalesce(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 150));
 }
 
 beforeEach(async () => {
@@ -54,14 +35,17 @@ describe("enqueueRefresh", () => {
 	});
 
 	it("coalesces jobs with the same kind and project", async () => {
-		const gate = deferred();
-		const firstRun = vi.fn(() => gate.promise);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const firstRun = vi.fn(() => gate);
 		const secondRun = vi.fn().mockResolvedValue(undefined);
 
 		expect(enqueueRefresh({kind: "children", project: "alpha", run: firstRun})).toStrictEqual({queued: true});
 		expect(enqueueRefresh({kind: "children", project: "alpha", run: secondRun})).toStrictEqual({queued: false});
 
-		gate.resolve();
+		release();
 		await settle();
 
 		expect(firstRun).toHaveBeenCalledTimes(1);
@@ -79,68 +63,6 @@ describe("enqueueRefresh", () => {
 
 		expect(childrenRun).toHaveBeenCalledTimes(1);
 		expect(todosRun).toHaveBeenCalledTimes(1);
-	});
-
-	it("runs at most two jobs concurrently and starts queued jobs as slots free up", async () => {
-		const gates = [deferred(), deferred(), deferred(), deferred()];
-		const runs = gates.map((gate) => vi.fn(() => gate.promise));
-
-		for (const [index, run] of runs.entries()) {
-			enqueueRefresh({kind: "children", project: `project-${index}`, run});
-		}
-		await settle();
-
-		expect(runningRefreshCount()).toBe(2);
-		expect(runs[2]).not.toHaveBeenCalled();
-		expect(runs[3]).not.toHaveBeenCalled();
-
-		gates[0]!.resolve();
-		await settle();
-
-		expect(runs[2]).toHaveBeenCalledTimes(1);
-		expect(runs[3]).not.toHaveBeenCalled();
-		expect(runningRefreshCount()).toBe(2);
-
-		for (const gate of gates) {
-			gate.resolve();
-		}
-		await settle();
-
-		expect(runs[3]).toHaveBeenCalledTimes(1);
-	});
-
-	it("starts queued jobs in enqueue order", async () => {
-		const order: string[] = [];
-		const gates = [deferred(), deferred(), deferred(), deferred()];
-
-		for (const [index, gate] of gates.entries()) {
-			enqueueRefresh({
-				kind: "children",
-				project: `running-${index}`,
-				run: () => gate.promise,
-			});
-		}
-		enqueueRefresh({
-			kind: "children",
-			project: "queued-first",
-			run: async () => {
-				order.push("queued-first");
-			},
-		});
-		enqueueRefresh({
-			kind: "children",
-			project: "queued-second",
-			run: async () => {
-				order.push("queued-second");
-			},
-		});
-
-		for (const gate of gates) {
-			gate.resolve();
-		}
-		await settle();
-
-		expect(order).toStrictEqual(["queued-first", "queued-second"]);
 	});
 
 	it("emits a refresh-error event and keeps processing when a job rejects", async () => {
@@ -181,81 +103,25 @@ describe("enqueueRefresh", () => {
 	});
 });
 
-describe("scheduler state", () => {
-	it("reports running and queued jobs with slot capacity", async () => {
-		const gates = [deferred(), deferred(), deferred()];
-		for (const [index, gate] of gates.entries()) {
-			enqueueRefresh({kind: "children", project: `project-${index}`, run: () => gate.promise});
-		}
-		await settle();
-
-		expect(getSchedulerState()).toStrictEqual({
-			slots: 2,
-			running: [
-				{kind: "children", project: "project-0"},
-				{kind: "children", project: "project-1"},
-			],
-			queued: [{kind: "children", project: "project-2"}],
-		});
-
-		for (const gate of gates) {
-			gate.resolve();
-		}
-		await settle();
-
-		expect(getSchedulerState()).toStrictEqual({slots: 2, running: [], queued: []});
-	});
-
-	it("notifies state listeners with coalesced snapshots ending in the final state", async () => {
-		const snapshots: Array<{running: number; queued: number}> = [];
-		onSchedulerStateChange((state) => {
-			snapshots.push({running: state.running.length, queued: state.queued.length});
-		});
-
-		const gate = deferred();
-		enqueueRefresh({kind: "children", project: "alpha", run: () => gate.promise});
-		await waitForCoalesce();
-		gate.resolve();
-		await waitForCoalesce();
-
-		expect(snapshots.length).toBeGreaterThan(0);
-		expect(snapshots.at(0)).toStrictEqual({running: 1, queued: 0});
-		expect(snapshots.at(-1)).toStrictEqual({running: 0, queued: 0});
-	});
-
-	it("does not re-broadcast an unchanged state", async () => {
-		onSchedulerStateChange(() => {});
-		const gate = deferred();
-		enqueueRefresh({kind: "children", project: "alpha", run: () => gate.promise});
-		gate.resolve();
-		await waitForCoalesce();
-
-		const snapshots: unknown[] = [];
-		onSchedulerStateChange((state) => snapshots.push(state));
-
-		const secondGate = deferred();
-		enqueueRefresh({kind: "children", project: "beta", run: () => secondGate.promise});
-		secondGate.resolve();
-		await waitForCoalesce();
-
-		// Job started and settled within one coalescing window: net state is
-		// unchanged (idle → idle), so nothing should have been broadcast.
-		expect(snapshots).toStrictEqual([]);
-	});
-});
-
 describe("resetScheduler", () => {
 	it("awaits in-flight jobs and clears queued jobs", async () => {
-		const gates = [deferred(), deferred(), deferred(), deferred()];
-		for (const [index, gate] of gates.entries()) {
-			enqueueRefresh({kind: "children", project: `running-${index}`, run: () => gate.promise});
+		const gates: Array<() => void> = [];
+		for (let index = 0; index < 6; index++) {
+			enqueueRefresh({
+				kind: "children",
+				project: `running-${index}`,
+				run: () =>
+					new Promise<void>((resolve) => {
+						gates.push(resolve);
+					}),
+			});
 		}
 		const queuedRun = vi.fn().mockResolvedValue(undefined);
 		enqueueRefresh({kind: "children", project: "queued", run: queuedRun});
 		await settle();
 
 		for (const gate of gates) {
-			gate.resolve();
+			gate();
 		}
 		await resetScheduler();
 

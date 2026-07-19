@@ -9,7 +9,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsc -b",
-		"test": "vp test run",
+		"test": "node node_modules/vitest/dist/cli.js run",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

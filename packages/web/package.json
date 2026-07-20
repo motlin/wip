@@ -25,7 +25,7 @@
 		"@wip/shared": "workspace:*",
 		"ansi-to-html": "^0.7.2",
 		"better-sqlite3": "^12.11.1",
-		"execa": "^9.6.1",
+		"execa": "^10.0.0",
 		"lucide-react": "^1.25.0",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",

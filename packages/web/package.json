@@ -40,7 +40,7 @@
 		"@storybook/addon-a11y": "^10.5.2",
 		"@storybook/addon-docs": "^10.5.2",
 		"@storybook/react": "^10.5.2",
-		"@storybook/react-vite": "^10.5.2",
+		"@storybook/react-vite": "^10.5.3",
 		"@tailwindcss/vite": "^4.3.3",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@types/node": "^26.1.1",

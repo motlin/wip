@@ -174,7 +174,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		let changed = false;
 		// Scan in order, skipping lane-blocked jobs so one busy repo never
 		// stalls work for every other repo behind it.
-		for (let index = 0; index < queued.length && slots > 0; ) {
+		for (let index = 0; index < queued.length && slots > 0;) {
 			const job = queued[index]!;
 			if (runningLanes.has(job.laneKey)) {
 				index += 1;

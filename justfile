@@ -32,22 +32,22 @@ ensure-sqlite-native:
             continue
         fi
         rm -rf "$package_dir/build"
-        pnpm --dir "$package_dir" run build-release
+        vp exec pnpm --dir "$package_dir" run build-release
         node -e 'const Database = require(process.argv[1]); new Database(":memory:").close();' "$package_dir"
     done
 
-# Build all packages
+# vp exec pnpm run build
 [group('build')]
 build: install
-    pnpm run build
+    vp exec pnpm run build
 
 [group('build')]
 build-ci: build
 
-# Build the shared package only
+# vp exec pnpm --filter @wip/shared build
 [group('build')]
 build-shared: install
-    pnpm --filter @wip/shared build
+    vp exec pnpm --filter @wip/shared build
 
 # Run linter
 [group('build')]
@@ -64,18 +64,18 @@ format: install
 check: build
     vp check {{ if ci != "" { "" } else { "--fix" } }}
 
-# Typecheck all packages
+# vp exec pnpm run typecheck
 [group('build')]
 typecheck: build
-    pnpm run typecheck
+    vp exec pnpm run typecheck
 
 [group('build')]
 typecheck-ci: build
 
-# Run tests
+# vp exec pnpm -r run test
 [group('test')]
 test: build
-    pnpm -r run test
+    vp exec pnpm -r run test
 
 [group('test')]
 test-ci: test
@@ -97,10 +97,10 @@ precommit quick="": check build fallow pre-commit
     {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
 
-# Start web dashboard dev server
+# vp exec pnpm --filter @wip/web dev
 [group('web')]
 dev: build-shared
-    pnpm --filter @wip/web dev
+    vp exec pnpm --filter @wip/web dev
 
 # Start web dashboard (production build)
 [group('web')]

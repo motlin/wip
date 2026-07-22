@@ -40,8 +40,9 @@ export default defineConfig({
 	},
 	server: {
 		port: 3456,
-		host: true,
-		allowedHosts: [".halibut-wyrm.ts.net"],
+		strictPort: true,
+		host: "127.0.0.1",
+		allowedHosts: ["wip.m4.notlin.com"],
 		watch: {},
 	},
 	optimizeDeps: {

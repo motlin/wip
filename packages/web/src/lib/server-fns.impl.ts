@@ -70,6 +70,7 @@ import {
 
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh} from "./refresh-scheduler.js";
+import {workQueue} from "./shared-work-queue.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
@@ -238,10 +239,17 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir}));
 			const cachedNames = namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
 
-			// Fire off background naming for any uncached items
 			const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
-			if (uncachedKeys.length > 0) {
-				suggestBranchNames(uncachedKeys).catch(() => {});
+			for (const request of uncachedKeys) {
+				workQueue.enqueue({
+					coalesceKey: `branch-name:${request.project}:${request.sha}`,
+					laneKey: "branch-name",
+					kind: "branch-name",
+					project: request.project,
+					run: async () => {
+						await suggestBranchNames([request]);
+					},
+				});
 			}
 
 			const headSha = (

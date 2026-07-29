@@ -140,7 +140,7 @@ importers:
         version: 0.1.7
       '@git-diff-view/react':
         specifier: ^0.1.7
-        version: 0.1.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 0.1.7(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/query-sync-storage-persister':
         specifier: ^5.101.3
         version: 5.101.3
@@ -155,13 +155,13 @@ importers:
         version: 5.101.3(@tanstack/react-query@5.101.3(react@19.2.7))(react@19.2.7)
       '@tanstack/react-router':
         specifier: ^1.170.18
-        version: 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/react-router-with-query':
         specifier: ^1.130.17
-        version: 1.130.17(@tanstack/react-query@5.101.3(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 1.130.17(@tanstack/react-query@5.101.3(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.15)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/react-start':
         specifier: ^1.168.32
-        version: 1.168.32(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)
+        version: 1.168.32(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)
       '@wip/shared':
         specifier: workspace:*
         version: link:../shared
@@ -181,8 +181,8 @@ importers:
         specifier: ^19.2.7
         version: 19.2.7
       react-dom:
-        specifier: ^19.2.7
-        version: 19.2.7(react@19.2.7)
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.7)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -210,10 +210,10 @@ importers:
         version: 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
       '@storybook/react':
         specifier: ^10.5.2
-        version: 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)
+        version: 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)
       '@storybook/react-vite':
         specifier: ^10.5.2
-        version: 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)
+        version: 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
@@ -237,7 +237,7 @@ importers:
         version: 4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24)
       agentation:
         specifier: ^3.0.2
-        version: 3.0.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 3.0.2(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       storybook:
         specifier: ^10.5.2
         version: 10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
@@ -4108,10 +4108,10 @@ packages:
     resolution: {integrity: sha512-aEZ9qP+/M+58x2qgfSFEWH1BxLyHe5+qkLNJOZQb5iGS017jpbRnoKhNRrXPeA6RfBrZO5wZrT9DMC1UqE1f1w==}
     engines: {node: ^20.9.0 || >=22}
 
-  react-dom@19.2.7:
-    resolution: {integrity: sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ==}
+  react-dom@19.2.8:
+    resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
     peerDependencies:
-      react: ^19.2.7
+      react: ^19.2.8
 
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
@@ -4994,7 +4994,7 @@ snapshots:
       highlight.js: 11.11.1
       lowlight: 3.3.0
 
-  '@git-diff-view/react@0.1.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@git-diff-view/react@0.1.7(react-dom@19.2.8(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@git-diff-view/core': 0.1.7
       '@types/hast': 3.0.5
@@ -5002,7 +5002,7 @@ snapshots:
       highlight.js: 11.11.1
       lowlight: 3.3.0
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
       reactivity-store: 0.4.0(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
@@ -5850,9 +5850,9 @@ snapshots:
       '@mdx-js/react': 3.1.1(@types/react@19.2.17)(react@19.2.7)
       '@storybook/csf-plugin': 10.5.2(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
       '@storybook/icons': 2.1.0(react@19.2.7)
-      '@storybook/react-dom-shim': 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
+      '@storybook/react-dom-shim': 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
       storybook: 10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
       ts-dedent: 2.3.0
     optionalDependencies:
@@ -5889,26 +5889,26 @@ snapshots:
     dependencies:
       react: 19.2.7
 
-  '@storybook/react-dom-shim@10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))':
+  '@storybook/react-dom-shim@10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))':
     dependencies:
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
       storybook: 10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
     optionalDependencies:
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
 
-  '@storybook/react-vite@10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)':
+  '@storybook/react-vite@10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)':
     dependencies:
       '@joshwooding/vite-plugin-react-docgen-typescript': 0.7.0(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(typescript@7.0.2)
       '@rollup/pluginutils': 5.4.0
       '@storybook/builder-vite': 10.5.2(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
-      '@storybook/react': 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)
+      '@storybook/react': 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)
       empathic: 2.0.1
       magic-string: 0.30.21
       react: 19.2.7
       react-docgen: 8.0.3
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
       resolve: 1.22.12
       storybook: 10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
       tsconfig-paths: 4.2.0
@@ -5923,14 +5923,14 @@ snapshots:
       - supports-color
       - webpack
 
-  '@storybook/react@10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)':
+  '@storybook/react@10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))(typescript@7.0.2)':
     dependencies:
       '@storybook/global': 5.0.0
-      '@storybook/react-dom-shim': 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
+      '@storybook/react-dom-shim': 10.5.2(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(storybook@10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
       react: 19.2.7
       react-docgen: 8.0.3
       react-docgen-typescript: 2.4.0(typescript@7.0.2)
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
       storybook: 10.5.2(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)(vite-plus@0.2.5(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
     optionalDependencies:
       '@types/react': 19.2.17
@@ -6043,44 +6043,44 @@ snapshots:
       '@tanstack/query-core': 5.101.3
       react: 19.2.7
 
-  '@tanstack/react-router-with-query@1.130.17(@tanstack/react-query@5.101.3(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.15)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-router-with-query@1.130.17(@tanstack/react-query@5.101.3(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.15)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@tanstack/react-query': 5.101.3(react@19.2.7)
-      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/router-core': 1.171.15
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
 
-  '@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@tanstack/history': 1.162.0
-      '@tanstack/react-store': 0.9.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-store': 0.9.3(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/router-core': 1.171.15
       isbot: 5.2.0
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
 
-  '@tanstack/react-start-client@1.168.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-start-client@1.168.16(react-dom@19.2.8(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/router-core': 1.171.15
       '@tanstack/start-client-core': 1.170.14
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
 
-  '@tanstack/react-start-rsc@0.1.31(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)':
+  '@tanstack/react-start-rsc@0.1.31(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)':
     dependencies:
-      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/router-core': 1.171.15
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-client-core': 1.170.14
       '@tanstack/start-fn-stubs': 1.162.0
-      '@tanstack/start-plugin-core': 1.171.24(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)
+      '@tanstack/start-plugin-core': 1.171.24(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)
       '@tanstack/start-server-core': 1.169.17
       '@tanstack/start-storage-context': 1.167.17
       pathe: 2.0.3
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
     optionalDependencies:
       '@rspack/core': 2.1.6(@swc/helpers@0.5.23)
     transitivePeerDependencies:
@@ -6097,29 +6097,29 @@ snapshots:
       - vite-plugin-solid
       - webpack
 
-  '@tanstack/react-start-server@1.167.22(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-start-server@1.167.22(react-dom@19.2.8(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/router-core': 1.171.15
       '@tanstack/start-server-core': 1.169.17
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
     transitivePeerDependencies:
       - crossws
 
-  '@tanstack/react-start@1.168.32(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)':
+  '@tanstack/react-start@1.168.32(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)':
     dependencies:
-      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@tanstack/react-start-client': 1.168.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@tanstack/react-start-rsc': 0.1.31(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)
-      '@tanstack/react-start-server': 1.167.22(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-start-client': 1.168.16(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-start-rsc': 0.1.31(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.7))(react@19.2.7)(rolldown@1.1.5)
+      '@tanstack/react-start-server': 1.167.22(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-client-core': 1.170.14
-      '@tanstack/start-plugin-core': 1.171.24(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)
+      '@tanstack/start-plugin-core': 1.171.24(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)
       '@tanstack/start-server-core': 1.169.17
       pathe: 2.0.3
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
     optionalDependencies:
       '@rsbuild/core': 2.1.7
       vite: '@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)'
@@ -6137,11 +6137,11 @@ snapshots:
       - vite-plugin-solid
       - webpack
 
-  '@tanstack/react-store@0.9.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@tanstack/react-store@0.9.3(react-dom@19.2.8(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@tanstack/store': 0.9.3
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
       use-sync-external-store: 1.6.0(react@19.2.7)
 
   '@tanstack/router-core@1.171.15':
@@ -6164,7 +6164,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.168.23(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)':
+  '@tanstack/router-plugin@1.168.23(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/template': 7.29.7
@@ -6177,7 +6177,7 @@ snapshots:
       zod: 4.4.3
     optionalDependencies:
       '@rsbuild/core': 2.1.7
-      '@tanstack/react-router': 1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/react-router': 1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7)
       vite: '@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)'
     transitivePeerDependencies:
       - '@farmfe/core'
@@ -6211,14 +6211,14 @@ snapshots:
 
   '@tanstack/start-fn-stubs@1.162.0': {}
 
-  '@tanstack/start-plugin-core@1.171.24(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)':
+  '@tanstack/start-plugin-core@1.171.24(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)':
     dependencies:
       '@babel/code-frame': 7.27.1
       '@babel/core': 7.29.7
       '@babel/types': 7.29.7
       '@tanstack/router-core': 1.171.15
       '@tanstack/router-generator': 1.167.21
-      '@tanstack/router-plugin': 1.168.23(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)
+      '@tanstack/router-plugin': 1.168.23(@rsbuild/core@2.1.7)(@rspack/core@2.1.6(@swc/helpers@0.5.23))(@tanstack/react-router@1.170.18(react-dom@19.2.8(react@19.2.7))(react@19.2.7))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.1)(rolldown@1.1.5)
       '@tanstack/router-utils': 1.162.2
       '@tanstack/start-server-core': 1.169.17
       exsolve: 1.1.0
@@ -6792,10 +6792,10 @@ snapshots:
 
   acorn@8.17.0: {}
 
-  agentation@3.0.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  agentation@3.0.2(react-dom@19.2.8(react@19.2.7))(react@19.2.7):
     optionalDependencies:
       react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
+      react-dom: 19.2.8(react@19.2.7)
 
   ansi-escapes@4.3.2:
     dependencies:
@@ -8323,7 +8323,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  react-dom@19.2.7(react@19.2.7):
+  react-dom@19.2.8(react@19.2.7):
     dependencies:
       react: 19.2.7
       scheduler: 0.27.0

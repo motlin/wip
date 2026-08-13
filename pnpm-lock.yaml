@@ -188,8 +188,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@chromatic-com/storybook':
-        specifier: ^5.2.1
-        version: 5.2.1(storybook@10.5.6(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8)(vite-plus@0.2.7(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
+        specifier: ^5.3.0
+        version: 5.3.0(storybook@10.5.6(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8)(vite-plus@0.2.7(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))
       '@pollyjs/adapter-fetch':
         specifier: ^6.0.7
         version: 6.0.7
@@ -356,8 +356,8 @@ packages:
   '@blazediff/core@1.9.1':
     resolution: {integrity: sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA==}
 
-  '@chromatic-com/storybook@5.2.1':
-    resolution: {integrity: sha512-z6I7NJk/0VngA64y5TNYaB4Hc2X8+90n4op6lBt9PvWk5TmIlFLDqdX33rlrwbNRkkYijVgA/wO04rVYXi5Mlg==}
+  '@chromatic-com/storybook@5.3.0':
+    resolution: {integrity: sha512-gMAfVYJnF/tjdY8C3Q54KYz/low2NFjPIZMpCqSFuMUiTJ2DNWCTb7mFhuuzZ1iduWFDhewlJyilFmvKcEDYRA==}
     engines: {node: '>=20.0.0', yarn: '>=1.22.18'}
     peerDependencies:
       storybook: ^0.0.0-0 || ^10.1.0 || ^10.1.0-0 || ^10.2.0-0 || ^10.3.0-0 || ^10.4.0-0 || ^10.5.0-0 || ^10.6.0-0
@@ -2818,8 +2818,9 @@ packages:
     resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
     engines: {node: '>= 20.19.0'}
 
-  chromatic@16.10.0:
-    resolution: {integrity: sha512-nFsztmnu7rFiGafUJgXvLUNpqmRylz92eNvzBoJNTKKQj4EQUyxznwnfpf1dTs7hXtWD8JwcH92jADydaHA1sw==}
+  chromatic@18.2.0:
+    resolution: {integrity: sha512-xyTKDhBQPDd4qrsXhJK7GAJyIStpRoSTs4b7EtPyliSL0luej3DcqkeCZ9osHxbiLXiViNyWfMxo5Xgzejex8A==}
+    engines: {node: '>=22.0.0'}
     hasBin: true
     peerDependencies:
       '@chromatic-com/cypress': ^0.*.* || ^1.0.0
@@ -4773,10 +4774,10 @@ snapshots:
 
   '@blazediff/core@1.9.1': {}
 
-  '@chromatic-com/storybook@5.2.1(storybook@10.5.6(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8)(vite-plus@0.2.7(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))':
+  '@chromatic-com/storybook@5.3.0(storybook@10.5.6(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8)(vite-plus@0.2.7(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)))':
     dependencies:
       '@neoconfetti/react': 1.0.0
-      chromatic: 16.10.0
+      chromatic: 18.2.0
       jsonfile: 6.2.1
       storybook: 10.5.6(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8)(vite-plus@0.2.7(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10(@vitest/browser@4.1.10)(@voidzero-dev/vite-plus-test@0.1.24))(@voidzero-dev/vite-plus-core@0.2.5(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0))
       strip-ansi: 7.2.0
@@ -6910,7 +6911,7 @@ snapshots:
     dependencies:
       readdirp: 5.1.1
 
-  chromatic@16.10.0:
+  chromatic@18.2.0:
     dependencies:
       semver: 7.8.5
 

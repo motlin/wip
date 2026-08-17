@@ -7,7 +7,7 @@ import {execa} from "execa";
 
 import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, recordTestResult} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
-import {seedProjectCache, resetProjectCache} from "./server-fns.impl.js";
+import {getManagedFailedBaseBranches, seedProjectCache, resetProjectCache} from "./server-fns.impl.js";
 import {resetQueue} from "./task-queue.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -189,6 +189,30 @@ describe("server-fns test harness", () => {
 		const client = createTestClient();
 		expect(client).toBeDefined();
 		expect(typeof client.graphql).toBe("function");
+	});
+});
+
+describe("getManagedFailedBaseBranches", () => {
+	it("returns failed bases only when their repository is managed", () => {
+		const managedFailure = {
+			remote: "origin",
+			repository: "alice/managed",
+			repositoryUrl: "https://example.com/alice/managed",
+			branch: "main",
+			sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			date: "2000-01-01",
+			checkStatus: "failed" as const,
+			failedChecks: [{name: "build", url: "https://example.com/actions/build"}],
+			policy: "managed" as const,
+		};
+		const result = getManagedFailedBaseBranches([
+			managedFailure,
+			{...managedFailure, repository: "bob/external", policy: "external"},
+			{...managedFailure, repository: "charlie/ignored", policy: "ignored"},
+			{...managedFailure, repository: "alice/passing", checkStatus: "passed"},
+		]);
+
+		expect(result).toStrictEqual([managedFailure]);
 	});
 });
 

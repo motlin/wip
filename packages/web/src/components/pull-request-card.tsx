@@ -142,6 +142,38 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 				{pr.subject}
 			</Link>
 
+			{pr.externalCiBlockers?.map((blocker) => (
+				<div
+					key={`${blocker.repository}:${blocker.branch}`}
+					className="mt-2 rounded border border-amber-500/30 bg-amber-50 px-2 py-1.5 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"
+				>
+					<a
+						href={`${blocker.repositoryUrl}/actions`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="inline-flex items-center gap-1 text-xs font-medium hover:underline"
+					>
+						<AlertCircle className="h-3 w-3" />
+						Blocked by upstream CI in {blocker.repository}/{blocker.branch}
+					</a>
+					{blocker.failedChecks.length > 0 && (
+						<div className="mt-1 flex flex-wrap gap-1">
+							{blocker.failedChecks.map((check) => (
+								<a
+									key={check.name}
+									href={check.url ?? `${blocker.repositoryUrl}/actions`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] hover:underline dark:bg-amber-950/40"
+								>
+									{check.name}
+								</a>
+							))}
+						</div>
+					)}
+				</div>
+			))}
+
 			{pr.checkStatus === "failed" && pr.failedChecks && pr.failedChecks.length > 0 && (
 				<div className="mt-2 flex flex-wrap gap-1">
 					{pr.failedChecks.map((check) => (

@@ -11,7 +11,14 @@ import {
 } from "./db.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from "./rate-limit.js";
-import {MergeStateStatusSchema, type CheckStatus, type MergeStateStatus, type ReviewStatus} from "./schemas.js";
+import {
+	MergeStateStatusSchema,
+	type CheckStatus,
+	type ExternalCiBlocker,
+	type MergeStateStatus,
+	type ReviewStatus,
+} from "./schemas.js";
+import {resolveRepositoryPolicy, type RepositoryPolicy} from "./config.js";
 
 // --- In-flight request deduplication ---
 // Prevents duplicate concurrent GraphQL calls for the same repository.
@@ -39,6 +46,7 @@ type StatusCheckContext = z.infer<typeof StatusCheckContextSchema>;
 
 const GraphQLPrNodeSchema = z.object({
 	headRefName: z.string(),
+	baseRefName: z.string(),
 	url: z.string(),
 	number: z.number(),
 	author: z.object({login: z.string()}),
@@ -70,6 +78,7 @@ const PrGraphQLResponseSchema = z.object({
 		.object({
 			repository: z.object({
 				url: z.string().url().optional(),
+				viewerPermission: z.enum(["ADMIN", "MAINTAIN", "WRITE", "TRIAGE", "READ"]),
 				ref: z
 					.object({
 						target: z.object({
@@ -101,6 +110,7 @@ export interface PrStatuses {
 	behind: Map<string, boolean>;
 	prNumbers: Map<string, number>;
 	mergeStateStatuses: Map<string, MergeStateStatus>;
+	externalCiBlockers: Map<string, ExternalCiBlocker[]>;
 	baseBranches: BaseBranchStatus[];
 }
 
@@ -113,6 +123,7 @@ export interface BaseBranchStatus {
 	date: string;
 	checkStatus: CheckStatus;
 	failedChecks: Array<{name: string; url?: string}>;
+	policy: RepositoryPolicy;
 }
 
 const AGGREGATE_STATE_TO_CHECK_STATUS: Record<string, CheckStatus> = {
@@ -157,6 +168,7 @@ const PR_GRAPHQL_QUERY = `
 query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
   repository(owner: $owner, name: $name) {
     url
+    viewerPermission
     ref(qualifiedName: $qualifiedBaseRef) {
       target {
         ... on Commit {
@@ -178,6 +190,7 @@ query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
     pullRequests(first: 100, states: OPEN) {
       nodes {
         headRefName
+        baseRefName
         url
         number
         author { login }
@@ -297,7 +310,11 @@ export async function getCanonicalRepo(dir: string, upstreamRemote?: string): Pr
 	return origin;
 }
 
-function buildPrStatusesFromCached(cached: CachedPrStatus[], baseBranches: BaseBranchStatus[] = []): PrStatuses {
+function buildPrStatusesFromCached(
+	cached: CachedPrStatus[],
+	baseBranches: BaseBranchStatus[] = [],
+	externalCiBlockers: Map<string, ExternalCiBlocker[]> = new Map(),
+): PrStatuses {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
 	const urls = new Map<string, string>();
@@ -317,7 +334,17 @@ function buildPrStatusesFromCached(cached: CachedPrStatus[], baseBranches: BaseB
 			if (parsed.success) mergeStateStatuses.set(s.branch, parsed.data);
 		}
 	}
-	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses, baseBranches};
+	return {
+		review,
+		checks,
+		urls,
+		failedChecks,
+		behind,
+		prNumbers,
+		mergeStateStatuses,
+		externalCiBlockers,
+		baseBranches,
+	};
 }
 
 function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
@@ -338,7 +365,17 @@ function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
 			if (parsed.success) mergeStateStatuses.set(s.branch, parsed.data);
 		}
 	}
-	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses, baseBranches: []};
+	return {
+		review,
+		checks,
+		urls,
+		failedChecks,
+		behind,
+		prNumbers,
+		mergeStateStatuses,
+		externalCiBlockers: new Map(),
+		baseBranches: [],
+	};
 }
 
 function emptyPrStatuses(): PrStatuses {
@@ -350,6 +387,7 @@ function emptyPrStatuses(): PrStatuses {
 		behind: new Map(),
 		prNumbers: new Map(),
 		mergeStateStatuses: new Map(),
+		externalCiBlockers: new Map(),
 		baseBranches: [],
 	};
 }
@@ -363,6 +401,7 @@ function emptyPrStatuses(): PrStatuses {
  */
 const PR_CACHE_TTL_MS = 10 * 60 * 1000;
 const baseBranchStatusCache = new Map<string, BaseBranchStatus[]>();
+const externalCiBlockerCache = new Map<string, Map<string, ExternalCiBlocker[]>>();
 
 export async function getPrStatuses(
 	dir: string,
@@ -374,7 +413,8 @@ export async function getPrStatuses(
 	if (projectName && isCacheFresh(`pr-statuses:${projectName}`, PR_CACHE_TTL_MS)) {
 		const cached = getCachedPrStatuses(projectName);
 		const baseBranches = baseBranchStatusCache.get(projectName);
-		if (cached) return buildPrStatusesFromCached(cached, baseBranches);
+		const externalCiBlockers = externalCiBlockerCache.get(projectName);
+		if (cached) return buildPrStatusesFromCached(cached, baseBranches, externalCiBlockers);
 	}
 
 	// If rate limited, return cached data with degraded check statuses
@@ -408,6 +448,7 @@ function getBaseBranchStatus(
 	remote: string,
 	repository: string,
 	branch: string,
+	authenticatedLogin: string,
 ): BaseBranchStatus | undefined {
 	const repositoryData = response.data?.repository;
 	const target = repositoryData?.ref?.target;
@@ -422,6 +463,7 @@ function getBaseBranchStatus(
 		date: target.committedDate.slice(0, 10),
 		checkStatus: mapAggregateState(rollup?.state ?? null),
 		failedChecks: extractFailedChecks(rollup?.contexts.nodes ?? []),
+		policy: resolveRepositoryPolicy(repository, repositoryData.viewerPermission, authenticatedLogin),
 	};
 }
 
@@ -434,7 +476,8 @@ async function fetchPrStatusesFromApi(
 	const ghLogin = await getGhLogin();
 
 	type PrNode = z.infer<typeof GraphQLPrNodeSchema>;
-	let allPrs: PrNode[] = [];
+	type RepositoryPr = PrNode & {repository: string};
+	let allPrs: RepositoryPr[] = [];
 	const baseBranches: BaseBranchStatus[] = [];
 	try {
 		const canonical = await getCanonicalRepo(dir, upstreamRemote);
@@ -447,12 +490,17 @@ async function fetchPrStatusesFromApi(
 			qualifiedBaseRef: `refs/heads/${upstreamBranch}`,
 		});
 		const response = PrGraphQLResponseSchema.parse(raw);
-		allPrs = response.data?.repository.pullRequests.nodes ?? [];
+		const canonicalRepository = `${canonical.owner}/${canonical.name}`;
+		allPrs = (response.data?.repository.pullRequests.nodes ?? []).map((pullRequest) => ({
+			...pullRequest,
+			repository: canonicalRepository,
+		}));
 		const canonicalBase = getBaseBranchStatus(
 			response,
 			upstreamRemote ?? "origin",
-			`${canonical.owner}/${canonical.name}`,
+			canonicalRepository,
 			upstreamBranch,
+			ghLogin,
 		);
 		if (canonicalBase) baseBranches.push(canonicalBase);
 
@@ -467,12 +515,17 @@ async function fetchPrStatusesFromApi(
 					qualifiedBaseRef: `refs/heads/${upstreamBranch}`,
 				});
 				const originResponse = PrGraphQLResponseSchema.parse(originRaw);
-				const originPrs = originResponse.data?.repository.pullRequests.nodes ?? [];
+				const originRepository = `${origin.owner}/${origin.name}`;
+				const originPrs = (originResponse.data?.repository.pullRequests.nodes ?? []).map((pullRequest) => ({
+					...pullRequest,
+					repository: originRepository,
+				}));
 				const originBase = getBaseBranchStatus(
 					originResponse,
 					"origin",
-					`${origin.owner}/${origin.name}`,
+					originRepository,
 					upstreamBranch,
+					ghLogin,
 				);
 				if (originBase) baseBranches.push(originBase);
 				// Merge: upstream PRs take priority, add origin PRs for branches not already covered
@@ -509,9 +562,25 @@ async function fetchPrStatusesFromApi(
 	const behind = new Map<string, boolean>();
 	const prNumbers = new Map<string, number>();
 	const mergeStateStatuses = new Map<string, MergeStateStatus>();
+	const externalCiBlockers = new Map<string, ExternalCiBlocker[]>();
 
 	for (const pr of prs) {
 		const branch = pr.headRefName;
+		const blockers = baseBranches
+			.filter(
+				(base) =>
+					base.policy === "external" &&
+					base.checkStatus === "failed" &&
+					base.repository === pr.repository &&
+					base.branch === pr.baseRefName,
+			)
+			.map((base) => ({
+				repository: base.repository,
+				repositoryUrl: base.repositoryUrl,
+				branch: base.branch,
+				failedChecks: base.failedChecks,
+			}));
+		if (blockers.length > 0) externalCiBlockers.set(branch, blockers);
 
 		// Review status
 		let reviewStatus: ReviewStatus;
@@ -566,7 +635,18 @@ async function fetchPrStatusesFromApi(
 	if (projectName) {
 		cachePrStatuses(projectName, toCache);
 		baseBranchStatusCache.set(projectName, baseBranches);
+		externalCiBlockerCache.set(projectName, externalCiBlockers);
 	}
 
-	return {review, checks, urls, failedChecks, behind, prNumbers, mergeStateStatuses, baseBranches};
+	return {
+		review,
+		checks,
+		urls,
+		failedChecks,
+		behind,
+		prNumbers,
+		mergeStateStatuses,
+		externalCiBlockers,
+		baseBranches,
+	};
 }

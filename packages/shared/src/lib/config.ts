@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import JSON5 from "json5";
+import {z} from "zod";
 
 const APP_NAME = "wip";
 
@@ -25,6 +26,30 @@ function getConfigPath(): string {
 
 export type ConfigValue = string | string[];
 
+export const RepositoryPolicySchema = z.enum(["managed", "external", "ignored"]);
+export type RepositoryPolicy = z.infer<typeof RepositoryPolicySchema>;
+
+const MANAGED_REPOSITORY_PERMISSIONS = new Set(["ADMIN", "MAINTAIN", "WRITE"]);
+const repositoryPolicyKeySchema = z.string().regex(/^repositoryPolicy\.[^/]+\/(?:[^/]+|\*)$/i);
+
+export function resolveRepositoryPolicy(
+	repository: string,
+	viewerPermission: string,
+	authenticatedLogin: string,
+	config: Record<string, ConfigValue> = readConfig(),
+): RepositoryPolicy {
+	const normalizedRepository = repository.toLowerCase();
+	const owner = normalizedRepository.split("/", 1)[0] ?? "";
+	const normalizedConfig = new Map(Object.entries(config).map(([key, value]) => [key.toLowerCase(), value] as const));
+	const configuredPolicy =
+		normalizedConfig.get(`repositorypolicy.${normalizedRepository}`) ??
+		normalizedConfig.get(`repositorypolicy.${owner}/*`);
+	if (configuredPolicy !== undefined) return RepositoryPolicySchema.parse(configuredPolicy);
+	if (MANAGED_REPOSITORY_PERMISSIONS.has(viewerPermission)) return "managed";
+	if (owner === authenticatedLogin.toLowerCase()) return "managed";
+	return "external";
+}
+
 export function readConfig(): Record<string, ConfigValue> {
 	const configPath = getConfigPath();
 	if (!fs.existsSync(configPath)) return {};
@@ -43,6 +68,10 @@ export function getConfigValue(key: string): ConfigValue | undefined {
 }
 
 export function setConfigValue(key: string, value: ConfigValue): void {
+	if (key.toLowerCase().startsWith("repositorypolicy.")) {
+		repositoryPolicyKeySchema.parse(key);
+		RepositoryPolicySchema.parse(value);
+	}
 	const config = readConfig();
 	config[key] = value;
 	writeConfig(config);

@@ -20,6 +20,8 @@ export default class ConfigSet extends Command {
 
 	static override examples = [
 		"<%= config.bin %> config set projectsDir ~/projects",
+		"<%= config.bin %> config set 'repositoryPolicy.alice/*' managed",
+		"<%= config.bin %> config set repositoryPolicy.bob/example external",
 		"<%= config.bin %> config set projectsDir ~/projects --dry-run",
 		"<%= config.bin %> config set projectsDir ~/projects --dry-run --json",
 	];

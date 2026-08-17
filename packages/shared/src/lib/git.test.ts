@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
+import {describe, it, expect, beforeEach, afterEach} from "vitest";
 import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
@@ -25,6 +25,7 @@ import {initDb, resetDb} from "./db.js";
 import {setGitHubClient, resetGitHubClient, createTestClient} from "../services/github-client.js";
 import {setupPolly} from "../test/setup-polly.js";
 import {resetGitHubRateLimit, markGitHubRateLimited} from "./rate-limit.js";
+import {resolveRepositoryPolicy} from "./config.js";
 
 function createTestGitRepo(owner: string, repo: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "wip-test-"));
@@ -66,6 +67,35 @@ describe("getRepoOwnerAndName", () => {
 	});
 });
 
+describe("resolveRepositoryPolicy", () => {
+	it("prefers an exact repository policy over an owner policy", () => {
+		const config = {
+			"repositoryPolicy.alice/*": "managed",
+			"repositoryPolicy.alice/example": "external",
+		};
+
+		expect(resolveRepositoryPolicy("Alice/Example", "ADMIN", "alice", config)).toBe("external");
+	});
+
+	it("uses an owner policy when no exact policy exists", () => {
+		const config = {"repositoryPolicy.alice/*": "ignored"};
+
+		expect(resolveRepositoryPolicy("alice/example", "ADMIN", "alice", config)).toBe("ignored");
+	});
+
+	it("manages repositories with write permission", () => {
+		expect(resolveRepositoryPolicy("alice/example", "WRITE", "bob", {})).toBe("managed");
+	});
+
+	it("manages repositories owned by the authenticated user", () => {
+		expect(resolveRepositoryPolicy("alice/example", "READ", "Alice", {})).toBe("managed");
+	});
+
+	it("treats read-only repositories as external", () => {
+		expect(resolveRepositoryPolicy("alice/example", "READ", "bob", {})).toBe("external");
+	});
+});
+
 describe("getPrStatuses", () => {
 	let pollyStop: (() => Promise<void>) | undefined;
 	let tempDir: string | undefined;
@@ -100,7 +130,7 @@ describe("getPrStatuses", () => {
 			const body = JSON.parse(req.body as string) as {query: string};
 
 			// Handle viewer login request
-			if (body.query.includes("viewer") && body.query.includes("login")) {
+			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({
 					data: {viewer: {login: "testuser"}},
 				});
@@ -120,6 +150,7 @@ describe("getPrStatuses", () => {
 				data: {
 					repository: {
 						url: "https://example.com/alice/repo",
+						viewerPermission: "READ",
 						ref: {
 							target: {
 								oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -143,6 +174,7 @@ describe("getPrStatuses", () => {
 							nodes: [
 								{
 									headRefName: "feature-branch",
+									baseRefName: "main",
 									url: "https://github.com/owner/repo/pull/1",
 									number: 1,
 									author: {login: "testuser"},
@@ -185,8 +217,24 @@ describe("getPrStatuses", () => {
 				date: "2000-01-01",
 				checkStatus: "failed",
 				failedChecks: [{name: "build", url: "https://example.com/actions/build"}],
+				policy: "external",
 			},
 		]);
+		expect(statuses.externalCiBlockers).toStrictEqual(
+			new Map([
+				[
+					"feature-branch",
+					[
+						{
+							repository: "owner/repo",
+							repositoryUrl: "https://example.com/alice/repo",
+							branch: "main",
+							failedChecks: [{name: "build", url: "https://example.com/actions/build"}],
+						},
+					],
+				],
+			]),
+		);
 
 		// Second call should use cache (no additional HTTP calls)
 		const cached = await getPrStatuses(tempDir, "test-project");
@@ -203,7 +251,7 @@ describe("getPrStatuses", () => {
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			const body = JSON.parse(req.body as string) as {query: string};
 
-			if (body.query.includes("viewer")) {
+			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
 				return;
 			}
@@ -216,10 +264,12 @@ describe("getPrStatuses", () => {
 			res.status(200).json({
 				data: {
 					repository: {
+						viewerPermission: "READ",
 						pullRequests: {
 							nodes: [
 								{
 									headRefName: "needs-changes",
+									baseRefName: "main",
 									url: "https://github.com/owner/repo/pull/2",
 									number: 2,
 									author: {login: "testuser"},
@@ -272,7 +322,7 @@ describe("getPrStatuses", () => {
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			const body = JSON.parse(req.body as string) as {query: string};
 
-			if (body.query.includes("viewer")) {
+			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
 				return;
 			}
@@ -285,10 +335,12 @@ describe("getPrStatuses", () => {
 			res.status(200).json({
 				data: {
 					repository: {
+						viewerPermission: "READ",
 						pullRequests: {
 							nodes: [
 								{
 									headRefName: "has-threads",
+									baseRefName: "main",
 									url: "https://github.com/owner/repo/pull/10",
 									number: 10,
 									author: {login: "testuser"},
@@ -310,6 +362,7 @@ describe("getPrStatuses", () => {
 								},
 								{
 									headRefName: "no-threads",
+									baseRefName: "main",
 									url: "https://github.com/owner/repo/pull/11",
 									number: 11,
 									author: {login: "testuser"},
@@ -349,7 +402,7 @@ describe("getPrStatuses", () => {
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			const body = JSON.parse(req.body as string) as {query: string};
 
-			if (body.query.includes("viewer")) {
+			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
 				return;
 			}
@@ -362,10 +415,12 @@ describe("getPrStatuses", () => {
 			res.status(200).json({
 				data: {
 					repository: {
+						viewerPermission: "READ",
 						pullRequests: {
 							nodes: [
 								{
 									headRefName: "behind-branch",
+									baseRefName: "main",
 									url: "https://github.com/owner/repo/pull/3",
 									number: 3,
 									author: {login: "testuser"},
@@ -418,7 +473,7 @@ describe("getPrStatuses", () => {
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			const body = JSON.parse(req.body as string) as {query: string};
 
-			if (body.query.includes("viewer")) {
+			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
 				return;
 			}

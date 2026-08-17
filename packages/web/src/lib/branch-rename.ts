@@ -25,5 +25,6 @@ export function applyRenameToChild(child: GitChildResult, newBranch: string): Gi
 		reviewStatus: "no_pr",
 		checkStatus: "none",
 		failedChecks: undefined,
+		externalCiBlockers: undefined,
 	};
 }

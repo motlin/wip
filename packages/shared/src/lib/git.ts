@@ -235,6 +235,7 @@ export async function getNeedsRebaseBranches(
 		const prUrl = prStatuses ? prStatuses.urls.get(branch) : undefined;
 		const prNumber = prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
 		const failedChecks = prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
+		const externalCiBlockers = prStatuses ? prStatuses.externalCiBlockers.get(branch) : undefined;
 		const behind = prStatuses ? prStatuses.behind.get(branch) : undefined;
 		const mergeStateStatus = prStatuses ? prStatuses.mergeStateStatuses.get(branch) : undefined;
 		const ms = mergeStatusMap?.get(sha);
@@ -264,6 +265,7 @@ export async function getNeedsRebaseBranches(
 			prUrl,
 			prNumber,
 			failedChecks,
+			externalCiBlockers,
 			behind,
 			commitsBehind: ms?.commitsBehind,
 			commitsAhead: ms?.commitsAhead,
@@ -490,6 +492,7 @@ export async function getChildCommits(
 		}
 
 		const failedChecks = branch && prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
+		const externalCiBlockers = branch && prStatuses ? prStatuses.externalCiBlockers.get(branch) : undefined;
 		const behind = branch && prStatuses ? prStatuses.behind.get(branch) : undefined;
 		const prNumber = branch && prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
 		const mergeStateStatus = branch && prStatuses ? prStatuses.mergeStateStatuses.get(branch) : undefined;
@@ -531,6 +534,7 @@ export async function getChildCommits(
 			prUrl,
 			prNumber,
 			failedChecks,
+			externalCiBlockers,
 			behind,
 			commitsBehind,
 			commitsAhead,

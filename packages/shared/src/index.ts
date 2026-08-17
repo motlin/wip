@@ -1,5 +1,8 @@
 export {
 	type ConfigValue,
+	type RepositoryPolicy,
+	RepositoryPolicySchema,
+	resolveRepositoryPolicy,
 	getProjectsDir,
 	getProjectsDirs,
 	getCacheDir,
@@ -43,7 +46,7 @@ export {
 	applyFixesToBranch,
 	rebaseBranchOntoUpstream,
 } from "./lib/git-workflows.js";
-export {type PrStatuses, getPrStatuses} from "./lib/github-pr-status.js";
+export {type BaseBranchStatus, type PrStatuses, getPrStatuses} from "./lib/github-pr-status.js";
 export {
 	type SnoozedItem,
 	type BranchNameItem,
@@ -164,6 +167,8 @@ export {
 	getTransitionsTo,
 	applyTransition,
 	mapProjectStatusToCategory,
+	ExternalCiBlockerSchema,
+	type ExternalCiBlocker,
 	ProjectInfoSchema,
 	type ProjectInfo,
 	ChildCommitSchema,

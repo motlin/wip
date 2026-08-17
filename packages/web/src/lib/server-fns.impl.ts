@@ -45,6 +45,7 @@ import type {
 	IssueResult,
 	ProjectItemResult,
 	GitHubProjectItem,
+	BaseBranchStatus,
 } from "@wip/shared";
 import {
 	type ActionResult,
@@ -109,6 +110,10 @@ async function tracedAction(name: string, fn: () => Promise<ActionResult>): Prom
 export type {ActionResult, SnoozedChild, GitChildResult};
 
 export type ProjectChildrenResult = GitChildResult[];
+
+export function getManagedFailedBaseBranches(baseBranches: BaseBranchStatus[]): BaseBranchStatus[] {
+	return baseBranches.filter((base) => base.policy === "managed" && base.checkStatus === "failed");
+}
 
 let cachedProjects: ProjectInfo[] | null = null;
 let cachedProjectsTime = 0;
@@ -290,6 +295,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					prUrl: child.prUrl,
 					prNumber: child.prNumber,
 					failedChecks: child.failedChecks,
+					externalCiBlockers: child.externalCiBlockers,
 					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
 					commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
 					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
@@ -309,7 +315,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 							: undefined,
 				};
 			});
-			const failedBases = prStatuses.baseBranches.filter((base) => base.checkStatus === "failed");
+			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);
 			const firstFailedBase = failedBases[0];
 			if (firstFailedBase) {
 				const failedChecks = failedBases

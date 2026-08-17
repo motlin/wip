@@ -240,6 +240,14 @@ export const RepositorySchema = z.object({
 	nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
 });
 
+export const ExternalCiBlockerSchema = z.object({
+	repository: z.string().regex(/^[^/]+\/[^/]+$/),
+	repositoryUrl: z.string().url(),
+	branch: branchSchema,
+	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})),
+});
+export type ExternalCiBlocker = z.infer<typeof ExternalCiBlockerSchema>;
+
 export const ProjectInfoSchema = z.object({
 	name: z.string(),
 	dir: z.string(),
@@ -273,6 +281,7 @@ export const ChildCommitSchema = z.object({
 	prUrl: z.string().url().optional(),
 	prNumber: z.number().optional(),
 	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})).optional(),
+	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
 	behind: z.boolean().optional(),
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
@@ -340,6 +349,7 @@ export const GitChildResultSchema = z.object({
 	prUrl: z.string().url().optional(),
 	prNumber: z.number().optional(),
 	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})).optional(),
+	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
 	rebaseable: z.boolean().optional(),

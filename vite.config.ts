@@ -22,6 +22,8 @@ export default defineConfig({
 	},
 	lint: {options: {typeAware: true, typeCheck: true}},
 	test: {
+		exclude: ["**/dist/**", "**/node_modules/**"],
+		include: ["packages/**/*.{test,spec}.{ts,tsx}"],
 		env: {
 			GIT_CONFIG_GLOBAL: "/dev/null",
 			GIT_CONFIG_NOSYSTEM: "1",

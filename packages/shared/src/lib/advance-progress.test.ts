@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vite-plus/test";
+import {describe, it, expect} from "vitest";
 
 import {normalizeFailureSignature, changeIdentity, RunMemory, type UnitRef} from "./advance-progress.js";
 

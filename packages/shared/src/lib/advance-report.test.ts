@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vite-plus/test";
+import {describe, it, expect} from "vitest";
 
 import {renderTree, type ReportNode} from "./advance-report.js";
 

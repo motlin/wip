@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vite-plus/test";
+import {describe, it, expect} from "vitest";
 
 import {advanceProject, type AdvanceActions} from "./advance.js";
 import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";

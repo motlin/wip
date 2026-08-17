@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {vi, type Mock} from "vite-plus/test";
+import {vi, type Mock} from "vitest";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(currentDir, "..", "__fixtures__", "git");

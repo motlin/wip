@@ -1,4 +1,4 @@
-import {describe, it, expect, afterEach} from "vite-plus/test";
+import {describe, it, expect, afterEach} from "vitest";
 import {existsSync, rmSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";

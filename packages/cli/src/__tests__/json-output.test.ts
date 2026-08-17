@@ -1,4 +1,4 @@
-import {describe, it, expect, vi, beforeEach, afterEach} from "vite-plus/test";
+import {describe, it, expect, vi, beforeEach, afterEach} from "vitest";
 import path from "node:path";
 
 import type {ChildCommit, ProjectInfo} from "@wip/shared";

@@ -1,4 +1,4 @@
-import {describe, it, expect, afterEach} from "vite-plus/test";
+import {describe, it, expect, afterEach} from "vitest";
 
 import {setupPolly} from "./setup-polly.js";
 

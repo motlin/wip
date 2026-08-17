@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
+import {describe, it, expect, beforeEach, afterEach} from "vitest";
 
 import {
 	GitHubProjectItemSchema,

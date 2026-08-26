@@ -26,7 +26,7 @@
 		"ansi-to-html": "^0.7.2",
 		"better-sqlite3": "^13.0.3",
 		"execa": "^10.0.1",
-		"lucide-react": "^1.31.0",
+		"lucide-react": "^1.32.0",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"zod": "^4.4.3"

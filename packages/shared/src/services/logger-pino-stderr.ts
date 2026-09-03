@@ -11,7 +11,7 @@ export type StderrLog = {
  * loaded exclusively via dynamic import from logger-pino.ts so its node-only
  * dependencies (pino, pino-pretty) are never evaluated in the browser.
  */
-export function createStderrLog(): StderrLog {
+function createStderrLog(): StderrLog {
 	const base = pino(
 		{level: "debug"},
 		pino.transport({

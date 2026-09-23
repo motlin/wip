@@ -6,8 +6,8 @@ wip := "./packages/cli/bin/run.js"
 ci := env("CI", "")
 
 # List available recipes
-[no-exit-message]
 [group('default')]
+[no-exit-message]
 default:
     @just --list --unsorted
 
@@ -57,6 +57,7 @@ lint: install
 # Run formatter
 [group('build')]
 format: install
+    pre-commit run just-fmt --all-files
     vp fmt {{ if ci != "" { "--check" } else { "" } }}
 
 # Run checks (format + lint + typecheck)
@@ -91,8 +92,8 @@ pre-commit: install
     pre-commit run --all-files
 
 # Run all pre-commit checks
-[group('build')]
 [arg("quick", long, value="true", help="Skip tests")]
+[group('build')]
 precommit quick="": check build fallow pre-commit
     {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
@@ -105,7 +106,7 @@ dev: build-shared
 # Start web dashboard (production build)
 [group('web')]
 serve: build
-    {{wip}} serve
+    {{ wip }} serve
 
 # `sqlite3 ~/.local/share/wip/wip.db`
 [group('database')]
@@ -123,89 +124,89 @@ demo:
     @echo '============================='
     @echo '  wip children'
     @echo '============================='
-    {{wip}} children
+    {{ wip }} children
     @echo ''
     @echo '============================='
     @echo '  wip children --json'
     @echo '============================='
-    {{wip}} children --json
+    {{ wip }} children --json
     @echo ''
     @echo '============================='
     @echo '  wip results'
     @echo '============================='
-    {{wip}} results
+    {{ wip }} results
     @echo ''
     @echo '============================='
     @echo '  wip results --json'
     @echo '============================='
-    {{wip}} results --json
+    {{ wip }} results --json
     @echo ''
     @echo '============================='
     @echo '  wip report'
     @echo '============================='
-    {{wip}} report
+    {{ wip }} report
     @echo ''
     @echo '============================='
     @echo '  wip report --json'
     @echo '============================='
-    {{wip}} report --json
+    {{ wip }} report --json
     @echo ''
     @echo '============================='
     @echo '  wip report --summary'
     @echo '============================='
-    {{wip}} report --summary
+    {{ wip }} report --summary
     @echo ''
     @echo '============================='
     @echo '  wip report --quiet'
     @echo '============================='
-    {{wip}} report --quiet
+    {{ wip }} report --quiet
     @echo ''
     @echo '============================='
     @echo '  wip config get'
     @echo '============================='
-    {{wip}} config get
+    {{ wip }} config get
     @echo ''
     @echo '============================='
     @echo '  wip config get --json'
     @echo '============================='
-    {{wip}} config get --json
+    {{ wip }} config get --json
     @echo ''
     @echo '============================='
     @echo '  wip test --dry-run'
     @echo '============================='
-    {{wip}} test --dry-run
+    {{ wip }} test --dry-run
     @echo ''
     @echo '============================='
     @echo '  wip test --dry-run --json'
     @echo '============================='
-    {{wip}} test --dry-run --json
+    {{ wip }} test --dry-run --json
     @echo ''
     @echo '============================='
     @echo '  wip push --dry-run'
     @echo '============================='
-    {{wip}} push --dry-run
+    {{ wip }} push --dry-run
     @echo ''
     @echo '============================='
     @echo '  wip push --dry-run --json'
     @echo '============================='
-    {{wip}} push --dry-run --json
+    {{ wip }} push --dry-run --json
     @echo ''
     @echo '============================='
     @echo '  wip config set projectsDir ~/projects --dry-run'
     @echo '============================='
-    {{wip}} config set projectsDir ~/projects --dry-run
+    {{ wip }} config set projectsDir ~/projects --dry-run
     @echo ''
     @echo '============================='
     @echo '  wip config set projectsDir ~/projects --dry-run --json'
     @echo '============================='
-    {{wip}} config set projectsDir ~/projects --dry-run --json
+    {{ wip }} config set projectsDir ~/projects --dry-run --json
     @echo ''
     @echo '============================='
     @echo '  wip config unset projectsDir --dry-run'
     @echo '============================='
-    {{wip}} config unset projectsDir --dry-run
+    {{ wip }} config unset projectsDir --dry-run
     @echo ''
     @echo '============================='
     @echo '  wip config unset projectsDir --dry-run --json'
     @echo '============================='
-    {{wip}} config unset projectsDir --dry-run --json
+    {{ wip }} config unset projectsDir --dry-run --json

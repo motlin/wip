@@ -24,7 +24,7 @@
 	},
 	"devDependencies": {
 		"@vitest/coverage-v8": "^5.0.3",
-		"fallow": "^3.17.0",
+		"fallow": "^3.32.0",
 		"markdownlint-cli2": "^0.23.3",
 		"typescript": "^7.0.2",
 		"vite": "catalog:",

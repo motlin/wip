@@ -11,3 +11,4 @@ logs/
 packages/web/public/mockups/
 *.png
 .fallow/
+coverage/

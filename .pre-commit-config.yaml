@@ -48,3 +48,7 @@ repos:
         language: system
         pass_filenames: false
         types: [file]
+      - id: oxfmt
+        name: vp fmt
+        entry: vp fmt --no-error-on-unmatched-pattern
+        language: system

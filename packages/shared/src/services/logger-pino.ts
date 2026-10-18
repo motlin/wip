@@ -44,8 +44,8 @@ function ensureStderrLog(): void {
 	if (stderrLog || stderrLoading || !isLoggingEnabled()) return;
 	stderrLoading = true;
 	import("./logger-pino-stderr.js")
-		.then((m) => {
-			stderrLog = m.createStderrLog();
+		.then(({createStderrLog}) => {
+			stderrLog = createStderrLog();
 		})
 		.catch(() => {});
 }

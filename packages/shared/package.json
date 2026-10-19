@@ -42,7 +42,7 @@
 		"execa": "^10.1.0",
 		"json5": "^2.2.3",
 		"pino": "^10.4.0",
-		"zod": "^4.6.5"
+		"zod": "^4.6.6"
 	},
 	"devDependencies": {
 		"@pollyjs/adapter-fetch": "^6.0.7",

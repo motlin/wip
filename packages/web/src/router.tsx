@@ -2,7 +2,7 @@ import {QueryClient} from "@tanstack/react-query";
 import {persistQueryClient} from "@tanstack/react-query-persist-client";
 import {createSyncStoragePersister} from "@tanstack/query-sync-storage-persister";
 import {createRouter as createTanStackRouter} from "@tanstack/react-router";
-import {routerWithQueryClient} from "@tanstack/react-router-with-query";
+import {setupRouterSsrQueryIntegration} from "@tanstack/react-router-ssr-query";
 import {routeTree} from "./routeTree.gen";
 
 export function getRouter() {
@@ -24,15 +24,16 @@ export function getRouter() {
 		void persistQueryClient({queryClient, persister, buster: "v2-flat-children"});
 	}
 
-	return routerWithQueryClient(
-		createTanStackRouter({
-			routeTree,
-			scrollRestoration: true,
-			defaultPreload: "intent",
-			context: {queryClient},
-		}),
-		queryClient,
-	);
+	const router = createTanStackRouter({
+		routeTree,
+		scrollRestoration: true,
+		defaultPreload: "intent",
+		context: {queryClient},
+	});
+
+	setupRouterSsrQueryIntegration({router, queryClient});
+
+	return router;
 }
 
 declare module "@tanstack/react-router" {

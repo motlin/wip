@@ -10,8 +10,8 @@ vi.mock("@tanstack/query-sync-storage-persister", () => ({
 vi.mock("@tanstack/react-router", () => ({
 	createRouter: vi.fn((opts: unknown) => opts),
 }));
-vi.mock("@tanstack/react-router-with-query", () => ({
-	routerWithQueryClient: vi.fn((_router: unknown, qc: unknown) => qc),
+vi.mock("@tanstack/react-router-ssr-query", () => ({
+	setupRouterSsrQueryIntegration: vi.fn(),
 }));
 vi.mock("./routeTree.gen", () => ({
 	routeTree: {},
@@ -19,15 +19,25 @@ vi.mock("./routeTree.gen", () => ({
 
 import {getRouter} from "./router";
 import {QueryClient} from "@tanstack/react-query";
+import {setupRouterSsrQueryIntegration} from "@tanstack/react-router-ssr-query";
 
 describe("getRouter", () => {
 	it("returns a QueryClient with correct default options", () => {
-		const queryClient = getRouter() as unknown as QueryClient;
-		const defaults = queryClient.getDefaultOptions().queries;
+		const router = getRouter() as unknown as {context: {queryClient: QueryClient}};
+		const defaults = router.context.queryClient.getDefaultOptions().queries;
 
 		expect(defaults?.staleTime).toBe(10 * 60 * 1000);
 		expect(defaults?.refetchOnMount).toBe(true);
 		expect(defaults?.refetchOnWindowFocus).toBe(true);
 		expect(defaults?.refetchOnReconnect).toBe("always");
+	});
+
+	it("wires the SSR query integration with the router and its query client", () => {
+		const router = getRouter() as unknown as {context: {queryClient: QueryClient}};
+
+		expect(setupRouterSsrQueryIntegration).toHaveBeenCalledWith({
+			router,
+			queryClient: router.context.queryClient,
+		});
 	});
 });

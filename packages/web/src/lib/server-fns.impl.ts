@@ -62,6 +62,7 @@ import {
 	type TaskQueueJob,
 	planProject,
 	resolveAdvanceConcurrency,
+	getTestResultsForProject,
 	matchesFilters,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
@@ -1273,7 +1274,12 @@ export interface GenerateAdvancePlanInput {
 	exclude?: string[];
 }
 
-const advanceProjectPlanActions: AdvancePlanAction[] = ["rebase", "test", "resolve-conflicts", "fix-failure"];
+/** Actions worth offering on a branch, given the recorded test result for its tip. */
+function expectedActionsForTipResult(result: "passed" | "failed" | undefined): AdvancePlanAction[] {
+	if (result === "passed") return ["rebase"];
+	if (result === "failed") return ["rebase", "fix-failure"];
+	return ["test", "rebase"];
+}
 
 function skipReason(project: ProjectInfo): string | undefined {
 	if (project.dirty) return "dirty";
@@ -1315,6 +1321,7 @@ export async function generateAdvancePlanForProjects(
 		// eslint-disable-next-line no-await-in-loop
 		const plan = await planProject({project: project.name, dir: project.dir, upstreamRef: project.upstreamRef});
 		const status = plan.units.length === 0 && !plan.baseline.needsTest ? "noop" : "ready";
+		const tipResults = getTestResultsForProject(project.name);
 
 		projectSummaries.push({
 			project: project.name,
@@ -1335,7 +1342,7 @@ export async function generateAdvancePlanForProjects(
 				ownedCommitCount: unit.chain.length,
 				dependsOn: unit.dependsOn,
 				worktreeRequired: unit.worktreeRequired,
-				expectedActions: advanceProjectPlanActions,
+				expectedActions: expectedActionsForTipResult(tipResults.get(unit.tipSha)),
 			})),
 		});
 	}

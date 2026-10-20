@@ -486,9 +486,37 @@ describe("generateAdvancePlanForProjects", () => {
 				ownedCommitCount: 1,
 				dependsOn: [],
 				worktreeRequired: false,
-				expectedActions: ["rebase", "test", "resolve-conflicts", "fix-failure"],
+				expectedActions: ["test", "rebase"],
 			},
 		]);
+	});
+
+	it("derives each branch's expected actions from its tip's recorded test result", async () => {
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
+		const dir = await createTestGitRepo();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/passed"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Passing work"]);
+		const passedSha = (await execa("git", ["-C", dir, "rev-parse", "feature/passed"])).stdout.trim();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/failed", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Failing work"]);
+		const failedSha = (await execa("git", ["-C", dir, "rev-parse", "feature/failed"])).stdout.trim();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/untested", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Untested work"]);
+		recordTestResult(passedSha, "state-project", "passed", 0, 10);
+		recordTestResult(failedSha, "state-project", "failed", 1, 10);
+
+		const plan = await generateAdvancePlanForProjects([
+			makeProject({name: "state-project", dir, upstreamRef: "main", upstreamBranch: "main"}),
+		]);
+
+		const actionsByBranch = Object.fromEntries(
+			plan.projects[0]!.branches.map((branch) => [branch.branch, branch.expectedActions]),
+		);
+		expect(actionsByBranch).toStrictEqual({
+			"feature/passed": ["rebase"],
+			"feature/failed": ["rebase", "fix-failure"],
+			"feature/untested": ["test", "rebase"],
+		});
 	});
 });
 

@@ -448,7 +448,7 @@ function BranchRow({
 					})}
 			</div>
 			<div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-				{actions.map((action) => {
+				{branch.expectedActions.map((action) => {
 					const key = actionKey(branch, action);
 					const pending = pendingAction === key;
 					return (

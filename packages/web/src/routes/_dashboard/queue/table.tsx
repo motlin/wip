@@ -153,8 +153,8 @@ export const Route = createFileRoute("/_dashboard/queue/table")({
 	component: QueueTable,
 });
 
-function QueueTable() {
-	const {grouped, visibleCategories, filterByProject} = useQueueContext();
+export function QueueTable() {
+	const {grouped, visibleCategories, filterByProject, selectedCategory} = useQueueContext();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
@@ -236,6 +236,11 @@ function QueueTable() {
 
 	return (
 		<div>
+			{selectedCategory && (
+				<p className="mb-3 text-xs text-text-500">
+					Filtered to {CATEGORIES[selectedCategory].label}. Counts in the sidebar are unfiltered.
+				</p>
+			)}
 			{/* Toolbar */}
 			<div className="mb-4 flex items-center gap-3 border-b border-border-300 pb-3">
 				<input

@@ -34,12 +34,17 @@ export function runningRefreshCount(): number {
 
 /**
  * Enqueue a refresh job. Jobs with the same (kind, project) key coalesce:
- * while one is queued or running, further enqueues are dropped and reported
- * as {queued: false}.
+ * while one is queued or running, further enqueues are reported as
+ * {queued: false}. A coalesced enqueue with force=true is not dropped: it is
+ * re-enqueued once the existing job settles, so a manual or watcher-forced
+ * refresh still runs its force-only work instead of being skipped as fresh.
  */
-export function enqueueRefresh(options: {kind: RefreshKind; project: string; run: () => Promise<void>}): {
-	queued: boolean;
-} {
+export function enqueueRefresh(options: {
+	kind: RefreshKind;
+	project: string;
+	run: () => Promise<void>;
+	force?: boolean;
+}): {queued: boolean} {
 	const key = `${options.kind}:${options.project}`;
 	const handle = workQueue.enqueue({
 		coalesceKey: key,
@@ -48,6 +53,9 @@ export function enqueueRefresh(options: {kind: RefreshKind; project: string; run
 		project: options.project,
 		run: async () => options.run(),
 	});
+	if (handle.coalesced && options.force === true) {
+		void handle.settled.then(() => enqueueRefresh(options));
+	}
 	return {queued: !handle.coalesced};
 }
 

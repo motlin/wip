@@ -45,6 +45,7 @@ function enqueueProjectRefresh(project: string, options: {force?: boolean} = {})
 	enqueueRefresh({
 		kind: "children",
 		project,
+		force,
 		run: async () => {
 			const {isCacheFresh, markCacheFresh, pruneRemote} = await import("@wip/shared");
 			const {getProjects, refreshProjectChildren, CHILDREN_CACHE_TTL_MS} = await import("./server-fns.js");
@@ -73,6 +74,7 @@ function enqueueProjectRefresh(project: string, options: {force?: boolean} = {})
 	enqueueRefresh({
 		kind: "todos",
 		project,
+		force,
 		run: async () => {
 			const {isCacheFresh} = await import("@wip/shared");
 			const {refreshProjectTodos, TODOS_CACHE_TTL_MS} = await import("./server-fns.js");
@@ -83,6 +85,7 @@ function enqueueProjectRefresh(project: string, options: {force?: boolean} = {})
 	enqueueRefresh({
 		kind: "merge-status",
 		project,
+		force,
 		run: async () => {
 			const {isCacheFresh, markCacheFresh} = await import("@wip/shared");
 			if (!force && isCacheFresh(`merge-status:${project}`, MERGE_STATUS_TTL_MS)) return;

@@ -1,7 +1,7 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 	"workspaces": {
-		"patterns": ["packages/*"]
+		"patterns": ["packages/*"],
 	},
 	// src/stories/**/*.mdx mirrors the Storybook stories glob in
 	// packages/web/.storybook/main.ts; fallow's storybook plugin only detects
@@ -14,14 +14,11 @@
 		"packages/web/src/routes/**/*.{ts,tsx}",
 		"packages/web/src/stories/**/*.mdx",
 		"packages/cli/bin/**/*.js",
-		"packages/cli/src/commands/**/*.{ts,tsx}"
+		"packages/cli/src/commands/**/*.{ts,tsx}",
 	],
-	"ignorePatterns": ["**/dist/**", "**/.output/**", "**/node_modules/**"],
-	"duplicates": {
-		"minOccurrences": 3
-	},
+	"ignorePatterns": ["**/dist/**", "**/.output/**", "**/node_modules/**", "packages/web/.storybook/**"],
 	"rules": {
-		"unused-dependencies": "warn"
+		"unused-dependencies": "error",
 	},
 	// Per-project: deps fallow can't see statically because they load via config
 	// or runtime strings rather than imports.
@@ -31,24 +28,27 @@
 		// Loaded by pino at runtime via a transport `target` string.
 		"pino-pretty",
 		// Storybook/diff-view tooling resolved by their plugin systems, not imports.
+		"@chromatic-com/storybook",
 		"@git-diff-view/shiki",
+		"@storybook/addon-a11y",
+		"@storybook/addon-docs",
 		"@storybook/addon-vitest",
-		"eslint-plugin-storybook"
+		"eslint-plugin-storybook",
 	],
 	// Per-project: Handler Extraction Pattern (see CLAUDE.md) exports handlers so
 	// tests can import and call them directly, bypassing createServerFn.
 	"ignoreExports": [
 		{
 			"file": "packages/web/src/lib/server-fns.impl.ts",
-			"exports": ["*"]
+			"exports": ["*"],
 		},
 		{
 			"file": "packages/web/src/lib/task-queue.ts",
-			"exports": ["resetQueue"]
+			"exports": ["resetQueue"],
 		},
 		{
 			"file": "packages/web/src/lib/merge-queue.ts",
-			"exports": ["*"]
-		}
-	]
+			"exports": ["*"],
+		},
+	],
 }

@@ -1,4 +1,4 @@
-import {describe, it, expect, vi} from "vitest";
+import {describe, it, expect, vi} from "vite-plus/test";
 import {isNearBottom, scrollToBottom} from "./use-auto-tail";
 
 function createMockElement(overrides?: Record<string, unknown>) {
@@ -6,7 +6,7 @@ function createMockElement(overrides?: Record<string, unknown>) {
 		scrollTop: 0,
 		scrollHeight: 1000,
 		clientHeight: 400,
-		scrollIntoView: vi.fn(),
+		scrollIntoView: vi.fn<() => void>(),
 		...overrides,
 	} as unknown as HTMLElement;
 }

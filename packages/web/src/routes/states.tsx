@@ -46,17 +46,16 @@ const COLUMNS: Category[][] = [
 	["checks_passed", "review_comments", "changes_requested", "approved"],
 ];
 
-function computePositions(): Record<Category, NodePos> {
-	const positions = {} as Record<Category, NodePos>;
+function computePositions(): Map<Category, NodePos> {
+	const positions = new Map<Category, NodePos>();
 	const padLeft = 20;
 	const padTop = 20;
 
-	for (let col = 0; col < COLUMNS.length; col++) {
-		const states = COLUMNS[col]!;
+	for (const [col, states] of COLUMNS.entries()) {
 		const colX = padLeft + col * (NODE_W + COL_GAP);
-		for (let row = 0; row < states.length; row++) {
+		for (const [row, state] of states.entries()) {
 			const rowY = padTop + row * (NODE_H + ROW_GAP);
-			positions[states[row]!] = {x: colX, y: rowY};
+			positions.set(state, {x: colX, y: rowY});
 		}
 	}
 
@@ -88,6 +87,8 @@ function nodeColor(category: Category, isActive: boolean): {fill: string; stroke
 			return {fill: "#451a03", stroke: "#d97706", text: "#fcd34d"};
 		case "purple":
 			return {fill: "#2e1065", stroke: "#7c3aed", text: "#c4b5fd"};
+		case "dim":
+		case "muted":
 		default:
 			return {fill: "#1e1e2e", stroke: "#4b5563", text: "#9ca3af"};
 	}
@@ -178,8 +179,8 @@ function StateGraph({activeState}: {activeState: string | undefined}) {
 
 				{/* Edges */}
 				{edges.map(({from, to, transitions, hasActive, hasPassive}) => {
-					const fromPos = POSITIONS[from];
-					const toPos = POSITIONS[to];
+					const fromPos = POSITIONS.get(from);
+					const toPos = POSITIONS.get(to);
 					if (!fromPos || !toPos) return null;
 					const isHighlighted = activeState === from || activeState === to;
 					const isPassiveOnly = hasPassive && !hasActive;
@@ -201,7 +202,7 @@ function StateGraph({activeState}: {activeState: string | undefined}) {
 
 				{/* Nodes */}
 				{CATEGORY_PRIORITY.map((cat) => {
-					const pos = POSITIONS[cat];
+					const pos = POSITIONS.get(cat);
 					if (!pos) return null;
 					const isActive = activeState === cat;
 					const colors = nodeColor(cat, isActive);
@@ -209,7 +210,9 @@ function StateGraph({activeState}: {activeState: string | undefined}) {
 						<g
 							key={cat}
 							className="cursor-pointer"
-							onClick={() => navigate({to: "/states", search: {state: cat}})}
+							onClick={() => {
+								void navigate({to: "/states", search: {state: cat}});
+							}}
 						>
 							{isActive && (
 								<rect

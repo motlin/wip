@@ -1,4 +1,4 @@
-import {describe, it, expect, afterEach} from "vitest";
+import {describe, it, expect, afterEach} from "vite-plus/test";
 
 import {setupPolly} from "./setup-polly.js";
 
@@ -31,6 +31,6 @@ describe("setupPolly", () => {
 				headers: {"Content-Type": "application/json"},
 				body: JSON.stringify({query: "{ viewer { login } }"}),
 			}),
-		).rejects.toThrow();
+		).rejects.toThrow(/recording/i);
 	});
 });

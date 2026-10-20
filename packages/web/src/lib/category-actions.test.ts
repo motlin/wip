@@ -1,13 +1,16 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect} from "vite-plus/test";
 import {
 	CATEGORIES,
 	CATEGORY_PRIORITY,
-	type CategoryConfig,
 	TRANSITION_TO_ACTION,
 	getTransitionActions,
 	SUPPLEMENTARY_ACTIONS,
 } from "./category-actions";
 import {CategorySchema, type Category} from "@wip/shared";
+
+function indexOf(cat: Category): number {
+	return CATEGORY_PRIORITY.indexOf(cat);
+}
 
 describe("CATEGORIES", () => {
 	it("has an entry for every category in CategorySchema", () => {
@@ -17,11 +20,12 @@ describe("CATEGORIES", () => {
 	});
 
 	it("llmCommand is undefined or a non-empty string for every category", () => {
-		for (const [, config] of Object.entries(CATEGORIES) as [string, CategoryConfig][]) {
-			if (config.llmCommand !== undefined) {
-				expect(typeof config.llmCommand).toBe("string");
-				expect(config.llmCommand.length).toBeGreaterThan(0);
-			}
+		const commands = Object.values(CATEGORIES)
+			.map((config) => config.llmCommand)
+			.filter((command) => command !== undefined);
+		for (const command of commands) {
+			expect(typeof command).toBe("string");
+			expect(command.length).toBeGreaterThan(0);
 		}
 	});
 
@@ -180,10 +184,6 @@ describe("CATEGORY_PRIORITY", () => {
 	it("places skippable second (right after snoozed)", () => {
 		expect(CATEGORY_PRIORITY[1]).toBe("skippable");
 	});
-
-	function indexOf(cat: Category): number {
-		return CATEGORY_PRIORITY.indexOf(cat);
-	}
 
 	it("orders plan flow before test flow", () => {
 		expect(indexOf("untriaged")).toBeLessThan(indexOf("ready_to_test"));

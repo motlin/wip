@@ -40,6 +40,7 @@ export default class Children extends Command {
 
 		const results: ProjectChildren[] = [];
 
+		/* oxlint-disable no-await-in-loop -- projects are processed sequentially to bound git subprocess load */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
@@ -50,6 +51,7 @@ export default class Children extends Command {
 				results.push({name: p.name, dir: p.dir, children});
 			}
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const total = results.reduce((sum, r) => sum + r.children.length, 0);
 		const passed = results.reduce((sum, r) => sum + r.children.filter((c) => c.testStatus === "passed").length, 0);

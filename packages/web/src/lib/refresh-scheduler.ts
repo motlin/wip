@@ -46,7 +46,7 @@ export function enqueueRefresh(options: {kind: RefreshKind; project: string; run
 		laneKey: key,
 		kind: options.kind,
 		project: options.project,
-		run: () => options.run(),
+		run: async () => options.run(),
 	});
 	return {queued: !handle.coalesced};
 }
@@ -70,10 +70,13 @@ export function startPeriodicSweep(options: {
 	const timer = setInterval(() => {
 		const projects = options.listProjects();
 		if (projects.length === 0) return;
-		const project = projects[index % projects.length]!;
+		const project = projects[index % projects.length];
+		if (project === undefined) return;
 		index += 1;
 		options.enqueueForProject(project);
 	}, options.intervalMs);
-	timer.unref?.();
-	return () => clearInterval(timer);
+	timer.unref();
+	return () => {
+		clearInterval(timer);
+	};
 }

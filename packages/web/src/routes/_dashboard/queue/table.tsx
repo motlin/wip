@@ -116,26 +116,27 @@ function typeFilterMatches(filter: TypeFilter, type: ItemType): boolean {
 	return type === filter;
 }
 
+const GREEN_BADGE_CATEGORIES = new Set<Category>(["checks_passed", "approved", "ready_to_push", "plan_approved"]);
+const RED_BADGE_CATEGORIES = new Set<Category>([
+	"checks_failed",
+	"test_failed",
+	"rebase_conflicts",
+	"rebase_stuck",
+	"changes_requested",
+]);
+const PURPLE_BADGE_CATEGORIES = new Set<Category>(["pushed_no_pr", "triaged", "review_comments"]);
+
 function statusBadgeClass(category: Category): string {
-	switch (category) {
-		case "checks_passed":
-		case "approved":
-		case "ready_to_push":
-		case "plan_approved":
-			return "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400";
-		case "checks_failed":
-		case "test_failed":
-		case "rebase_conflicts":
-		case "rebase_stuck":
-		case "changes_requested":
-			return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400";
-		case "pushed_no_pr":
-		case "triaged":
-		case "review_comments":
-			return "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400";
-		default:
-			return "bg-bg-200 text-text-500";
+	if (GREEN_BADGE_CATEGORIES.has(category)) {
+		return "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400";
 	}
+	if (RED_BADGE_CATEGORIES.has(category)) {
+		return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400";
+	}
+	if (PURPLE_BADGE_CATEGORIES.has(category)) {
+		return "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400";
+	}
+	return "bg-bg-200 text-text-500";
 }
 
 const HEADER_CLASS =
@@ -241,7 +242,9 @@ function QueueTable() {
 					type="text"
 					placeholder="Filter items..."
 					value={searchQuery}
-					onChange={(e) => setSearchQuery(e.target.value)}
+					onChange={(e) => {
+						setSearchQuery(e.target.value);
+					}}
 					className="w-60 rounded-md border border-border-300 bg-bg-000 px-3 py-1.5 font-sans text-[0.8125rem] text-text-000 outline-none placeholder:text-text-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
 				/>
 				<div className="flex gap-1.5">
@@ -249,7 +252,9 @@ function QueueTable() {
 						<button
 							key={value}
 							type="button"
-							onClick={() => setTypeFilter(value)}
+							onClick={() => {
+								setTypeFilter(value);
+							}}
 							className={`rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors ${
 								typeFilter === value
 									? "border-text-000 bg-text-000 text-bg-000"
@@ -266,7 +271,9 @@ function QueueTable() {
 			<table className="w-full border-collapse text-[0.8125rem]">
 				<thead>
 					<tr>
-						<th className={`w-[3%] ${HEADER_CLASS}`} />
+						<th className={`w-[3%] ${HEADER_CLASS}`}>
+							<span className="sr-only">State</span>
+						</th>
 						<th className={`w-[28%] ${HEADER_CLASS}`}>Subject</th>
 						<th className={`w-[14%] ${HEADER_CLASS}`}>Repository</th>
 						<th className={`w-[16%] ${HEADER_CLASS}`}>Branch</th>
@@ -322,6 +329,7 @@ function TableRow({row}: {row: FlatRow}) {
 		>
 			<td className="px-3 py-2">
 				<span className={`inline-block h-2 w-2 rounded-full ${categoryDotClass(row.category)}`} />
+				<span className="sr-only">{CATEGORIES[row.category].label}</span>
 			</td>
 			<td className="px-3 py-2 font-medium">{row.subject}</td>
 			<td className="px-3 py-2 text-xs text-text-500">{row.repository}</td>
@@ -342,7 +350,9 @@ function TableRow({row}: {row: FlatRow}) {
 						target="_blank"
 						rel="noopener noreferrer"
 						className="font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
-						onClick={(e) => e.stopPropagation()}
+						onClick={(e) => {
+							e.stopPropagation();
+						}}
 					>
 						{row.prNumber ? `#${row.prNumber}` : "Link"}
 					</a>

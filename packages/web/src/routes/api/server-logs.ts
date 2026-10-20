@@ -63,7 +63,9 @@ export const Route = createFileRoute("/api/server-logs")({
 							clearInterval(keepalive);
 							try {
 								controller.close();
-							} catch {}
+							} catch {
+								// stream already closed
+							}
 						}
 
 						cleanup = doCleanup;

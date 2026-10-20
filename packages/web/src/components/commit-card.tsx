@@ -122,7 +122,9 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 							<input
 								type="text"
 								value={branchName}
-								onChange={(e) => setBranchName(e.target.value)}
+								onChange={(e) => {
+									setBranchName(e.target.value);
+								}}
 								onKeyDown={(e) => {
 									if (e.key === "Enter") void handleCreateBranch();
 								}}
@@ -131,7 +133,9 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 							/>
 							<button
 								type="button"
-								onClick={handleCreateBranch}
+								onClick={() => {
+									void handleCreateBranch();
+								}}
 								disabled={creating || !branchName.trim()}
 								className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
 									creating || !branchName.trim()

@@ -13,20 +13,20 @@ interface LineNumberedAnsiTextProps {
 export function LineNumberedAnsiText({text, className}: LineNumberedAnsiTextProps) {
 	const lines = useMemo(() => {
 		const raw = text.split("\n");
-		return raw.map((line) => converter.toHtml(line));
+		return raw.map((line, index) => ({lineNumber: index + 1, html: converter.toHtml(line)}));
 	}, [text]);
 
 	const gutterWidth = String(lines.length).length;
 
 	return (
 		<pre className={className}>
-			{lines.map((html, i) => (
-				<div key={i} className="flex">
+			{lines.map(({lineNumber, html}) => (
+				<div key={lineNumber} className="flex">
 					<span
 						className="mr-4 inline-block select-none text-right text-text-500"
 						style={{minWidth: `${gutterWidth}ch`}}
 					>
-						{i + 1}
+						{lineNumber}
 					</span>
 					<span dangerouslySetInnerHTML={{__html: html || "\u200b"}} />
 				</div>

@@ -7,7 +7,7 @@ import type {SnoozedChild} from "../lib/server-fns";
 import {snoozedQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/snoozed")({
-	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(snoozedQueryOptions()),
+	loader: async ({context: {queryClient}}) => queryClient.query({...snoozedQueryOptions(), staleTime: "static"}),
 	head: () => ({
 		meta: [{title: "WIP Snoozed"}],
 	}),
@@ -121,9 +121,9 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 				<span className="text-xs font-medium text-text-300">{item.project}</span>
 				<button
 					type="button"
-					onClick={async (e) => {
+					onClick={(e) => {
 						e.preventDefault();
-						await handleUnsnooze();
+						void handleUnsnooze();
 					}}
 					disabled={waking}
 					className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors ${

@@ -7,8 +7,8 @@ import {useTestLog} from "../lib/server-events-context";
 import {useAutoTail} from "../lib/use-auto-tail";
 
 export const Route = createFileRoute("/log/$project/$sha")({
-	loader: ({context: {queryClient}, params}) =>
-		queryClient.ensureQueryData(testLogQueryOptions(params.project, params.sha)),
+	loader: async ({context: {queryClient}, params}) =>
+		queryClient.query({...testLogQueryOptions(params.project, params.sha), staleTime: "static"}),
 	head: ({params}) => ({
 		meta: [{title: `Log: ${params.sha.slice(0, 7)}`}],
 	}),
@@ -45,7 +45,9 @@ function LogViewer() {
 			{liveLog && !isFollowing && (
 				<button
 					type="button"
-					onClick={() => setFollowing(true)}
+					onClick={() => {
+						setFollowing(true);
+					}}
 					className="fixed bottom-4 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-border-300/50 bg-bg-000 px-3 py-1.5 text-xs font-medium text-text-200 shadow-lg transition-colors hover:bg-bg-100"
 				>
 					<ArrowDown className="h-3.5 w-3.5" />

@@ -16,8 +16,7 @@ import {Link} from "@tanstack/react-router";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
 import {cancelTestFn} from "../lib/server-fns";
-import {useTestJob} from "../lib/server-events-context";
-import {useMergeStatus} from "../lib/server-events-context";
+import {useMergeStatus, useTestJob} from "../lib/server-events-context";
 import {AnsiText} from "./ansi-text";
 import {CategoryBadge} from "./category-badge";
 import {BranchActions} from "./commit-actions";
@@ -43,9 +42,13 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
-		if (!copied) return;
-		const timer = setTimeout(() => setCopied(false), 2000);
-		return () => clearTimeout(timer);
+		if (!copied) return undefined;
+		const timer = setTimeout(() => {
+			setCopied(false);
+		}, 2000);
+		return () => {
+			clearTimeout(timer);
+		};
 	}, [copied]);
 
 	const effectiveCategory = testJob?.transition
@@ -63,6 +66,8 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 		if (!testJob) return;
 		await cancelTestFn({data: {id: testJob.id}});
 	};
+
+	const blockCommand = branch.blockCommand;
 
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
@@ -190,15 +195,15 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 							{branch.blockReason}
 						</p>
 					</div>
-					{branch.blockCommand && (
+					{blockCommand && (
 						<div className="mt-1.5 flex items-center gap-1">
 							<code className="flex-1 truncate rounded bg-bg-200/80 px-1.5 py-0.5 font-mono text-[10px] text-text-300 dark:bg-bg-300/50">
-								{branch.blockCommand}
+								{blockCommand}
 							</code>
 							<button
 								type="button"
 								onClick={() => {
-									void navigator.clipboard.writeText(branch.blockCommand!);
+									void navigator.clipboard.writeText(blockCommand);
 									setCopied(true);
 								}}
 								className="shrink-0 rounded p-0.5 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-200"
@@ -223,7 +228,9 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 							<Loader2 className="h-3 w-3 animate-spin text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={handleCancelTest}
+								onClick={() => {
+									void handleCancelTest();
+								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
 								title="Cancel test"
 								aria-label="Cancel test"
@@ -237,7 +244,9 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 							<Clock className="h-3 w-3 text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={handleCancelTest}
+								onClick={() => {
+									void handleCancelTest();
+								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
 								title="Cancel test"
 								aria-label="Cancel test"

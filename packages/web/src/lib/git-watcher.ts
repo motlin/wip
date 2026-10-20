@@ -31,7 +31,7 @@ function triggerRefresh(project: WatchedProject): void {
 		// Checked at fire time, not event time: our own refresh work (fetch,
 		// prune) writes into .git and would otherwise loop the watcher forever.
 		if (isWatcherSuppressed(project.name)) return;
-		refresh?.(project.name).catch((error) => {
+		refresh?.(project.name).catch((error: unknown) => {
 			log.general.error({project: project.name, error}, "git-watcher refresh failed");
 		});
 	}, DEBOUNCE_MS);
@@ -111,6 +111,7 @@ export async function startGitWatcher(onRepoChange: (projectName: string) => voi
 	const {projectEmitter} = await import("./project-events.js");
 	refresh = async (projectName: string) => {
 		onRepoChange(projectName);
+		return Promise.resolve();
 	};
 
 	projectEmitter.on("projects", (projects: ProjectInfo[]) => {

@@ -58,7 +58,7 @@ const CreatePrResponseSchema = z.object({
 	data: z.object({
 		createPullRequest: z.object({
 			pullRequest: z.object({
-				url: z.string().url(),
+				url: z.url(),
 			}),
 		}),
 	}),

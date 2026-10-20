@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
 
 import {
 	GitHubProjectItemSchema,
@@ -20,11 +20,11 @@ describe("GitHubProjectItemLabelSchema", () => {
 	});
 
 	it("rejects an empty name", () => {
-		expect(() => GitHubProjectItemLabelSchema.parse({name: "", color: "a2eeef"})).toThrow();
+		expect(() => GitHubProjectItemLabelSchema.parse({name: "", color: "a2eeef"})).toThrow(/name/);
 	});
 
 	it("rejects an invalid color", () => {
-		expect(() => GitHubProjectItemLabelSchema.parse({name: "bug", color: "xyz"})).toThrow();
+		expect(() => GitHubProjectItemLabelSchema.parse({name: "bug", color: "xyz"})).toThrow(/color/);
 	});
 });
 
@@ -35,15 +35,15 @@ describe("GitHubProjectSchema", () => {
 	});
 
 	it("rejects a non-positive number", () => {
-		expect(() => GitHubProjectSchema.parse({number: 0, title: "X"})).toThrow();
+		expect(() => GitHubProjectSchema.parse({number: 0, title: "X"})).toThrow(/number/);
 	});
 
 	it("rejects a non-integer number", () => {
-		expect(() => GitHubProjectSchema.parse({number: 1.5, title: "X"})).toThrow();
+		expect(() => GitHubProjectSchema.parse({number: 1.5, title: "X"})).toThrow(/number/);
 	});
 
 	it("rejects an empty title", () => {
-		expect(() => GitHubProjectSchema.parse({number: 1, title: ""})).toThrow();
+		expect(() => GitHubProjectSchema.parse({number: 1, title: ""})).toThrow(/title/);
 	});
 });
 
@@ -75,27 +75,27 @@ describe("GitHubProjectItemSchema", () => {
 	});
 
 	it("rejects an invalid type", () => {
-		expect(() => GitHubProjectItemSchema.parse({...validItem, type: "UNKNOWN"})).toThrow();
+		expect(() => GitHubProjectItemSchema.parse({...validItem, type: "UNKNOWN"})).toThrow(/type/);
 	});
 
 	it("rejects an empty id", () => {
-		expect(() => GitHubProjectItemSchema.parse({...validItem, id: ""})).toThrow();
+		expect(() => GitHubProjectItemSchema.parse({...validItem, id: ""})).toThrow(/id/);
 	});
 
 	it("rejects an empty title", () => {
-		expect(() => GitHubProjectItemSchema.parse({...validItem, title: ""})).toThrow();
+		expect(() => GitHubProjectItemSchema.parse({...validItem, title: ""})).toThrow(/title/);
 	});
 
 	it("rejects a non-positive number", () => {
-		expect(() => GitHubProjectItemSchema.parse({...validItem, number: 0})).toThrow();
+		expect(() => GitHubProjectItemSchema.parse({...validItem, number: 0})).toThrow(/number/);
 	});
 
 	it("rejects a non-integer number", () => {
-		expect(() => GitHubProjectItemSchema.parse({...validItem, number: 1.5})).toThrow();
+		expect(() => GitHubProjectItemSchema.parse({...validItem, number: 1.5})).toThrow(/number/);
 	});
 
 	it("rejects an invalid url", () => {
-		expect(() => GitHubProjectItemSchema.parse({...validItem, url: "not-a-url"})).toThrow();
+		expect(() => GitHubProjectItemSchema.parse({...validItem, url: "not-a-url"})).toThrow(/url/);
 	});
 
 	it("accepts a PULL_REQUEST type", () => {
@@ -130,7 +130,7 @@ describe("fetchAllProjectItems", () => {
 		let requestCount = 0;
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			requestCount++;
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(req.body!) as {query: string};
 
 			// First request: fetchProjects
 			if (body.query.includes("projectsV2")) {
@@ -247,7 +247,7 @@ describe("fetchProjectItems pagination", () => {
 
 		let pageRequestCount = 0;
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {
+			const body = JSON.parse(req.body!) as {
 				query: string;
 				variables?: {cursor?: string | null};
 			};
@@ -265,34 +265,7 @@ describe("fetchProjectItems pagination", () => {
 				pageRequestCount++;
 				const cursor = body.variables?.cursor;
 
-				if (!cursor) {
-					// First page
-					res.status(200).json({
-						data: {
-							user: {
-								projectV2: {
-									items: {
-										pageInfo: {hasNextPage: true, endCursor: "cursor_page1"},
-										nodes: [
-											{
-												id: "PVTI_page1",
-												type: "ISSUE",
-												fieldValueByName: {name: "Todo"},
-												content: {
-													title: "Page 1 item",
-													number: 1,
-													url: "https://github.com/owner/repo/issues/1",
-													repository: {nameWithOwner: "owner/repo"},
-													labels: {nodes: []},
-												},
-											},
-										],
-									},
-								},
-							},
-						},
-					});
-				} else {
+				if (cursor) {
 					// Second page (last)
 					res.status(200).json({
 						data: {
@@ -311,6 +284,33 @@ describe("fetchProjectItems pagination", () => {
 													url: "https://github.com/owner/repo/pull/2",
 													repository: {nameWithOwner: "owner/repo"},
 													labels: {nodes: [{name: "enhancement", color: "a2eeef"}]},
+												},
+											},
+										],
+									},
+								},
+							},
+						},
+					});
+				} else {
+					// First page
+					res.status(200).json({
+						data: {
+							user: {
+								projectV2: {
+									items: {
+										pageInfo: {hasNextPage: true, endCursor: "cursor_page1"},
+										nodes: [
+											{
+												id: "PVTI_page1",
+												type: "ISSUE",
+												fieldValueByName: {name: "Todo"},
+												content: {
+													title: "Page 1 item",
+													number: 1,
+													url: "https://github.com/owner/repo/issues/1",
+													repository: {nameWithOwner: "owner/repo"},
+													labels: {nodes: []},
 												},
 											},
 										],

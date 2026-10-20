@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
 import {isWatcherSuppressed, resetWatcherSuppression, suppressWatcherEvents} from "./watch-suppression";
 
@@ -16,6 +16,7 @@ describe("suppressWatcherEvents", () => {
 		let duringRun = false;
 		await suppressWatcherEvents("alpha", async () => {
 			duringRun = isWatcherSuppressed("alpha");
+			return Promise.resolve();
 		});
 		expect(duringRun).toBe(true);
 	});
@@ -23,6 +24,7 @@ describe("suppressWatcherEvents", () => {
 	it("does not suppress other projects", async () => {
 		await suppressWatcherEvents("alpha", async () => {
 			expect(isWatcherSuppressed("beta")).toBe(false);
+			return Promise.resolve();
 		});
 	});
 
@@ -41,7 +43,7 @@ describe("suppressWatcherEvents", () => {
 			release = resolve;
 		});
 
-		const outer = suppressWatcherEvents("alpha", () => gate);
+		const outer = suppressWatcherEvents("alpha", async () => gate);
 		await suppressWatcherEvents("alpha", async () => {});
 
 		expect(isWatcherSuppressed("alpha")).toBe(true);
@@ -53,11 +55,9 @@ describe("suppressWatcherEvents", () => {
 	});
 
 	it("releases suppression when the wrapped work throws", async () => {
-		await expect(
-			suppressWatcherEvents("alpha", async () => {
-				throw new Error("boom");
-			}),
-		).rejects.toThrow("boom");
+		await expect(suppressWatcherEvents("alpha", async () => Promise.reject(new Error("boom")))).rejects.toThrow(
+			"boom",
+		);
 
 		vi.advanceTimersByTime(2000);
 		expect(isWatcherSuppressed("alpha")).toBe(false);

@@ -1,5 +1,8 @@
 import {tracedExeca} from "../services/traced-execa.js";
+import {mapWithConcurrency} from "./concurrency.js";
 import {getTestResultsForProject} from "./db.js";
+
+const TIP_CONCURRENCY = 4;
 
 /**
  * DAG-frontier planner for the advance loop.
@@ -50,12 +53,15 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0);
 
-	const tips: Array<{branch: string; tipSha: string; chain: string[]}> = [];
-	for (const branch of tipNames) {
+	const tipCandidates = await mapWithConcurrency(tipNames, TIP_CONCURRENCY, async (branch) => {
 		const chainOutput = await git(dir, ["rev-list", `${upstreamRef}..${branch}`]);
-		const chain = chainOutput.split("\n").filter((sha) => sha.length > 0);
-		if (chain.length === 0) continue; // upstream branch itself / fully merged
-		tips.push({branch, tipSha: chain[0]!, chain});
+		return {branch, chain: chainOutput.split("\n").filter((sha) => sha.length > 0)};
+	});
+	const tips: Array<{branch: string; tipSha: string; chain: string[]}> = [];
+	for (const {branch, chain} of tipCandidates) {
+		const [tipSha] = chain;
+		if (tipSha === undefined) continue; // upstream branch itself / fully merged
+		tips.push({branch, tipSha, chain});
 	}
 
 	// Shortest chains first so the most-shared prefix lands on the simplest branch;
@@ -66,7 +72,7 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 	const units: AdvanceUnit[] = [];
 	for (const tip of tips) {
 		const ownedNew = tip.chain.filter((sha) => !owner.has(sha));
-		const dependsOn = [...new Set(tip.chain.filter((sha) => owner.has(sha)).map((sha) => owner.get(sha)!))];
+		const dependsOn = [...new Set(tip.chain.flatMap((sha) => owner.get(sha) ?? []))];
 		for (const sha of ownedNew) owner.set(sha, tip.branch);
 		units.push({
 			id: tip.branch,

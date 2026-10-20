@@ -1,5 +1,5 @@
 import {QueryClient} from "@tanstack/react-query";
-import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 import type {GitChildResult} from "@wip/shared";
 
 import {createServerEventApplier, type ServerEventApplier} from "./server-events-apply";

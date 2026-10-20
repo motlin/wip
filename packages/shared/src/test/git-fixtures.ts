@@ -2,25 +2,30 @@ import {createHash} from "node:crypto";
 import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from "node:fs";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import {vi, type Mock} from "vitest";
+import {vi, type Mock} from "vite-plus/test";
+import {z} from "zod";
+
+import type {ExecaResult} from "../services/traced-execa.js";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(currentDir, "..", "__fixtures__", "git");
 
 const isRecordMode = process.env["GIT_FIXTURE_RECORD"] === "true";
 
-export interface RecordedCall {
-	command: string;
-	args: string[];
-	input?: string;
-	stdout: string;
-	stderr: string;
-	exitCode: number;
-}
+const recordedCallSchema = z.object({
+	command: z.string(),
+	args: z.array(z.string()),
+	input: z.string().optional(),
+	stdout: z.string(),
+	stderr: z.string(),
+	exitCode: z.number(),
+});
 
-interface FixtureFile {
-	calls: RecordedCall[];
-}
+const fixtureFileSchema = z.object({calls: z.array(recordedCallSchema)});
+
+export type RecordedCall = z.infer<typeof recordedCallSchema>;
+
+type FixtureFile = z.infer<typeof fixtureFileSchema>;
 
 function hashCall(command: string, args: string[], input?: string): string {
 	const payload = JSON.stringify({command, args, input: input ?? ""});
@@ -70,7 +75,7 @@ export function setupGitFixtures(testName: string): GitFixtureContext {
 			if (!file.endsWith(".json")) continue;
 			const filePath = join(testDir, file);
 			const content = readFileSync(filePath, "utf-8");
-			const data = JSON.parse(content) as FixtureFile;
+			const data = fixtureFileSchema.parse(JSON.parse(content));
 			const call = data.calls[0];
 			if (call) {
 				const hash = hashCall(call.command, call.args, call.input);
@@ -79,7 +84,13 @@ export function setupGitFixtures(testName: string): GitFixtureContext {
 		}
 	}
 
-	const mockFn = vi.fn(
+	const mockFn = vi.fn<
+		(
+			command: string,
+			args: string[],
+			options?: {input?: string; reject?: boolean; env?: Record<string, string>; cwd?: string},
+		) => Promise<ExecaResult>
+	>(
 		async (
 			command: string,
 			args: string[],

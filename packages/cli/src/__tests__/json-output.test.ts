@@ -1,48 +1,57 @@
-import {describe, it, expect, vi, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, vi, beforeEach, afterEach} from "vite-plus/test";
 import path from "node:path";
 
 import type {ChildCommit, ProjectInfo} from "@wip/shared";
 
+type Shared = typeof import("@wip/shared");
+type Fs = typeof import("node:fs");
+
 // Mock @wip/shared before importing commands
 vi.mock("@wip/shared", () => ({
-	getProjectsDirs: vi.fn((flag?: string) => [flag ?? "/tmp/fake-projects"]),
-	discoverAllProjects: vi.fn(),
-	getChildCommits: vi.fn(),
-	getChildren: vi.fn(),
-	getPrStatuses: vi.fn(async () => ({review: new Map(), checks: new Map()})),
-	isDirty: vi.fn(),
-	readConfig: vi.fn(),
-	getConfigValue: vi.fn(),
-	setConfigValue: vi.fn(),
-	unsetConfigValue: vi.fn(),
-	getTestLogDir: vi.fn(() => "/tmp/fake-test-logs"),
-	getMiseEnv: vi.fn(async () => ({})),
-	createBranchForChild: vi.fn(
+	getProjectsDirs: vi.fn<Shared["getProjectsDirs"]>((flag?: string) => [flag ?? "/tmp/fake-projects"]),
+	discoverAllProjects: vi.fn<Shared["discoverAllProjects"]>(),
+	getChildCommits: vi.fn<Shared["getChildCommits"]>(),
+	getChildren: vi.fn<Shared["getChildren"]>(),
+	getPrStatuses: vi
+		.fn<() => Promise<{review: Map<string, string>; checks: Map<string, string>}>>()
+		.mockResolvedValue({review: new Map(), checks: new Map()}),
+	isDirty: vi.fn<Shared["isDirty"]>(),
+	readConfig: vi.fn<Shared["readConfig"]>(),
+	getConfigValue: vi.fn<Shared["getConfigValue"]>(),
+	setConfigValue: vi.fn<Shared["setConfigValue"]>(),
+	unsetConfigValue: vi.fn<Shared["unsetConfigValue"]>(),
+	getTestLogDir: vi.fn<Shared["getTestLogDir"]>(() => "/tmp/fake-test-logs"),
+	getMiseEnv: vi.fn<Shared["getMiseEnv"]>().mockResolvedValue({}),
+	createBranchForChild: vi.fn<Shared["createBranchForChild"]>(
 		async (_dir: string, child: {branch?: string; subject: string}, _project: string) =>
-			child.branch ??
-			child.subject
-				.toLowerCase()
-				.replaceAll(/[^a-z0-9]+/g, "-")
-				.replace(/^-|-$/g, ""),
+			await Promise.resolve(
+				child.branch ??
+					child.subject
+						.toLowerCase()
+						.replaceAll(/[^a-z0-9]+/g, "-")
+						.replace(/^-|-$/g, ""),
+			),
 	),
-	testBranch: vi.fn(async () => ({exitCode: 0, logContent: ""})),
-	testFix: vi.fn(async () => ({ok: true, message: "fixed"})),
-	hasLocalModifications: vi.fn(async () => false),
-	suggestBranchNames: vi.fn(async () => new Map()),
-	getBranchName: vi.fn(() => "mock-branch-name"),
-	getDb: vi.fn(),
-	snoozeItem: vi.fn(),
-	unsnoozeItem: vi.fn(),
-	getActiveSnoozed: vi.fn(() => []),
-	getSnoozedSet: vi.fn(() => new Set()),
-	getAllSnoozed: vi.fn(() => []),
-	clearExpiredSnoozes: vi.fn(() => 0),
-	log: {subprocess: {debug: vi.fn()}},
+	testBranch: vi.fn<Shared["testBranch"]>().mockResolvedValue({exitCode: 0, logContent: ""}),
+	testFix: vi.fn<Shared["testFix"]>().mockResolvedValue({ok: true, message: "fixed"}),
+	hasLocalModifications: vi.fn<Shared["hasLocalModifications"]>().mockResolvedValue(false),
+	suggestBranchNames: vi.fn<Shared["suggestBranchNames"]>().mockResolvedValue(new Map<string, string>()),
+	getBranchName: vi.fn<Shared["getBranchName"]>(() => "mock-branch-name"),
+	getDb: vi.fn<Shared["getDb"]>(),
+	snoozeItem: vi.fn<Shared["snoozeItem"]>(),
+	unsnoozeItem: vi.fn<Shared["unsnoozeItem"]>(),
+	getActiveSnoozed: vi.fn<Shared["getActiveSnoozed"]>(() => []),
+	getSnoozedSet: vi.fn<Shared["getSnoozedSet"]>(() => new Set()),
+	getAllSnoozed: vi.fn<Shared["getAllSnoozed"]>(() => []),
+	clearExpiredSnoozes: vi.fn<Shared["clearExpiredSnoozes"]>(() => 0),
+	log: {subprocess: {debug: vi.fn<(...args: unknown[]) => void>()}},
 }));
 
 // Mock execa to prevent real process execution
 vi.mock("execa", () => ({
-	execa: vi.fn(async () => ({exitCode: 0, stdout: "", stderr: ""})),
+	execa: vi
+		.fn<() => Promise<{exitCode: number; stdout: string; stderr: string}>>()
+		.mockResolvedValue({exitCode: 0, stdout: "", stderr: ""}),
 }));
 
 // Mock fs for test command
@@ -50,8 +59,8 @@ vi.mock("node:fs", async () => {
 	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
 	return {
 		...actual,
-		mkdirSync: vi.fn(),
-		writeFileSync: vi.fn(),
+		mkdirSync: vi.fn<Fs["mkdirSync"]>(),
+		writeFileSync: vi.fn<Fs["writeFileSync"]>(),
 	};
 });
 
@@ -477,9 +486,9 @@ describe("JSON output mode", () => {
 		});
 
 		it("does not mutate config in dry-run mode", async () => {
-			const {unsetConfigValue, getConfigValue} = await import("@wip/shared");
+			const {unsetConfigValue, getConfigValue: getConfigValueMock} = await import("@wip/shared");
 			vi.mocked(unsetConfigValue).mockClear();
-			vi.mocked(getConfigValue).mockReturnValue("someValue");
+			vi.mocked(getConfigValueMock).mockReturnValue("someValue");
 
 			const {default: ConfigUnset} = await import("../commands/config/unset.js");
 			await ConfigUnset.run(["myKey", "--dry-run"]);

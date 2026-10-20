@@ -102,6 +102,7 @@ export default class Test extends Command {
 		const skippedProjects: string[] = [];
 		let testedProjectCount = 0;
 
+		/* oxlint-disable no-await-in-loop -- projects and tests run sequentially: ordered console output and one test process at a time */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
@@ -214,7 +215,7 @@ export default class Test extends Command {
 							logPath,
 							message: fixResult.message,
 						});
-						recordTestResult(child.sha, p.name, "failed", result.exitCode ?? 1, branchDuration);
+						recordTestResult(child.sha, p.name, "failed", result.exitCode, branchDuration);
 					}
 				} else {
 					// Test failed with clean worktree — real failure
@@ -230,7 +231,7 @@ export default class Test extends Command {
 						exitCode: result.exitCode,
 						logPath,
 					});
-					recordTestResult(child.sha, p.name, "failed", result.exitCode ?? 1, branchDuration);
+					recordTestResult(child.sha, p.name, "failed", result.exitCode, branchDuration);
 				}
 			}
 
@@ -246,6 +247,7 @@ export default class Test extends Command {
 
 			testedProjectCount++;
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const passedCount = testResults.filter((r) => r.status === "passed").length;
 		const failedCount = testResults.filter((r) => r.status === "failed").length;
@@ -281,6 +283,7 @@ export default class Test extends Command {
 		const skippedProjects: string[] = [];
 		let testedProjectCount = 0;
 
+		/* oxlint-disable no-await-in-loop -- projects and tests run sequentially: ordered console output and one test process at a time */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
@@ -378,6 +381,7 @@ export default class Test extends Command {
 
 			testedProjectCount++;
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const passedCount = testResults.filter((r) => r.status === "passed").length;
 		const failedCount = testResults.filter((r) => r.status === "failed").length;

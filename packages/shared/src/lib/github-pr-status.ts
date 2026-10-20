@@ -77,7 +77,7 @@ const PrGraphQLResponseSchema = z.object({
 	data: z
 		.object({
 			repository: z.object({
-				url: z.string().url().optional(),
+				url: z.url().optional(),
 				viewerPermission: z.enum(["ADMIN", "MAINTAIN", "WRITE", "TRIAGE", "READ"]),
 				ref: z
 					.object({
@@ -141,10 +141,19 @@ function mapAggregateState(state: string | null): CheckStatus {
 	return mapped;
 }
 
+function withRepository<T extends object>(nodes: readonly T[], repository: string): Array<T & {repository: string}> {
+	const out: Array<T & {repository: string}> = [];
+	for (const node of nodes) {
+		out.push({...node, repository});
+	}
+	return out;
+}
+
 function extractFailedChecks(contexts: StatusCheckContext[]): Array<{name: string; url?: string}> {
 	const failedRuns = contexts
 		.filter(
 			(c): c is CheckRunContext =>
+				// eslint-disable-next-line no-underscore-dangle -- GraphQL's fixed discriminator field name
 				c.__typename === "CheckRun" &&
 				(c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT"),
 		)
@@ -152,6 +161,7 @@ function extractFailedChecks(contexts: StatusCheckContext[]): Array<{name: strin
 	const failedStatuses = contexts
 		.filter(
 			(c): c is StatusContextItem =>
+				// eslint-disable-next-line no-underscore-dangle -- GraphQL's fixed discriminator field name
 				c.__typename === "StatusContext" && (c.state === "FAILURE" || c.state === "ERROR"),
 		)
 		.map((c) => ({name: c.context, url: c.targetUrl ?? undefined}));
@@ -491,10 +501,7 @@ async function fetchPrStatusesFromApi(
 		});
 		const response = PrGraphQLResponseSchema.parse(raw);
 		const canonicalRepository = `${canonical.owner}/${canonical.name}`;
-		allPrs = (response.data?.repository.pullRequests.nodes ?? []).map((pullRequest) => ({
-			...pullRequest,
-			repository: canonicalRepository,
-		}));
+		allPrs = withRepository(response.data?.repository.pullRequests.nodes ?? [], canonicalRepository);
 		const canonicalBase = getBaseBranchStatus(
 			response,
 			upstreamRemote ?? "origin",
@@ -516,10 +523,10 @@ async function fetchPrStatusesFromApi(
 				});
 				const originResponse = PrGraphQLResponseSchema.parse(originRaw);
 				const originRepository = `${origin.owner}/${origin.name}`;
-				const originPrs = (originResponse.data?.repository.pullRequests.nodes ?? []).map((pullRequest) => ({
-					...pullRequest,
-					repository: originRepository,
-				}));
+				const originPrs = withRepository(
+					originResponse.data?.repository.pullRequests.nodes ?? [],
+					originRepository,
+				);
 				const originBase = getBaseBranchStatus(
 					originResponse,
 					"origin",
@@ -552,7 +559,7 @@ async function fetchPrStatusesFromApi(
 		}
 		return emptyPrStatuses();
 	}
-	const prs = ghLogin ? allPrs.filter((pr) => pr.author?.login === ghLogin) : allPrs;
+	const prs = ghLogin ? allPrs.filter((pr) => pr.author.login === ghLogin) : allPrs;
 	const toCache: CachedPrStatus[] = [];
 
 	const review = new Map<string, ReviewStatus>();
@@ -588,7 +595,7 @@ async function fetchPrStatusesFromApi(
 			reviewStatus = "changes_requested";
 		} else if (pr.reviewDecision === "APPROVED") {
 			reviewStatus = "approved";
-		} else if (pr.reviewThreads?.nodes?.some((t) => !t.isResolved)) {
+		} else if (pr.reviewThreads.nodes.some((t) => !t.isResolved)) {
 			reviewStatus = "commented";
 		} else {
 			reviewStatus = "clean";

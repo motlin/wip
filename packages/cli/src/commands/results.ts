@@ -56,6 +56,7 @@ export default class Results extends Command {
 		let failedCount = 0;
 		let unknownCount = 0;
 
+		/* oxlint-disable no-await-in-loop -- projects are processed sequentially to bound git subprocess load and keep output ordered */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
@@ -98,6 +99,7 @@ export default class Results extends Command {
 				else unknownCount++;
 			}
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const output: ResultsJson = {
 			results: allResults,

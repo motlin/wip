@@ -99,7 +99,7 @@ function DevelopmentAgentation() {
 
 	useEffect(() => {
 		if (!import.meta.env.DEV) {
-			return;
+			return undefined;
 		}
 
 		let isMounted = true;
@@ -108,6 +108,7 @@ function DevelopmentAgentation() {
 			if (isMounted) {
 				setAgentationComponent(() => Agentation);
 			}
+			return undefined;
 		});
 
 		return () => {

@@ -1,4 +1,4 @@
-import {describe, expect, it, vi} from "vitest";
+import {describe, expect, it, vi} from "vite-plus/test";
 
 import {parseDiffFiles} from "./diff-parser";
 
@@ -32,8 +32,8 @@ index 4444444..0000000
 
 describe("parseDiffFiles", () => {
 	it("splits a multi-file diff and fetches both contents per file", async () => {
-		const fetchOld = vi.fn(async (file: string) => `old ${file}`);
-		const fetchNew = vi.fn(async (file: string) => `new ${file}`);
+		const fetchOld = vi.fn<(file: string) => Promise<string>>(async (file) => Promise.resolve(`old ${file}`));
+		const fetchNew = vi.fn<(file: string) => Promise<string>>(async (file) => Promise.resolve(`new ${file}`));
 
 		const files = await parseDiffFiles(MODIFIED_DIFF + NEW_FILE_DIFF, {old: fetchOld, new: fetchNew});
 
@@ -48,8 +48,8 @@ describe("parseDiffFiles", () => {
 	});
 
 	it("skips fetching old content for new files", async () => {
-		const fetchOld = vi.fn(async () => "should not be called");
-		const fetchNew = vi.fn(async () => "created content");
+		const fetchOld = vi.fn<() => Promise<string>>(async () => Promise.resolve("should not be called"));
+		const fetchNew = vi.fn<() => Promise<string>>(async () => Promise.resolve("created content"));
 
 		const files = await parseDiffFiles(NEW_FILE_DIFF, {old: fetchOld, new: fetchNew});
 
@@ -58,8 +58,8 @@ describe("parseDiffFiles", () => {
 	});
 
 	it("skips fetching new content for deleted files", async () => {
-		const fetchOld = vi.fn(async () => "old content");
-		const fetchNew = vi.fn(async () => "should not be called");
+		const fetchOld = vi.fn<() => Promise<string>>(async () => Promise.resolve("old content"));
+		const fetchNew = vi.fn<() => Promise<string>>(async () => Promise.resolve("should not be called"));
 
 		const files = await parseDiffFiles(DELETED_FILE_DIFF, {old: fetchOld, new: fetchNew});
 
@@ -68,12 +68,18 @@ describe("parseDiffFiles", () => {
 	});
 
 	it("returns an empty list for empty diff output", async () => {
-		const files = await parseDiffFiles("", {old: async () => "", new: async () => ""});
+		const files = await parseDiffFiles("", {
+			old: async () => Promise.resolve(""),
+			new: async () => Promise.resolve(""),
+		});
 		expect(files).toStrictEqual([]);
 	});
 
 	it("ignores chunks without a diff header", async () => {
-		const files = await parseDiffFiles("not a diff at all\n", {old: async () => "", new: async () => ""});
+		const files = await parseDiffFiles("not a diff at all\n", {
+			old: async () => Promise.resolve(""),
+			new: async () => Promise.resolve(""),
+		});
 		expect(files).toStrictEqual([]);
 	});
 });

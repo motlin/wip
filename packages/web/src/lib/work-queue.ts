@@ -175,7 +175,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		// Scan in order, skipping lane-blocked jobs so one busy repo never
 		// stalls work for every other repo behind it.
 		for (let index = 0; index < queued.length && slots > 0;) {
-			const job = queued[index]!;
+			const job = queued[index];
+			if (job === undefined) break;
 			if (runningLanes.has(job.laneKey)) {
 				index += 1;
 				continue;
@@ -279,6 +280,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		}
 		queued.length = 0;
 		while (inFlight.size > 0) {
+			// Sequential on purpose: inFlight shrinks as jobs settle, so re-check after each wait
+			// eslint-disable-next-line no-await-in-loop
 			await Promise.allSettled(inFlight);
 		}
 		running.clear();

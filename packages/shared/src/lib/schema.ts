@@ -11,10 +11,10 @@ export const branchNames = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.sha, table.project, table.systemTo]}),
-		activeIdx: index("branch_names_active_idx").on(table.sha, table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.sha, table.project, table.systemTo]}),
+		index("branch_names_active_idx").on(table.sha, table.project, table.systemTo),
+	],
 );
 
 export const testResults = sqliteTable(
@@ -29,10 +29,10 @@ export const testResults = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.sha, table.project, table.testName, table.systemTo]}),
-		activeIdx: index("test_results_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.sha, table.project, table.testName, table.systemTo]}),
+		index("test_results_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const prStatusCache = sqliteTable(
@@ -53,10 +53,10 @@ export const prStatusCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.branch, table.systemTo]}),
-		activeIdx: index("pr_status_cache_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.branch, table.systemTo]}),
+		index("pr_status_cache_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const prFailedChecks = sqliteTable(
@@ -69,10 +69,10 @@ export const prFailedChecks = sqliteTable(
 		url: text("url"),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.branch, table.systemTo, table.name]}),
-		activeIdx: index("pr_failed_checks_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.branch, table.systemTo, table.name]}),
+		index("pr_failed_checks_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const reportCache = sqliteTable(
@@ -83,9 +83,7 @@ export const reportCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.id, table.systemTo]}),
-	}),
+	(table) => [primaryKey({columns: [table.id, table.systemTo]})],
 );
 
 export const miseEnvVars = sqliteTable(
@@ -97,9 +95,7 @@ export const miseEnvVars = sqliteTable(
 		value: text("value").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.dir, table.systemTo, table.key]}),
-	}),
+	(table) => [primaryKey({columns: [table.dir, table.systemTo, table.key]})],
 );
 
 export const miseEnvCache = sqliteTable(
@@ -110,10 +106,10 @@ export const miseEnvCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.dir, table.systemTo]}),
-		activeIdx: index("mise_env_cache_active_idx").on(table.dir, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.dir, table.systemTo]}),
+		index("mise_env_cache_active_idx").on(table.dir, table.systemTo),
+	],
 );
 
 export const ghLoginCache = sqliteTable(
@@ -124,10 +120,10 @@ export const ghLoginCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.id, table.systemTo]}),
-		activeIdx: index("gh_login_cache_active_idx").on(table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.id, table.systemTo]}),
+		index("gh_login_cache_active_idx").on(table.systemTo),
+	],
 );
 
 export const githubIssues = sqliteTable(
@@ -141,10 +137,10 @@ export const githubIssues = sqliteTable(
 		repoNameWithOwner: text("repo_name_with_owner").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.systemTo, table.number, table.repoNameWithOwner]}),
-		activeIdx: index("github_issues_active_idx").on(table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.systemTo, table.number, table.repoNameWithOwner]}),
+		index("github_issues_active_idx").on(table.systemTo),
+	],
 );
 
 export const githubIssueLabels = sqliteTable(
@@ -156,11 +152,11 @@ export const githubIssueLabels = sqliteTable(
 		labelName: text("label_name").notNull(),
 		labelColor: text("label_color").notNull(),
 	},
-	(table) => ({
-		pk: primaryKey({
+	(table) => [
+		primaryKey({
 			columns: [table.systemFrom, table.issueNumber, table.repoNameWithOwner, table.labelName],
 		}),
-	}),
+	],
 );
 
 export const githubIssuesCache = sqliteTable(
@@ -171,9 +167,7 @@ export const githubIssuesCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.id, table.systemTo]}),
-	}),
+	(table) => [primaryKey({columns: [table.id, table.systemTo]})],
 );
 
 export const githubProjectItems = sqliteTable(
@@ -183,16 +177,16 @@ export const githubProjectItems = sqliteTable(
 		itemId: text("item_id").notNull(),
 		title: text("title").notNull(),
 		status: text("status").notNull(),
-		type: text("type").notNull(),
+		type: text("type", {enum: ["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]}).notNull(),
 		url: text("url"),
 		number: integer("number"),
 		repository: text("repository"),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.systemTo, table.itemId]}),
-		activeIdx: index("github_project_items_active_idx").on(table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.systemTo, table.itemId]}),
+		index("github_project_items_active_idx").on(table.systemTo),
+	],
 );
 
 export const githubProjectItemLabels = sqliteTable(
@@ -203,9 +197,7 @@ export const githubProjectItemLabels = sqliteTable(
 		labelName: text("label_name").notNull(),
 		labelColor: text("label_color").notNull(),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.systemFrom, table.itemId, table.labelName]}),
-	}),
+	(table) => [primaryKey({columns: [table.systemFrom, table.itemId, table.labelName]})],
 );
 
 export const githubProjectItemsCache = sqliteTable(
@@ -216,9 +208,7 @@ export const githubProjectItemsCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.id, table.systemTo]}),
-	}),
+	(table) => [primaryKey({columns: [table.id, table.systemTo]})],
 );
 
 export const upstreamRefs = sqliteTable(
@@ -230,10 +220,10 @@ export const upstreamRefs = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.systemTo]}),
-		activeIdx: index("upstream_refs_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.systemTo]}),
+		index("upstream_refs_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const mergeStatus = sqliteTable(
@@ -248,10 +238,10 @@ export const mergeStatus = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.sha, table.systemTo]}),
-		activeIdx: index("merge_status_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.sha, table.systemTo]}),
+		index("merge_status_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const snoozed = sqliteTable(
@@ -265,10 +255,10 @@ export const snoozed = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.sha, table.project, table.systemTo]}),
-		activeIdx: index("snoozed_active_idx").on(table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.sha, table.project, table.systemTo]}),
+		index("snoozed_active_idx").on(table.systemTo),
+	],
 );
 
 export const childrenCache = sqliteTable(
@@ -279,10 +269,10 @@ export const childrenCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.systemTo]}),
-		activeIdx: index("children_cache_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.systemTo]}),
+		index("children_cache_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const todosCache = sqliteTable(
@@ -293,10 +283,10 @@ export const todosCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.systemTo]}),
-		activeIdx: index("todos_cache_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.systemTo]}),
+		index("todos_cache_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const cacheFreshness = sqliteTable("cache_freshness", {
@@ -312,10 +302,10 @@ export const advanceConfig = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.project, table.systemTo]}),
-		activeIdx: index("advance_config_active_idx").on(table.project, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.project, table.systemTo]}),
+		index("advance_config_active_idx").on(table.project, table.systemTo),
+	],
 );
 
 export const projectCache = sqliteTable(
@@ -336,8 +326,8 @@ export const projectCache = sqliteTable(
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
-	(table) => ({
-		pk: primaryKey({columns: [table.name, table.systemTo]}),
-		activeIdx: index("project_cache_active_idx").on(table.name, table.systemTo),
-	}),
+	(table) => [
+		primaryKey({columns: [table.name, table.systemTo]}),
+		index("project_cache_active_idx").on(table.name, table.systemTo),
+	],
 );

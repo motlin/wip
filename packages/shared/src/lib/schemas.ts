@@ -232,7 +232,7 @@ export function mapProjectStatusToCategory(status: string): Category {
 const shaSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const shortShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/);
 const branchSchema = z.string().regex(/^[a-zA-Z0-9._\x2f-]+$/);
-const dateSchema = z.string().date();
+const dateSchema = z.iso.date();
 const hexColorSchema = z.string().regex(/^[0-9a-fA-F]{6}$/);
 export const LabelSchema = z.object({name: z.string().min(1), color: hexColorSchema});
 export const RepositorySchema = z.object({
@@ -242,9 +242,9 @@ export const RepositorySchema = z.object({
 
 export const ExternalCiBlockerSchema = z.object({
 	repository: z.string().regex(/^[^/]+\/[^/]+$/),
-	repositoryUrl: z.string().url(),
+	repositoryUrl: z.url(),
 	branch: branchSchema,
-	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})),
+	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})),
 });
 export type ExternalCiBlocker = z.infer<typeof ExternalCiBlockerSchema>;
 
@@ -278,9 +278,9 @@ export const ChildCommitSchema = z.object({
 	localAhead: z.boolean().optional(),
 	needsRebase: z.boolean().optional(),
 	reviewStatus: ReviewStatusSchema,
-	prUrl: z.string().url().optional(),
+	prUrl: z.url().optional(),
 	prNumber: z.number().optional(),
-	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})).optional(),
+	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})).optional(),
 	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
 	behind: z.boolean().optional(),
 	commitsBehind: z.number().optional(),
@@ -346,9 +346,9 @@ export const GitChildResultSchema = z.object({
 	localAhead: z.boolean().optional(),
 	needsRebase: z.boolean().optional(),
 	reviewStatus: ReviewStatusSchema,
-	prUrl: z.string().url().optional(),
+	prUrl: z.url().optional(),
 	prNumber: z.number().optional(),
-	failedChecks: z.array(z.object({name: z.string(), url: z.string().url().optional()})).optional(),
+	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})).optional(),
 	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
 	commitsBehind: z.number().optional(),
 	commitsAhead: z.number().optional(),
@@ -388,7 +388,7 @@ export type ActionLogEntry = z.infer<typeof ActionLogEntrySchema>;
 export const ActionResultSchema = z.object({
 	ok: z.boolean(),
 	message: z.string(),
-	compareUrl: z.string().url().optional(),
+	compareUrl: z.url().optional(),
 	logs: z.array(ActionLogEntrySchema).optional(),
 });
 export type ActionResult = z.infer<typeof ActionResultSchema>;
@@ -396,7 +396,7 @@ export type ActionResult = z.infer<typeof ActionResultSchema>;
 export const ProjectBoardItemSchema = z.object({
 	project: z.string(),
 	remote: z.string(),
-	url: z.string().url().optional(),
+	url: z.url().optional(),
 	number: z.number().int().positive().optional(),
 	title: z.string(),
 	status: z.string(),
@@ -410,7 +410,7 @@ export const SnoozedChildSchema = z.object({
 	project: z.string(),
 	shortSha: shortShaSchema,
 	subject: z.string(),
-	until: z.string().datetime().nullable(),
+	until: z.iso.datetime().nullable(),
 });
 export type SnoozedChild = z.infer<typeof SnoozedChildSchema>;
 
@@ -431,7 +431,7 @@ export type TestChildInput = z.infer<typeof TestChildInputSchema>;
 export const SnoozeChildInputSchema = z.object({
 	project: z.string(),
 	sha: shaSchema,
-	until: z.string().datetime().nullable(),
+	until: z.iso.datetime().nullable(),
 });
 export type SnoozeChildInput = z.infer<typeof SnoozeChildInputSchema>;
 

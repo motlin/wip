@@ -1,4 +1,4 @@
-import {execa, type Options} from "execa";
+import {ExecaError, execa, type Options} from "execa";
 import {SpanStatusCode} from "@opentelemetry/api";
 
 import {getTracer} from "./telemetry.js";
@@ -36,18 +36,13 @@ export async function tracedExeca(command: string, args: string[], options?: Opt
 			};
 		} catch (error) {
 			const duration = Math.round(performance.now() - start);
-			const execaError = error as {
-				exitCode?: number;
-				message: string;
-				stdout?: string;
-				stderr?: string;
-				command?: string;
-			};
+			const exitCode = error instanceof ExecaError ? error.exitCode : undefined;
+			const message = error instanceof Error ? error.message : String(error);
 			span.setAttributes({
-				"subprocess.exit_code": execaError.exitCode ?? -1,
+				"subprocess.exit_code": exitCode ?? -1,
 				"subprocess.duration_ms": duration,
 			});
-			span.setStatus({code: SpanStatusCode.ERROR, message: execaError.message});
+			span.setStatus({code: SpanStatusCode.ERROR, message});
 			throw error;
 		} finally {
 			span.end();

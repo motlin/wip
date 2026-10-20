@@ -1,17 +1,17 @@
-import {describe, it, expect, vi} from "vitest";
+import {describe, it, expect, vi} from "vite-plus/test";
 
 // Mock the dependencies that router.tsx imports
 vi.mock("@tanstack/react-query-persist-client", () => ({
-	persistQueryClient: vi.fn(),
+	persistQueryClient: vi.fn<() => void>(),
 }));
 vi.mock("@tanstack/query-sync-storage-persister", () => ({
-	createSyncStoragePersister: vi.fn(),
+	createSyncStoragePersister: vi.fn<() => void>(),
 }));
 vi.mock("@tanstack/react-router", () => ({
-	createRouter: vi.fn((opts: unknown) => opts),
+	createRouter: vi.fn<(opts: unknown) => unknown>((opts) => opts),
 }));
 vi.mock("@tanstack/react-router-ssr-query", () => ({
-	setupRouterSsrQueryIntegration: vi.fn(),
+	setupRouterSsrQueryIntegration: vi.fn<() => void>(),
 }));
 vi.mock("./routeTree.gen", () => ({
 	routeTree: {},

@@ -1,5 +1,6 @@
 import {createFileRoute} from "@tanstack/react-router";
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
+import {z} from "zod";
 import type {LogEntry} from "@wip/shared";
 import {useAutoTail} from "../lib/use-auto-tail";
 
@@ -34,11 +35,22 @@ const CATEGORY_CLASS: Record<string, string> = {
 	general: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
 };
 
-type LevelFilter = "all" | "debug" | "info" | "warn" | "error";
-type CategoryFilter = "all" | "subprocess" | "progress" | "general";
+const LevelFilterSchema = z.enum(["all", "debug", "info", "warn", "error"]);
+type LevelFilter = z.infer<typeof LevelFilterSchema>;
+const CategoryFilterSchema = z.enum(["all", "subprocess", "progress", "general"]);
+type CategoryFilter = z.infer<typeof CategoryFilterSchema>;
 
-interface ServerLogStatus {
-	loggingEnabled: boolean;
+const ServerLogStatusSchema = z.object({loggingEnabled: z.boolean()});
+const LogEntrySchema = z.looseObject({
+	time: z.number(),
+	level: z.number(),
+	category: z.string(),
+	msg: z.string(),
+});
+
+interface KeyedEntry {
+	id: number;
+	entry: LogEntry;
 }
 
 const LEVEL_MIN: Record<LevelFilter, number> = {
@@ -68,7 +80,8 @@ function extras(entry: LogEntry): Record<string, unknown> {
 }
 
 function DebugLogs() {
-	const [entries, setEntries] = useState<LogEntry[]>([]);
+	const [entries, setEntries] = useState<KeyedEntry[]>([]);
+	const nextId = useRef(0);
 	const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
 	const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
 	const [search, setSearch] = useState("");
@@ -77,21 +90,28 @@ function DebugLogs() {
 
 	useEffect(() => {
 		const es = new EventSource("/api/server-logs");
-		es.onopen = () => setConnected(true);
-		es.onerror = () => setConnected(false);
+		es.addEventListener("open", () => {
+			setConnected(true);
+		});
+		es.addEventListener("error", () => {
+			setConnected(false);
+		});
 		const handleStatus = (event: MessageEvent<string>) => {
-			const status = JSON.parse(event.data) as ServerLogStatus;
-			setLoggingEnabled(status.loggingEnabled);
+			const status = ServerLogStatusSchema.safeParse(JSON.parse(event.data));
+			if (!status.success) return;
+			setLoggingEnabled(status.data.loggingEnabled);
 			setConnected(true);
 		};
 		es.addEventListener("status", handleStatus);
-		es.onmessage = (event) => {
-			const entry = JSON.parse(event.data) as LogEntry;
+		es.addEventListener("message", (event: MessageEvent<string>) => {
+			const parsed = LogEntrySchema.safeParse(JSON.parse(event.data));
+			if (!parsed.success) return;
+			const keyed: KeyedEntry = {id: nextId.current++, entry: parsed.data};
 			setEntries((prev) => {
-				const next = [...prev, entry];
+				const next = [...prev, keyed];
 				return next.length > 2000 ? next.slice(-2000) : next;
 			});
-		};
+		});
 		return () => {
 			es.removeEventListener("status", handleStatus);
 			es.close();
@@ -101,7 +121,7 @@ function DebugLogs() {
 	const filtered = useMemo(() => {
 		const minLevel = LEVEL_MIN[levelFilter];
 		const needle = search.trim().toLowerCase();
-		return entries.filter((entry) => {
+		return entries.filter(({entry}) => {
 			if (entry.level < minLevel) return false;
 			if (categoryFilter !== "all" && entry.category !== categoryFilter) return false;
 			if (needle && !entry.msg.toLowerCase().includes(needle)) return false;
@@ -118,11 +138,11 @@ function DebugLogs() {
 	const emptyMessage =
 		entries.length > 0
 			? "No entries match the current filters."
-			: !connected
-				? "Connecting to server log stream..."
-				: loggingEnabled === false
+			: connected
+				? loggingEnabled === false
 					? "Waiting for log entries. Set WIP_SUBPROCESS_LOGGING=true to enable the logger."
-					: "Waiting for log entries. Server logging is enabled.";
+					: "Waiting for log entries. Server logging is enabled."
+				: "Connecting to server log stream...";
 
 	return (
 		<div className="flex h-[calc(100vh-2.5rem)] flex-col">
@@ -143,7 +163,10 @@ function DebugLogs() {
 					<span className="text-text-400">Level:</span>
 					<select
 						value={levelFilter}
-						onChange={(e) => setLevelFilter(e.target.value as LevelFilter)}
+						onChange={(e) => {
+							const parsed = LevelFilterSchema.safeParse(e.target.value);
+							if (parsed.success) setLevelFilter(parsed.data);
+						}}
 						className="rounded border border-border-300/50 bg-bg-000 px-1.5 py-0.5 text-xs text-text-100"
 					>
 						<option value="all">all</option>
@@ -157,7 +180,10 @@ function DebugLogs() {
 					<span className="text-text-400">Category:</span>
 					<select
 						value={categoryFilter}
-						onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+						onChange={(e) => {
+							const parsed = CategoryFilterSchema.safeParse(e.target.value);
+							if (parsed.success) setCategoryFilter(parsed.data);
+						}}
 						className="rounded border border-border-300/50 bg-bg-000 px-1.5 py-0.5 text-xs text-text-100"
 					>
 						<option value="all">all</option>
@@ -168,7 +194,9 @@ function DebugLogs() {
 				</label>
 				<input
 					value={search}
-					onChange={(e) => setSearch(e.target.value)}
+					onChange={(e) => {
+						setSearch(e.target.value);
+					}}
 					placeholder="Search message..."
 					className="rounded border border-border-300/50 bg-bg-000 px-2 py-0.5 text-xs text-text-100 placeholder:text-text-500"
 				/>
@@ -181,7 +209,9 @@ function DebugLogs() {
 				</button>
 				<button
 					type="button"
-					onClick={() => setFollowing(!isFollowing)}
+					onClick={() => {
+						setFollowing(!isFollowing);
+					}}
 					className={`rounded border px-2 py-0.5 text-xs ${
 						isFollowing
 							? "border-green-500/50 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
@@ -200,7 +230,7 @@ function DebugLogs() {
 					<p className="p-4 text-sm text-text-500">{emptyMessage}</p>
 				) : (
 					<ul className="divide-y divide-border-300/20">
-						{filtered.map((entry, i) => {
+						{filtered.map(({id, entry}) => {
 							const levelName = LEVEL_LABEL[entry.level] ?? String(entry.level);
 							const levelCls = LEVEL_CLASS[entry.level] ?? "text-text-200";
 							const catCls =
@@ -209,10 +239,7 @@ function DebugLogs() {
 							const extra = extras(entry);
 							const hasExtra = Object.keys(extra).length > 0;
 							return (
-								<li
-									key={`${entry.time}-${i}`}
-									className="flex items-start gap-2 px-4 py-1 hover:bg-bg-100"
-								>
+								<li key={id} className="flex items-start gap-2 px-4 py-1 hover:bg-bg-100">
 									<span className="flex-shrink-0 text-text-500">{formatTime(entry.time)}</span>
 									<span
 										className={`flex-shrink-0 w-11 uppercase tracking-wide ${levelCls}`}

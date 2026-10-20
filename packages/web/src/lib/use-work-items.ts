@@ -97,9 +97,9 @@ function buildWorkItems(
 			url: item.url,
 			number: item.number,
 			title: item.title,
-			status: item.status ?? "",
+			status: item.status,
 			type: item.type,
-			labels: item.labels ?? [],
+			labels: item.labels,
 		});
 		allSubjects.add(item.title.toLowerCase());
 	}

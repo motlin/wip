@@ -20,7 +20,7 @@ import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary, TestJobStatus}
 import {useAllTasks, type TaskEvent} from "../lib/server-events-context";
 
 export const Route = createFileRoute("/advance-plan")({
-	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(advancePlanQueryOptions()),
+	loader: async ({context: {queryClient}}) => queryClient.query({...advancePlanQueryOptions(), staleTime: "static"}),
 	head: () => ({
 		meta: [{title: "WIP Advance Plan"}],
 	}),
@@ -38,56 +38,48 @@ function formatGeneratedAt(generatedAt: number): string {
 	return new Date(generatedAt).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
 }
 
+const STATUS_CLASSES: Record<AdvancePlanProjectSummary["status"], string> = {
+	ready: "border-status-green/40 bg-status-green/10 text-status-green",
+	skipped: "border-status-red/40 bg-status-red/10 text-status-red",
+	noop: "border-border-300/50 bg-bg-200 text-text-400",
+};
+
 function statusClass(status: AdvancePlanProjectSummary["status"]): string {
-	switch (status) {
-		case "ready":
-			return "border-status-green/40 bg-status-green/10 text-status-green";
-		case "skipped":
-			return "border-status-red/40 bg-status-red/10 text-status-red";
-		case "noop":
-			return "border-border-300/50 bg-bg-200 text-text-400";
-	}
+	return STATUS_CLASSES[status];
 }
+
+const TASK_STATUS_ICONS: Record<TaskEvent["status"], React.ReactElement> = {
+	queued: <Clock className="h-3.5 w-3.5 text-text-400" />,
+	running: <Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />,
+	passed: <CheckCircle className="h-3.5 w-3.5 text-status-green" />,
+	failed: <XCircle className="h-3.5 w-3.5 text-status-red" />,
+	cancelled: <XCircle className="h-3.5 w-3.5 text-text-500" />,
+};
 
 function taskStatusIcon(status: TaskEvent["status"]) {
-	switch (status) {
-		case "queued":
-			return <Clock className="h-3.5 w-3.5 text-text-400" />;
-		case "running":
-			return <Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />;
-		case "passed":
-			return <CheckCircle className="h-3.5 w-3.5 text-status-green" />;
-		case "failed":
-			return <XCircle className="h-3.5 w-3.5 text-status-red" />;
-		case "cancelled":
-			return <XCircle className="h-3.5 w-3.5 text-text-500" />;
-	}
+	return TASK_STATUS_ICONS[status];
 }
+
+const ACTION_ICONS: Record<BranchAction, React.ReactElement> = {
+	test: <FlaskConical className="h-3.5 w-3.5" />,
+	rebase: <GitMerge className="h-3.5 w-3.5" />,
+	"resolve-conflicts": <Bot className="h-3.5 w-3.5" />,
+	"fix-failure": <Wrench className="h-3.5 w-3.5" />,
+};
 
 function actionIcon(action: BranchAction) {
-	switch (action) {
-		case "test":
-			return <FlaskConical className="h-3.5 w-3.5" />;
-		case "rebase":
-			return <GitMerge className="h-3.5 w-3.5" />;
-		case "resolve-conflicts":
-			return <Bot className="h-3.5 w-3.5" />;
-		case "fix-failure":
-			return <Wrench className="h-3.5 w-3.5" />;
-	}
+	return ACTION_ICONS[action];
 }
 
+const ACTION_LABELS: Record<BranchAction, string> = {
+	test: "Run Tests",
+	rebase: "Rebase",
+	"resolve-conflicts": "Resolve",
+	"fix-failure": "Fix",
+};
+
 function actionLabel(action: BranchAction): string {
-	switch (action) {
-		case "test":
-			return "Run Tests";
-		case "rebase":
-			return "Rebase";
-		case "resolve-conflicts":
-			return "Resolve";
-		case "fix-failure":
-			return "Fix";
-	}
+	return ACTION_LABELS[action];
 }
 
 function actionKey(branch: AdvancePlanBranchSummary, action: BranchAction): string {
@@ -190,7 +182,9 @@ function AdvancePlanPage() {
 					</Link>
 					<button
 						type="button"
-						onClick={refreshPlan}
+						onClick={() => {
+							void refreshPlan();
+						}}
 						disabled={refreshing}
 						className="inline-flex items-center gap-1.5 rounded-lg border border-border-300 bg-bg-000 px-3 py-1.5 text-sm font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100 disabled:opacity-60"
 					>

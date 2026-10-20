@@ -116,7 +116,7 @@ function QueueLayout() {
 		}
 
 		const rtCount = g.ready_to_test.gitChildren?.length ?? 0;
-		const nrCount = g.needs_rebase.gitChildren?.filter((c) => c.branch !== undefined)?.length ?? 0;
+		const nrCount = g.needs_rebase.gitChildren?.filter((c) => c.branch !== undefined).length ?? 0;
 
 		return {grouped: g, totalCount: total, readyToTestCount: rtCount, needsRebaseCount: nrCount};
 	}, [workItems, projects]);
@@ -158,7 +158,7 @@ function QueueLayout() {
 
 		return {
 			categoryCounts: catCounts,
-			projectCounts: [...projCounts.entries()].sort((a, b) => b[1] - a[1]),
+			projectCounts: [...projCounts.entries()].toSorted((a, b) => b[1] - a[1]),
 			needsActionCount: action,
 			waitingCount: waiting,
 		};
@@ -213,7 +213,10 @@ function QueueLayout() {
 		setSelectedProject((previous) => (previous === project ? null : project));
 	};
 
-	const visibleCategories = selectedCategory ? [selectedCategory] : CATEGORY_PRIORITY_REVERSED;
+	const visibleCategories = useMemo(
+		() => (selectedCategory ? [selectedCategory] : CATEGORY_PRIORITY_REVERSED),
+		[selectedCategory],
+	);
 
 	const [showAllProjects, setShowAllProjects] = useState(false);
 	const visibleProjects = showAllProjects ? projectCounts : projectCounts.slice(0, MAX_VISIBLE_PROJECTS);
@@ -282,7 +285,9 @@ function QueueLayout() {
 						<div className="flex flex-col gap-0.5">
 							<button
 								type="button"
-								onClick={() => handleCategoryClick(null)}
+								onClick={() => {
+									handleCategoryClick(null);
+								}}
 								className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
 									selectedCategory === null ? "bg-bg-200 font-medium" : ""
 								}`}
@@ -302,7 +307,9 @@ function QueueLayout() {
 									<button
 										key={cat}
 										type="button"
-										onClick={() => handleCategoryClick(cat)}
+										onClick={() => {
+											handleCategoryClick(cat);
+										}}
 										className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
 											selectedCategory === cat ? "bg-bg-200 font-medium" : ""
 										}`}
@@ -332,7 +339,9 @@ function QueueLayout() {
 								<button
 									key={project}
 									type="button"
-									onClick={() => handleProjectClick(project)}
+									onClick={() => {
+										handleProjectClick(project);
+									}}
 									className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
 										selectedProject === project ? "bg-bg-200 font-medium" : ""
 									}`}
@@ -346,7 +355,9 @@ function QueueLayout() {
 							{hiddenProjectCount > 0 && !showAllProjects && (
 								<button
 									type="button"
-									onClick={() => setShowAllProjects(true)}
+									onClick={() => {
+										setShowAllProjects(true);
+									}}
 									className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
 								>
 									+ {hiddenProjectCount} more...
@@ -355,7 +366,9 @@ function QueueLayout() {
 							{showAllProjects && hiddenProjectCount > 0 && (
 								<button
 									type="button"
-									onClick={() => setShowAllProjects(false)}
+									onClick={() => {
+										setShowAllProjects(false);
+									}}
 									className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
 								>
 									Show less
@@ -402,7 +415,9 @@ function QueueLayout() {
 							{needsRebaseCount > 0 && (
 								<button
 									type="button"
-									onClick={handleRebaseAll}
+									onClick={() => {
+										void handleRebaseAll();
+									}}
 									disabled={rebasingAll}
 									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
 										rebasingAll
@@ -421,7 +436,9 @@ function QueueLayout() {
 							{readyToTestCount > 0 && (
 								<button
 									type="button"
-									onClick={handleTestAll}
+									onClick={() => {
+										void handleTestAll();
+									}}
 									disabled={testingAll || hasActiveTests}
 									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
 										testingAll || hasActiveTests

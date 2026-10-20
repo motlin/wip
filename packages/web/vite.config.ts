@@ -15,11 +15,12 @@ function stubServerModules(): Plugin {
 		enforce: "pre",
 		resolveId(id, _importer, options) {
 			if (
-				!options?.ssr &&
+				!options.ssr &&
 				serverOnlyModules.some((moduleName) => id === moduleName || id.startsWith(moduleName + "/"))
 			) {
 				return {id: `\0stub:${id}`, moduleSideEffects: false};
 			}
+			return undefined;
 		},
 		load(id) {
 			if (id.startsWith("\0stub:")) {
@@ -27,11 +28,12 @@ function stubServerModules(): Plugin {
 					'new Proxy(() => noop, { get: (_, p) => p === Symbol.toPrimitive ? () => "" : noop, apply: () => noop })';
 				return `const noop = ${noop}; export default noop; export const execa = noop; export const drizzle = noop;`;
 			}
+			return undefined;
 		},
 	};
 }
 
-const plugins = [stubServerModules(), tailwindcss(), tanstackStart(), viteReact()] as unknown as PluginOption[];
+const plugins: PluginOption[] = [stubServerModules(), tailwindcss(), tanstackStart(), viteReact()];
 
 export default defineConfig({
 	root: webRoot,

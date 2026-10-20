@@ -116,7 +116,9 @@ function Kanban() {
 				<div className="flex items-center gap-3">
 					<button
 						type="button"
-						onClick={handleRefreshAll}
+						onClick={() => {
+							void handleRefreshAll();
+						}}
 						disabled={refreshingAll}
 						className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100 disabled:cursor-not-allowed disabled:opacity-60"
 					>

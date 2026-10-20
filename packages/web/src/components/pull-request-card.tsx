@@ -3,8 +3,7 @@ import {Link} from "@tanstack/react-router";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
 import {cancelTestFn} from "../lib/server-fns";
-import {useTestJob} from "../lib/server-events-context";
-import {useMergeStatus} from "../lib/server-events-context";
+import {useMergeStatus, useTestJob} from "../lib/server-events-context";
 import {branchRemoteUrl} from "../lib/branch-rename";
 import {AnsiText} from "./ansi-text";
 import {CategoryBadge} from "./category-badge";
@@ -179,7 +178,7 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 					{pr.failedChecks.map((check) => (
 						<a
 							key={check.name}
-							href={check.url || `${pr.prUrl}/checks`}
+							href={check.url ?? `${pr.prUrl}/checks`}
 							target="_blank"
 							rel="noopener noreferrer"
 							title={`Failed check: ${check.name}`}
@@ -206,7 +205,9 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 							<Loader2 className="h-3 w-3 animate-spin text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={handleCancelTest}
+								onClick={() => {
+									void handleCancelTest();
+								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
 								title="Cancel test"
 								aria-label="Cancel test"
@@ -220,7 +221,9 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 							<Clock className="h-3 w-3 text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={handleCancelTest}
+								onClick={() => {
+									void handleCancelTest();
+								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
 								title="Cancel test"
 								aria-label="Cancel test"

@@ -39,7 +39,7 @@ export async function checkBaseline(opts: {
 		reject: false,
 	});
 	const sha = revParse.stdout.trim();
-	const runTest = opts.runTest ?? ((s: string) => defaultRunTest(dir, s, project));
+	const runTest = opts.runTest ?? (async (s: string) => defaultRunTest(dir, s, project));
 	const green = await runTest(sha);
 	return {sha, green};
 }

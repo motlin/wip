@@ -24,7 +24,7 @@ import {
 import {taskQueueQueryOptions, runAllCountsQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/tasks")({
-	loader: ({context: {queryClient}}) => queryClient.ensureQueryData(taskQueueQueryOptions()),
+	loader: async ({context: {queryClient}}) => queryClient.query({...taskQueueQueryOptions(), staleTime: "static"}),
 	head: () => ({
 		meta: [{title: "WIP Tasks"}],
 	}),
@@ -37,60 +37,50 @@ type JobStatus = TaskQueueJob["status"];
 
 const STATUS_ORDER: JobStatus[] = ["running", "queued", "failed", "cancelled", "passed"];
 
+const TASK_TYPE_ICONS: Record<TaskType, React.ReactElement> = {
+	test: <FlaskConical className="h-3.5 w-3.5 text-text-400" />,
+	claude: <Bot className="h-3.5 w-3.5 text-text-400" />,
+	rebase: <GitMerge className="h-3.5 w-3.5 text-text-400" />,
+	push: <ArrowRight className="h-3.5 w-3.5 text-text-400" />,
+};
+
 function taskTypeIcon(taskType: TaskType) {
-	switch (taskType) {
-		case "test":
-			return <FlaskConical className="h-3.5 w-3.5 text-text-400" />;
-		case "claude":
-			return <Bot className="h-3.5 w-3.5 text-text-400" />;
-		case "rebase":
-			return <GitMerge className="h-3.5 w-3.5 text-text-400" />;
-		case "push":
-			return <ArrowRight className="h-3.5 w-3.5 text-text-400" />;
-	}
+	return TASK_TYPE_ICONS[taskType];
 }
+
+const TASK_TYPE_LABELS: Record<TaskType, string> = {
+	test: "Test",
+	claude: "Claude",
+	rebase: "Rebase",
+	push: "Push",
+};
 
 function taskTypeLabel(taskType: TaskType): string {
-	switch (taskType) {
-		case "test":
-			return "Test";
-		case "claude":
-			return "Claude";
-		case "rebase":
-			return "Rebase";
-		case "push":
-			return "Push";
-	}
+	return TASK_TYPE_LABELS[taskType];
 }
+
+const STATUS_ICONS: Record<JobStatus, React.ReactElement> = {
+	queued: <Clock className="h-4 w-4 text-text-400" />,
+	running: <Loader2 className="h-4 w-4 animate-spin text-status-yellow" />,
+	passed: <CheckCircle className="h-4 w-4 text-status-green" />,
+	failed: <XCircle className="h-4 w-4 text-status-red" />,
+	cancelled: <Ban className="h-4 w-4 text-text-500" />,
+};
 
 function statusIcon(status: JobStatus) {
-	switch (status) {
-		case "queued":
-			return <Clock className="h-4 w-4 text-text-400" />;
-		case "running":
-			return <Loader2 className="h-4 w-4 animate-spin text-status-yellow" />;
-		case "passed":
-			return <CheckCircle className="h-4 w-4 text-status-green" />;
-		case "failed":
-			return <XCircle className="h-4 w-4 text-status-red" />;
-		case "cancelled":
-			return <Ban className="h-4 w-4 text-text-500" />;
-	}
+	return STATUS_ICONS[status];
 }
 
+const CARD_STYLES: Record<JobStatus, string> = {
+	queued: "border-border-300/50 bg-bg-100",
+	running: "border-card-running-border bg-card-running-bg",
+	passed: "border-card-passed-border bg-card-passed-bg",
+	failed: "border-card-failed-border bg-card-failed-bg",
+	cancelled: "border-border-300/30 bg-bg-100/50",
+};
+
 function cardStyle(status: JobStatus): string {
-	switch (status) {
-		case "queued":
-			return "border-border-300/50 bg-bg-100";
-		case "running":
-			return "border-card-running-border bg-card-running-bg";
-		case "passed":
-			return "border-card-passed-border bg-card-passed-bg";
-		case "failed":
-			return "border-card-failed-border bg-card-failed-bg";
-		case "cancelled":
-			return "border-border-300/30 bg-bg-100/50";
-	}
+	return CARD_STYLES[status];
 }
 
 function formatDuration(ms: number): string {
@@ -116,7 +106,7 @@ function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: Map<string, TaskEvent>)
 		} else {
 			merged.set(key, {
 				id: liveJob.id,
-				taskType: liveJob.taskType ?? "test",
+				taskType: liveJob.taskType,
 				project: liveJob.project,
 				sha: liveJob.sha,
 				shortSha: liveJob.shortSha,
@@ -211,8 +201,8 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 					{(job.status === "queued" || job.status === "running") && (
 						<button
 							type="button"
-							onClick={async () => {
-								await cancelTestFn({data: {id: job.id}});
+							onClick={() => {
+								void cancelTestFn({data: {id: job.id}});
 							}}
 							className="rounded-md border border-border-300/30 p-1 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-300"
 							title="Cancel test"
@@ -226,33 +216,33 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 	);
 }
 
-function groupTasks(
-	allJobs: TaskQueueJob[],
-	groupBy: GroupBy,
-): Array<{key: string; label: string; icon?: React.ReactNode; tasks: TaskQueueJob[]}> {
-	const groups = new Map<string, TaskQueueJob[]>();
+type TaskGroup = {key: string; label: string; icon?: React.ReactNode; tasks: TaskQueueJob[]};
+
+function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
+	const groups = new Map<string, TaskGroup>();
 
 	for (const job of allJobs) {
 		const key = groupBy === "project" ? job.project : job.taskType;
-		const existing = groups.get(key) ?? [];
-		existing.push(job);
-		groups.set(key, existing);
+		let group = groups.get(key);
+		if (!group) {
+			group = {
+				key,
+				label: groupBy === "taskType" ? taskTypeLabel(job.taskType) : job.project,
+				icon: groupBy === "taskType" ? taskTypeIcon(job.taskType) : undefined,
+				tasks: [],
+			};
+			groups.set(key, group);
+		}
+		group.tasks.push(job);
 	}
 
-	const entries = Array.from(groups.entries())
-		.map(([key, tasks]) => ({
-			key,
-			label: groupBy === "taskType" ? taskTypeLabel(key as TaskType) : key,
-			icon: groupBy === "taskType" ? taskTypeIcon(key as TaskType) : undefined,
-			tasks,
-		}))
-		.sort((a, b) => {
-			const aActive = a.tasks.some((j) => j.status === "running" || j.status === "queued");
-			const bActive = b.tasks.some((j) => j.status === "running" || j.status === "queued");
-			if (aActive && !bActive) return -1;
-			if (!aActive && bActive) return 1;
-			return 0;
-		});
+	const entries = Array.from(groups.values()).toSorted((a, b) => {
+		const aActive = a.tasks.some((j) => j.status === "running" || j.status === "queued");
+		const bActive = b.tasks.some((j) => j.status === "running" || j.status === "queued");
+		if (aActive && !bActive) return -1;
+		if (!aActive && bActive) return 1;
+		return 0;
+	});
 
 	for (const group of entries) {
 		group.tasks.sort((a, b) => {
@@ -328,7 +318,9 @@ function Tasks() {
 					<div className="flex rounded-lg border border-border-300/50 text-xs">
 						<button
 							type="button"
-							onClick={() => setGroupBy("project")}
+							onClick={() => {
+								setGroupBy("project");
+							}}
 							className={`px-2.5 py-1 rounded-l-lg transition-colors ${
 								groupBy === "project"
 									? "bg-bg-200 text-text-100 font-medium"
@@ -339,7 +331,9 @@ function Tasks() {
 						</button>
 						<button
 							type="button"
-							onClick={() => setGroupBy("taskType")}
+							onClick={() => {
+								setGroupBy("taskType");
+							}}
 							className={`px-2.5 py-1 rounded-r-lg transition-colors ${
 								groupBy === "taskType"
 									? "bg-bg-200 text-text-100 font-medium"
@@ -351,7 +345,9 @@ function Tasks() {
 					</div>
 					<button
 						type="button"
-						onClick={handleTestAll}
+						onClick={() => {
+							void handleTestAll();
+						}}
 						disabled={testingAll || hasActiveTests}
 						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
 							testingAll || hasActiveTests
@@ -385,18 +381,18 @@ function Tasks() {
 				</div>
 			) : (
 				<div className="flex flex-col gap-6">
-					{groups.map(({key, label, icon, tasks: groupTasks}) => {
-						const groupActive = groupTasks.some((j) => j.status === "running" || j.status === "queued");
+					{groups.map(({key, label, icon, tasks: groupJobs}) => {
+						const groupActive = groupJobs.some((j) => j.status === "running" || j.status === "queued");
 						return (
 							<section key={key}>
 								<h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
 									{icon}
 									<span className="text-text-100">{label}</span>
 									{groupActive && <Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />}
-									<span className="font-normal text-text-500">{groupTasks.length}</span>
+									<span className="font-normal text-text-500">{groupJobs.length}</span>
 								</h2>
 								<div className="flex flex-col gap-2">
-									{groupTasks.map((job) => (
+									{groupJobs.map((job) => (
 										<TaskCard key={job.id} job={job} />
 									))}
 								</div>

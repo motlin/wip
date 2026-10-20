@@ -8,11 +8,11 @@ import {diffQueryOptions, projectChildrenQueryOptions, projectsQueryOptions} fro
 import {classifyBranch, classifyPullRequest} from "../lib/classify";
 
 export const Route = createFileRoute("/diff/$project/$sha")({
-	loader: ({context: {queryClient}, params}) =>
+	loader: async ({context: {queryClient}, params}) =>
 		Promise.all([
-			queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
-			queryClient.ensureQueryData(projectChildrenQueryOptions(params.project)),
-			queryClient.ensureQueryData(projectsQueryOptions()),
+			queryClient.query({...diffQueryOptions(params.project, params.sha), staleTime: "static"}),
+			queryClient.query({...projectChildrenQueryOptions(params.project), staleTime: "static"}),
+			queryClient.query({...projectsQueryOptions(), staleTime: "static"}),
 		]),
 	head: ({params}) => ({
 		meta: [{title: `Diff: ${params.sha.slice(0, 7)}`}],
@@ -37,9 +37,9 @@ function DiffViewer() {
 	const category =
 		child && projectInfo
 			? isPr
-				? classifyPullRequest(child as any)
+				? classifyPullRequest(child)
 				: isBranch
-					? classifyBranch(child as any, projectInfo)
+					? classifyBranch(child, projectInfo)
 					: undefined
 			: undefined;
 
@@ -59,12 +59,12 @@ function DiffViewer() {
 			</div>
 			{isPr && category && (
 				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
-					<PullRequestActions item={child as any} category={category} layout="row" />
+					<PullRequestActions item={child} category={category} layout="row" />
 				</div>
 			)}
 			{isBranch && !isPr && category && (
 				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
-					<BranchActions item={child as any} category={category} layout="row" />
+					<BranchActions item={child} category={category} layout="row" />
 				</div>
 			)}
 			{stat && (

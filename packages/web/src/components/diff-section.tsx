@@ -4,94 +4,7 @@ import {DiffFile} from "@git-diff-view/core";
 import "@git-diff-view/react/styles/diff-view.css";
 import type {FileDiff} from "../lib/server-fns";
 import {useInView} from "../lib/use-in-view";
-
-/**
- * Approximate line height used to reserve space for a file diff before it
- * becomes visible. Tuned to match `@git-diff-view/react`'s 12px font rendering.
- */
-const APPROX_LINE_HEIGHT_PX = 20;
-/** Minimum placeholder height so tiny diffs still register an intersection. */
-const MIN_PLACEHOLDER_HEIGHT_PX = 120;
-/** Cap the placeholder so very large files don't blow out the scroll area. */
-const MAX_PLACEHOLDER_HEIGHT_PX = 4000;
-
-/** Estimate the rendered height of a diff section from its hunk text. */
-export function estimatePlaceholderHeight(hunks: string): number {
-	const newlineCount = (hunks.match(/\n/g) ?? []).length;
-	const estimated = newlineCount * APPROX_LINE_HEIGHT_PX;
-	return Math.max(MIN_PLACEHOLDER_HEIGHT_PX, Math.min(estimated, MAX_PLACEHOLDER_HEIGHT_PX));
-}
-
-/** Map of file extensions to shiki language identifiers supported by @git-diff-view/shiki's default highlighter. */
-const SUPPORTED_LANGS = new Set([
-	"cpp",
-	"java",
-	"javascript",
-	"css",
-	"cs",
-	"c",
-	"vue",
-	"astro",
-	"bash",
-	"make",
-	"markdown",
-	"makefile",
-	"bat",
-	"cmake",
-	"cmd",
-	"csv",
-	"docker",
-	"dockerfile",
-	"go",
-	"python",
-	"html",
-	"jsx",
-	"tsx",
-	"typescript",
-	"sql",
-	"xml",
-	"sass",
-	"ssh-config",
-	"kotlin",
-	"json",
-	"swift",
-	"txt",
-	"diff",
-]);
-
-/** Common file extensions mapped to their shiki language identifier. */
-const EXT_TO_LANG: Record<string, string> = {
-	js: "javascript",
-	mjs: "javascript",
-	cjs: "javascript",
-	ts: "typescript",
-	mts: "typescript",
-	cts: "typescript",
-	py: "python",
-	rb: "ruby",
-	rs: "rust",
-	sh: "bash",
-	zsh: "bash",
-	yml: "yaml",
-	yaml: "yaml",
-	md: "markdown",
-	mdx: "markdown",
-	htm: "html",
-	kt: "kotlin",
-	kts: "kotlin",
-	h: "c",
-	hpp: "cpp",
-	cc: "cpp",
-	cxx: "cpp",
-	Makefile: "makefile",
-	Dockerfile: "dockerfile",
-};
-
-export function resolveLanguage(fileName: string): string {
-	const ext = fileName.split(".").pop() ?? "";
-	const mapped = EXT_TO_LANG[ext] ?? ext;
-	return SUPPORTED_LANGS.has(mapped) ? mapped : "txt";
-}
+import {estimatePlaceholderHeight, resolveLanguage} from "./diff-section-utils";
 
 function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "unified") {
 	return useMemo(() => {
@@ -99,9 +12,9 @@ function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "u
 		const newLang = resolveLanguage(file.newFileName);
 		const instance = new DiffFile(
 			file.oldFileName,
-			file.oldContent ?? "",
+			file.oldContent,
 			file.newFileName,
-			file.newContent ?? "",
+			file.newContent,
 			[file.hunks],
 			oldLang,
 			newLang,
@@ -187,13 +100,17 @@ export function DiffToolbar({
 			<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
 				<button
 					className={`rounded-md px-2 py-1 ${mode === "split" ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => setMode("split")}
+					onClick={() => {
+						setMode("split");
+					}}
 				>
 					Split
 				</button>
 				<button
 					className={`rounded-md px-2 py-1 ${mode === "unified" ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => setMode("unified")}
+					onClick={() => {
+						setMode("unified");
+					}}
 				>
 					Unified
 				</button>
@@ -201,13 +118,17 @@ export function DiffToolbar({
 			<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
 				<button
 					className={`rounded-md px-2 py-1 ${wrap ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => setWrap(true)}
+					onClick={() => {
+						setWrap(true);
+					}}
 				>
 					Wrap
 				</button>
 				<button
-					className={`rounded-md px-2 py-1 ${!wrap ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => setWrap(false)}
+					className={`rounded-md px-2 py-1 ${wrap ? "text-text-400 hover:text-text-200" : "bg-bg-000 font-medium text-text-100"}`}
+					onClick={() => {
+						setWrap(false);
+					}}
 				>
 					No Wrap
 				</button>

@@ -89,6 +89,10 @@ export function statusToTransition(status: TaskStatus, taskType: TaskType = "tes
 			case "queued":
 			case "running":
 				return "push";
+			case "passed":
+			case "failed":
+			case "cancelled":
+				return undefined;
 		}
 	}
 	if (taskType === "rebase") {
@@ -96,6 +100,10 @@ export function statusToTransition(status: TaskStatus, taskType: TaskType = "tes
 			case "queued":
 			case "running":
 				return "rebase";
+			case "passed":
+			case "failed":
+			case "cancelled":
+				return undefined;
 		}
 	}
 	return undefined;
@@ -185,16 +193,12 @@ async function runProcess({
 	const onAbort = () => childProcess.kill("SIGTERM");
 	signal.addEventListener("abort", onAbort, {once: true});
 
-	if (childProcess.stdout) {
-		childProcess.stdout.on("data", (chunk: Buffer) => {
-			emitLog(task, chunk.toString());
-		});
-	}
-	if (childProcess.stderr) {
-		childProcess.stderr.on("data", (chunk: Buffer) => {
-			emitLog(task, chunk.toString());
-		});
-	}
+	childProcess.stdout.on("data", (chunk: Buffer) => {
+		emitLog(task, chunk.toString());
+	});
+	childProcess.stderr.on("data", (chunk: Buffer) => {
+		emitLog(task, chunk.toString());
+	});
 
 	const result = await childProcess;
 	signal.removeEventListener("abort", onAbort);
@@ -549,7 +553,7 @@ export const cancelTest = cancelTask;
 export const getAllJobs = getAllTasks;
 
 export async function resetQueue(): Promise<void> {
-	const settled = [...jobHandles.values()].map((handle) => handle.settled);
+	const settled = [...jobHandles.values()].map(async (handle) => handle.settled);
 	for (const task of tasks.values()) {
 		if (task.status === "queued" || task.status === "running") {
 			cancelTask(task.id);

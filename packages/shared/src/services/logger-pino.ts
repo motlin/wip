@@ -31,7 +31,7 @@ interface CategoryLogger {
 type Category = "subprocess" | "progress" | "general";
 
 function isLoggingEnabled(): boolean {
-	return typeof process !== "undefined" && process.env?.["WIP_SUBPROCESS_LOGGING"] === "true";
+	return typeof process === "object" ? process.env["WIP_SUBPROCESS_LOGGING"] === "true" : false;
 }
 
 // Pino pretty-printer for stderr, loaded lazily on the server only. The dynamic
@@ -43,11 +43,14 @@ let stderrLoading = false;
 function ensureStderrLog(): void {
 	if (stderrLog || stderrLoading || !isLoggingEnabled()) return;
 	stderrLoading = true;
-	import("./logger-pino-stderr.js")
-		.then(({createStderrLog}) => {
+	void (async () => {
+		try {
+			const {createStderrLog} = await import("./logger-pino-stderr.js");
 			stderrLog = createStderrLog();
-		})
-		.catch(() => {});
+		} catch {
+			// stderr pretty-printing is best-effort
+		}
+	})();
 }
 
 function emit(category: Category, level: LevelName, arg1: Fields | string, arg2?: string): void {
@@ -65,8 +68,9 @@ function emit(category: Category, level: LevelName, arg1: Fields | string, arg2?
 function makeCategoryLogger(category: Category): CategoryLogger {
 	const at =
 		(level: LevelName) =>
-		(obj: Fields | string, msg?: string): void =>
+		(obj: Fields | string, msg?: string): void => {
 			emit(category, level, obj, msg);
+		};
 	return {
 		trace: at("trace"),
 		debug: at("debug"),

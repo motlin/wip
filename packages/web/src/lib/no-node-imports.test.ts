@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect} from "vite-plus/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -19,7 +19,7 @@ function collectFiles(dir: string, out: string[] = []): string[] {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			collectFiles(full, out);
-		} else if (/\.tsx?$/.test(entry.name) && !/\.test\./.test(entry.name) && !/\.d\./.test(entry.name)) {
+		} else if (/\.tsx?$/.test(entry.name) && !entry.name.includes(".test.") && !entry.name.includes(".d.")) {
 			out.push(full);
 		}
 	}
@@ -60,11 +60,8 @@ describe("client bundle has no node: imports", () => {
 			}
 		}
 
-		if (violations.length > 0) {
-			expect.fail(
-				`Files with named node: imports must only be dynamically imported ` +
-					`(await import()) to stay out of the client bundle:\n  ${violations.join("\n  ")}`,
-			);
-		}
+		// Files with named node: imports must only be dynamically imported
+		// (await import()) to stay out of the client bundle.
+		expect(violations).toStrictEqual([]);
 	});
 });

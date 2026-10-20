@@ -1,12 +1,12 @@
-import {describe, it, expect, vi, beforeEach} from "vitest";
+import {describe, it, expect, vi, beforeEach} from "vite-plus/test";
 import type {GitHubIssue, GitHubProjectItem} from "@wip/shared";
 
 vi.mock("@wip/shared", async () => {
 	const actual = await vi.importActual<typeof import("@wip/shared")>("@wip/shared");
 	return {
 		...actual,
-		fetchAssignedIssues: vi.fn(),
-		fetchAllProjectItems: vi.fn(),
+		fetchAssignedIssues: vi.fn<typeof import("@wip/shared").fetchAssignedIssues>(),
+		fetchAllProjectItems: vi.fn<typeof import("@wip/shared").fetchAllProjectItems>(),
 	};
 });
 

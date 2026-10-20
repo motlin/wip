@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect} from "vite-plus/test";
 
 import type {GitChildResult, IssueResult, ProjectInfo, TodoItem} from "@wip/shared";
 import {STATE_MACHINE, CategorySchema} from "@wip/shared";

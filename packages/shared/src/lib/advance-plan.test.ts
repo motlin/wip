@@ -1,4 +1,5 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
+import {sorted} from "../test/sorted.js";
 import {mkdtempSync, rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
@@ -51,7 +52,7 @@ describe("planProject", () => {
 	it("dedups the shared trunk: every commit beyond upstream is owned by exactly one unit", async () => {
 		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
 
-		const branches = plan.units.map((u) => u.branch).sort();
+		const branches = sorted(plan.units.map((u) => u.branch));
 		expect(branches).toStrictEqual(["feature-a", "feature-b"]);
 
 		const allChainShas = plan.units.flatMap((u) => u.chain);

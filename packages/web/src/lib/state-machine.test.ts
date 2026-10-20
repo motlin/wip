@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect} from "vite-plus/test";
 import {
 	CategorySchema,
 	TransitionSchema,
@@ -30,9 +30,9 @@ describe("STATE_MACHINE", () => {
 	});
 
 	it("every non-terminal state has at least one outgoing transition", () => {
-		const terminal = ["skippable"];
+		const terminal = new Set(["skippable"]);
 		for (const cat of allCategories) {
-			if (terminal.includes(cat)) continue;
+			if (terminal.has(cat)) continue;
 			const outgoing = getTransitionsFrom(cat);
 			expect(outgoing.length, `${cat} has no outgoing transitions`).toBeGreaterThan(0);
 		}
@@ -63,9 +63,9 @@ describe("STATE_MACHINE", () => {
 	});
 
 	it("every non-terminal, non-snoozed state can be snoozed", () => {
-		const terminal = ["skippable", "snoozed"];
+		const terminal = new Set(["skippable", "snoozed"]);
 		for (const cat of allCategories) {
-			if (terminal.includes(cat)) continue;
+			if (terminal.has(cat)) continue;
 			const transitions = getTransitionsFrom(cat);
 			expect(
 				transitions.some((t) => t.transition === "snooze"),

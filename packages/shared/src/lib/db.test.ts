@@ -1,6 +1,8 @@
-import {describe, it, expect, beforeEach, afterEach, vi} from "vitest";
+import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 
 import {sql} from "drizzle-orm";
+
+import {sorted} from "../test/sorted.js";
 
 import {
 	initDb,
@@ -28,10 +30,10 @@ import {
 	recordTestResult,
 	getTestResultsForProject,
 	type CachedPrStatus,
-} from "./db.js";
-import {cacheIssues, getCachedIssues} from "./db.js";
-import {cacheProjectItems, getCachedProjectItems} from "./db.js";
-import {
+	cacheIssues,
+	getCachedIssues,
+	cacheProjectItems,
+	getCachedProjectItems,
 	cacheChildren,
 	getCachedChildren,
 	invalidateChildrenCache,
@@ -78,11 +80,7 @@ describe("PR status cache", () => {
 		expect(cached).not.toBeNull();
 		expect(cached).toHaveLength(2);
 		expect(cached).toStrictEqual(
-			sampleStatuses.map((s) => ({
-				...s,
-				failedChecks: undefined,
-				mergeStateStatus: undefined,
-			})),
+			sampleStatuses.map((s) => Object.assign({}, s, {failedChecks: undefined, mergeStateStatus: undefined})),
 		);
 	});
 
@@ -144,12 +142,14 @@ describe("PR status cache", () => {
 				behind: false,
 			},
 		];
-		expect(() => cachePrStatuses("test-project", statuses)).not.toThrow();
+		expect(() => {
+			cachePrStatuses("test-project", statuses);
+		}).not.toThrow();
 		const cached = getCachedPrStatuses("test-project");
 		expect(cached).not.toBeNull();
 		// Duplicates are deduplicated by name, so only 2 unique checks
 		expect(cached![0]!.failedChecks).toHaveLength(2);
-		expect(cached![0]!.failedChecks!.map((c) => c.name).sort()).toStrictEqual(["ci/lint", "ci/test"]);
+		expect(sorted(cached![0]!.failedChecks!.map((c) => c.name))).toStrictEqual(["ci/lint", "ci/test"]);
 	});
 
 	it("invalidates both pr_status_cache and pr_failed_checks", () => {
@@ -448,9 +448,9 @@ describe("GitHub issues cache cleans up old label rows", () => {
 			},
 		]);
 
-		const totalLabelRows = getDb().all(sql`SELECT count(*) as cnt FROM github_issue_labels`) as Array<{
+		const totalLabelRows = getDb().all<{
 			cnt: number;
-		}>;
+		}>(sql`SELECT count(*) as cnt FROM github_issue_labels`);
 		expect(totalLabelRows[0]!.cnt).toBe(1);
 
 		const cached = getCachedIssues();
@@ -488,9 +488,9 @@ describe("GitHub project items cache cleans up old label rows", () => {
 			},
 		]);
 
-		const totalLabelRows = getDb().all(sql`SELECT count(*) as cnt FROM github_project_item_labels`) as Array<{
+		const totalLabelRows = getDb().all<{
 			cnt: number;
-		}>;
+		}>(sql`SELECT count(*) as cnt FROM github_project_item_labels`);
 		expect(totalLabelRows[0]!.cnt).toBe(1);
 
 		const cached = getCachedProjectItems();
@@ -584,7 +584,7 @@ describe("Cache TTL expiry", () => {
 
 		const freshness = getCacheFreshnessByPrefix("children:");
 
-		expect([...freshness.keys()].sort()).toStrictEqual(["alpha", "beta"]);
+		expect(sorted([...freshness.keys()])).toStrictEqual(["alpha", "beta"]);
 		expect(freshness.get("alpha")).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
 	});
 
@@ -669,7 +669,9 @@ describe("Children cache", () => {
 	it("overwrites previous cache entry after invalidation", async () => {
 		cacheChildren("test-project", sampleChildren);
 		// Ensure different timestamp for next write
-		await new Promise((r) => setTimeout(r, 2));
+		await new Promise((r) => {
+			setTimeout(r, 2);
+		});
 		invalidateChildrenCache("test-project");
 		const updated = [{...sampleChildren[0]!, sha: "def456"}];
 		cacheChildren("test-project", updated);
@@ -733,10 +735,10 @@ describe("cacheIssues deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheIssues(issues);
 
-		const rows = getDb().all(sql`SELECT * FROM github_issues`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM github_issues`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 		expect(rows[0]!.system_to).toBe("9999-12-31 23:59:59");
@@ -781,10 +783,10 @@ describe("cacheIssues deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.number).toBe(1);
 
-		const allRows = getDb().all(sql`SELECT * FROM github_issues`) as Array<{
+		const allRows = getDb().all<{
 			number: number;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM github_issues`);
 		expect(allRows).toHaveLength(2);
 		const closedRow = allRows.find((r) => r.number === 2);
 		expect(closedRow!.system_to).toBe("2025-01-01 00:01:00.000");
@@ -822,9 +824,9 @@ describe("cacheIssues deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.title).toBe("New title");
 
-		const allRows = getDb().all(sql`SELECT * FROM github_issues`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM github_issues`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -859,9 +861,9 @@ describe("cacheIssues deduplication", () => {
 		const cached = getCachedIssues();
 		expect(cached![0]!.labels).toStrictEqual([{name: "feature", color: "0075ca"}]);
 
-		const labelRows = getDb().all(sql`SELECT * FROM github_issue_labels`) as Array<{
+		const labelRows = getDb().all<{
 			label_name: string;
-		}>;
+		}>(sql`SELECT * FROM github_issue_labels`);
 		expect(labelRows).toHaveLength(1);
 		expect(labelRows[0]!.label_name).toBe("feature");
 
@@ -888,10 +890,10 @@ describe("cacheProjectItems deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheProjectItems(items);
 
-		const rows = getDb().all(sql`SELECT * FROM github_project_items`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM github_project_items`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -931,9 +933,9 @@ describe("cacheProjectItems deduplication", () => {
 		const cached = getCachedProjectItems();
 		expect(cached![0]!.status).toBe("In Progress");
 
-		const allRows = getDb().all(sql`SELECT * FROM github_project_items`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM github_project_items`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -950,10 +952,10 @@ describe("setBranchName deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		setBranchName("abc123", "test-project", "feature/foo");
 
-		const rows = getDb().all(sql`SELECT * FROM branch_names`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM branch_names`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -972,9 +974,9 @@ describe("setBranchName deduplication", () => {
 		const cached = getBranchName("abc123", "test-project");
 		expect(cached).toBe("feature/bar");
 
-		const allRows = getDb().all(sql`SELECT * FROM branch_names`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM branch_names`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -991,10 +993,10 @@ describe("recordTestResult deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		recordTestResult("abc123", "test-project", "passed", 0, 1234);
 
-		const rows = getDb().all(sql`SELECT * FROM test_results`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM test_results`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1013,9 +1015,9 @@ describe("recordTestResult deduplication", () => {
 		const cached = getTestResultsForProject("test-project");
 		expect(cached.get("abc123")).toBe("failed");
 
-		const allRows = getDb().all(sql`SELECT * FROM test_results`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM test_results`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1033,10 +1035,10 @@ describe("cacheMiseEnv deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheMiseEnv("/projects/test", env);
 
-		const rows = getDb().all(sql`SELECT * FROM mise_env_cache`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM mise_env_cache`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1055,9 +1057,9 @@ describe("cacheMiseEnv deduplication", () => {
 		const cached = getCachedMiseEnv("/projects/test");
 		expect(cached).toStrictEqual({PATH: "/usr/local/bin"});
 
-		const allRows = getDb().all(sql`SELECT * FROM mise_env_cache`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM mise_env_cache`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1074,10 +1076,10 @@ describe("cacheGhLogin deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheGhLogin("octocat");
 
-		const rows = getDb().all(sql`SELECT * FROM gh_login_cache`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM gh_login_cache`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1096,9 +1098,9 @@ describe("cacheGhLogin deduplication", () => {
 		const cached = getCachedGhLogin();
 		expect(cached).toBe("newuser");
 
-		const allRows = getDb().all(sql`SELECT * FROM gh_login_cache`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM gh_login_cache`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1115,10 +1117,10 @@ describe("cacheUpstreamSha deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheUpstreamSha("test-project", "upstream/main", "abc123");
 
-		const rows = getDb().all(sql`SELECT * FROM upstream_refs`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM upstream_refs`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1137,9 +1139,9 @@ describe("cacheUpstreamSha deduplication", () => {
 		const cached = getCachedUpstreamSha("test-project");
 		expect(cached).toBe("def456");
 
-		const allRows = getDb().all(sql`SELECT * FROM upstream_refs`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM upstream_refs`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1156,10 +1158,10 @@ describe("cacheMergeStatus deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 1, true);
 
-		const rows = getDb().all(sql`SELECT * FROM merge_status`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM merge_status`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1179,9 +1181,9 @@ describe("cacheMergeStatus deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached[0]!.commitsBehind).toBe(5);
 
-		const allRows = getDb().all(sql`SELECT * FROM merge_status`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM merge_status`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1215,10 +1217,10 @@ describe("cacheChildren deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheChildren("test-project", children);
 
-		const rows = getDb().all(sql`SELECT * FROM children_cache`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM children_cache`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1254,9 +1256,9 @@ describe("cacheChildren deduplication", () => {
 		const cached = getCachedChildren("test-project");
 		expect(cached![0]!.sha).toBe("def456");
 
-		const allRows = getDb().all(sql`SELECT * FROM children_cache`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM children_cache`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1281,10 +1283,10 @@ describe("cacheTodos deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheTodos("test-project", todos);
 
-		const rows = getDb().all(sql`SELECT * FROM todos_cache`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM todos_cache`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1317,9 +1319,9 @@ describe("cacheTodos deduplication", () => {
 		const cached = getCachedTodos("test-project");
 		expect(cached![0]!.title).toBe("New todo");
 
-		const allRows = getDb().all(sql`SELECT * FROM todos_cache`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM todos_cache`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
@@ -1351,10 +1353,10 @@ describe("setCachedProjectList deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		setCachedProjectList([sampleProject]);
 
-		const rows = getDb().all(sql`SELECT * FROM project_cache`) as Array<{
+		const rows = getDb().all<{
 			system_from: string;
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM project_cache`);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
 
@@ -1393,9 +1395,9 @@ describe("setCachedProjectList deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.dirty).toBe(true);
 
-		const allRows = getDb().all(sql`SELECT * FROM project_cache`) as Array<{
+		const allRows = getDb().all<{
 			system_to: string;
-		}>;
+		}>(sql`SELECT * FROM project_cache`);
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();

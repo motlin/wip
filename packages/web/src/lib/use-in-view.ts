@@ -15,12 +15,13 @@ export function useInView<T extends Element = Element>({rootMargin}: {rootMargin
 	const [inView, setInView] = useState(false);
 
 	useEffect(() => {
-		if (inView) return;
+		if (inView) return undefined;
 		const el = ref.current;
-		if (!el) return;
+		if (!el) return undefined;
 		if (typeof IntersectionObserver === "undefined") {
+			// oxlint-disable-next-line react/set-state-in-effect -- the fallback must flip after mount to keep hydration deterministic
 			setInView(true);
-			return;
+			return undefined;
 		}
 		const observer = new IntersectionObserver(
 			(entries) => {
@@ -35,7 +36,9 @@ export function useInView<T extends Element = Element>({rootMargin}: {rootMargin
 			{rootMargin},
 		);
 		observer.observe(el);
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+		};
 	}, [inView, rootMargin]);
 
 	return {ref, inView};

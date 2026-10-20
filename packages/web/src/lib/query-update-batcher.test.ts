@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
 import {createQueryUpdateBatcher} from "./query-update-batcher";
 
@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe("createQueryUpdateBatcher", () => {
 	it("flushes buffered updates once after the delay", () => {
-		const flush = vi.fn();
+		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
 		batcher.add("alpha", 1);
@@ -31,7 +31,7 @@ describe("createQueryUpdateBatcher", () => {
 	});
 
 	it("keeps only the latest update per key within a window", () => {
-		const flush = vi.fn();
+		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
 		batcher.add("alpha", 1);
@@ -42,7 +42,7 @@ describe("createQueryUpdateBatcher", () => {
 	});
 
 	it("starts a new window after flushing", () => {
-		const flush = vi.fn();
+		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
 		batcher.add("alpha", 1);
@@ -55,7 +55,7 @@ describe("createQueryUpdateBatcher", () => {
 	});
 
 	it("cancel drops buffered updates and stops the timer", () => {
-		const flush = vi.fn();
+		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
 		batcher.add("alpha", 1);

@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect} from "vite-plus/test";
 import {pruneTerminalTasks, statusToTransition} from "./task-queue";
 import type {Task, TaskStatus} from "./task-queue";
 
@@ -85,7 +85,7 @@ describe("pruneTerminalTasks", () => {
 			["3", makeTask("3", "cancelled", 200)],
 		]);
 		pruneTerminalTasks(tasks, 2);
-		expect([...tasks.keys()].sort()).toStrictEqual(["1", "3"]);
+		expect(new Set(tasks.keys())).toStrictEqual(new Set(["1", "3"]));
 	});
 
 	it("never drops queued or running tasks", () => {
@@ -96,6 +96,6 @@ describe("pruneTerminalTasks", () => {
 			["4", makeTask("4", "passed", 200)],
 		]);
 		pruneTerminalTasks(tasks, 1);
-		expect([...tasks.keys()].sort()).toStrictEqual(["1", "2", "4"]);
+		expect(new Set(tasks.keys())).toStrictEqual(new Set(["1", "2", "4"]));
 	});
 });

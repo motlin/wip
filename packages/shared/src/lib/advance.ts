@@ -60,7 +60,7 @@ interface UnitResult {
 	detail?: string;
 }
 
-const TERMINAL_RED: NodeStatus[] = ["red", "stuck"];
+const TERMINAL_RED = new Set<NodeStatus>(["red", "stuck"]);
 
 function firstSignalLine(log: string): string {
 	const line = log
@@ -95,6 +95,7 @@ async function advanceUnit(
 			return {status: "red", detail: "rebase failed"};
 		}
 
+		/* eslint-disable no-await-in-loop -- each attempt depends on the previous test/fix/absorb result */
 		for (let attempt = 0; attempt < opts.maxAttemptsPerUnit + 1; attempt++) {
 			emit({project: unit.project, branch: unit.branch, phase: "test", status: "start"});
 			const tested = await actions.test(unit);
@@ -115,6 +116,7 @@ async function advanceUnit(
 			emit({project: unit.project, branch: unit.branch, phase: "absorb", status: "start"});
 			await actions.absorb(unit);
 		}
+		/* eslint-enable no-await-in-loop */
 
 		return {status: "stuck", detail: "max fix attempts"};
 	} finally {
@@ -150,8 +152,8 @@ export async function createGitActions(config: {
 	// Per-unit worktree cache so each unit advances in isolation.
 	const worktrees = new Map<string, {dir: string; cleanup: () => Promise<void>}>();
 
-	const gitIn = (wd: string, args: string[]) => tracedExeca("git", ["-C", wd, ...args], {reject: false, env});
-	const claudeIn = (wd: string, command: string) =>
+	const gitIn = async (wd: string, args: string[]) => tracedExeca("git", ["-C", wd, ...args], {reject: false, env});
+	const claudeIn = async (wd: string, command: string) =>
 		tracedExeca("claude", ["--print", command], {cwd: wd, reject: false, env});
 
 	async function workdirFor(unit: AdvanceUnit): Promise<string> {
@@ -286,14 +288,18 @@ export async function advanceProject(
 	const unitsById = new Map(plan.units.map((u) => [u.id, u]));
 	const results = new Map<string, UnitResult>();
 
+	/* eslint-disable no-await-in-loop -- each batch must finish before the scheduler admits the next */
 	while (!scheduler.done) {
 		const batch = scheduler.nextAdmissible();
 		if (batch.length === 0) break;
 
-		batch.forEach((u) => scheduler.markRunning(u.id));
+		batch.forEach((u) => {
+			scheduler.markRunning(u.id);
+		});
 		await Promise.all(
 			batch.map(async (schedUnit) => {
-				const unit = unitsById.get(schedUnit.id)!;
+				const unit = unitsById.get(schedUnit.id);
+				if (!unit) throw new Error(`Unknown advance unit: ${schedUnit.id}`);
 				const result = await advanceUnit(unit, actions, memory, opts, emit);
 				results.set(unit.id, result);
 				const outcome: UnitOutcome = result.status === "green" ? "green" : "red";
@@ -301,6 +307,7 @@ export async function advanceProject(
 			}),
 		);
 	}
+	/* eslint-enable no-await-in-loop */
 
 	const children: ReportNode[] = plan.units.map((unit) => {
 		const result = results.get(unit.id);
@@ -310,7 +317,7 @@ export async function advanceProject(
 		return {label: unit.branch, status, detail, children: []};
 	});
 
-	const anyRed = children.some((c) => TERMINAL_RED.includes(c.status));
+	const anyRed = children.some((c) => TERMINAL_RED.has(c.status));
 	const projectStatus: NodeStatus = anyRed ? "red" : upstreamFixed ? "upstream_fixed" : "green";
 	emit({project: plan.project, phase: "done", status: projectStatus});
 

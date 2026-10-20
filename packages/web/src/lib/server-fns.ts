@@ -20,7 +20,6 @@ import {
 import type {
 	AdvancePlanSummary,
 	FileDiff,
-	GenerateAdvancePlanInput,
 	ProjectChildrenResult,
 	RunAllCounts,
 	SystemStatus,
@@ -39,10 +38,8 @@ export type {
 export type {SnoozedChild} from "@wip/shared/schemas.js";
 
 const serverFns: () => Promise<typeof import("./server-fns.impl.js")> = import.meta.env.SSR
-	? () => import("./server-fns.impl.js")
-	: async () => {
-			throw new Error("server-fns.impl is only available during SSR");
-		};
+	? async () => import("./server-fns.impl.js")
+	: async () => Promise.reject(new Error("server-fns.impl is only available during SSR"));
 
 export const getProjects = createServerFn({method: "GET"}).handler(async () =>
 	(await serverFns()).getProjectsHandler(),
@@ -187,9 +184,7 @@ export const generateAdvancePlan = createServerFn({method: "POST"})
 			})
 			.parse(input ?? {}),
 	)
-	.handler(async ({data}): Promise<AdvancePlanSummary> =>
-		(await serverFns()).generateAdvancePlanHandler(data as GenerateAdvancePlanInput),
-	);
+	.handler(async ({data}): Promise<AdvancePlanSummary> => (await serverFns()).generateAdvancePlanHandler(data));
 
 export const refreshAll = createServerFn({method: "POST"}).handler(async (): Promise<ActionResult> =>
 	(await serverFns()).refreshAllHandler(),

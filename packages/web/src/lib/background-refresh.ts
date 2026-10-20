@@ -57,7 +57,7 @@ function enqueueProjectRefresh(project: string, options: {force?: boolean} = {})
 				const projectInfo = (await getProjects()).find((p) => p.name === project);
 				if (projectInfo) {
 					const {suppressWatcherEvents} = await import("./watch-suppression.js");
-					await suppressWatcherEvents(project, () =>
+					await suppressWatcherEvents(project, async () =>
 						pruneRemote(projectInfo.dir, projectInfo.upstreamRemote),
 					);
 					markCacheFresh(`prune-remote:${project}`);
@@ -114,6 +114,7 @@ export function ensureBackgroundRefresh(): void {
 				.shouldRefresh(projectName)
 				.then((changed) => {
 					if (changed) enqueueProjectRefresh(projectName, {force: true});
+					return undefined;
 				})
 				.catch((error: unknown) => {
 					log.general.error({project: projectName, error}, "watch-gate check failed");

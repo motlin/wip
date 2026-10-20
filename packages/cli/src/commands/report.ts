@@ -202,6 +202,10 @@ function categoryStyle(category: Category, text: string): string {
 		case "triaged":
 		case "checks_unknown":
 			return chalk.dim(text);
+		default: {
+			const unreachable: never = category;
+			return unreachable;
+		}
 	}
 }
 
@@ -274,6 +278,7 @@ export default class Report extends Command {
 		let projectCount = 0;
 		const dirtyProjects = new Set<string>();
 
+		/* oxlint-disable no-await-in-loop -- projects are fetched sequentially to bound gh/git subprocess load */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
@@ -296,6 +301,7 @@ export default class Report extends Command {
 				});
 			}
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const totalChildren = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
 		const nextSteps = this.buildNextSteps(grouped, dirtyProjects);

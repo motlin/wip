@@ -14,24 +14,31 @@ export function SystemStatus() {
 	const [nowMs, setNowMs] = useState<number | null>(null);
 
 	useEffect(() => {
-		setNowMs(Date.now());
-		const timer = setInterval(() => setNowMs(Date.now()), 30_000);
-		return () => clearInterval(timer);
+		const tick = () => {
+			setNowMs(Date.now());
+		};
+		const first = setTimeout(tick, 0);
+		const timer = setInterval(tick, 30_000);
+		return () => {
+			clearTimeout(first);
+			clearInterval(timer);
+		};
 	}, []);
 
 	if (!status || nowMs === null) return null;
 
-	const rateLimited = status.rateLimitedUntil !== null && status.rateLimitedUntil > nowMs;
+	const rateLimitedUntil =
+		status.rateLimitedUntil !== null && status.rateLimitedUntil > nowMs ? status.rateLimitedUntil : null;
 	const timestamps = Object.values(status.childrenRefreshedAt);
 	const oldest = oldestTimestamp(timestamps);
 	const staleCount = timestamps.filter((t) => nowMs - parseDbTimestamp(t) > 15 * 60_000).length;
 
 	return (
 		<div className="flex flex-col gap-1">
-			{rateLimited && (
+			{rateLimitedUntil !== null && (
 				<div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
 					GitHub rate-limited until{" "}
-					{new Date(status.rateLimitedUntil!).toLocaleTimeString([], {
+					{new Date(rateLimitedUntil).toLocaleTimeString([], {
 						hour: "2-digit",
 						minute: "2-digit",
 					})}{" "}

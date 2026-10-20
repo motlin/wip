@@ -28,8 +28,9 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 	const cached = new Map(getCachedMergeStatuses(p.name, upstreamSha).map((ms) => [ms.sha, ms]));
 
 	for (const sha of childShas) {
-		if (cached.has(sha)) {
-			const ms = cached.get(sha)!;
+		const cachedStatus = cached.get(sha);
+		if (cachedStatus) {
+			const ms = cachedStatus;
 			emit({
 				project: p.name,
 				sha,
@@ -41,6 +42,8 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 			continue;
 		}
 
+		// Sequential on purpose: each call spawns git subprocesses, so fan-out must stay bounded
+		// eslint-disable-next-line no-await-in-loop
 		const ms = await computeMergeStatus(p.dir, sha, upstreamSha);
 		cacheMergeStatus(p.name, sha, upstreamSha, ms.commitsAhead, ms.commitsBehind, ms.rebaseable);
 		emit({
@@ -62,5 +65,5 @@ export async function checkProject(projectName: string): Promise<void> {
 	// fetchUpstreamRef writes into .git — suppress the watcher so computing
 	// merge status never re-triggers a refresh of the same project.
 	const {suppressWatcherEvents} = await import("./watch-suppression.js");
-	await suppressWatcherEvents(projectName, () => checkProjectInfo(p));
+	await suppressWatcherEvents(projectName, async () => checkProjectInfo(p));
 }

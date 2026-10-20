@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
 import {
 	applySchedulerState,
@@ -41,8 +41,8 @@ describe("applyTaskEvent", () => {
 
 	it("notifies only the affected task key", () => {
 		const event = makeTaskEvent();
-		const affected = vi.fn();
-		const unrelated = vi.fn();
+		const affected = vi.fn<() => void>();
+		const unrelated = vi.fn<() => void>();
 		subscribeToStoreKey(`task:${taskStoreKey("alpha", event.sha)}`, affected);
 		subscribeToStoreKey(`task:${taskStoreKey("beta", event.sha)}`, unrelated);
 
@@ -83,7 +83,7 @@ describe("applyTaskEvent", () => {
 
 describe("applySchedulerState", () => {
 	it("replaces the snapshot and notifies scheduler subscribers", () => {
-		const listener = vi.fn();
+		const listener = vi.fn<() => void>();
 		subscribeToStoreKey("scheduler", listener);
 
 		const state = {slots: 2, running: [], queued: []};
@@ -96,7 +96,7 @@ describe("applySchedulerState", () => {
 
 describe("subscribeToStoreKey", () => {
 	it("stops notifying after unsubscribe", () => {
-		const listener = vi.fn();
+		const listener = vi.fn<() => void>();
 		const unsubscribe = subscribeToStoreKey("scheduler", listener);
 		unsubscribe();
 

@@ -82,5 +82,7 @@ export function installBrowserLogForwarder(): void {
 		};
 	}
 
-	window.addEventListener("beforeunload", () => flush());
+	window.addEventListener("beforeunload", () => {
+		flush();
+	});
 }

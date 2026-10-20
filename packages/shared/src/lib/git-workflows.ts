@@ -45,6 +45,7 @@ export async function applyFixesToBranch(
 	}
 
 	const appliedFixes: string[] = [];
+	/* eslint-disable no-await-in-loop -- cherry-picks mutate one working tree and must run strictly in order */
 	for (const fixBranch of fixBranches) {
 		const cp = await tracedExeca("git", ["-C", dir, "cherry-pick", "--no-commit", fixBranch], {
 			reject: false,
@@ -63,6 +64,7 @@ export async function applyFixesToBranch(
 		}
 		appliedFixes.push(fixBranch.replace("origin/", ""));
 	}
+	/* eslint-enable no-await-in-loop */
 
 	if (appliedFixes.length === 0) {
 		return {

@@ -2,7 +2,7 @@ import {trace, type Tracer} from "@opentelemetry/api";
 
 declare global {
 	// eslint-disable-next-line no-var
-	var __otelInitialized: boolean | undefined;
+	var wipOtelInitialized: boolean | undefined;
 }
 
 function isTracingEnabled(): boolean {
@@ -14,10 +14,10 @@ async function initTracing(): Promise<void> {
 		return;
 	}
 
-	if (globalThis.__otelInitialized) {
+	if (globalThis.wipOtelInitialized) {
 		return;
 	}
-	globalThis.__otelInitialized = true;
+	globalThis.wipOtelInitialized = true;
 
 	const {NodeSDK} = await import("@opentelemetry/sdk-node");
 	const {OTLPTraceExporter} = await import("@opentelemetry/exporter-trace-otlp-proto");

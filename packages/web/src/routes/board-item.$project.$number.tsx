@@ -5,8 +5,11 @@ import {LabelList} from "../components/label-list";
 import {boardItemByNumberQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/board-item/$project/$number")({
-	loader: ({context: {queryClient}, params}) =>
-		queryClient.ensureQueryData(boardItemByNumberQueryOptions(params.project, Number(params.number))),
+	loader: async ({context: {queryClient}, params}) =>
+		queryClient.query({
+			...boardItemByNumberQueryOptions(params.project, Number(params.number)),
+			staleTime: "static",
+		}),
 	head: ({params}) => ({
 		meta: [{title: `Board Item #${params.number}`}],
 	}),

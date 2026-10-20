@@ -37,13 +37,13 @@ import {useTestJob, useTestLog} from "../lib/server-events-context";
 import {useAutoTail} from "../lib/use-auto-tail";
 
 export const Route = createFileRoute("/item/$project/$sha")({
-	loader: ({context: {queryClient}, params}) =>
+	loader: async ({context: {queryClient}, params}) =>
 		Promise.all([
-			queryClient.ensureQueryData(projectChildrenQueryOptions(params.project)),
-			queryClient.ensureQueryData(diffQueryOptions(params.project, params.sha)),
-			queryClient.ensureQueryData(testLogQueryOptions(params.project, params.sha)),
-			queryClient.ensureQueryData(projectsQueryOptions()),
-			queryClient.ensureQueryData(snoozedQueryOptions()),
+			queryClient.query({...projectChildrenQueryOptions(params.project), staleTime: "static"}),
+			queryClient.query({...diffQueryOptions(params.project, params.sha), staleTime: "static"}),
+			queryClient.query({...testLogQueryOptions(params.project, params.sha), staleTime: "static"}),
+			queryClient.query({...projectsQueryOptions(), staleTime: "static"}),
+			queryClient.query({...snoozedQueryOptions(), staleTime: "static"}),
 		]),
 	head: ({params}) => ({
 		meta: [{title: `${params.project} / ${params.sha.slice(0, 7)}`}],
@@ -104,10 +104,37 @@ function ItemDetail() {
 		const curr = testJob?.status;
 		prevTestStatus.current = curr;
 		if ((curr === "running" || curr === "queued") && prev !== "running" && prev !== "queued") {
-			requestAnimationFrame(() => scrollToStart());
+			requestAnimationFrame(() => {
+				scrollToStart();
+			});
 			setFollowing(true);
 		}
 	}, [testJob?.status, scrollToStart, setFollowing]);
+
+	const isPr = child !== null && "prUrl" in child && child.prUrl;
+	const isBranch = child !== null && "branch" in child;
+	const baseCategory =
+		child === null
+			? undefined
+			: isSnoozed
+				? ("snoozed" as const)
+				: projectInfo
+					? isPr
+						? classifyPullRequest(child)
+						: isBranch
+							? classifyBranch(child, projectInfo)
+							: classifyCommit(child, projectInfo)
+					: undefined;
+	const category =
+		baseCategory && testJob?.transition
+			? (applyTransition(baseCategory, testJob.transition) ?? baseCategory)
+			: baseCategory;
+
+	const isLocalChanges = category === "local_changes";
+	const {data: workingTreeDiff} = useQuery({
+		...workingTreeDiffQueryOptions(project),
+		enabled: isLocalChanges,
+	});
 
 	if (!child) {
 		if (isSnoozed && snoozedEntry) {
@@ -159,28 +186,6 @@ function ItemDetail() {
 			</div>
 		);
 	}
-
-	const isPr = "prUrl" in child && child.prUrl;
-	const isBranch = "branch" in child;
-	const baseCategory = isSnoozed
-		? ("snoozed" as const)
-		: projectInfo
-			? isPr
-				? classifyPullRequest(child as any)
-				: isBranch
-					? classifyBranch(child as any, projectInfo)
-					: classifyCommit(child as any, projectInfo)
-			: undefined;
-	const category =
-		baseCategory && testJob?.transition
-			? (applyTransition(baseCategory, testJob.transition) ?? baseCategory)
-			: baseCategory;
-
-	const isLocalChanges = category === "local_changes";
-	const {data: workingTreeDiff} = useQuery({
-		...workingTreeDiffQueryOptions(project),
-		enabled: isLocalChanges,
-	});
 
 	const isRemote = "pushedToRemote" in child && child.pushedToRemote;
 	const ghBranchUrl = isBranch ? branchRemoteUrl(child) : undefined;
@@ -298,10 +303,10 @@ function ItemDetail() {
 									</a>
 								</SidebarField>
 								<SidebarField label="Review">
-									{"reviewStatus" in child ? String(child.reviewStatus) : "unknown"}
+									{"reviewStatus" in child ? child.reviewStatus : "unknown"}
 								</SidebarField>
 								<SidebarField label="Checks">
-									{"checkStatus" in child ? String(child.checkStatus) : "unknown"}
+									{"checkStatus" in child ? child.checkStatus : "unknown"}
 								</SidebarField>
 							</dl>
 						</SidebarSection>
@@ -384,9 +389,9 @@ function ItemDetail() {
 						{category && (
 							<div className="mt-4 border-t border-border-300/20 pt-4">
 								{isPr ? (
-									<PullRequestActions item={child as any} category={category} layout="row" />
+									<PullRequestActions item={child} category={category} layout="row" />
 								) : (
-									<BranchActions item={child as any} category={category} layout="row" />
+									<BranchActions item={child} category={category} layout="row" />
 								)}
 							</div>
 						)}
@@ -407,7 +412,7 @@ function ItemDetail() {
 							Test Log
 						</NavTab>
 						{isPr && (
-							<NavTab href={child.prUrl!} external>
+							<NavTab href={isPr} external>
 								<GitHubIcon className="h-3.5 w-3.5" />
 								GitHub
 							</NavTab>
@@ -426,7 +431,7 @@ function ItemDetail() {
 										(check: {name: string; url?: string; conclusion?: string}) => (
 											<li key={check.name} className="flex items-center gap-2 text-xs">
 												<XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
-												<span className="text-red-300">{check.conclusion || "failed"}</span>
+												<span className="text-red-300">{check.conclusion ?? "failed"}</span>
 												{check.url ? (
 													<a
 														href={check.url}
@@ -463,7 +468,7 @@ function ItemDetail() {
 						<div className="rounded-lg border border-border-300/30 bg-bg-100 p-3">
 							<div className="mb-2 flex items-center gap-3 text-xs">
 								<span className="text-text-300">
-									{files.length} file{files.length !== 1 ? "s" : ""} changed
+									{files.length} file{files.length === 1 ? "" : "s"} changed
 								</span>
 								{additions > 0 && <span className="text-green-400">+{additions}</span>}
 								{deletions > 0 && <span className="text-red-400">-{deletions}</span>}
@@ -495,7 +500,7 @@ function ItemDetail() {
 							<h2 className="mb-2 text-sm font-semibold text-text-200">Local Changes</h2>
 							<div className="rounded-lg border border-border-300/30 bg-bg-100 p-3">
 								<div className="mb-2 text-xs text-text-300">
-									{workingTreeDiff.files.length} file{workingTreeDiff.files.length !== 1 ? "s" : ""}{" "}
+									{workingTreeDiff.files.length} file{workingTreeDiff.files.length === 1 ? "" : "s"}{" "}
 									with uncommitted changes
 								</div>
 								<ul className="space-y-0.5">
@@ -558,7 +563,9 @@ function ItemDetail() {
 							{!isFollowing && (
 								<button
 									type="button"
-									onClick={() => setFollowing(true)}
+									onClick={() => {
+										setFollowing(true);
+									}}
 									className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 mt-2 inline-flex items-center gap-1.5 rounded-full bg-bg-000 border border-border-300/50 px-3 py-1.5 text-xs font-medium text-text-200 shadow-lg transition-colors hover:bg-bg-100"
 								>
 									<ArrowDown className="h-3.5 w-3.5" />

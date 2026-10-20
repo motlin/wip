@@ -80,7 +80,7 @@ export function setConfigValue(key: string, value: ConfigValue): void {
 export function unsetConfigValue(key: string): boolean {
 	const config = readConfig();
 	if (!(key in config)) return false;
-	delete config[key];
+	Reflect.deleteProperty(config, key);
 	writeConfig(config);
 	return true;
 }

@@ -61,6 +61,7 @@ export default class Advance extends Command {
 		};
 
 		const children: ReportNode[] = [];
+		/* oxlint-disable no-await-in-loop -- projects advance sequentially: ordered progress output and bounded subprocess load */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 			if (!args.project && !matchesFilters(p.name, include, exclude)) continue;
@@ -93,6 +94,7 @@ export default class Advance extends Command {
 			});
 			children.push(node);
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const anyRed = children.some((c) => c.status === "red");
 		const root: ReportNode = {

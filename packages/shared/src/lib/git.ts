@@ -98,6 +98,8 @@ async function findRemoteBranchByPatchId(
 	const BATCH_SIZE = 10;
 	for (let i = 0; i < entries.length; i += BATCH_SIZE) {
 		const batch = entries.slice(i, i + BATCH_SIZE);
+		// Sequential batches by design: stops at the first matching batch and bounds git fan-out.
+		// eslint-disable-next-line no-await-in-loop
 		const results = await Promise.all(
 			batch.map(async ([branchName, refName]) => {
 				const remoteSha = await git(dir, "rev-parse", refName);
@@ -203,12 +205,14 @@ export async function getNeedsRebaseBranches(
 
 	const testStatusMap: Map<string, "passed" | "failed"> = projectName
 		? getTestResultsForProject(projectName)
-		: new Map();
+		: new Map<string, "passed" | "failed">();
 
 	const needsRebase: ChildCommit[] = [];
 	const format = "%H%x00%h%x00%s%x00%B%x00%ai";
 
 	for (const branch of nonMainBranches) {
+		// Sequential by design: bounds concurrent git subprocesses across many branches.
+		// eslint-disable-next-line no-await-in-loop
 		const logResult = await tracedExeca(
 			"git",
 			["-C", dir, "log", "-1", `--format=${format}`, `refs/heads/${branch}`],
@@ -244,6 +248,7 @@ export async function getNeedsRebaseBranches(
 		if (pushedToRemote && remoteBranchRefs) {
 			const remoteRef = remoteBranchRefs.get(branch);
 			if (remoteRef) {
+				// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 				const remoteSha = await git(dir, "rev-parse", remoteRef);
 				localAhead = remoteSha !== "" && remoteSha !== sha;
 			}
@@ -453,7 +458,7 @@ export async function getChildCommits(
 	const {remoteBranches, remoteBranchRefs, defaultBranch} = parseRemoteBranchOutput(remoteBranchOutput);
 
 	const testStatusMap: Map<string, "passed" | "failed"> =
-		hasTest && projectName ? getTestResultsForProject(projectName) : new Map();
+		hasTest && projectName ? getTestResultsForProject(projectName) : new Map<string, "passed" | "failed">();
 
 	const records = logResult.stdout.split(RS).filter((r) => r.trim());
 	const children: ChildCommit[] = [];
@@ -486,6 +491,7 @@ export async function getChildCommits(
 		if (branch && pushedToRemote && branch !== defaultBranch) {
 			const remoteRef = remoteBranchRefs.get(branch);
 			if (remoteRef) {
+				// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 				const remoteSha = await git(dir, "rev-parse", remoteRef);
 				localAhead = remoteSha !== "" && remoteSha !== sha;
 			}
@@ -513,10 +519,12 @@ export async function getChildCommits(
 				if (ref) prBranchRefs.set(prBranch, ref);
 			}
 			if (prBranchRefs.size > 0) {
+				// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 				const matchedBranch = await findRemoteBranchByPatchId(dir, sha, prBranchRefs);
 				if (matchedBranch) alreadyOnRemote = {branch: matchedBranch};
 			}
 		}
+		// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 		const containingBranch = branch ? undefined : await findContainingBranch(dir, sha, defaultBranch);
 
 		children.push({
@@ -591,7 +599,7 @@ export async function testBranch(
 	);
 
 	const logContent = [result.stdout, result.stderr].filter(Boolean).join("\n");
-	return {exitCode: result.exitCode ?? 1, logContent};
+	return {exitCode: result.exitCode, logContent};
 }
 
 export async function hasLocalModifications(dir: string): Promise<boolean> {
@@ -739,6 +747,6 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 }
 
 export async function discoverAllProjects(projectsDirs: string[]): Promise<ProjectInfo[]> {
-	const results = await Promise.all(projectsDirs.map((dir) => discoverProjects(dir)));
+	const results = await Promise.all(projectsDirs.map(async (dir) => discoverProjects(dir)));
 	return results.flat();
 }

@@ -29,7 +29,7 @@ function scrubSensitive(value: unknown): unknown {
 	}
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+		for (const [k, v] of Object.entries(value)) {
 			out[k] = scrubSensitive(v);
 		}
 		return out;
@@ -38,7 +38,10 @@ function scrubSensitive(value: unknown): unknown {
 }
 
 export function writeLogEntry(entry: LogEntry): void {
-	const scrubbed = scrubSensitive(entry) as LogEntry;
+	const scrubbed: LogEntry = {...entry};
+	for (const [k, v] of Object.entries(entry)) {
+		scrubbed[k] = scrubSensitive(v);
+	}
 	buffer.push(scrubbed);
 	while (buffer.length > BUFFER_MAX) {
 		buffer.shift();
@@ -46,7 +49,9 @@ export function writeLogEntry(entry: LogEntry): void {
 	for (const listener of listeners) {
 		try {
 			listener(scrubbed);
-		} catch {}
+		} catch {
+			// a failing listener must not break logging
+		}
 	}
 }
 

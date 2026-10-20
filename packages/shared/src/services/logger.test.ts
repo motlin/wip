@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
 
 import {
 	captureLogs,
@@ -98,7 +98,7 @@ describe("captureLogs", () => {
 	});
 
 	it("captures logs emitted during the callback and returns the result", async () => {
-		const {result, logs} = await captureLogs(async () => {
+		const {result, logs} = await captureLogs(() => {
 			writeLogEntry({time: 10, level: 20, category: "subprocess", msg: "running git push"});
 			writeLogEntry({time: 11, level: 50, category: "subprocess", msg: "push failed"});
 			return "ok";
@@ -112,7 +112,7 @@ describe("captureLogs", () => {
 
 	it("captures logs only from the category filter when provided", async () => {
 		const {logs} = await captureLogs(
-			async () => {
+			() => {
 				writeLogEntry({time: 20, level: 30, category: "subprocess", msg: "sub"});
 				writeLogEntry({time: 21, level: 30, category: "general", msg: "gen"});
 				writeLogEntry({time: 22, level: 30, category: "progress", msg: "prog"});
@@ -124,7 +124,7 @@ describe("captureLogs", () => {
 	});
 
 	it("does not capture logs emitted after the callback resolves", async () => {
-		const {logs} = await captureLogs(async () => {
+		const {logs} = await captureLogs(() => {
 			writeLogEntry({time: 30, level: 30, category: "subprocess", msg: "during"});
 		});
 
@@ -137,7 +137,7 @@ describe("captureLogs", () => {
 		let caught: unknown;
 		let capturedLogs: LogEntry[] = [];
 		try {
-			await captureLogs(async () => {
+			await captureLogs(() => {
 				writeLogEntry({time: 40, level: 30, category: "subprocess", msg: "before throw"});
 				throw new Error("boom");
 			});

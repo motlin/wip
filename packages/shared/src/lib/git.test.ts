@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
 import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
@@ -20,6 +20,7 @@ import {
 	getRemoteBranchInfo,
 	pruneRemote,
 } from "./git.js";
+import {sorted} from "../test/sorted.js";
 import {getPrStatuses} from "./github-pr-status.js";
 import {initDb, resetDb} from "./db.js";
 import {setGitHubClient, resetGitHubClient, createTestClient} from "../services/github-client.js";
@@ -127,7 +128,7 @@ describe("getPrStatuses", () => {
 		let callCount = 0;
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			callCount++;
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(req.body!) as {query: string};
 
 			// Handle viewer login request
 			if (body.query.includes("viewer { login }")) {
@@ -249,7 +250,7 @@ describe("getPrStatuses", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(req.body!) as {query: string};
 
 			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
@@ -320,7 +321,7 @@ describe("getPrStatuses", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(req.body!) as {query: string};
 
 			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
@@ -400,7 +401,7 @@ describe("getPrStatuses", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(req.body!) as {query: string};
 
 			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
@@ -471,7 +472,7 @@ describe("getPrStatuses", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(req.body!) as {query: string};
 
 			if (body.query.includes("viewer { login }")) {
 				res.status(200).json({data: {viewer: {login: "testuser"}}});
@@ -625,7 +626,7 @@ describe("pruneRemote", () => {
 	it("is a no-op when the remote does not exist", async () => {
 		tempDir = createTestGitRepo("owner", "repo");
 		// Should not throw when the remote can't be contacted
-		await pruneRemote(tempDir, "nonexistent-remote");
+		await expect(pruneRemote(tempDir, "nonexistent-remote")).resolves.toBeUndefined();
 	});
 });
 
@@ -809,6 +810,17 @@ describe("computeMergeStatus", {timeout: 30_000}, () => {
 	});
 });
 
+function setupChildrenAlias(dir: string): void {
+	// Use execFileSync to avoid shell escaping issues with the awk script
+	const aliasValue =
+		"!PARENT=$(git rev-parse ${1:-HEAD}); git rev-list --all --parents" +
+		" | awk -v p=\"$PARENT\" 'NF==2 && $2==p {print $1}'; :";
+	execFileSync("git", ["config", "alias.children", aliasValue], {
+		cwd: dir,
+		stdio: "ignore",
+	});
+}
+
 describe("getChildren", {timeout: 30_000}, () => {
 	let tempDir: string | undefined;
 
@@ -818,17 +830,6 @@ describe("getChildren", {timeout: 30_000}, () => {
 			tempDir = undefined;
 		}
 	});
-
-	function setupChildrenAlias(dir: string): void {
-		// Use execFileSync to avoid shell escaping issues with the awk script
-		const aliasValue =
-			"!PARENT=$(git rev-parse ${1:-HEAD}); git rev-list --all --parents" +
-			" | awk -v p=\"$PARENT\" 'NF==2 && $2==p {print $1}'; :";
-		execFileSync("git", ["config", "alias.children", aliasValue], {
-			cwd: dir,
-			stdio: "ignore",
-		});
-	}
 
 	it("returns empty array when there are no children", async () => {
 		tempDir = createTestGitRepo("owner", "repo");
@@ -875,7 +876,7 @@ describe("getChildren", {timeout: 30_000}, () => {
 		const childB = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
 
 		const result = await getChildren(tempDir, parentSha);
-		expect(result.sort()).toStrictEqual([childA, childB].sort());
+		expect(sorted(result)).toStrictEqual(sorted([childA, childB]));
 	});
 
 	it("records the local branch containing an intermediate child commit", async () => {

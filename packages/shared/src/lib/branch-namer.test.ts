@@ -1,6 +1,8 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
-const {mockedExeca} = vi.hoisted(() => ({mockedExeca: vi.fn()}));
+const {mockedExeca} = vi.hoisted(() => ({
+	mockedExeca: vi.fn<(command: string, args: readonly string[], options?: object) => Promise<unknown>>(),
+}));
 
 vi.mock("execa", () => ({execa: mockedExeca}));
 
@@ -96,7 +98,7 @@ ${commitContext}
 		const secondClaudeResult = deferred<ReturnType<typeof claudeResult>>();
 		const claudeResults = [firstClaudeResult, secondClaudeResult];
 		let claudeCallCount = 0;
-		mockedExeca.mockImplementation((command: string) => {
+		mockedExeca.mockImplementation(async (command: string) => {
 			if (command === "git") return Promise.resolve({exitCode: 0, stdout: "commit context"});
 			const result = claudeResults[claudeCallCount];
 			claudeCallCount += 1;
@@ -118,9 +120,13 @@ ${commitContext}
 			}),
 		];
 
-		await vi.waitFor(() => expect(claudeCallCount).toBe(1));
+		await vi.waitFor(() => {
+			expect(claudeCallCount).toBe(1);
+		});
 		firstClaudeResult.resolve(claudeResult("add-alice-feature"));
-		await vi.waitFor(() => expect(claudeCallCount).toBe(2));
+		await vi.waitFor(() => {
+			expect(claudeCallCount).toBe(2);
+		});
 		secondClaudeResult.resolve(claudeResult("add-bob-feature"));
 
 		await expect(Promise.all(names)).resolves.toStrictEqual(["add-alice-feature", "add-bob-feature"]);

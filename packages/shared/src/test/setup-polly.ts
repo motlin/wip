@@ -1,19 +1,22 @@
+import FetchAdapter from "@pollyjs/adapter-fetch";
 import {Polly, type PollyConfig} from "@pollyjs/core";
+import FSPersister from "@pollyjs/persister-fs";
 import {fileURLToPath} from "node:url";
 import {dirname, resolve} from "node:path";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const FetchAdapter = require("@pollyjs/adapter-fetch");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const FSPersister = require("@pollyjs/persister-fs");
-
-Polly.register(FetchAdapter);
-Polly.register(FSPersister);
+// The pollyjs CJS builds export the class as module.exports, but their type
+// declarations describe an ES default export; accept either shape at runtime.
+Polly.register("default" in FetchAdapter ? FetchAdapter.default : FetchAdapter);
+Polly.register("default" in FSPersister ? FSPersister.default : FSPersister);
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const recordingsDir = resolve(currentDir, "..", "__recordings__");
 
 const isRecordMode = process.env["POLLY_RECORD"] === "true";
+
+interface RecordingEntry {
+	request?: {headers?: Array<{name: string; value: string}>};
+}
 
 export function setupPolly(context: {name: string}): {
 	polly: Polly;
@@ -42,20 +45,16 @@ export function setupPolly(context: {name: string}): {
 	const polly = new Polly(context.name, config);
 
 	// Sanitize auth tokens from recordings before persisting
-	polly.server.any().on("beforePersist", (_req, recording) => {
-		const entry = recording as {request?: {headers?: Array<{name: string; value: string}>}};
-		if (entry.request?.headers) {
-			entry.request.headers = entry.request.headers.map((header: {name: string; value: string}) => {
-				if (header.name.toLowerCase() === "authorization") {
-					return {...header, value: "bearer [REDACTED]"};
-				}
-				return header;
-			});
+	polly.server.any().on("beforePersist", (_req, recording: RecordingEntry) => {
+		for (const header of recording.request?.headers ?? []) {
+			if (header.name.toLowerCase() === "authorization") {
+				header.value = "bearer [REDACTED]";
+			}
 		}
 	});
 
 	return {
 		polly,
-		stop: () => polly.stop(),
+		stop: async () => polly.stop(),
 	};
 }

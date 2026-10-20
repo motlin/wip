@@ -35,6 +35,7 @@ export function useAutoTail(content: string | undefined) {
 		const el = containerRef.current;
 		if (!el) return;
 		scrollToBottom(el);
+		// oxlint-disable-next-line react/exhaustive-effect-dependencies -- `content` is the trigger to re-scroll, not read in the body
 	}, [content, isFollowing]);
 
 	// Public setter that also scrolls to bottom when re-enabling follow.

@@ -40,13 +40,12 @@ import {
 	runClaudeCommand,
 } from "../lib/server-fns";
 import {snoozedQueryOptions} from "../lib/queries";
-import {useMergeStatus} from "../lib/server-events-context";
+import {useMergeStatus, useTestJob} from "../lib/server-events-context";
 import {applyRenameToChild} from "../lib/branch-rename";
 import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns";
 import {CATEGORIES} from "../lib/category-actions";
 import {GitHubIcon} from "./github-icon";
-import {useTestJob} from "../lib/server-events-context";
 import {pushToast, toastLogs} from "../lib/toast-store";
 
 const SNOOZE_PRESETS = [
@@ -63,6 +62,16 @@ interface ItemActionsProps {
 	item: ActionableItem;
 	category: Category;
 	layout?: "row" | "column";
+}
+
+function clickedOutside(e: MouseEvent, form: Node | null, button: Node | null): boolean {
+	return (
+		form !== null &&
+		button !== null &&
+		e.target instanceof Node &&
+		!form.contains(e.target) &&
+		!button.contains(e.target)
+	);
 }
 
 function isPullRequest(item: ActionableItem): boolean {
@@ -184,67 +193,55 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const pr = isPullRequest(item) ? item : null;
 
 	useEffect(() => {
-		if (!deleteConfirmOpen) return;
+		if (!deleteConfirmOpen) return undefined;
 		function handleClick(e: MouseEvent) {
-			if (
-				deleteFormRef.current &&
-				!deleteFormRef.current.contains(e.target as Node) &&
-				deleteButtonRef.current &&
-				!deleteButtonRef.current.contains(e.target as Node)
-			) {
+			if (clickedOutside(e, deleteFormRef.current, deleteButtonRef.current)) {
 				setDeleteConfirmOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+		};
 	}, [deleteConfirmOpen]);
 
 	useEffect(() => {
-		if (!snoozeOpen) return;
+		if (!snoozeOpen) return undefined;
 		function handleClick(e: MouseEvent) {
-			if (
-				snoozeRef.current &&
-				!snoozeRef.current.contains(e.target as Node) &&
-				snoozeButtonRef.current &&
-				!snoozeButtonRef.current.contains(e.target as Node)
-			) {
+			if (clickedOutside(e, snoozeRef.current, snoozeButtonRef.current)) {
 				setSnoozeOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+		};
 	}, [snoozeOpen]);
 
 	useEffect(() => {
-		if (!renameOpen) return;
+		if (!renameOpen) return undefined;
 		function handleClick(e: MouseEvent) {
-			if (
-				renameFormRef.current &&
-				!renameFormRef.current.contains(e.target as Node) &&
-				renameButtonRef.current &&
-				!renameButtonRef.current.contains(e.target as Node)
-			) {
+			if (clickedOutside(e, renameFormRef.current, renameButtonRef.current)) {
 				setRenameOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+		};
 	}, [renameOpen]);
 
 	useEffect(() => {
-		if (!fixesConfirmOpen) return;
+		if (!fixesConfirmOpen) return undefined;
 		function handleClick(e: MouseEvent) {
-			if (
-				fixesFormRef.current &&
-				!fixesFormRef.current.contains(e.target as Node) &&
-				fixesButtonRef.current &&
-				!fixesButtonRef.current.contains(e.target as Node)
-			) {
+			if (clickedOutside(e, fixesFormRef.current, fixesButtonRef.current)) {
 				setFixesConfirmOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+		};
 	}, [fixesConfirmOpen]);
 
 	// Popovers use position: fixed with coordinates captured at open time, so
@@ -252,7 +249,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	// scroll rather than tracking the button's new position.
 	useEffect(() => {
 		const anyOpen = snoozeOpen || deleteConfirmOpen || renameOpen || fixesConfirmOpen;
-		if (!anyOpen) return;
+		if (!anyOpen) return undefined;
 		function handleScroll() {
 			setSnoozeOpen(false);
 			setDeleteConfirmOpen(false);
@@ -260,7 +257,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			setFixesConfirmOpen(false);
 		}
 		window.addEventListener("scroll", handleScroll, true);
-		return () => window.removeEventListener("scroll", handleScroll, true);
+		return () => {
+			window.removeEventListener("scroll", handleScroll, true);
+		};
 	}, [snoozeOpen, deleteConfirmOpen, renameOpen, fixesConfirmOpen]);
 
 	const pushLabel = item.containingBranch ? "Push Split" : "Push";
@@ -313,7 +312,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const handleSnooze = async (hours: number | null) => {
 		setSnoozeOpen(false);
 		setError(null);
-		const until = hours !== null ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
+		const until = snoozeUntil(hours);
 		try {
 			const result = await snoozeChildFn({data: {project: item.project, sha: item.sha, until}});
 			showActionToasts("Snooze", result);
@@ -576,7 +575,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			const rect = deleteButtonRef.current.getBoundingClientRect();
 			setDeletePos({top: rect.bottom + 4, left: rect.left});
 		}
-		if (!deleteConfirmOpen) {
+		if (deleteConfirmOpen) {
+			setDeleteConfirmOpen(false);
+		} else {
 			setDeleteConfirmOpen(true);
 			setDeleteDiffLoading(true);
 			try {
@@ -586,8 +587,6 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				setDeleteDiffStat("Failed to load diff");
 			}
 			setDeleteDiffLoading(false);
-		} else {
-			setDeleteConfirmOpen(false);
 		}
 	};
 
@@ -644,7 +643,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("merge") && pr && (
 					<button
 						type="button"
-						onClick={handleMergePr}
+						onClick={() => {
+							void handleMergePr();
+						}}
 						disabled={merging}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							merging
@@ -678,7 +679,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("force_push") && item.localAhead && (
 					<button
 						type="button"
-						onClick={handleForcePush}
+						onClick={() => {
+							void handleForcePush();
+						}}
 						disabled={forcePushing}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							forcePushing
@@ -699,7 +702,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("rebase_local") && (
 					<button
 						type="button"
-						onClick={handleRebaseLocal}
+						onClick={() => {
+							void handleRebaseLocal();
+						}}
 						disabled={rebasingLocal}
 						title={`Rebase ${branch} onto upstream${commitsBehind ? ` (${commitsBehind} commit${commitsBehind > 1 ? "s" : ""} behind)` : ""}`}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
@@ -721,7 +726,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("apply_fixes") &&
 					pr?.failedChecks?.some((c) => c.name.endsWith("-fix")) &&
 					(() => {
-						const fixChecks = pr.failedChecks!.filter((c) => c.name.endsWith("-fix"));
+						const fixChecks = pr.failedChecks.filter((c) => c.name.endsWith("-fix"));
 						return (
 							<div className="relative">
 								<button
@@ -788,9 +793,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 										<div className="flex gap-1.5">
 											<button
 												type="button"
-												onClick={async () => {
+												onClick={() => {
 													setFixesConfirmOpen(false);
-													await handleApplyFixes();
+													void handleApplyFixes();
 												}}
 												disabled={applyingFixes}
 												className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
@@ -808,7 +813,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 											</button>
 											<button
 												type="button"
-												onClick={() => setFixesConfirmOpen(false)}
+												onClick={() => {
+													setFixesConfirmOpen(false);
+												}}
 												className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
 											>
 												Cancel
@@ -824,7 +831,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("commit") && (
 					<button
 						type="button"
-						onClick={handleCommit}
+						onClick={() => {
+							void handleCommit();
+						}}
 						disabled={committing}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							committing
@@ -848,7 +857,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						<input
 							type="text"
 							value={newBranchName}
-							onChange={(e) => setNewBranchName(e.target.value)}
+							onChange={(e) => {
+								setNewBranchName(e.target.value);
+							}}
 							onKeyDown={(e) => {
 								if (e.key === "Enter") void handleRenameBranch();
 							}}
@@ -857,7 +868,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						/>
 						<button
 							type="button"
-							onClick={handleRenameBranch}
+							onClick={() => {
+								void handleRenameBranch();
+							}}
 							disabled={renaming || !newBranchName.trim() || newBranchName === branch}
 							className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
 								renaming || !newBranchName.trim() || newBranchName === branch
@@ -898,14 +911,18 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 								<input
 									type="text"
 									value={newBranchName}
-									onChange={(e) => setNewBranchName(e.target.value)}
+									onChange={(e) => {
+										setNewBranchName(e.target.value);
+									}}
 									placeholder="New branch name"
 									className="w-full rounded border border-border-300/50 bg-bg-100 px-2 py-1 text-xs text-text-100 outline-none focus:border-blue-500"
 								/>
 								<div className="mt-1.5 flex gap-1.5">
 									<button
 										type="button"
-										onClick={handleRenameBranch}
+										onClick={() => {
+											void handleRenameBranch();
+										}}
 										disabled={renaming || !newBranchName.trim() || newBranchName === branch}
 										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 											renaming || !newBranchName.trim() || newBranchName === branch
@@ -922,7 +939,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									</button>
 									<button
 										type="button"
-										onClick={() => setRenameOpen(false)}
+										onClick={() => {
+											setRenameOpen(false);
+										}}
 										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
 									>
 										Cancel
@@ -937,7 +956,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("create_branch") && (
 					<button
 						type="button"
-						onClick={handleCreateBranch}
+						onClick={() => {
+							void handleCreateBranch();
+						}}
 						disabled={creatingBranch}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							creatingBranch
@@ -958,7 +979,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("create_pr") && (
 					<button
 						type="button"
-						onClick={handleCreatePr}
+						onClick={() => {
+							void handleCreatePr();
+						}}
 						disabled={creatingPr}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							creatingPr ? "cursor-not-allowed opacity-60" : "bg-blue-600 hover:bg-blue-700 text-white"
@@ -977,7 +1000,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("push") && !item.localAhead && (
 					<button
 						type="button"
-						onClick={handlePush}
+						onClick={() => {
+							void handlePush();
+						}}
 						disabled={item.pushing}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							item.pushing
@@ -998,7 +1023,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("test") && (
 					<button
 						type="button"
-						onClick={handleTest}
+						onClick={() => {
+							void handleTest();
+						}}
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
 					>
 						{testJob?.status === "running" ? (
@@ -1022,7 +1049,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{(testJob?.status === "running" || testJob?.status === "queued") && (
 					<button
 						type="button"
-						onClick={handleCancelTest}
+						onClick={() => {
+							void handleCancelTest();
+						}}
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
 					>
 						<X className="h-3.5 w-3.5" />
@@ -1078,7 +1107,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 								<>
 									<button
 										type="button"
-										onClick={handleUnsnooze}
+										onClick={() => {
+											void handleUnsnooze();
+										}}
 										className="block w-full px-3 py-1.5 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-bg-200"
 									>
 										Unsnooze
@@ -1090,7 +1121,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 								<button
 									key={preset.label}
 									type="button"
-									onClick={() => handleSnooze(preset.hours)}
+									onClick={() => {
+										void handleSnooze(preset.hours);
+									}}
 									className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
 								>
 									{preset.label}
@@ -1104,7 +1137,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{llmCommand && branch && (
 					<button
 						type="button"
-						onClick={handleRunClaude}
+						onClick={() => {
+							void handleRunClaude();
+						}}
 						disabled={runningClaude}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							runningClaude
@@ -1126,7 +1161,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{actions.has("refresh") && (
 					<button
 						type="button"
-						onClick={handleRefresh}
+						onClick={() => {
+							void handleRefresh();
+						}}
 						disabled={refreshing}
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
 					>
@@ -1141,7 +1178,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						<button
 							ref={deleteButtonRef}
 							type="button"
-							onClick={handleDeleteBranchClick}
+							onClick={() => {
+								void handleDeleteBranchClick();
+							}}
 							disabled={deleteLoading}
 							className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-300"
 						>
@@ -1172,7 +1211,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 								<div className="flex gap-1.5">
 									<button
 										type="button"
-										onClick={handleDeleteBranch}
+										onClick={() => {
+											void handleDeleteBranch();
+										}}
 										disabled={deleteLoading}
 										className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 											deleteLoading
@@ -1189,7 +1230,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									</button>
 									<button
 										type="button"
-										onClick={() => setDeleteConfirmOpen(false)}
+										onClick={() => {
+											setDeleteConfirmOpen(false);
+										}}
 										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
 									>
 										Cancel
@@ -1212,6 +1255,10 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			{error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
 		</div>
 	);
+}
+
+function snoozeUntil(hours: number | null): string | null {
+	return hours === null ? null : new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
 export function BranchActions({

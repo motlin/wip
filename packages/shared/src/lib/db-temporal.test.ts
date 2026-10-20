@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach, vi} from "vitest";
+import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 
 import {sql} from "drizzle-orm";
 
@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 function rowsOf(table: string): TemporalRow[] {
-	return getDb().all(sql.raw(`SELECT system_from, system_to FROM ${table}`)) as TemporalRow[];
+	return getDb().all(sql.raw(`SELECT system_from, system_to FROM ${table}`));
 }
 
 describe("setBranchName temporal upsert", () => {

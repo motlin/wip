@@ -55,7 +55,7 @@ ${commit.stdout}
 </commit>`;
 
 	const start = performance.now();
-	const result = await namingGate(() =>
+	const result = await namingGate(async () =>
 		execa(
 			"claude",
 			[
@@ -116,7 +116,7 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
 		}
 	}
 
-	const names = await Promise.all(uncached.map((req) => nameBranch(req)));
+	const names = await Promise.all(uncached.map(async (req) => nameBranch(req)));
 	for (let i = 0; i < uncached.length; i++) {
 		const name = names[i];
 		const req = uncached[i];

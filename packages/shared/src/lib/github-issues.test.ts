@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
 
 import {GitHubIssueSchema, GitHubIssueLabelSchema, fetchAssignedIssues} from "./github-issues.js";
 import {initDb, resetDb} from "./db.js";
@@ -13,15 +13,15 @@ describe("GitHubIssueLabelSchema", () => {
 	});
 
 	it("rejects an empty name", () => {
-		expect(() => GitHubIssueLabelSchema.parse({name: "", color: "ff0000"})).toThrow();
+		expect(() => GitHubIssueLabelSchema.parse({name: "", color: "ff0000"})).toThrow(/name/);
 	});
 
 	it("rejects an invalid color", () => {
-		expect(() => GitHubIssueLabelSchema.parse({name: "bug", color: "not-hex"})).toThrow();
+		expect(() => GitHubIssueLabelSchema.parse({name: "bug", color: "not-hex"})).toThrow(/color/);
 	});
 
 	it("rejects a color with a hash prefix", () => {
-		expect(() => GitHubIssueLabelSchema.parse({name: "bug", color: "#ff0000"})).toThrow();
+		expect(() => GitHubIssueLabelSchema.parse({name: "bug", color: "#ff0000"})).toThrow(/color/);
 	});
 });
 
@@ -44,23 +44,23 @@ describe("GitHubIssueSchema", () => {
 	});
 
 	it("rejects a negative issue number", () => {
-		expect(() => GitHubIssueSchema.parse({...validIssue, number: -1})).toThrow();
+		expect(() => GitHubIssueSchema.parse({...validIssue, number: -1})).toThrow(/number/);
 	});
 
 	it("rejects a non-integer issue number", () => {
-		expect(() => GitHubIssueSchema.parse({...validIssue, number: 1.5})).toThrow();
+		expect(() => GitHubIssueSchema.parse({...validIssue, number: 1.5})).toThrow(/number/);
 	});
 
 	it("rejects zero as an issue number", () => {
-		expect(() => GitHubIssueSchema.parse({...validIssue, number: 0})).toThrow();
+		expect(() => GitHubIssueSchema.parse({...validIssue, number: 0})).toThrow(/number/);
 	});
 
 	it("rejects an empty title", () => {
-		expect(() => GitHubIssueSchema.parse({...validIssue, title: ""})).toThrow();
+		expect(() => GitHubIssueSchema.parse({...validIssue, title: ""})).toThrow(/title/);
 	});
 
 	it("rejects an invalid url", () => {
-		expect(() => GitHubIssueSchema.parse({...validIssue, url: "not-a-url"})).toThrow();
+		expect(() => GitHubIssueSchema.parse({...validIssue, url: "not-a-url"})).toThrow(/url/);
 	});
 
 	it("rejects an empty repository name", () => {
@@ -69,7 +69,7 @@ describe("GitHubIssueSchema", () => {
 				...validIssue,
 				repository: {name: "", nameWithOwner: "owner/repo"},
 			}),
-		).toThrow();
+		).toThrow(/name/);
 	});
 
 	it("rejects a nameWithOwner without a slash", () => {
@@ -78,7 +78,7 @@ describe("GitHubIssueSchema", () => {
 				...validIssue,
 				repository: {name: "repo", nameWithOwner: "ownerrepo"},
 			}),
-		).toThrow();
+		).toThrow(/nameWithOwner/);
 	});
 
 	it("rejects a nameWithOwner with multiple slashes", () => {
@@ -87,11 +87,11 @@ describe("GitHubIssueSchema", () => {
 				...validIssue,
 				repository: {name: "repo", nameWithOwner: "owner/sub/repo"},
 			}),
-		).toThrow();
+		).toThrow(/nameWithOwner/);
 	});
 
 	it("rejects missing fields", () => {
-		expect(() => GitHubIssueSchema.parse({number: 1})).toThrow();
+		expect(() => GitHubIssueSchema.parse({number: 1})).toThrow(/title/);
 	});
 });
 

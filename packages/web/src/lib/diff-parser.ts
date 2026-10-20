@@ -24,23 +24,24 @@ export interface DiffContentFetchers {
 export async function parseDiffFiles(rawDiff: string, fetch: DiffContentFetchers): Promise<FileDiff[]> {
 	const chunks = rawDiff.split(/^(?=diff --git )/m).filter(Boolean);
 
-	const files: FileDiff[] = [];
-	for (const chunk of chunks) {
-		const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
-		if (!headerMatch) continue;
-		const oldFileName = headerMatch[1] ?? "";
-		const newFileName = headerMatch[2] ?? "";
+	const files = await Promise.all(
+		chunks.map(async (chunk): Promise<FileDiff | undefined> => {
+			const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
+			if (!headerMatch) return undefined;
+			const oldFileName = headerMatch[1] ?? "";
+			const newFileName = headerMatch[2] ?? "";
 
-		// Detect new/deleted files from --- and +++ lines to avoid fetching nonexistent content
-		const isNewFile = /^--- \/dev\/null$/m.test(chunk);
-		const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
+			// Detect new/deleted files from --- and +++ lines to avoid fetching nonexistent content
+			const isNewFile = /^--- \/dev\/null$/m.test(chunk);
+			const isDeletedFile = /^\+\+\+ \/dev\/null$/m.test(chunk);
 
-		const [oldContent, newContent] = await Promise.all([
-			isNewFile ? "" : fetch.old(oldFileName),
-			isDeletedFile ? "" : fetch.new(newFileName),
-		]);
+			const [oldContent, newContent] = await Promise.all([
+				isNewFile ? "" : fetch.old(oldFileName),
+				isDeletedFile ? "" : fetch.new(newFileName),
+			]);
 
-		files.push({oldFileName, newFileName, hunks: chunk, oldContent, newContent});
-	}
-	return files;
+			return {oldFileName, newFileName, hunks: chunk, oldContent, newContent};
+		}),
+	);
+	return files.filter((file) => file !== undefined);
 }

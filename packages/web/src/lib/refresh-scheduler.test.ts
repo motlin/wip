@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
 import {
 	enqueueRefresh,
@@ -12,7 +12,9 @@ import {
 // by work-queue.test.ts; these tests cover the refresh-flavored adapter.
 
 async function settle(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
+	await new Promise((resolve) => {
+		setTimeout(resolve, 0);
+	});
 }
 
 beforeEach(async () => {
@@ -25,7 +27,7 @@ afterEach(async () => {
 
 describe("enqueueRefresh", () => {
 	it("runs an enqueued job", async () => {
-		const run = vi.fn().mockResolvedValue(undefined);
+		const run = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 		const result = enqueueRefresh({kind: "children", project: "alpha", run});
 
@@ -39,8 +41,8 @@ describe("enqueueRefresh", () => {
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		const firstRun = vi.fn(() => gate);
-		const secondRun = vi.fn().mockResolvedValue(undefined);
+		const firstRun = vi.fn<() => Promise<void>>(async () => gate);
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 		expect(enqueueRefresh({kind: "children", project: "alpha", run: firstRun})).toStrictEqual({queued: true});
 		expect(enqueueRefresh({kind: "children", project: "alpha", run: secondRun})).toStrictEqual({queued: false});
@@ -53,8 +55,8 @@ describe("enqueueRefresh", () => {
 	});
 
 	it("does not coalesce jobs with different kinds for the same project", async () => {
-		const childrenRun = vi.fn().mockResolvedValue(undefined);
-		const todosRun = vi.fn().mockResolvedValue(undefined);
+		const childrenRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+		const todosRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 		expect(enqueueRefresh({kind: "children", project: "alpha", run: childrenRun})).toStrictEqual({queued: true});
 		expect(enqueueRefresh({kind: "todos", project: "alpha", run: todosRun})).toStrictEqual({queued: true});
@@ -72,9 +74,9 @@ describe("enqueueRefresh", () => {
 		enqueueRefresh({
 			kind: "children",
 			project: "alpha",
-			run: () => Promise.reject(new Error("boom")),
+			run: async () => Promise.reject(new Error("boom")),
 		});
-		const nextRun = vi.fn().mockResolvedValue(undefined);
+		const nextRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		enqueueRefresh({kind: "children", project: "beta", run: nextRun});
 
 		await settle();
@@ -90,11 +92,11 @@ describe("enqueueRefresh", () => {
 	});
 
 	it("allows re-enqueueing a key after its job settles", async () => {
-		const firstRun = vi.fn().mockResolvedValue(undefined);
+		const firstRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		enqueueRefresh({kind: "children", project: "alpha", run: firstRun});
 		await settle();
 
-		const secondRun = vi.fn().mockResolvedValue(undefined);
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		expect(enqueueRefresh({kind: "children", project: "alpha", run: secondRun})).toStrictEqual({queued: true});
 		await settle();
 
@@ -110,13 +112,13 @@ describe("resetScheduler", () => {
 			enqueueRefresh({
 				kind: "children",
 				project: `running-${index}`,
-				run: () =>
+				run: async () =>
 					new Promise<void>((resolve) => {
 						gates.push(resolve);
 					}),
 			});
 		}
-		const queuedRun = vi.fn().mockResolvedValue(undefined);
+		const queuedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		enqueueRefresh({kind: "children", project: "queued", run: queuedRun});
 		await settle();
 

@@ -10,7 +10,7 @@ export function RefreshSchedulerPanel() {
 	const state = useRefreshSchedulerState();
 	if (state.slots === 0) return null;
 
-	const slots = Array.from({length: state.slots}, (_, index) => state.running[index] ?? null);
+	const slots = Array.from({length: state.slots}, (_, index) => ({slot: index, job: state.running[index] ?? null}));
 
 	return (
 		<section className="mb-6 rounded-lg border border-border-300/50 bg-bg-100 p-4">
@@ -22,9 +22,9 @@ export function RefreshSchedulerPanel() {
 				</span>
 			</h2>
 			<div className="flex gap-3">
-				{slots.map((job, index) => (
+				{slots.map(({slot, job}) => (
 					<div
-						key={index}
+						key={slot}
 						className={`min-w-0 flex-1 rounded-md border px-3 py-2 text-sm ${
 							job
 								? "border-status-yellow/40 bg-bg-200 text-text-100"
@@ -34,7 +34,7 @@ export function RefreshSchedulerPanel() {
 						{job ? (
 							<span className="flex items-center gap-2">
 								<Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-status-yellow" />
-								<span className="truncate">{job.project || "all projects"}</span>
+								<span className="truncate">{job.project === "" ? "all projects" : job.project}</span>
 								<span className="ml-auto shrink-0 rounded bg-bg-300 px-1.5 py-0.5 text-xs text-text-400">
 									{job.kind}
 								</span>
@@ -47,8 +47,8 @@ export function RefreshSchedulerPanel() {
 			</div>
 			{state.queued.length > 0 && (
 				<div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-500">
-					{state.queued.slice(0, 12).map((job, index) => (
-						<span key={index} className="rounded bg-bg-200 px-1.5 py-0.5">
+					{state.queued.slice(0, 12).map((job) => (
+						<span key={`${job.kind}:${job.project}`} className="rounded bg-bg-200 px-1.5 py-0.5">
 							{job.project || "all"} · {job.kind}
 						</span>
 					))}

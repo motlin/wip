@@ -20,58 +20,58 @@ import {
 export const projectsQueryOptions = () =>
 	queryOptions({
 		queryKey: ["projects"],
-		queryFn: () => getProjects(),
+		queryFn: async () => getProjects(),
 	});
 
 export const projectChildrenQueryOptions = (project: string) =>
 	queryOptions({
 		queryKey: ["children", project],
-		queryFn: () => getProjectChildren({data: {project}}),
+		queryFn: async () => getProjectChildren({data: {project}}),
 	});
 
 export const projectTodosQueryOptions = (project: string) =>
 	queryOptions({
 		queryKey: ["todos", project],
-		queryFn: () => getProjectTodos({data: {project}}),
+		queryFn: async () => getProjectTodos({data: {project}}),
 	});
 
 export const issuesQueryOptions = () =>
 	queryOptions({
 		queryKey: ["issues"],
-		queryFn: () => getIssues(),
+		queryFn: async () => getIssues(),
 	});
 
 export const projectItemsQueryOptions = () =>
 	queryOptions({
 		queryKey: ["projectItems"],
-		queryFn: () => getProjectItemsFn(),
+		queryFn: async () => getProjectItemsFn(),
 	});
 
 export const snoozedQueryOptions = () =>
 	queryOptions({
 		queryKey: ["snoozed"],
-		queryFn: () => getSnoozedList(),
+		queryFn: async () => getSnoozedList(),
 		staleTime: Infinity,
 	});
 
 export const taskQueueQueryOptions = () =>
 	queryOptions({
 		queryKey: ["taskQueue"],
-		queryFn: () => getTaskQueue(),
+		queryFn: async () => getTaskQueue(),
 		staleTime: 5_000,
 	});
 
 export const runAllCountsQueryOptions = () =>
 	queryOptions({
 		queryKey: ["runAllCounts"],
-		queryFn: () => runAllCounts(),
+		queryFn: async () => runAllCounts(),
 		staleTime: 10_000,
 	});
 
 export const systemStatusQueryOptions = () =>
 	queryOptions({
 		queryKey: ["systemStatus"],
-		queryFn: () => getSystemStatus(),
+		queryFn: async () => getSystemStatus(),
 		staleTime: 30_000,
 		refetchInterval: 60_000,
 	});
@@ -79,21 +79,21 @@ export const systemStatusQueryOptions = () =>
 export const advancePlanQueryOptions = () =>
 	queryOptions({
 		queryKey: ["advancePlan"],
-		queryFn: () => generateAdvancePlan({data: {}}),
+		queryFn: async () => generateAdvancePlan({data: {}}),
 		staleTime: 30_000,
 	});
 
 export const workingTreeDiffQueryOptions = (project: string) =>
 	queryOptions({
 		queryKey: ["workingTreeDiff", project],
-		queryFn: () => getWorkingTreeDiff({data: {project}}),
+		queryFn: async () => getWorkingTreeDiff({data: {project}}),
 		staleTime: 10_000,
 	});
 
 export const diffQueryOptions = (project: string, sha: string) =>
 	queryOptions({
 		queryKey: ["diff", project, sha],
-		queryFn: () => getCommitDiff({data: {project, sha}}),
+		queryFn: async () => getCommitDiff({data: {project, sha}}),
 		staleTime: Infinity,
 		gcTime: Infinity,
 	});
@@ -101,7 +101,7 @@ export const diffQueryOptions = (project: string, sha: string) =>
 export const testLogQueryOptions = (project: string, sha: string) =>
 	queryOptions({
 		queryKey: ["testLog", project, sha],
-		queryFn: () => getTestLog({data: {project, sha}}),
+		queryFn: async () => getTestLog({data: {project, sha}}),
 		staleTime: Infinity,
 		gcTime: Infinity,
 	});
@@ -109,11 +109,11 @@ export const testLogQueryOptions = (project: string, sha: string) =>
 export const issueByNumberQueryOptions = (project: string, number: number) =>
 	queryOptions({
 		queryKey: ["issue", project, number],
-		queryFn: () => getIssueByNumber({data: {project, number}}),
+		queryFn: async () => getIssueByNumber({data: {project, number}}),
 	});
 
 export const boardItemByNumberQueryOptions = (project: string, number: number) =>
 	queryOptions({
 		queryKey: ["boardItem", project, number],
-		queryFn: () => getProjectItemByNumber({data: {project, number}}),
+		queryFn: async () => getProjectItemByNumber({data: {project, number}}),
 	});

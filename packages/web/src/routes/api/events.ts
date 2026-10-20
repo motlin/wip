@@ -51,26 +51,41 @@ export const Route = createFileRoute("/api/events")({
 							});
 						}
 						getProjects()
-							.then((projects) => send("projects", projects))
+							.then((projects) => {
+								send("projects", projects);
+								return undefined;
+							})
 							.catch((error: unknown) => {
 								log.general.error({error}, "events stream: initial project send failed");
 							});
 						send("refresh-state", getSchedulerState());
 
-						const onTask = (event: unknown) => send("task", event);
-						const onMerge = (event: unknown) => send("merge", event);
-						const onProjects = (event: unknown) => send("projects", event);
-						const onChildren = (event: unknown) => send("children", event);
-						const onTodos = (event: unknown) => send("todos", event);
+						const onTask = (event: unknown) => {
+							send("task", event);
+						};
+						const onMerge = (event: unknown) => {
+							send("merge", event);
+						};
+						const onProjects = (event: unknown) => {
+							send("projects", event);
+						};
+						const onChildren = (event: unknown) => {
+							send("children", event);
+						};
+						const onTodos = (event: unknown) => {
+							send("todos", event);
+						};
 						taskEmitter.on("task", onTask);
 						mergeEmitter.on("mergeStatus", onMerge);
 						projectEmitter.on("projects", onProjects);
 						childrenEmitter.on("children", onChildren);
 						todoEmitter.on("todos", onTodos);
-						const unsubscribeErrors = onRefreshError((event) => send("refresh-error", event));
-						const unsubscribeSchedulerState = onSchedulerStateChange((state) =>
-							send("refresh-state", state),
-						);
+						const unsubscribeErrors = onRefreshError((event) => {
+							send("refresh-error", event);
+						});
+						const unsubscribeSchedulerState = onSchedulerStateChange((state) => {
+							send("refresh-state", state);
+						});
 
 						const keepalive = setInterval(() => {
 							if (closed) return;
@@ -94,7 +109,9 @@ export const Route = createFileRoute("/api/events")({
 							clearInterval(keepalive);
 							try {
 								controller.close();
-							} catch {}
+							} catch {
+								// stream already closed
+							}
 						}
 					},
 				});

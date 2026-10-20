@@ -311,7 +311,7 @@ const COLUMN_ORDER: Category[][] = [
 
 function columnIndex(cat: Category): number {
 	for (let i = 0; i < COLUMN_ORDER.length; i++) {
-		const row = COLUMN_ORDER[i]!.indexOf(cat);
+		const row = COLUMN_ORDER[i]?.indexOf(cat) ?? -1;
 		if (row >= 0) return i * 100 + row;
 	}
 	return 9999;
@@ -339,8 +339,8 @@ function deriveCategoryPriority(): Category[] {
 
 	for (const t of STATE_MACHINE) {
 		if (isBackEdge(t)) continue;
-		const neighbors = adjMap.get(t.from)!;
-		if (!neighbors.includes(t.to)) {
+		const neighbors = adjMap.get(t.from);
+		if (neighbors && !neighbors.includes(t.to)) {
 			neighbors.push(t.to);
 			inDegree.set(t.to, (inDegree.get(t.to) ?? 0) + 1);
 		}
@@ -355,7 +355,8 @@ function deriveCategoryPriority(): Category[] {
 
 	const sorted: Category[] = [];
 	while (queue.length > 0) {
-		const state = queue.shift()!;
+		const state = queue.shift();
+		if (state === undefined) break;
 		sorted.push(state);
 		for (const neighbor of adjMap.get(state) ?? []) {
 			const newDegree = (inDegree.get(neighbor) ?? 0) - 1;
@@ -382,4 +383,10 @@ function deriveCategoryPriority(): Category[] {
 }
 
 export const CATEGORY_PRIORITY: Category[] = deriveCategoryPriority();
-export const CATEGORY_PRIORITY_REVERSED: Category[] = [...CATEGORY_PRIORITY].reverse();
+export const CATEGORY_PRIORITY_REVERSED: Category[] = CATEGORY_PRIORITY.reduceRight<Category[]>(
+	(reversed, category) => {
+		reversed.push(category);
+		return reversed;
+	},
+	[],
+);

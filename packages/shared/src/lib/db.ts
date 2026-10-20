@@ -15,12 +15,13 @@ import {
 	type InferSelectModel,
 	type SQL,
 } from "drizzle-orm";
+import {z} from "zod";
 import {drizzle, type BetterSQLite3Database} from "drizzle-orm/better-sqlite3";
 import type {SQLiteColumn, SQLiteTable} from "drizzle-orm/sqlite-core";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type {CheckStatus, GitChildResult, ProjectInfo, ReviewStatus, TodoItem} from "./schemas.js";
+import {type CheckStatus, type GitChildResult, type ProjectInfo, type ReviewStatus, type TodoItem} from "./schemas.js";
 import type {GitHubIssue} from "./github-issues.js";
 import type {GitHubProjectItem} from "./github-projects.js";
 import * as schema from "./schema.js";
@@ -78,6 +79,28 @@ export function resetDb(): void {
 	customDbPath = undefined;
 }
 
+const tableInfoRowSchema = z.object({name: z.string(), notnull: z.number()});
+// Cached rows were serialized from already-typed values, so only the container shape is checked on read.
+const cachedChildrenSchema = z.custom<GitChildResult[]>((value) => Array.isArray(value));
+const cachedTodosSchema = z.custom<TodoItem[]>((value) => Array.isArray(value));
+const envRecordSchema = z.record(z.string(), z.string());
+const sqliteMasterRowSchema = z.object({sql: z.string()});
+
+function tableInfo(sqlite: DatabaseConstructor.Database, table: string): Array<z.infer<typeof tableInfoRowSchema>> {
+	return z.array(tableInfoRowSchema).parse(sqlite.prepare(`PRAGMA table_info('${table}')`).all());
+}
+
+function checkKey(checks: Array<{name: string; url: string | null}>): string {
+	return (
+		checks
+			.map((c) => `${c.name}\0${c.url ?? ""}`)
+			// tsconfig targets es2022, so Array#toSorted is not in the lib typings.
+			// eslint-disable-next-line unicorn/no-array-sort -- sorts the fresh array produced by map
+			.sort()
+			.join("\n")
+	);
+}
+
 export function getDb(): BetterSQLite3Database<typeof schema> {
 	if (db) return db;
 
@@ -87,19 +110,19 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	sqlite.pragma(`busy_timeout = ${DB_BUSY_TIMEOUT_MS}`);
 
 	// Migrate from old schema if needed
-	const tableInfo = sqlite.prepare("PRAGMA table_info('snoozed')").all() as Array<{name: string}>;
+	const snoozedCols = tableInfo(sqlite, "snoozed");
 	const hasOldSchema =
-		tableInfo.some((c) => c.name === "created_at") && !tableInfo.some((c) => c.name === "system_from");
+		snoozedCols.some((c) => c.name === "created_at") && !snoozedCols.some((c) => c.name === "system_from");
 	if (hasOldSchema) {
 		sqlite.exec("DROP TABLE snoozed");
 	}
 
 	// Migrate: PK changed from (id, system_from) to (id, system_to) — drop all temporal tables
 	{
-		const createSql = sqlite
-			.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='snoozed'")
-			.get() as {sql: string} | undefined;
-		if (createSql?.sql?.includes("system_from)")) {
+		const createSql = sqliteMasterRowSchema
+			.optional()
+			.parse(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='snoozed'").get());
+		if (createSql?.sql.includes("system_from)")) {
 			for (const table of [
 				"snoozed",
 				"branch_names",
@@ -151,10 +174,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS branch_names_active_idx ON branch_names (sha, project, system_to)`);
 
 	// Migrate: drop test_results if exit_code/duration_ms are nullable (cache data is ephemeral)
-	const testCols = sqlite.prepare("PRAGMA table_info(test_results)").all() as Array<{
-		name: string;
-		notnull: number;
-	}>;
+	const testCols = tableInfo(sqlite, "test_results");
 	if (testCols.some((c) => c.name === "exit_code" && c.notnull === 0)) {
 		sqlite.exec("DROP TABLE test_results");
 	}
@@ -175,10 +195,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS test_results_active_idx ON test_results (project, system_to)`);
 
 	// Migrate cache tables to temporal schema (drop and recreate — cache data is ephemeral)
-	const prCols = sqlite.prepare("PRAGMA table_info(pr_status_cache)").all() as Array<{
-		name: string;
-		notnull: number;
-	}>;
+	const prCols = tableInfo(sqlite, "pr_status_cache");
 	if (
 		prCols.some((c) => c.name === "cached_at") ||
 		prCols.some((c) => c.name === "behind" && c.notnull === 0) ||
@@ -188,16 +205,14 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	}
 	// Drop report_cache unconditionally — it is dead code
 	{
-		const reportCols = sqlite.prepare("PRAGMA table_info('report_cache')").all() as Array<{
-			name: string;
-		}>;
+		const reportCols = tableInfo(sqlite, "report_cache");
 		if (reportCols.length > 0) {
 			sqlite.exec("DROP TABLE report_cache");
 		}
 	}
 
 	for (const table of ["mise_env_cache", "gh_login_cache", "github_project_items_cache"]) {
-		const cols = sqlite.prepare(`PRAGMA table_info('${table}')`).all() as Array<{name: string}>;
+		const cols = tableInfo(sqlite, table);
 		if (cols.some((c) => c.name === "cached_at")) {
 			sqlite.exec(`DROP TABLE ${table}`);
 		}
@@ -205,9 +220,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 
 	// Migrate github_issues_cache JSON blob to normalized tables
 	{
-		const issuesCacheCols = sqlite.prepare("PRAGMA table_info('github_issues_cache')").all() as Array<{
-			name: string;
-		}>;
+		const issuesCacheCols = tableInfo(sqlite, "github_issues_cache");
 		if (issuesCacheCols.length > 0) {
 			sqlite.exec("DROP TABLE github_issues_cache");
 		}
@@ -215,9 +228,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 
 	// Migrate github_project_items_cache JSON blob to normalized tables
 	{
-		const projectItemsCacheCols = sqlite.prepare("PRAGMA table_info('github_project_items_cache')").all() as Array<{
-			name: string;
-		}>;
+		const projectItemsCacheCols = tableInfo(sqlite, "github_project_items_cache");
 		if (projectItemsCacheCols.length > 0) {
 			sqlite.exec("DROP TABLE github_project_items_cache");
 		}
@@ -375,9 +386,7 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 
 	// Migrate project_cache: add rebase_in_progress column if missing
 	{
-		const pcCols = sqlite.prepare("PRAGMA table_info('project_cache')").all() as Array<{
-			name: string;
-		}>;
+		const pcCols = tableInfo(sqlite, "project_cache");
 		if (pcCols.length > 0 && !pcCols.some((c) => c.name === "rebase_in_progress")) {
 			sqlite.exec("ALTER TABLE project_cache ADD COLUMN rebase_in_progress INTEGER NOT NULL DEFAULT 0");
 		}
@@ -461,18 +470,21 @@ function temporalUpsert<TTable extends SQLiteTable & {systemTo: SQLiteColumn}>(a
 	const activeWhere = and(args.keyWhere, eq(args.table.systemTo, FAR_FUTURE));
 
 	d.transaction((tx) => {
+		// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic row type cannot be inferred from a generic table
 		const existing = tx.select().from(args.table).where(activeWhere).get() as InferSelectModel<TTable> | undefined;
 
 		if (existing && args.isUnchanged(existing)) return;
 
 		if (existing) {
 			tx.update(args.table)
+				// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
 				.set({systemTo: timestamp} as Partial<InferInsertModel<TTable>>)
 				.where(activeWhere)
 				.run();
 		}
 
 		tx.insert(args.table)
+			// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
 			.values({...args.newRow, systemFrom: timestamp} as InferInsertModel<TTable>)
 			.run();
 	}, WRITE_TRANSACTION_CONFIG);
@@ -741,7 +753,7 @@ function queryPrStatusesWithChecks(d: BetterSQLite3Database<typeof schema>, proj
 		prUrl: r.prUrl,
 		prNumber: r.prNumber ?? undefined,
 		failedChecks: checksByBranch.get(r.branch),
-		behind: r.behind ?? undefined,
+		behind: r.behind,
 		mergeStateStatus: r.mergeStateStatus ?? undefined,
 	}));
 }
@@ -809,12 +821,6 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 			}
 		}
 
-		const checkKey = (checks: Array<{name: string; url: string | null}>) =>
-			checks
-				.map((c) => `${c.name}\0${c.url ?? ""}`)
-				.sort()
-				.join("\n");
-
 		for (const s of statuses) {
 			const existing = existingByBranch.get(s.branch);
 			const parentChanged =
@@ -823,7 +829,7 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				existing.checkStatus !== s.checkStatus ||
 				existing.prUrl !== s.prUrl ||
 				(existing.prNumber ?? undefined) !== s.prNumber ||
-				(existing.behind ?? undefined) !== s.behind ||
+				existing.behind !== s.behind ||
 				(existing.mergeStateStatus ?? undefined) !== s.mergeStateStatus;
 
 			if (parentChanged) {
@@ -932,7 +938,8 @@ export function getCachedMiseEnv(dir: string): Record<string, string> | null {
 		.where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
 		.get();
 	if (!row) return null;
-	return JSON.parse(row.env) as Record<string, string>;
+	const parsed = envRecordSchema.safeParse(JSON.parse(row.env));
+	return parsed.success ? parsed.data : null;
 }
 
 export function cacheMiseEnv(dir: string, env: Record<string, string>): void {
@@ -1051,7 +1058,7 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 			const labelsMatch =
 				existingLabels.length === issue.labels.length &&
 				existingLabels.every(
-					(el, i) => el.name === issue.labels[i]!.name && el.color === issue.labels[i]!.color,
+					(el, i) => el.name === issue.labels.at(i)?.name && el.color === issue.labels.at(i)?.color,
 				);
 
 			const issueChanged =
@@ -1147,7 +1154,7 @@ export function getCachedProjectItems(): GitHubProjectItem[] | null {
 		id: r.itemId,
 		title: r.title,
 		status: r.status,
-		type: r.type as "ISSUE" | "PULL_REQUEST" | "DRAFT_ISSUE",
+		type: r.type,
 		url: r.url ?? undefined,
 		number: r.number ?? undefined,
 		repository: r.repository ?? undefined,
@@ -1209,7 +1216,9 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 			const existingLabels = existingLabelsByItemId.get(item.id) ?? [];
 			const labelsMatch =
 				existingLabels.length === item.labels.length &&
-				existingLabels.every((el, i) => el.name === item.labels[i]!.name && el.color === item.labels[i]!.color);
+				existingLabels.every(
+					(el, i) => el.name === item.labels.at(i)?.name && el.color === item.labels.at(i)?.color,
+				);
 
 			const itemChanged =
 				!existing ||
@@ -1482,7 +1491,8 @@ export function getCachedChildren(project: string): GitChildResult[] | null {
 		.where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
 		.get();
 	if (!row) return null;
-	return JSON.parse(row.childrenJson) as GitChildResult[];
+	const parsed = cachedChildrenSchema.safeParse(JSON.parse(row.childrenJson));
+	return parsed.success ? parsed.data : null;
 }
 
 export function cacheChildren(project: string, children: GitChildResult[]): void {
@@ -1515,7 +1525,8 @@ export function getCachedTodos(project: string): TodoItem[] | null {
 		.where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
 		.get();
 	if (!row) return null;
-	return JSON.parse(row.todosJson) as TodoItem[];
+	const parsed = cachedTodosSchema.safeParse(JSON.parse(row.todosJson));
+	return parsed.success ? parsed.data : null;
 }
 
 export function cacheTodos(project: string, todos: TodoItem[]): void {

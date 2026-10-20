@@ -59,6 +59,7 @@ export default class Push extends Command {
 		const pushResults: PushResult[] = [];
 		const skippedProjects: string[] = [];
 
+		/* oxlint-disable no-await-in-loop -- pushes run sequentially: ordered console output and per-project git state */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
@@ -157,6 +158,7 @@ export default class Push extends Command {
 				}
 			}
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		const pushedCount = pushResults.filter((r) => r.status === "pushed").length;
 		const plannedCount = pushResults.filter((r) => r.status === "planned").length;

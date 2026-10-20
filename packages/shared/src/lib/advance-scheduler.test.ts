@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect} from "vite-plus/test";
 
 import {AdvanceScheduler, type SchedulableUnit, type ResourceProbe} from "./advance-scheduler.js";
 
@@ -36,7 +36,9 @@ describe("AdvanceScheduler", () => {
 
 		const first = s.nextAdmissible().map((u) => u.id);
 		expect(first).toStrictEqual(["a", "b"]);
-		first.forEach((id) => s.markRunning(id));
+		first.forEach((id) => {
+			s.markRunning(id);
+		});
 
 		expect(s.nextAdmissible()).toStrictEqual([]); // global full
 

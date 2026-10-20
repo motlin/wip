@@ -37,9 +37,8 @@ export function Toaster() {
 			{toasts.map((toast) => {
 				const Icon = LEVEL_ICON[toast.level];
 				return (
-					<div
+					<output
 						key={toast.id}
-						role="status"
 						className={`pointer-events-auto flex items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg ${LEVEL_STYLES[toast.level]}`}
 					>
 						<Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -49,13 +48,15 @@ export function Toaster() {
 						</div>
 						<button
 							type="button"
-							onClick={() => dismissToast(toast.id)}
+							onClick={() => {
+								dismissToast(toast.id);
+							}}
 							aria-label="Dismiss notification"
 							className="ml-1 rounded p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
 						>
 							<X className="h-3.5 w-3.5" />
 						</button>
-					</div>
+					</output>
 				);
 			})}
 		</div>

@@ -30,17 +30,19 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 		const applier = createServerEventApplier(queryClient);
 		const es = new EventSource("/api/events");
 
-		es.onmessage = (event) => {
+		es.addEventListener("message", (event) => {
+			const data: unknown = event.data;
+			if (typeof data !== "string") return;
 			let raw: unknown;
 			try {
-				raw = JSON.parse(event.data as string);
+				raw = JSON.parse(data);
 			} catch {
 				return;
 			}
 			const parsed = ServerEventSchema.safeParse(raw);
 			if (!parsed.success) return;
 			applier.apply(parsed.data);
-		};
+		});
 
 		return () => {
 			es.close();

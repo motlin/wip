@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
 import {mkdtempSync, rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
@@ -36,7 +36,7 @@ describe("checkBaseline", () => {
 			upstreamRef: "main",
 			runTest: async (s) => {
 				tested.push(s);
-				return true;
+				return Promise.resolve(true);
 			},
 		});
 		expect(result).toStrictEqual({sha, green: true});
@@ -48,7 +48,7 @@ describe("checkBaseline", () => {
 			project: "p",
 			dir,
 			upstreamRef: "main",
-			runTest: async () => false,
+			runTest: async () => Promise.resolve(false),
 		});
 		expect(result.green).toBe(false);
 	});

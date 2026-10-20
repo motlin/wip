@@ -1,4 +1,4 @@
-import {afterEach, describe, expect, it, vi} from "vitest";
+import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 
 import {createWorkQueue, type WorkQueue} from "./work-queue";
 
@@ -19,11 +19,15 @@ function deferred(): Deferred {
 }
 
 async function settle(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
+	await new Promise((resolve) => {
+		setTimeout(resolve, 0);
+	});
 }
 
 async function waitForCoalesce(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 150));
+	await new Promise((resolve) => {
+		setTimeout(resolve, 150);
+	});
 }
 
 let queue: WorkQueue;
@@ -55,7 +59,7 @@ function job(
 describe("enqueue", () => {
 	it("runs an enqueued job", async () => {
 		makeQueue();
-		const run = vi.fn().mockResolvedValue(undefined);
+		const run = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 		const handle = queue.enqueue(job("alpha", run));
 
@@ -67,8 +71,8 @@ describe("enqueue", () => {
 	it("coalesces jobs with the same coalesceKey and returns the existing handle", async () => {
 		makeQueue();
 		const gate = deferred();
-		const firstRun = vi.fn(() => gate.promise);
-		const secondRun = vi.fn().mockResolvedValue(undefined);
+		const firstRun = vi.fn<() => Promise<void>>(async () => gate.promise);
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 		const first = queue.enqueue(job("alpha", firstRun));
 		const second = queue.enqueue(job("alpha", secondRun));
@@ -86,7 +90,10 @@ describe("enqueue", () => {
 
 	it("does not coalesce jobs with different coalesceKeys", async () => {
 		makeQueue();
-		const runs = [vi.fn().mockResolvedValue(undefined), vi.fn().mockResolvedValue(undefined)];
+		const runs = [
+			vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+			vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+		];
 
 		queue.enqueue(job("children:alpha", runs[0]));
 		queue.enqueue(job("todos:alpha", runs[1]));
@@ -98,11 +105,11 @@ describe("enqueue", () => {
 
 	it("allows re-enqueueing a coalesceKey after its job settles", async () => {
 		makeQueue();
-		const firstRun = vi.fn().mockResolvedValue(undefined);
+		const firstRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const first = queue.enqueue(job("alpha", firstRun));
 		await first.settled;
 
-		const secondRun = vi.fn().mockResolvedValue(undefined);
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const second = queue.enqueue(job("alpha", secondRun));
 
 		expect(second.coalesced).toBe(false);
@@ -115,7 +122,7 @@ describe("concurrency", () => {
 	it("runs at most globalConcurrency jobs at once and starts queued jobs as slots free up", async () => {
 		makeQueue({globalConcurrency: 2});
 		const gates = [deferred(), deferred(), deferred(), deferred()];
-		const runs = gates.map((gate) => vi.fn(() => gate.promise));
+		const runs = gates.map((gate) => vi.fn<() => Promise<void>>(async () => gate.promise));
 
 		for (const [index, run] of runs.entries()) {
 			queue.enqueue(job(`project-${index}`, run));
@@ -147,16 +154,18 @@ describe("concurrency", () => {
 		const gates = [deferred(), deferred()];
 
 		for (const [index, gate] of gates.entries()) {
-			queue.enqueue(job(`running-${index}`, () => gate.promise));
+			queue.enqueue(job(`running-${index}`, async () => gate.promise));
 		}
 		queue.enqueue(
 			job("queued-first", async () => {
 				order.push("queued-first");
+				return Promise.resolve();
 			}),
 		);
 		queue.enqueue(
 			job("queued-second", async () => {
 				order.push("queued-second");
+				return Promise.resolve();
 			}),
 		);
 
@@ -171,8 +180,8 @@ describe("concurrency", () => {
 	it("serializes jobs sharing a laneKey even when global slots are free", async () => {
 		makeQueue({globalConcurrency: 4});
 		const firstGate = deferred();
-		const firstRun = vi.fn(() => firstGate.promise);
-		const secondRun = vi.fn().mockResolvedValue(undefined);
+		const firstRun = vi.fn<() => Promise<void>>(async () => firstGate.promise);
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 		queue.enqueue(job("test:alpha:sha1", firstRun, {laneKey: "test:alpha"}));
 		queue.enqueue(job("test:alpha:sha2", secondRun, {laneKey: "test:alpha"}));
@@ -190,11 +199,11 @@ describe("concurrency", () => {
 	it("lets other lanes proceed past a lane-blocked job", async () => {
 		makeQueue({globalConcurrency: 2});
 		const alphaGate = deferred();
-		queue.enqueue(job("test:alpha:sha1", () => alphaGate.promise, {laneKey: "test:alpha"}));
+		queue.enqueue(job("test:alpha:sha1", async () => alphaGate.promise, {laneKey: "test:alpha"}));
 
-		const blockedRun = vi.fn().mockResolvedValue(undefined);
+		const blockedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		queue.enqueue(job("test:alpha:sha2", blockedRun, {laneKey: "test:alpha"}));
-		const betaRun = vi.fn().mockResolvedValue(undefined);
+		const betaRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		queue.enqueue(job("test:beta:sha1", betaRun, {laneKey: "test:beta"}));
 		await settle();
 
@@ -214,10 +223,11 @@ describe("priority", () => {
 		const gate = deferred();
 		const order: string[] = [];
 
-		queue.enqueue(job("running", () => gate.promise));
+		queue.enqueue(job("running", async () => gate.promise));
 		queue.enqueue(
 			job("background", async () => {
 				order.push("background");
+				return Promise.resolve();
 			}),
 		);
 		queue.enqueue(
@@ -225,6 +235,7 @@ describe("priority", () => {
 				"foreground",
 				async () => {
 					order.push("foreground");
+					return Promise.resolve();
 				},
 				{priority: "foreground"},
 			),
@@ -243,8 +254,8 @@ describe("errors", () => {
 		const errors: unknown[] = [];
 		queue.onJobError((event) => errors.push(event));
 
-		queue.enqueue(job("alpha", () => Promise.reject(new Error("boom"))));
-		const nextRun = vi.fn().mockResolvedValue(undefined);
+		queue.enqueue(job("alpha", async () => Promise.reject(new Error("boom"))));
+		const nextRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		queue.enqueue(job("beta", nextRun));
 
 		await settle();
@@ -255,7 +266,7 @@ describe("errors", () => {
 
 	it("resolves settled even when the job rejects", async () => {
 		makeQueue();
-		const handle = queue.enqueue(job("alpha", () => Promise.reject(new Error("boom"))));
+		const handle = queue.enqueue(job("alpha", async () => Promise.reject(new Error("boom"))));
 		await expect(handle.settled).resolves.toBeUndefined();
 	});
 });
@@ -264,8 +275,8 @@ describe("cancellation", () => {
 	it("cancels a queued job before it runs", async () => {
 		makeQueue({globalConcurrency: 1});
 		const gate = deferred();
-		queue.enqueue(job("running", () => gate.promise));
-		const queuedRun = vi.fn().mockResolvedValue(undefined);
+		queue.enqueue(job("running", async () => gate.promise));
+		const queuedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const handle = queue.enqueue(job("queued", queuedRun));
 
 		expect(handle.cancel()).toBe(true);
@@ -281,7 +292,7 @@ describe("cancellation", () => {
 		const gate = deferred();
 		let aborted = false;
 		const handle = queue.enqueue(
-			job("alpha", (signal) => {
+			job("alpha", async (signal) => {
 				signal.addEventListener("abort", () => {
 					aborted = true;
 					gate.resolve();
@@ -299,11 +310,11 @@ describe("cancellation", () => {
 	it("frees the coalesceKey when a queued job is cancelled", async () => {
 		makeQueue({globalConcurrency: 1});
 		const gate = deferred();
-		queue.enqueue(job("running", () => gate.promise));
+		queue.enqueue(job("running", async () => gate.promise));
 		const handle = queue.enqueue(job("alpha"));
 		handle.cancel();
 
-		const rerun = vi.fn().mockResolvedValue(undefined);
+		const rerun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const second = queue.enqueue(job("alpha", rerun));
 		expect(second.coalesced).toBe(false);
 
@@ -319,7 +330,7 @@ describe("resource probe", () => {
 		makeQueue({globalConcurrency: 4, probe, loadThreshold: 2, memFloor: 0.1});
 
 		const gates = [deferred(), deferred()];
-		const runs = gates.map((gate) => vi.fn(() => gate.promise));
+		const runs = gates.map((gate) => vi.fn<() => Promise<void>>(async () => gate.promise));
 		queue.enqueue(job("alpha", runs[0]));
 		queue.enqueue(job("beta", runs[1]));
 		await settle();
@@ -339,7 +350,7 @@ describe("resource probe", () => {
 		queue.setProbe({loadPerCore: () => 5, freeMemRatio: () => 0.5});
 
 		const gates = [deferred(), deferred()];
-		const runs = gates.map((gate) => vi.fn(() => gate.promise));
+		const runs = gates.map((gate) => vi.fn<() => Promise<void>>(async () => gate.promise));
 		queue.enqueue(job("alpha", runs[0]));
 		queue.enqueue(job("beta", runs[1]));
 		await settle();
@@ -357,7 +368,7 @@ describe("resource probe", () => {
 		makeQueue({globalConcurrency: 2, probe, loadThreshold: 2, memFloor: 0.1});
 
 		const gates = [deferred(), deferred()];
-		const runs = gates.map((gate) => vi.fn(() => gate.promise));
+		const runs = gates.map((gate) => vi.fn<() => Promise<void>>(async () => gate.promise));
 		queue.enqueue(job("alpha", runs[0]));
 		queue.enqueue(job("beta", runs[1]));
 		await settle();
@@ -376,7 +387,7 @@ describe("state", () => {
 		makeQueue({globalConcurrency: 2});
 		const gates = [deferred(), deferred(), deferred()];
 		for (const [index, gate] of gates.entries()) {
-			queue.enqueue(job(`project-${index}`, () => gate.promise));
+			queue.enqueue(job(`project-${index}`, async () => gate.promise));
 		}
 		await settle();
 
@@ -405,7 +416,7 @@ describe("state", () => {
 		});
 
 		const gate = deferred();
-		queue.enqueue(job("alpha", () => gate.promise));
+		queue.enqueue(job("alpha", async () => gate.promise));
 		await waitForCoalesce();
 		gate.resolve();
 		await waitForCoalesce();
@@ -419,7 +430,7 @@ describe("state", () => {
 		makeQueue({globalConcurrency: 2});
 		queue.onStateChange(() => {});
 		const gate = deferred();
-		queue.enqueue(job("alpha", () => gate.promise));
+		queue.enqueue(job("alpha", async () => gate.promise));
 		gate.resolve();
 		await waitForCoalesce();
 
@@ -427,7 +438,7 @@ describe("state", () => {
 		queue.onStateChange((state) => snapshots.push(state));
 
 		const secondGate = deferred();
-		queue.enqueue(job("beta", () => secondGate.promise));
+		queue.enqueue(job("beta", async () => secondGate.promise));
 		secondGate.resolve();
 		await waitForCoalesce();
 
@@ -442,9 +453,9 @@ describe("reset", () => {
 		makeQueue({globalConcurrency: 2});
 		const gates = [deferred(), deferred()];
 		for (const [index, gate] of gates.entries()) {
-			queue.enqueue(job(`running-${index}`, () => gate.promise));
+			queue.enqueue(job(`running-${index}`, async () => gate.promise));
 		}
-		const queuedRun = vi.fn().mockResolvedValue(undefined);
+		const queuedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		queue.enqueue(job("queued", queuedRun));
 		await settle();
 

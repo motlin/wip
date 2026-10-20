@@ -65,11 +65,15 @@ function QueueCards() {
 							{items.issues?.map((i) => (
 								<IssueCard key={`issue-${i.number}`} issue={i} category={category} />
 							))}
-							{items.projectItems?.map((p, i) => (
-								<ProjectBoardItemCard key={`project-${p.number ?? i}-${p.project}`} item={p} />
+							{items.projectItems?.map((p) => (
+								<ProjectBoardItemCard key={`project-${p.project}-${p.number ?? p.title}`} item={p} />
 							))}
-							{items.todos?.map((t, i) => (
-								<TodoCard key={`todo-${t.project}-${t.sourceFile}-${i}`} todo={t} category={category} />
+							{items.todos?.map((t) => (
+								<TodoCard
+									key={`todo-${t.project}-${t.sourceFile}-${t.title}`}
+									todo={t}
+									category={category}
+								/>
 							))}
 						</div>
 					</section>

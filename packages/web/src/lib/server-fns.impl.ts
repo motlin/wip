@@ -37,17 +37,13 @@ import {
 	getCachedTodos,
 	cacheTodos,
 	invalidateTodosCache,
-} from "@wip/shared";
-import type {
-	ProjectInfo,
-	GitChildResult,
-	TodoItem as SharedTodoItem,
-	IssueResult,
-	ProjectItemResult,
-	GitHubProjectItem,
-	BaseBranchStatus,
-} from "@wip/shared";
-import {
+	type ProjectInfo,
+	type GitChildResult,
+	type TodoItem as SharedTodoItem,
+	type IssueResult,
+	type ProjectItemResult,
+	type GitHubProjectItem,
+	type BaseBranchStatus,
 	type ActionResult,
 	type SnoozedChild,
 	type PushChildInput,
@@ -68,7 +64,6 @@ import {
 	resolveAdvanceConcurrency,
 	matchesFilters,
 } from "@wip/shared";
-
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh} from "./refresh-scheduler.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -97,7 +92,7 @@ async function traced<T>(name: string, fn: () => Promise<T>): Promise<T> {
  * entries to show toasts to the user.
  */
 async function tracedAction(name: string, fn: () => Promise<ActionResult>): Promise<ActionResult> {
-	const {result, logs} = await captureLogs(() => traced(name, fn), {
+	const {result, logs} = await captureLogs(async () => traced(name, fn), {
 		categories: ["subprocess", "general"],
 	});
 	if (logs.length === 0) return result;
@@ -149,8 +144,8 @@ async function refreshProjectCache(): Promise<ProjectInfo[]> {
 	return discoverInFlight;
 }
 
-async function ensureProjects(): Promise<void> {
-	if (cachedProjects && Date.now() - cachedProjectsTime <= PROJECT_CACHE_TTL) return;
+async function ensureProjects(): Promise<ProjectInfo[]> {
+	if (cachedProjects && Date.now() - cachedProjectsTime <= PROJECT_CACHE_TTL) return cachedProjects;
 	const fromDb = getCachedProjectList();
 	if (fromDb) {
 		cachedProjects = fromDb;
@@ -162,22 +157,25 @@ async function ensureProjects(): Promise<void> {
 				await refreshProjectCache();
 			},
 		});
-		return;
+		return fromDb;
 	}
-	await refreshProjectCache();
+	return refreshProjectCache();
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+	return value === undefined || value === "" ? undefined : value;
 }
 
 async function resolveProject(project: string): Promise<ProjectInfo> {
-	await ensureProjects();
-	const p = cachedProjects!.find((proj) => proj.name === project);
+	const projects = await ensureProjects();
+	const p = projects.find((proj) => proj.name === project);
 	if (!p) throw new Error(`Project not found: ${project}`);
 	return p;
 }
 
 export async function getProjectsHandler(): Promise<ProjectInfo[]> {
 	return traced("getProjects", async () => {
-		await ensureProjects();
-		return cachedProjects!;
+		return ensureProjects();
 	});
 }
 
@@ -188,7 +186,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 	if (existing) return existing;
 
 	const {suppressWatcherEvents} = await import("./watch-suppression.js");
-	const promise = suppressWatcherEvents(projectName, () =>
+	const promise = suppressWatcherEvents(projectName, async () =>
 		traced("refreshProjectChildren", async () => {
 			let p: ProjectInfo;
 			try {
@@ -298,7 +296,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					externalCiBlockers: child.externalCiBlockers,
 					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,
 					commitsAhead: ms?.commitsAhead ?? child.commitsAhead,
-					rebaseable: ms?.rebaseable ?? (child.rebaseable === undefined ? undefined : child.rebaseable),
+					rebaseable: ms?.rebaseable ?? child.rebaseable,
 					mergeStateStatus: child.mergeStateStatus,
 					alreadyOnRemote: child.alreadyOnRemote,
 					containingBranch: child.containingBranch,
@@ -449,7 +447,7 @@ export async function getIssueByNumberHandler(data: {project: string; number: nu
 		for (const issue of issues) {
 			if (issue.number !== data.number) continue;
 			const repoKey = issue.repository.nameWithOwner.toLowerCase();
-			if ((p && p.remote.toLowerCase() === repoKey) || issue.repository.name === data.project) {
+			if (p?.remote.toLowerCase() === repoKey || issue.repository.name === data.project) {
 				return issue;
 			}
 		}
@@ -475,9 +473,9 @@ export async function getProjectItemByNumberHandler(data: {
 					url: item.url,
 					number: item.number,
 					title: item.title,
-					status: item.status ?? "",
+					status: item.status,
 					type: item.type,
-					labels: item.labels ?? [],
+					labels: item.labels,
 				};
 			}
 		}
@@ -614,11 +612,11 @@ export async function testChildHandler(data: TestChildInput): Promise<TestJobSta
 			reject: false,
 		});
 		const parts = logResult.stdout.split("\0");
-		const shortSha = parts[0]?.trim() || data.sha.slice(0, 7);
-		const subject = parts[1]?.trim() || "";
-		const decoration = parts[2]?.trim() || "";
+		const shortSha = nonEmpty(parts[0]?.trim()) ?? data.sha.slice(0, 7);
+		const subject = parts[1]?.trim() ?? "";
+		const decoration = parts[2]?.trim() ?? "";
 		const branchMatch = decoration.match(/(?:^|,\s*)(?:HEAD -> )?([^,\s][^,]*?)(?:\s*,|$)/);
-		const branch = branchMatch?.[1]?.replace(/^refs\/heads\//, "") || undefined;
+		const branch = nonEmpty(branchMatch?.[1]?.replace(/^refs\/heads\//, ""));
 
 		// Reject invalid transitions loudly — the card renders the thrown
 		// message, instead of enqueueing a test that cannot run.
@@ -649,7 +647,7 @@ const backgroundEnqueues = new Set<Promise<unknown>>();
 // enqueued, instead of the click blocking until every project has been scanned.
 function launchBackgroundEnqueue(name: string, run: () => Promise<unknown>): void {
 	const promise = run()
-		.catch((err) => {
+		.catch((err: unknown) => {
 			log.general.error({err}, `${name} background enqueue failed`);
 		})
 		.finally(() => {
@@ -674,20 +672,21 @@ interface PlannedTest {
  */
 type ChildrenReader = (project: ProjectInfo) => Promise<ProjectChildrenResult>;
 
-const readCachedChildren: ChildrenReader = async (p) => getCachedChildren(p.name) ?? [];
+const readCachedChildren: ChildrenReader = async (p) => Promise.resolve(getCachedChildren(p.name) ?? []);
 const readFreshChildren: ChildrenReader = async (p) => getProjectChildrenHandler(p.name);
 
 // Discover the untested child commits that "Run All Tests" would enqueue, without
 // touching the task queue. Uses the same classification as the queue UI so the
 // button's (N) always matches what a click actually queues.
 async function planTestAll(readChildren: ChildrenReader): Promise<PlannedTest[]> {
-	await ensureProjects();
-	const projects = cachedProjects!;
+	const projects = await ensureProjects();
 
 	const planned: PlannedTest[] = [];
 	for (const p of projects) {
 		if (!p.hasTestConfigured) continue;
 
+		// Sequential on purpose: readChildren may spawn git/API work, so fan-out must stay bounded
+		// eslint-disable-next-line no-await-in-loop
 		const children = await readChildren(p);
 		for (const child of children) {
 			if (classifyGitChild(child, p) !== "ready_to_test") continue;
@@ -754,8 +753,8 @@ export async function getCommitDiffHandler(data: {
 			return result.exitCode === 0 ? result.stdout : "";
 		};
 		const files = await parseDiffFiles(diffResult.stdout, {
-			old: (fileName) => showFile(`${data.sha}^:${fileName}`),
-			new: (fileName) => showFile(`${data.sha}:${fileName}`),
+			old: async (fileName) => showFile(`${data.sha}^:${fileName}`),
+			new: async (fileName) => showFile(`${data.sha}:${fileName}`),
 		});
 
 		return {
@@ -788,7 +787,7 @@ export async function getWorkingTreeDiffHandler(project: string): Promise<{files
 			return result.exitCode === 0 ? result.stdout : "";
 		};
 		const files = await parseDiffFiles(diffResult.stdout, {
-			old: (fileName) => showFile(`HEAD:${fileName}`),
+			old: async (fileName) => showFile(`HEAD:${fileName}`),
 			// Prefer the index copy (staged content); fall back to HEAD for unstaged-only files.
 			new: async (fileName) => {
 				const staged = await tracedExeca("git", ["-C", p.dir, "cat-file", "-p", `:${fileName}`], {
@@ -834,12 +833,12 @@ export async function getTestLogHandler(data: {
 		const logDir = getTestLogDir(data.project);
 		const logPath = path.join(logDir, `${data.sha}.log`);
 		if (!fs.existsSync(logPath)) {
-			return {log: null, tail: null};
+			return Promise.resolve({log: null, tail: null});
 		}
 		const content = fs.readFileSync(logPath, "utf-8");
 		const lines = content.trimEnd().split("\n");
 		const tail = lines.slice(-20).join("\n");
-		return {log: content, tail};
+		return Promise.resolve({log: content, tail});
 	});
 }
 
@@ -866,14 +865,14 @@ export async function snoozeChildHandler(data: SnoozeChildInput): Promise<Action
 export async function unsnoozeChildHandler(data: UnsnoozeChildInput): Promise<ActionResult> {
 	return tracedAction("unsnoozeChildFn", async () => {
 		unsnoozeItem(data.sha, data.project);
-		return {ok: true, message: "Unsnoozed"};
+		return Promise.resolve({ok: true, message: "Unsnoozed"});
 	});
 }
 
 export async function getSnoozedListHandler(): Promise<SnoozedChild[]> {
 	return traced("getSnoozedList", async () => {
 		clearExpiredSnoozes();
-		return getAllSnoozedForDisplay();
+		return Promise.resolve(getAllSnoozedForDisplay());
 	});
 }
 
@@ -1057,7 +1056,7 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 			project: data.project,
 			upstreamRef: p.upstreamRef,
 			upstreamRemote: p.upstreamRemote,
-			fetchBranch: p.upstreamBranch ?? "main",
+			fetchBranch: p.upstreamBranch,
 			env,
 		});
 		if (!result.ok) {
@@ -1098,9 +1097,9 @@ export async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJo
 			{reject: false},
 		);
 		const fields = logResult.stdout.split("\0");
-		const sha = fields[0]?.trim() || "";
-		const shortSha = fields[1]?.trim() || sha.slice(0, 7);
-		const subject = fields[2]?.trim() || "";
+		const sha = fields[0]?.trim() ?? "";
+		const shortSha = nonEmpty(fields[1]?.trim()) ?? sha.slice(0, 7);
+		const subject = fields[2]?.trim() ?? "";
 
 		const task = enqueueRebase({
 			project: p.name,
@@ -1111,7 +1110,7 @@ export async function rebaseChildHandler(data: RebaseLocalInput): Promise<TestJo
 			branch: data.branch,
 			upstreamRemote: p.upstreamRemote,
 			upstreamRef: p.upstreamRef,
-			upstreamBranch: p.upstreamBranch ?? "main",
+			upstreamBranch: p.upstreamBranch,
 			remote: p.remote,
 		});
 		return {id: task.id, status: task.status, message: task.message};
@@ -1141,8 +1140,7 @@ function isDashboardRepo(dir: string): boolean {
 // Discover the branches that "Rebase All" would enqueue, without touching the task
 // queue. Shared by the background enqueue and the count query.
 async function planRebaseAll(readChildren: ChildrenReader): Promise<EnqueueRebaseOptions[]> {
-	await ensureProjects();
-	const projects = cachedProjects!;
+	const projects = await ensureProjects();
 
 	const planned: EnqueueRebaseOptions[] = [];
 
@@ -1150,6 +1148,8 @@ async function planRebaseAll(readChildren: ChildrenReader): Promise<EnqueueRebas
 		if (p.dirty || !p.hasTestConfigured) continue;
 		if (isDashboardRepo(p.dir)) continue;
 
+		// Sequential on purpose: readChildren may spawn git/API work, so fan-out must stay bounded
+		// eslint-disable-next-line no-await-in-loop
 		const children = await readChildren(p);
 		for (const child of children) {
 			if (!child.branch) continue;
@@ -1164,7 +1164,7 @@ async function planRebaseAll(readChildren: ChildrenReader): Promise<EnqueueRebas
 				branch: child.branch,
 				upstreamRemote: p.upstreamRemote,
 				upstreamRef: p.upstreamRef,
-				upstreamBranch: p.upstreamBranch ?? "main",
+				upstreamBranch: p.upstreamBranch,
 				remote: p.remote,
 			});
 		}
@@ -1270,7 +1270,7 @@ export async function generateAdvancePlanForProjects(
 				projectDir: project.dir,
 				upstreamRef: project.upstreamRef,
 				upstreamRemote: project.upstreamRemote,
-				upstreamBranch: project.upstreamBranch ?? "main",
+				upstreamBranch: project.upstreamBranch,
 				remote: project.remote,
 				status: "skipped",
 				detail,
@@ -1281,6 +1281,8 @@ export async function generateAdvancePlanForProjects(
 			continue;
 		}
 
+		// Sequential on purpose: planning a project spawns git subprocesses, so fan-out must stay bounded
+		// eslint-disable-next-line no-await-in-loop
 		const plan = await planProject({project: project.name, dir: project.dir, upstreamRef: project.upstreamRef});
 		const status = plan.units.length === 0 && !plan.baseline.needsTest ? "noop" : "ready";
 
@@ -1289,7 +1291,7 @@ export async function generateAdvancePlanForProjects(
 			projectDir: project.dir,
 			upstreamRef: project.upstreamRef,
 			upstreamRemote: project.upstreamRemote,
-			upstreamBranch: project.upstreamBranch ?? "main",
+			upstreamBranch: project.upstreamBranch,
 			remote: project.remote,
 			status,
 			baselineNeedsTest: plan.baseline.needsTest,
@@ -1312,8 +1314,8 @@ export async function generateAdvancePlanForProjects(
 
 export async function generateAdvancePlanHandler(input: GenerateAdvancePlanInput = {}): Promise<AdvancePlanSummary> {
 	return traced("generateAdvancePlan", async () => {
-		await ensureProjects();
-		return generateAdvancePlanForProjects(cachedProjects!, input);
+		const projects = await ensureProjects();
+		return generateAdvancePlanForProjects(projects, input);
 	});
 }
 
@@ -1344,9 +1346,9 @@ export interface SystemStatus {
 export async function getSystemStatusHandler(): Promise<SystemStatus> {
 	return traced("getSystemStatus", async () => {
 		const rateLimit = getGitHubRateLimitState();
-		return {
+		return Promise.resolve({
 			rateLimitedUntil: rateLimit.until,
 			childrenRefreshedAt: Object.fromEntries(getCacheFreshnessByPrefix("children:")),
-		};
+		});
 	});
 }

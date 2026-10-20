@@ -20,6 +20,8 @@ export function getRouter() {
 
 	// Persist query cache to localStorage (client-side only)
 	if (typeof window !== "undefined") {
+		// @tanstack/query-async-storage-persister is not a dependency; the sync persister is the one backed by localStorage here
+		// eslint-disable-next-line typescript/no-deprecated
 		const persister = createSyncStoragePersister({storage: window.localStorage});
 		void persistQueryClient({queryClient, persister, buster: "v2-flat-children"});
 	}

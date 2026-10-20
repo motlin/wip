@@ -5,8 +5,8 @@ import {LabelList} from "../components/label-list";
 import {issueByNumberQueryOptions} from "../lib/queries";
 
 export const Route = createFileRoute("/issue/$project/$number")({
-	loader: ({context: {queryClient}, params}) =>
-		queryClient.ensureQueryData(issueByNumberQueryOptions(params.project, Number(params.number))),
+	loader: async ({context: {queryClient}, params}) =>
+		queryClient.query({...issueByNumberQueryOptions(params.project, Number(params.number)), staleTime: "static"}),
 	head: ({params}) => ({
 		meta: [{title: `Issue #${params.number}`}],
 	}),

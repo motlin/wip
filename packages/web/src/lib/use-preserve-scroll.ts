@@ -38,7 +38,11 @@ export function usePreserveScroll() {
 			restoreUntil.current = Date.now() + 2000;
 			window.scrollTo(0, y);
 
-			const timers = [50, 150, 300, 600, 1000].map((ms) => setTimeout(() => window.scrollTo(0, y), ms));
+			const timers = [50, 150, 300, 600, 1000].map((ms) =>
+				setTimeout(() => {
+					window.scrollTo(0, y);
+				}, ms),
+			);
 			timers.push(
 				setTimeout(() => {
 					restoreUntil.current = 0;

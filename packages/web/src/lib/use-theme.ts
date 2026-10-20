@@ -45,6 +45,7 @@ export function useTheme() {
 		const stored = getStoredTheme();
 		const resolved = stored ?? getSystemTheme();
 		applyTheme(resolved);
+		// oxlint-disable-next-line react/set-state-in-effect -- must sync after hydration so the first render matches the SSR HTML
 		setThemeState(resolved);
 	}, []);
 
@@ -58,7 +59,9 @@ export function useTheme() {
 			}
 		};
 		mq.addEventListener("change", handler);
-		return () => mq.removeEventListener("change", handler);
+		return () => {
+			mq.removeEventListener("change", handler);
+		};
 	}, []);
 
 	return {theme, setTheme, toggle};

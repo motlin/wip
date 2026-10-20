@@ -18,7 +18,7 @@ export async function suppressWatcherEvents<T>(project: string, work: () => Prom
 	try {
 		return await work();
 	} finally {
-		const count = activeCounts.get(project)!;
+		const count = activeCounts.get(project) ?? 1;
 		if (count <= 1) {
 			activeCounts.delete(project);
 			cooldownUntil.set(project, Date.now() + COOLDOWN_MS);

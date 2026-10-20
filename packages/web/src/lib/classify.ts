@@ -64,6 +64,5 @@ export function classifyPullRequest(child: GitChildResult, _project?: ProjectInf
 	if (child.reviewStatus === "changes_requested") return "changes_requested";
 	if (child.reviewStatus === "commented") return "review_comments";
 	if (child.checkStatus === "passed") return "checks_passed";
-	if (child.checkStatus === "unknown" || child.checkStatus === "none") return "checks_unknown";
-	return "checks_running";
+	return "checks_unknown";
 }

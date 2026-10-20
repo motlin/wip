@@ -27,7 +27,9 @@ function emit(): void {
 	for (const listener of listeners) {
 		try {
 			listener(snapshot);
-		} catch {}
+		} catch {
+			// A throwing listener must not prevent other listeners from being notified
+		}
 	}
 }
 

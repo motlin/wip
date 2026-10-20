@@ -11,7 +11,7 @@ export {LabelSchema as GitHubIssueLabelSchema};
 export const GitHubIssueSchema = z.object({
 	number: z.number().int().positive(),
 	title: z.string().min(1),
-	url: z.string().url(),
+	url: z.url(),
 	labels: z.array(LabelSchema),
 	repository: RepositorySchema,
 });
@@ -86,7 +86,7 @@ const SEARCH_ISSUES_QUERY = `
 const SearchIssueNodeSchema = z.object({
 	number: z.number().int().positive(),
 	title: z.string().min(1),
-	url: z.string().url(),
+	url: z.url(),
 	labels: z.object({
 		nodes: z.array(LabelSchema),
 	}),

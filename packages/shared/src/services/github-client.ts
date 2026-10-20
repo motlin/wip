@@ -1,7 +1,12 @@
 import {execa} from "execa";
+import {z} from "zod";
 
 import {markGitHubRateLimited} from "../lib/rate-limit.js";
 import {log} from "./logger-pino.js";
+
+const graphqlErrorsSchema = z.object({
+	errors: z.array(z.object({type: z.string().optional(), message: z.string().optional()})).optional(),
+});
 
 export interface GitHubClient {
 	graphql(query: string, variables?: Record<string, unknown>): Promise<unknown>;
@@ -71,9 +76,12 @@ function createProductionClient(): GitHubClient {
 				throw new Error(`GitHub API error (${response.status}): ${body}`);
 			}
 
-			const payload = (await response.json()) as {errors?: Array<{type?: string; message?: string}>};
+			const payload: unknown = await response.json();
 			// GraphQL rate limits arrive as HTTP 200 with an errors array.
-			const rateLimitedError = payload.errors?.find((e) => e.type === "RATE_LIMITED");
+			const parsedErrors = graphqlErrorsSchema.safeParse(payload);
+			const rateLimitedError = parsedErrors.success
+				? parsedErrors.data.errors?.find((e) => e.type === "RATE_LIMITED")
+				: undefined;
 			if (rateLimitedError) {
 				markGitHubRateLimited(rateLimitResetEpochMs(response));
 				throw new Error(`GitHub API rate limited (GraphQL RATE_LIMITED): ${rateLimitedError.message ?? ""}`);
@@ -107,9 +115,7 @@ export function createTestClient(): GitHubClient {
 let client: GitHubClient | undefined;
 
 export function getGitHubClient(): GitHubClient {
-	if (!client) {
-		client = createProductionClient();
-	}
+	client ??= createProductionClient();
 	return client;
 }
 

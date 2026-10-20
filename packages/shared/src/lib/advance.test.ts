@@ -1,4 +1,6 @@
-import {describe, it, expect} from "vitest";
+import {describe, it, expect, vi} from "vite-plus/test";
+
+import {sorted} from "../test/sorted.js";
 
 import {advanceProject, type AdvanceActions} from "./advance.js";
 import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";
@@ -34,13 +36,13 @@ const okRebase = {ok: true, conflict: false, log: ""};
 
 function actions(overrides: Partial<AdvanceActions> = {}): AdvanceActions {
 	return {
-		rebase: async () => okRebase,
-		test: async () => ({green: true, log: ""}),
-		resolveConflicts: async () => ({ok: true, log: ""}),
-		fix: async () => ({changed: true, log: ""}),
-		absorb: async () => ({ok: true, log: ""}),
-		cleanup: async () => {},
-		prepareBaseline: async () => "green",
+		rebase: vi.fn<AdvanceActions["rebase"]>().mockResolvedValue(okRebase),
+		test: vi.fn<AdvanceActions["test"]>().mockResolvedValue({green: true, log: ""}),
+		resolveConflicts: vi.fn<AdvanceActions["resolveConflicts"]>().mockResolvedValue({ok: true, log: ""}),
+		fix: vi.fn<AdvanceActions["fix"]>().mockResolvedValue({changed: true, log: ""}),
+		absorb: vi.fn<AdvanceActions["absorb"]>().mockResolvedValue({ok: true, log: ""}),
+		cleanup: vi.fn<AdvanceActions["cleanup"]>().mockResolvedValue(undefined),
+		prepareBaseline: vi.fn<AdvanceActions["prepareBaseline"]>().mockResolvedValue("green"),
 		...overrides,
 	};
 }
@@ -58,27 +60,22 @@ describe("advanceProject", () => {
 	});
 
 	it("fixes a failing branch and goes green after absorb", async () => {
-		let tested = 0;
-		const report = await advanceProject(
-			plan(unit("a")),
-			actions({
-				test: async () => {
-					tested += 1;
-					return tested === 1 ? {green: false, log: "FAIL Foo.bar"} : {green: true, log: ""};
-				},
-			}),
-			opts,
-		);
+		const test = vi
+			.fn<AdvanceActions["test"]>()
+			.mockResolvedValueOnce({green: false, log: "FAIL Foo.bar"})
+			.mockResolvedValue({green: true, log: ""});
+		const report = await advanceProject(plan(unit("a")), actions({test}), opts);
 		expect(report.children[0]?.status).toBe("green");
-		expect(tested).toBe(2); // failed once, fixed, passed
+		expect(test).toHaveBeenCalledTimes(2); // failed once, fixed, passed
 	});
 
 	it("marks a branch stuck when the same failure recurs after a fix", async () => {
 		const report = await advanceProject(
 			plan(unit("a")),
 			actions({
-				test: async () => ({green: false, log: "FAIL Foo.bar\nAssertionError: 1 != 2"}),
-				fix: async () => ({changed: true, log: ""}),
+				test: vi
+					.fn<AdvanceActions["test"]>()
+					.mockResolvedValue({green: false, log: "FAIL Foo.bar\nAssertionError: 1 != 2"}),
 			}),
 			opts,
 		);
@@ -89,26 +86,25 @@ describe("advanceProject", () => {
 	it("does not fix in dry-run, reporting the failing branch red", async () => {
 		const report = await advanceProject(
 			plan(unit("a")),
-			actions({test: async () => ({green: false, log: "FAIL x"})}),
+			actions({test: vi.fn<AdvanceActions["test"]>().mockResolvedValue({green: false, log: "FAIL x"})}),
 			{...opts, autonomy: "dry-run"},
 		);
 		expect(report.children[0]?.status).toBe("red");
 	});
 
 	it("resolves conflicts then continues to test", async () => {
-		let resolved = false;
+		const resolveConflicts = vi.fn<AdvanceActions["resolveConflicts"]>().mockResolvedValue({ok: true, log: ""});
 		const report = await advanceProject(
 			plan(unit("a")),
 			actions({
-				rebase: async () => ({ok: false, conflict: true, log: "CONFLICT in App.tsx"}),
-				resolveConflicts: async () => {
-					resolved = true;
-					return {ok: true, log: ""};
-				},
+				rebase: vi
+					.fn<AdvanceActions["rebase"]>()
+					.mockResolvedValue({ok: false, conflict: true, log: "CONFLICT in App.tsx"}),
+				resolveConflicts,
 			}),
 			opts,
 		);
-		expect(resolved).toBe(true);
+		expect(resolveConflicts).toHaveBeenCalledTimes(1);
 		expect(report.children[0]?.status).toBe("green");
 	});
 
@@ -116,8 +112,9 @@ describe("advanceProject", () => {
 		const report = await advanceProject(
 			plan(unit("a"), unit("b", ["a"])),
 			actions({
-				test: async (u) => (u.id === "a" ? {green: false, log: "FAIL a"} : {green: true, log: ""}),
-				fix: async () => ({changed: false, log: ""}), // a gets stuck (no change)
+				// a fails and its fix changes nothing, so a gets stuck and b (which depends on a) is never tested
+				test: vi.fn<AdvanceActions["test"]>().mockResolvedValue({green: false, log: "FAIL a"}),
+				fix: vi.fn<AdvanceActions["fix"]>().mockResolvedValue({changed: false, log: ""}),
 			}),
 			opts,
 		);
@@ -127,39 +124,29 @@ describe("advanceProject", () => {
 	});
 
 	it("cleans up every unit when the run finishes green", async () => {
-		const cleaned: string[] = [];
-		await advanceProject(
-			plan(unit("a"), unit("b")),
-			actions({
-				cleanup: async (u) => {
-					cleaned.push(u.id);
-				},
-			}),
-			opts,
-		);
-		expect(cleaned.sort()).toStrictEqual(["a", "b"]);
+		const cleanup = vi.fn<AdvanceActions["cleanup"]>().mockResolvedValue(undefined);
+		await advanceProject(plan(unit("a"), unit("b")), actions({cleanup}), opts);
+		expect(sorted(cleanup.mock.calls.map(([u]) => u.id))).toStrictEqual(["a", "b"]);
 	});
 
 	it("cleans up a unit even when it gets stuck", async () => {
-		const cleaned: string[] = [];
+		const cleanup = vi.fn<AdvanceActions["cleanup"]>().mockResolvedValue(undefined);
 		await advanceProject(
 			plan(unit("a")),
 			actions({
-				test: async () => ({green: false, log: "FAIL Foo.bar"}),
-				fix: async () => ({changed: false, log: ""}),
-				cleanup: async (u) => {
-					cleaned.push(u.id);
-				},
+				test: vi.fn<AdvanceActions["test"]>().mockResolvedValue({green: false, log: "FAIL Foo.bar"}),
+				fix: vi.fn<AdvanceActions["fix"]>().mockResolvedValue({changed: false, log: ""}),
+				cleanup,
 			}),
 			opts,
 		);
-		expect(cleaned).toStrictEqual(["a"]);
+		expect(cleanup.mock.calls.map(([u]) => u.id)).toStrictEqual(["a"]);
 	});
 
 	it("marks the project upstream_fixed when the baseline was repaired", async () => {
 		const report = await advanceProject(
 			planNeedsBaseline(unit("a"), unit("b")),
-			actions({prepareBaseline: async () => "fixed"}),
+			actions({prepareBaseline: vi.fn<AdvanceActions["prepareBaseline"]>().mockResolvedValue("fixed")}),
 			opts,
 		);
 		expect(report.status).toBe("upstream_fixed");
@@ -167,15 +154,12 @@ describe("advanceProject", () => {
 	});
 
 	it("skips every unit and reports red when the baseline is broken and unfixable", async () => {
-		let testedUnits = 0;
+		const test = vi.fn<AdvanceActions["test"]>().mockResolvedValue({green: true, log: ""});
 		const report = await advanceProject(
 			planNeedsBaseline(unit("a"), unit("b")),
 			actions({
-				prepareBaseline: async () => "red",
-				test: async () => {
-					testedUnits += 1;
-					return {green: true, log: ""};
-				},
+				prepareBaseline: vi.fn<AdvanceActions["prepareBaseline"]>().mockResolvedValue("red"),
+				test,
 			}),
 			opts,
 		);
@@ -186,21 +170,12 @@ describe("advanceProject", () => {
 			"skipped: upstream broken",
 			"skipped: upstream broken",
 		]);
-		expect(testedUnits).toBe(0);
+		expect(test).not.toHaveBeenCalled();
 	});
 
 	it("does not check the baseline when the plan says it is already green", async () => {
-		let prepared = 0;
-		await advanceProject(
-			plan(unit("a")),
-			actions({
-				prepareBaseline: async () => {
-					prepared += 1;
-					return "green";
-				},
-			}),
-			opts,
-		);
-		expect(prepared).toBe(0);
+		const prepareBaseline = vi.fn<AdvanceActions["prepareBaseline"]>().mockResolvedValue("green");
+		await advanceProject(plan(unit("a")), actions({prepareBaseline}), opts);
+		expect(prepareBaseline).not.toHaveBeenCalled();
 	});
 });

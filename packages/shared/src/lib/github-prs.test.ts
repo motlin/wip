@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach} from "vitest";
+import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
 
 import {createPullRequest, resetRepositoryIdCache} from "./github-prs.js";
 import {setGitHubClient, resetGitHubClient, createTestClient} from "../services/github-client.js";
@@ -35,9 +35,10 @@ describe("createPullRequest", () => {
 		pollyStop = stop;
 
 		let requestCount = 0;
+		let createVariables: unknown;
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			requestCount++;
-			const body = JSON.parse(req.body as string);
+			const body = JSON.parse(req.body!);
 
 			if (body.query.includes("repository(owner:")) {
 				res.status(200).json({
@@ -51,12 +52,7 @@ describe("createPullRequest", () => {
 			}
 
 			if (body.query.includes("createPullRequest")) {
-				expect(body.variables.repositoryId).toBe("R_kgDOTest123");
-				expect(body.variables.baseRefName).toBe("main");
-				expect(body.variables.headRefName).toBe("feature-branch");
-				expect(body.variables.title).toBe("Add new feature");
-				expect(body.variables.body).toBe("This PR adds a new feature.");
-				expect(body.variables.draft).toBe(true);
+				createVariables = body.variables;
 				res.status(200).json({
 					data: {
 						createPullRequest: {
@@ -78,6 +74,14 @@ describe("createPullRequest", () => {
 			prUrl: "https://github.com/motlin/test-repo/pull/42",
 		});
 		expect(requestCount).toBe(2);
+		expect(createVariables).toMatchObject({
+			repositoryId: "R_kgDOTest123",
+			baseRefName: "main",
+			headRefName: "feature-branch",
+			title: "Add new feature",
+			body: "This PR adds a new feature.",
+			draft: true,
+		});
 	});
 
 	it("caches the repository ID across calls", async () => {
@@ -86,7 +90,7 @@ describe("createPullRequest", () => {
 
 		let repoIdRequests = 0;
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string);
+			const body = JSON.parse(req.body!);
 
 			if (body.query.includes("repository(owner:")) {
 				repoIdRequests++;
@@ -121,7 +125,7 @@ describe("createPullRequest", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string);
+			const body = JSON.parse(req.body!);
 
 			if (body.query.includes("repository(owner:")) {
 				res.status(200).json({
@@ -156,7 +160,7 @@ describe("createPullRequest", () => {
 
 		const result = await createPullRequest(baseParams);
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.message).toMatch(/Failed to create PR/);
+		expect(!result.ok && result.message).toMatch(/Failed to create PR/);
 	});
 
 	it("creates a non-draft PR", async () => {
@@ -164,7 +168,7 @@ describe("createPullRequest", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string);
+			const body = JSON.parse(req.body!);
 
 			if (body.query.includes("repository(owner:")) {
 				res.status(200).json({
@@ -197,7 +201,7 @@ describe("createPullRequest", () => {
 		pollyStop = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string);
+			const body = JSON.parse(req.body!);
 
 			if (body.query.includes("repository(owner:")) {
 				res.status(200).json({

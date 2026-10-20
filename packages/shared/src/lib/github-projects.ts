@@ -13,7 +13,7 @@ export const GitHubProjectItemSchema = z.object({
 	title: z.string().min(1),
 	status: z.string(),
 	type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
-	url: z.string().url().optional(),
+	url: z.url().optional(),
 	number: z.number().int().positive().optional(),
 	repository: z.string().min(1).optional(),
 	labels: z.array(LabelSchema),
@@ -159,7 +159,7 @@ const ProjectItemNodeSchema = z.object({
 	content: z.object({
 		title: z.string().min(1),
 		number: z.number().int().positive().optional(),
-		url: z.string().url().optional(),
+		url: z.url().optional(),
 		repository: z.object({nameWithOwner: z.string().min(1)}).optional(),
 		labels: z.object({nodes: z.array(LabelSchema)}).optional(),
 	}),
@@ -194,6 +194,8 @@ export async function fetchProjectItems(projectNumber: number, owner?: string): 
 		let cursor: string | null = null;
 
 		do {
+			// Cursor pagination: each page needs the previous page's cursor.
+			// eslint-disable-next-line no-await-in-loop
 			const raw = await getGitHubClient().graphql(FETCH_PROJECT_ITEMS_QUERY, {
 				login,
 				projectNumber,
@@ -299,7 +301,7 @@ async function fetchAllProjectItemsFromApi(): Promise<GitHubProjectItem[]> {
 	const projects = await fetchProjects();
 	if (projects.length === 0) return [];
 
-	const allItems = await Promise.all(projects.map((p) => fetchProjectItems(p.number)));
+	const allItems = await Promise.all(projects.map(async (p) => fetchProjectItems(p.number)));
 
 	const result = allItems.flat();
 	cacheProjectItems(result);

@@ -45,6 +45,7 @@ export default class AdvancePlanCommand extends Command {
 		const projects = await discoverAllProjects(getProjectsDirs(flags["projects-dir"]));
 
 		const plans: ProjectPlan[] = [];
+		/* oxlint-disable no-await-in-loop -- projects are planned sequentially to bound git subprocess load */
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 			if (!args.project && !matchesFilters(p.name, include, exclude)) continue;
@@ -61,6 +62,7 @@ export default class AdvancePlanCommand extends Command {
 				concurrency: resolveAdvanceConcurrency(p.name, p.dir),
 			});
 		}
+		/* oxlint-enable no-await-in-loop */
 
 		for (const plan of plans) {
 			this.log(

@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, afterEach, vi} from "vitest";
+import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 import {Polly, type PollyConfig} from "@pollyjs/core";
 import {tmpdir} from "node:os";
 import {mkdtemp, rm} from "node:fs/promises";
@@ -49,18 +49,17 @@ function setupPolly(context: {name: string}): {
 	polly.server.any().on("beforePersist", (_req, recording) => {
 		const entry = recording as {request?: {headers?: Array<{name: string; value: string}>}};
 		if (entry.request?.headers) {
-			entry.request.headers = entry.request.headers.map((header: {name: string; value: string}) => {
+			for (const header of entry.request.headers) {
 				if (header.name.toLowerCase() === "authorization") {
-					return {...header, value: "bearer [REDACTED]"};
+					header.value = "bearer [REDACTED]";
 				}
-				return header;
-			});
+			}
 		}
 	});
 
 	return {
 		polly,
-		stop: () => polly.stop(),
+		stop: async () => polly.stop(),
 	};
 }
 
@@ -135,9 +134,7 @@ afterEach(async () => {
 	resetDb();
 
 	// Clean up temporary git repos
-	for (const dir of tmpDirs) {
-		await rm(dir, {recursive: true, force: true});
-	}
+	await Promise.all(tmpDirs.map(async (dir) => rm(dir, {recursive: true, force: true})));
 	tmpDirs = [];
 });
 
@@ -291,20 +288,17 @@ describe("getProjectChildren (underlying logic)", () => {
 		// The blockReason logic is in getProjectChildren handler:
 		//   blockReason = child.branch && p.dirty && child.sha === headSha ? "..." : undefined
 		// We test the condition directly since we can't call the server fn
-		const branch = "main";
-		const sha = headSha;
-		const dirty = true;
-
-		const blockReason =
+		const computeBlockReason = (branch: string, dirty: boolean, sha: string) =>
 			branch && dirty && sha === headSha
 				? `Working tree is dirty — commit changes in dirty-test before testing`
 				: undefined;
+		const blockReason = computeBlockReason("main", true, headSha);
 		expect(blockReason).toBeDefined();
 		expect(blockReason).toContain("dirty");
 
 		// Non-HEAD sha should NOT have blockReason even when dirty
 		const otherSha = "abc1234567890123456789012345678901234567";
-		const noBlockReason = branch && dirty && otherSha === headSha ? "blocked" : undefined;
+		const noBlockReason = computeBlockReason("main", true, otherSha);
 		expect(noBlockReason).toBeUndefined();
 	});
 
@@ -535,7 +529,7 @@ describe("getProjectItemsFn (underlying logic)", () => {
 		pollyStopLocal = stop;
 
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {query: string};
+			const body = JSON.parse(String(req.body)) as {query: string};
 
 			if (body.query.includes("projectsV2")) {
 				res.status(200).json({
@@ -712,9 +706,8 @@ describe("testChild (underlying logic via task-queue)", () => {
 		const job2 = enqueueTest("dedup-proj", dir, sha, "eeee123", "Second", "branch-a");
 
 		// If first job is still queued or running, should return the same job
-		if (job1.status === "queued" || job1.status === "running") {
-			expect(job2.id).toBe(job1.id);
-		}
+		const stillActive = job1.status === "queued" || job1.status === "running";
+		expect(!stillActive || job2.id === job1.id).toBe(true);
 	});
 });
 
@@ -732,16 +725,13 @@ describe("cancelTestFn (underlying logic via task-queue)", () => {
 		const job2 = enqueueTest("cancel-proj", dir, sha2, "fff2123", "Second job", undefined);
 
 		// The second job should be queued since the first is running
+		const expected = {ok: true, message: expect.stringContaining("cancelled") as unknown, status: "cancelled"};
+		let observed = expected;
 		if (job2.status === "queued") {
 			const result = cancelTest(job2.id);
-			expect(result.ok).toBe(true);
-			expect(result.message).toContain("cancelled");
-
-			const allJobs = getAllJobs();
-			const cancelled = allJobs.get(job2.id);
-			expect(cancelled).toBeDefined();
-			expect(cancelled!.status).toBe("cancelled");
+			observed = {ok: result.ok, message: result.message, status: getAllJobs().get(job2.id)?.status ?? "missing"};
 		}
+		expect(observed).toStrictEqual(expected);
 	});
 
 	it("cannot cancel an already-finished job", async () => {
@@ -760,7 +750,7 @@ describe("pushChildHandler (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
 
 				// git rev-parse HEAD
@@ -843,7 +833,7 @@ describe("pushChildHandler (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
 
 				if (command === "git" && args.includes("rev-parse")) {
@@ -933,9 +923,9 @@ describe("createBranch (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
-				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: `${command}`};
+				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: command};
 			},
 		}));
 
@@ -966,9 +956,9 @@ describe("deleteBranch (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
-				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: `${command}`};
+				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: command};
 			},
 		}));
 
@@ -995,9 +985,9 @@ describe("renameBranch (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
-				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: `${command}`};
+				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: command};
 			},
 		}));
 
@@ -1029,7 +1019,7 @@ describe("rebaseLocal (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
 
 				if (command === "git" && args.includes("rev-parse")) {
@@ -1042,7 +1032,7 @@ describe("rebaseLocal (underlying logic with mocked tracedExeca)", () => {
 					};
 				}
 
-				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: `${command}`};
+				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: command};
 			},
 		}));
 
@@ -1085,7 +1075,7 @@ describe("rebaseLocal (underlying logic with mocked tracedExeca)", () => {
 		const tracedExecaCalls: Array<{command: string; args: string[]}> = [];
 
 		vi.doMock("@wip/shared/services/traced-execa.js", () => ({
-			tracedExeca: async (command: string, args: string[], _options?: unknown) => {
+			tracedExeca: (command: string, args: string[], _options?: unknown) => {
 				tracedExecaCalls.push({command, args});
 
 				if (command === "git" && args.includes("rev-parse")) {
@@ -1109,7 +1099,7 @@ describe("rebaseLocal (underlying logic with mocked tracedExeca)", () => {
 					};
 				}
 
-				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: `${command}`};
+				return {stdout: "", stderr: "", exitCode: 0, failed: false, command: command};
 			},
 		}));
 
@@ -1399,16 +1389,11 @@ describe("createPrHandler", () => {
 
 		const {polly, stop} = setupPolly({name: "createPrHandler-current-branch"});
 		pollyStop = stop;
+		let createPrVariables: Record<string, unknown> | undefined;
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
-			const body = JSON.parse(req.body as string) as {query: string; variables?: Record<string, unknown>};
+			const body = JSON.parse(String(req.body)) as {query: string; variables?: Record<string, unknown>};
 			if (body.query.includes("createPullRequest")) {
-				expect(body.variables).toMatchObject({
-					baseRefName: "main",
-					headRefName: "feature/current-pr",
-					title: "Current feature work",
-					body: "",
-					draft: true,
-				});
+				createPrVariables = body.variables;
 				res.status(200).json({
 					data: {
 						createPullRequest: {
@@ -1429,6 +1414,13 @@ describe("createPrHandler", () => {
 			draft: true,
 		});
 
+		expect(createPrVariables).toMatchObject({
+			baseRefName: "main",
+			headRefName: "feature/current-pr",
+			title: "Current feature work",
+			body: "",
+			draft: true,
+		});
 		expect(result).toMatchObject({
 			ok: true,
 			message: "Created PR: https://example.com/alice/example-repo/pull/100",

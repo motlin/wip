@@ -1,4 +1,4 @@
-import {describe, expect, it} from "vitest";
+import {describe, expect, it} from "vite-plus/test";
 
 import {createWatchGate} from "./watch-gate";
 
@@ -9,7 +9,7 @@ function gateWithSnapshots(snapshots: Record<string, string[]>) {
 		const cursor = cursors.get(project) ?? 0;
 		const value = series[Math.min(cursor, series.length - 1)] ?? "";
 		cursors.set(project, cursor + 1);
-		return value;
+		return Promise.resolve(value);
 	});
 }
 

@@ -14,14 +14,14 @@ export const Route = createFileRoute("/_dashboard")({
 	loader: async ({context: {queryClient}}) => {
 		const projects =
 			queryClient.getQueryData<ProjectInfo[]>(["projects"]) ??
-			(await queryClient.ensureQueryData(projectsQueryOptions()));
+			(await queryClient.query({...projectsQueryOptions(), staleTime: "static"}));
 		for (const p of projects) {
-			void queryClient.prefetchQuery(projectChildrenQueryOptions(p.name));
-			void queryClient.prefetchQuery(projectTodosQueryOptions(p.name));
+			queryClient.query(projectChildrenQueryOptions(p.name)).catch(() => undefined);
+			queryClient.query(projectTodosQueryOptions(p.name)).catch(() => undefined);
 		}
-		void queryClient.prefetchQuery(issuesQueryOptions());
-		void queryClient.prefetchQuery(projectItemsQueryOptions());
-		void queryClient.prefetchQuery(snoozedQueryOptions());
+		queryClient.query(issuesQueryOptions()).catch(() => undefined);
+		queryClient.query(projectItemsQueryOptions()).catch(() => undefined);
+		queryClient.query(snoozedQueryOptions()).catch(() => undefined);
 	},
 	component: DashboardLayout,
 });

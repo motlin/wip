@@ -1,15 +1,15 @@
-import {describe, it, expect, vi, beforeEach, type Mock} from "vitest";
+import {describe, it, expect, vi, beforeEach, type Mock} from "vite-plus/test";
 
 vi.mock("@wip/shared", () => ({
-	fetchUpstreamRef: vi.fn(),
-	computeMergeStatus: vi.fn(),
-	getChildren: vi.fn(),
-	cacheMergeStatus: vi.fn(),
-	getCachedMergeStatuses: vi.fn(),
+	fetchUpstreamRef: vi.fn<(...args: unknown[]) => unknown>(),
+	computeMergeStatus: vi.fn<(...args: unknown[]) => unknown>(),
+	getChildren: vi.fn<(...args: unknown[]) => unknown>(),
+	cacheMergeStatus: vi.fn<(...args: unknown[]) => unknown>(),
+	getCachedMergeStatuses: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
-	getProjects: vi.fn(),
+	getProjects: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 import {fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from "@wip/shared";

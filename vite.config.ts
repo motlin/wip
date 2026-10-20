@@ -1,6 +1,21 @@
 import {defineConfig} from "vite-plus";
 
 export default defineConfig({
+	run: {
+		tasks: {
+			check: {
+				command: "vp check",
+			},
+			// The root vitest run covers fewer tests than the per-package runs, so run every package.
+			"test:run": {
+				command: "pnpm -r run test",
+				cache: {
+					input: [{auto: true}, "!node_modules/.vitest-cache/**"],
+					output: [],
+				},
+			},
+		},
+	},
 	fmt: {
 		useTabs: true,
 		tabWidth: 4,

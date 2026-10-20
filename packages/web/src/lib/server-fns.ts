@@ -50,8 +50,8 @@ export const getProjects = createServerFn({method: "GET"}).handler(async () =>
 
 export const getProjectChildren = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
-	.handler(
-		async ({data}): Promise<ProjectChildrenResult> => (await serverFns()).getProjectChildrenHandler(data.project),
+	.handler(async ({data}): Promise<ProjectChildrenResult> =>
+		(await serverFns()).getProjectChildrenHandler(data.project),
 	);
 
 export const getProjectTodos = createServerFn({method: "GET"})
@@ -60,8 +60,8 @@ export const getProjectTodos = createServerFn({method: "GET"})
 
 export const getIssues = createServerFn({method: "GET"}).handler(async () => (await serverFns()).getIssuesHandler());
 
-export const getProjectItemsFn = createServerFn({method: "GET"}).handler(
-	async (): Promise<GitHubProjectItem[]> => (await serverFns()).getProjectItemsHandler(),
+export const getProjectItemsFn = createServerFn({method: "GET"}).handler(async (): Promise<GitHubProjectItem[]> =>
+	(await serverFns()).getProjectItemsHandler(),
 );
 
 export const getIssueByNumber = createServerFn({method: "GET"})
@@ -70,8 +70,8 @@ export const getIssueByNumber = createServerFn({method: "GET"})
 
 export const getProjectItemByNumber = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
-	.handler(
-		async ({data}): Promise<ProjectItemResult | null> => (await serverFns()).getProjectItemByNumberHandler(data),
+	.handler(async ({data}): Promise<ProjectItemResult | null> =>
+		(await serverFns()).getProjectItemByNumberHandler(data),
 	);
 
 export const pushChild = createServerFn({method: "POST"})
@@ -93,16 +93,14 @@ export const testAllChildren = createServerFn({method: "POST"}).handler(async ()
 
 export const getCommitDiff = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
-	.handler(
-		async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> =>
-			(await serverFns()).getCommitDiffHandler(data),
+	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> =>
+		(await serverFns()).getCommitDiffHandler(data),
 	);
 
 export const getWorkingTreeDiff = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
-	.handler(
-		async ({data}): Promise<{files: FileDiff[]; stat: string}> =>
-			(await serverFns()).getWorkingTreeDiffHandler(data.project),
+	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string}> =>
+		(await serverFns()).getWorkingTreeDiffHandler(data.project),
 	);
 
 export const commitWorkingTree = createServerFn({method: "POST"})
@@ -111,9 +109,8 @@ export const commitWorkingTree = createServerFn({method: "POST"})
 
 export const getTestLog = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
-	.handler(
-		async ({data}): Promise<{log: string | null; tail: string | null}> =>
-			(await serverFns()).getTestLogHandler(data),
+	.handler(async ({data}): Promise<{log: string | null; tail: string | null}> =>
+		(await serverFns()).getTestLogHandler(data),
 	);
 
 export const snoozeChildFn = createServerFn({method: "POST"})
@@ -124,12 +121,12 @@ export const unsnoozeChildFn = createServerFn({method: "POST"})
 	.validator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).unsnoozeChildHandler(data));
 
-export const getSnoozedList = createServerFn({method: "GET"}).handler(
-	async (): Promise<SnoozedChild[]> => (await serverFns()).getSnoozedListHandler(),
+export const getSnoozedList = createServerFn({method: "GET"}).handler(async (): Promise<SnoozedChild[]> =>
+	(await serverFns()).getSnoozedListHandler(),
 );
 
-export const getTaskQueue = createServerFn({method: "GET"}).handler(
-	async (): Promise<TaskQueueJob[]> => (await serverFns()).getTaskQueueHandler(),
+export const getTaskQueue = createServerFn({method: "GET"}).handler(async (): Promise<TaskQueueJob[]> =>
+	(await serverFns()).getTaskQueueHandler(),
 );
 
 export const cancelTestFn = createServerFn({method: "POST"})
@@ -177,8 +174,8 @@ export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async 
 	return {started: true} as const;
 });
 
-export const runAllCounts = createServerFn({method: "GET"}).handler(
-	async (): Promise<RunAllCounts> => (await serverFns()).runAllCountsHandler(),
+export const runAllCounts = createServerFn({method: "GET"}).handler(async (): Promise<RunAllCounts> =>
+	(await serverFns()).runAllCountsHandler(),
 );
 
 export const generateAdvancePlan = createServerFn({method: "POST"})
@@ -190,17 +187,16 @@ export const generateAdvancePlan = createServerFn({method: "POST"})
 			})
 			.parse(input ?? {}),
 	)
-	.handler(
-		async ({data}): Promise<AdvancePlanSummary> =>
-			(await serverFns()).generateAdvancePlanHandler(data as GenerateAdvancePlanInput),
+	.handler(async ({data}): Promise<AdvancePlanSummary> =>
+		(await serverFns()).generateAdvancePlanHandler(data as GenerateAdvancePlanInput),
 	);
 
-export const refreshAll = createServerFn({method: "POST"}).handler(
-	async (): Promise<ActionResult> => (await serverFns()).refreshAllHandler(),
+export const refreshAll = createServerFn({method: "POST"}).handler(async (): Promise<ActionResult> =>
+	(await serverFns()).refreshAllHandler(),
 );
 
-export const getSystemStatus = createServerFn({method: "GET"}).handler(
-	async (): Promise<SystemStatus> => (await serverFns()).getSystemStatusHandler(),
+export const getSystemStatus = createServerFn({method: "GET"}).handler(async (): Promise<SystemStatus> =>
+	(await serverFns()).getSystemStatusHandler(),
 );
 
 export const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;

@@ -13,7 +13,7 @@
 - `just build` -- build all packages
 - `just check` -- format + lint + typecheck (with `--fix`)
 - `just test` -- build then run all tests
-- `just precommit` -- check + build + typecheck + test
+- `just verify` -- check + build + typecheck + test (`just precommit` is a deprecated alias)
 - `pnpm --filter @wip/shared build` -- build the shared package only
 - `pnpm -r run test` -- run tests across all packages
 

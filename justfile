@@ -1,20 +1,19 @@
-set unstable
-set allow-duplicate-recipes
-
 wip := "./packages/cli/bin/run.js"
 
-ci := env("CI", "")
-
-# List available recipes
+# `just --list --unsorted`
 [group('default')]
 [no-exit-message]
 default:
     @just --list --unsorted
 
+ci := env("CI", "")
+
+export PATH := justfile_directory() / "node_modules/.bin" + ":" + env("PATH")
+
 # Install dependencies
 [group('setup')]
 install:
-    vp install
+    pnpm install
     just ensure-sqlite-native
     vp fmt CLAUDE.md
 
@@ -36,13 +35,10 @@ ensure-sqlite-native:
         node -e 'const Database = require(process.argv[1]); new Database(":memory:").close();' "$package_dir"
     done
 
-# vp exec pnpm run build
+# Build all packages
 [group('build')]
 build: install
-    vp exec pnpm run build
-
-[group('build')]
-build-ci: build
+    vp run --cache build
 
 # vp exec pnpm --filter @wip/shared build
 [group('build')]
@@ -62,29 +58,34 @@ format: install
 
 # Run checks (format + lint + typecheck)
 [group('build')]
-check: build
-    vp check {{ if ci != "" { "" } else { "--fix" } }}
+check *args: build
+    vp run --cache check {{ if ci != "" { "" } else { "--fix" } }} {{ args }}
 
-# vp exec pnpm run typecheck
+# Type-check the project
 [group('build')]
 typecheck: build
-    vp exec pnpm run typecheck
+    vp run typecheck
 
-[group('build')]
-typecheck-ci: build
-
-# vp exec pnpm -r run test
+# Run tests
 [group('test')]
-test: build
-    vp exec pnpm -r run test
+test *args: build
+    vp run --cache test:run {{ args }}
 
-[group('test')]
-test-ci: test
-
-# Run fallow codebase intelligence (dead code, duplication, drift)
+# Apply safe Fallow fixes locally, then reject remaining dead code
 [group('build')]
 fallow: install
-    vp run {{ if ci != "" { "fallow:ci" } else { "fallow" } }}
+    {{ if ci == "" { "vp run fallow" } else { "true" } }}
+    vp run fallow:ci
+
+# vp run fallow:ci
+[group('build')]
+fallow-check: install
+    vp run fallow:ci
+
+# Run Storybook
+[group('web')]
+storybook *args: install
+    vp run --filter @wip/web storybook {{ args }}
 
 # Run pre-commit hooks on all files (same as CI's pre-commit job)
 [group('build')]
@@ -94,14 +95,19 @@ pre-commit: install
 # Run all pre-commit checks
 [arg("quick", long, value="true", help="Skip tests")]
 [group('build')]
-precommit quick="": check build fallow pre-commit
+verify quick="": check build fallow pre-commit
     {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
 
-# vp exec pnpm --filter @wip/web dev
+# Deprecated alias for `verify`
+[arg("quick", long, value="true", help="Skip tests")]
+[group('build')]
+precommit quick="": (verify quick)
+
+# Run dev server
 [group('web')]
-dev: build-shared
-    vp exec pnpm --filter @wip/web dev
+dev *args: build-shared
+    vp exec pnpm --filter @wip/web dev {{ args }}
 
 # Start web dashboard (production build)
 [group('web')]

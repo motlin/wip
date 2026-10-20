@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import {registerHooks} from "node:module";
+import process from "node:process";
 
 // The workspace is ESM TypeScript with `.js` import specifiers (NodeNext style), and
 // `@wip/shared` is published as raw `src`. Node strips types but does not remap a
@@ -18,6 +19,8 @@ registerHooks({
 		return nextResolve(specifier, context);
 	},
 });
+
+process.title = "wip";
 
 const {execute} = await import("@oclif/core");
 

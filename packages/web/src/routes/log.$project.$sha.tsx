@@ -3,6 +3,7 @@ import {useSuspenseQuery} from "@tanstack/react-query";
 import {ArrowDown} from "lucide-react";
 import {LineNumberedAnsiText} from "../components/line-numbered-ansi-text";
 import {testLogQueryOptions} from "../lib/queries";
+import {noLogMessage} from "../lib/no-log-message";
 import {useTestLog} from "../lib/server-events-context";
 import {useAutoTail} from "../lib/use-auto-tail";
 
@@ -39,7 +40,7 @@ function LogViewer() {
 						className="p-4 font-mono text-xs leading-relaxed text-text-100"
 					/>
 				) : (
-					<p className="p-4 text-sm text-text-500">No log available.</p>
+					<p className="p-4 text-sm text-text-500">{noLogMessage()}</p>
 				)}
 			</div>
 			{liveLog && !isFollowing && (

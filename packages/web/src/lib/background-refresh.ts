@@ -103,10 +103,10 @@ export function ensureBackgroundRefresh(): void {
 	started = true;
 
 	void (async () => {
-		// Late-bound: the shared queue lives in client-safe code, createSystemProbe needs node:os.
-		const {createSystemProbe} = await import("@wip/shared");
-		const {workQueue} = await import("./shared-work-queue.js");
-		workQueue.setProbe(createSystemProbe());
+		// Normally installed at server boot (server.ts); repeated here so the
+		// bootstrap never runs ungated even if that hook was skipped.
+		const {installResourceProbe} = await import("./resource-probe.js");
+		await installResourceProbe();
 
 		const {startGitWatcher} = await import("./git-watcher.js");
 		// The gate drops fires whose ref state matches the last refresh — our own

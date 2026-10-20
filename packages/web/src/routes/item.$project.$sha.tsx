@@ -1,5 +1,6 @@
 import {useEffect, useRef} from "react";
 import {createFileRoute, Link} from "@tanstack/react-router";
+import {z} from "zod";
 import {useSuspenseQuery, useQuery} from "@tanstack/react-query";
 import {
 	ArrowLeft,
@@ -35,8 +36,14 @@ import {CATEGORIES, categoryTextClass} from "../lib/category-actions";
 import {branchRemoteUrl} from "../lib/branch-rename";
 import {useTestJob, useTestLog} from "../lib/server-events-context";
 import {useAutoTail} from "../lib/use-auto-tail";
+import {itemBackTarget} from "../lib/item-back-link";
+
+const itemSearchSchema = z.object({
+	from: z.string().optional(),
+});
 
 export const Route = createFileRoute("/item/$project/$sha")({
+	validateSearch: itemSearchSchema,
 	loader: async ({context: {queryClient}, params}) =>
 		Promise.all([
 			queryClient.query({...projectChildrenQueryOptions(params.project), staleTime: "static"}),
@@ -81,6 +88,8 @@ function ItemDetailError({error}: {error: unknown}) {
 
 function ItemDetail() {
 	const {project, sha} = Route.useParams();
+	const {from} = Route.useSearch();
+	const backTo = itemBackTarget(from);
 	const {data: children} = useSuspenseQuery(projectChildrenQueryOptions(project));
 	const child = children.find((c) => c.sha === sha) ?? null;
 	const {
@@ -141,7 +150,7 @@ function ItemDetail() {
 			return (
 				<div className="p-6">
 					<Link
-						to="/queue"
+						to={backTo}
 						className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
 					>
 						<ArrowLeft className="h-4 w-4" />
@@ -164,7 +173,7 @@ function ItemDetail() {
 		return (
 			<div className="p-6">
 				<Link
-					to="/queue"
+					to={backTo}
 					className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
 				>
 					<ArrowLeft className="h-4 w-4" />
@@ -177,7 +186,7 @@ function ItemDetail() {
 						{project} / {sha.slice(0, 7)} could not be located. The branch may have been rebased or deleted.
 					</p>
 					<Link
-						to="/queue"
+						to={backTo}
 						className="mt-2 inline-flex items-center gap-1 rounded bg-bg-200 px-3 py-1.5 text-xs font-medium text-text-200 transition-colors hover:bg-bg-300"
 					>
 						Back to Queue
@@ -200,7 +209,7 @@ function ItemDetail() {
 	return (
 		<div className="p-6">
 			<Link
-				to="/queue"
+				to={backTo}
 				className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
 			>
 				<ArrowLeft className="h-4 w-4" />

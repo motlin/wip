@@ -107,6 +107,7 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 		<Link
 			to="/item/$project/$sha"
 			params={{project: item.project, sha: item.sha}}
+			search={{from: "/snoozed"}}
 			className="block rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-colors hover:border-border-300"
 		>
 			<div className="flex items-start justify-between gap-2">

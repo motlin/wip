@@ -31,6 +31,24 @@ function patchChildItem(queryClient: QueryClient, project: string, sha: string, 
 	});
 }
 
+/**
+ * Server pushes carry no client-side overlays: `pushing` is never set server-side,
+ * and testStatus "running" never comes from the server. Carry a running overlay
+ * from the cached item across a children replace, so a debounced children event
+ * mid-push or mid-test does not clear it until the next task event.
+ */
+function keepClientOverlays(old: GitChildResult[] | undefined, incoming: GitChildResult[]): GitChildResult[] {
+	if (!old) return incoming;
+	const previous = new Map(old.map((c) => [c.sha, c]));
+	return incoming.map((child) => {
+		const prior = previous.get(child.sha);
+		if (!prior) return child;
+		const pushing = prior.pushing ? true : child.pushing;
+		const testStatus = prior.testStatus === "running" ? "running" : child.testStatus;
+		return {...child, pushing, testStatus};
+	});
+}
+
 function applyTaskSideEffects(queryClient: QueryClient, data: TaskEvent) {
 	if (data.taskType === "test") {
 		const testStatus = TASK_TO_TEST_STATUS[data.status] ?? "unknown";
@@ -69,7 +87,9 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 	const childrenBatcher = createQueryUpdateBatcher<GitChildResult[]>((updates) => {
 		for (const [project, projectChildren] of updates) {
 			const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
-			queryClient.setQueryData(["children", project], filterSnoozedChildren(projectChildren, project, snoozed));
+			const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
+			const merged = keepClientOverlays(old, projectChildren);
+			queryClient.setQueryData(["children", project], filterSnoozedChildren(merged, project, snoozed));
 		}
 	}, QUERY_FLUSH_DELAY_MS);
 	const todosBatcher = createQueryUpdateBatcher<TodoItem[]>((updates) => {

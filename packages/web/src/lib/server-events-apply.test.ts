@@ -165,6 +165,36 @@ describe("batched cache writes", () => {
 		expect(queryClient.getQueryData<GitChildResult[]>(["children", "wip"])).toHaveLength(0);
 	});
 
+	it("keeps a client-side pushing overlay when a children event arrives mid-push", () => {
+		queryClient.setQueryData(["children", "wip"], [makeChild({pushing: true})]);
+
+		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
+		vi.advanceTimersByTime(300);
+
+		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
+		expect(child?.pushing).toBe(true);
+	});
+
+	it("keeps a running testStatus overlay when a children event arrives mid-test", () => {
+		queryClient.setQueryData(["children", "wip"], [makeChild({testStatus: "running"})]);
+
+		applier.apply({channel: "children", data: {project: "wip", children: [makeChild({testStatus: "unknown"})]}});
+		vi.advanceTimersByTime(300);
+
+		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
+		expect(child?.testStatus).toBe("running");
+	});
+
+	it("takes the server testStatus when no test is running locally", () => {
+		queryClient.setQueryData(["children", "wip"], [makeChild({testStatus: "unknown"})]);
+
+		applier.apply({channel: "children", data: {project: "wip", children: [makeChild({testStatus: "passed"})]}});
+		vi.advanceTimersByTime(300);
+
+		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
+		expect(child?.testStatus).toBe("passed");
+	});
+
 	it("flushes todos after the batch delay", () => {
 		applier.apply({
 			channel: "todos",

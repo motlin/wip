@@ -47,6 +47,7 @@ import type {ProjectChildrenResult} from "../lib/server-fns";
 import {CATEGORIES} from "../lib/category-actions";
 import {GitHubIcon} from "./github-icon";
 import {pushToast, toastLogs} from "../lib/toast-store";
+import {runPendingAction} from "../lib/pending-action.js";
 
 const SNOOZE_PRESETS = [
 	{label: "1 hour", hours: 1},
@@ -532,42 +533,42 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 
 	const handleMergePr = async () => {
 		if (!pr) return;
-		setMerging(true);
 		setError(null);
-		const result = await mergePr({
-			data: {
-				project: item.project,
-				prNumber: pr.prNumber,
-			},
+		await runPendingAction("Merge PR", setMerging, async () => {
+			const result = await mergePr({
+				data: {
+					project: item.project,
+					prNumber: pr.prNumber,
+				},
+			});
+			showActionToasts("Merge PR", result);
+			if (result.ok) {
+				cache.removeItem(item.sha);
+			} else {
+				setError(result.message);
+			}
 		});
-		setMerging(false);
-		showActionToasts("Merge PR", result);
-		if (result.ok) {
-			cache.removeItem(item.sha);
-		} else {
-			setError(result.message);
-		}
 	};
 
 	const handleCreateBranch = async () => {
-		setCreatingBranch(true);
 		setError(null);
 		const branchName = item.suggestedBranch ?? item.branch;
-		const result = await createBranch({
-			data: {
-				project: item.project,
-				sha: item.sha,
-				branchName,
-			},
+		await runPendingAction("Create branch", setCreatingBranch, async () => {
+			const result = await createBranch({
+				data: {
+					project: item.project,
+					sha: item.sha,
+					branchName,
+				},
+			});
+			showActionToasts("Create branch", result);
+			if (result.ok) {
+				const fresh = await getProjectChildren({data: {project: item.project}});
+				queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
+			} else {
+				setError(result.message);
+			}
 		});
-		setCreatingBranch(false);
-		showActionToasts("Create branch", result);
-		if (result.ok) {
-			const fresh = await getProjectChildren({data: {project: item.project}});
-			queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
-		} else {
-			setError(result.message);
-		}
 	};
 
 	const handleDeleteBranchClick = async () => {

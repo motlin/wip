@@ -8,6 +8,7 @@ import {refreshAll} from "../../lib/server-fns";
 import {projectsQueryOptions} from "../../lib/queries";
 import {useWorkItems} from "../../lib/use-work-items";
 import {classifyGitChild, classifyIssue, classifyTodo} from "../../lib/classify";
+import {runPendingAction} from "../../lib/pending-action.js";
 import {CATEGORY_PRIORITY} from "../../lib/category-actions";
 import type {Category} from "@wip/shared";
 
@@ -96,17 +97,17 @@ function Kanban() {
 	}, [workItems, projects]);
 
 	const handleRefreshAll = async () => {
-		setRefreshingAll(true);
-		await refreshAll();
-		await Promise.all([
-			queryClient.invalidateQueries({queryKey: ["children"]}),
-			queryClient.invalidateQueries({queryKey: ["todos"]}),
-			queryClient.invalidateQueries({queryKey: ["issues"]}),
-			queryClient.invalidateQueries({queryKey: ["projectItems"]}),
-			queryClient.invalidateQueries({queryKey: ["projects"]}),
-			queryClient.invalidateQueries({queryKey: ["snoozed"]}),
-		]);
-		setRefreshingAll(false);
+		await runPendingAction("Refresh all", setRefreshingAll, async () => {
+			await refreshAll();
+			await Promise.all([
+				queryClient.invalidateQueries({queryKey: ["children"]}),
+				queryClient.invalidateQueries({queryKey: ["todos"]}),
+				queryClient.invalidateQueries({queryKey: ["issues"]}),
+				queryClient.invalidateQueries({queryKey: ["projectItems"]}),
+				queryClient.invalidateQueries({queryKey: ["projects"]}),
+				queryClient.invalidateQueries({queryKey: ["snoozed"]}),
+			]);
+		});
 	};
 
 	return (

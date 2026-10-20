@@ -2,6 +2,7 @@ import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery, useQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns";
+import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
 import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context";
 import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel";
@@ -125,9 +126,11 @@ function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: Map<string, TaskEvent>)
 function TaskCard({job}: {job: TaskQueueJob}) {
 	const handlePush = () => {
 		if (!job.branch) return;
-		void pushChild({
-			data: {project: job.project, sha: job.sha, branch: job.branch},
-		});
+		void runPendingAction("Push", undefined, async () =>
+			pushChild({
+				data: {project: job.project, sha: job.sha, branch: job.branch},
+			}),
+		);
 	};
 
 	const duration = job.startedAt && job.finishedAt ? formatDuration(job.finishedAt - job.startedAt) : undefined;
@@ -202,7 +205,9 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 						<button
 							type="button"
 							onClick={() => {
-								void cancelTestFn({data: {id: job.id}});
+								void runPendingAction("Cancel test", undefined, async () =>
+									cancelTestFn({data: {id: job.id}}),
+								);
 							}}
 							className="rounded-md border border-border-300/30 p-1 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-300"
 							title="Cancel test"
@@ -276,9 +281,7 @@ function Tasks() {
 	};
 
 	const handleTestAll = async () => {
-		setTestingAll(true);
-		await testAllChildren();
-		setTestingAll(false);
+		await runPendingAction("Test all", setTestingAll, async () => testAllChildren());
 	};
 
 	return (

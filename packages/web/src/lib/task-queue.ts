@@ -151,7 +151,7 @@ async function runTask(task: Task, signal: AbortSignal): Promise<void> {
 		case "claude":
 			return runClaudeTask(task, signal);
 		case "rebase":
-			return runRebaseTask(task);
+			return runRebaseTask(task, signal);
 		case "push":
 			return runPushTask(task, signal);
 		default: {
@@ -273,7 +273,7 @@ async function runClaudeTask(task: Task, signal: AbortSignal): Promise<void> {
 	emit(task);
 }
 
-async function runRebaseTask(task: Task): Promise<void> {
+async function runRebaseTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.branch) throw new Error("Rebase task requires a branch");
 	if (!task.upstreamRef) throw new Error("Rebase task requires upstreamRef");
 
@@ -302,11 +302,16 @@ async function runRebaseTask(task: Task): Promise<void> {
 		rebaseMerges: true,
 		restoreBranch: task.upstreamBranch,
 		env,
+		signal,
 		onOutput: (chunk) => {
 			emitLog(task, chunk + "\n");
 			captured.push(chunk);
 		},
 	});
+
+	// A cancelled task already reported its final status; the git work that
+	// was killed or skipped must not overwrite it or invalidate caches.
+	if (signal.aborted || task.status === "cancelled") return;
 
 	if (!result.ok) {
 		if (result.stage === "checkout") {

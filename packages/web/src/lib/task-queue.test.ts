@@ -1,6 +1,22 @@
-import {describe, it, expect} from "vite-plus/test";
-import {pruneTerminalTasks, statusToTransition} from "./task-queue";
+import {describe, it, expect, vi} from "vite-plus/test";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {cancelTest, enqueueRebase, pruneTerminalTasks, statusToTransition} from "./task-queue";
 import type {Task, TaskStatus} from "./task-queue";
+
+const shared = vi.hoisted(() => ({
+	rebaseBranchOntoUpstream: vi.fn<(dir: string, options: {signal: AbortSignal}) => Promise<unknown>>(),
+}));
+
+vi.mock("@wip/shared", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@wip/shared")>()),
+	rebaseBranchOntoUpstream: shared.rebaseBranchOntoUpstream,
+	getMiseEnv: async () => Promise.resolve({}),
+	getCacheDir: () => join(tmpdir(), "wip-task-queue-test-cache"),
+	invalidatePrCache: () => {},
+	invalidateChildrenCache: () => {},
+	invalidateMergeStatus: () => {},
+}));
 
 function makeTask(id: string, status: TaskStatus, finishedAt?: number): Task {
 	return {
@@ -65,6 +81,50 @@ describe("statusToTransition", () => {
 
 	it("defaults to test task type when not specified", () => {
 		expect(statusToTransition("passed")).toBe("test_pass");
+	});
+});
+
+describe("cancelling a running rebase", () => {
+	it("passes an abort signal to the rebase and keeps the task cancelled when the rebase returns", async () => {
+		let releaseRebase: (() => void) | undefined;
+		shared.rebaseBranchOntoUpstream.mockImplementation(
+			async () =>
+				new Promise((resolve) => {
+					releaseRebase = () => {
+						resolve({ok: true, message: "Rebased feature onto upstream/main"});
+					};
+				}),
+		);
+
+		const task = enqueueRebase({
+			project: "wip",
+			projectDir: "/tmp/wip",
+			sha: "a".repeat(40),
+			shortSha: "aaaaaaa",
+			subject: "Rebase feature",
+			branch: "feature",
+			upstreamRemote: "upstream",
+			upstreamRef: "upstream/main",
+			upstreamBranch: "main",
+			remote: "owner/wip",
+		});
+
+		await vi.waitFor(() => {
+			expect(shared.rebaseBranchOntoUpstream).toHaveBeenCalledTimes(1);
+		});
+		const signal = shared.rebaseBranchOntoUpstream.mock.calls[0]?.[1].signal;
+		expect(signal).toBeInstanceOf(AbortSignal);
+
+		cancelTest(task.id);
+		expect(signal?.aborted).toBe(true);
+
+		releaseRebase?.();
+		await new Promise((resolve) => {
+			setTimeout(resolve, 20);
+		});
+
+		expect(task.status).toBe("cancelled");
+		expect(task.message).toBe("aaaaaaa cancelled");
 	});
 });
 

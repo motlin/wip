@@ -49,6 +49,30 @@ afterEach(() => {
 });
 
 describe("rebaseBranchOntoUpstream", {timeout: 30_000}, () => {
+	it("runs no git step and reports cancelled when the signal is already aborted", async () => {
+		({dir, remoteDir} = createRepoWithBareRemote());
+		commitFile(dir, "file.txt", "hello", "initial");
+		git(dir, "checkout", "-b", "feature");
+		commitFile(dir, "feature.txt", "feature", "feature commit");
+		git(dir, "checkout", "main");
+		const featureBefore = git(dir, "rev-parse", "feature");
+
+		const controller = new AbortController();
+		controller.abort();
+		const result = await rebaseBranchOntoUpstream(dir, {
+			branch: "feature",
+			project: "workflows-cancelled",
+			upstreamRef: "main",
+			rebaseMerges: true,
+			restoreBranch: "main",
+			signal: controller.signal,
+		});
+
+		expect(result).toStrictEqual({ok: false, stage: "cancelled", stderr: ""});
+		expect(git(dir, "rev-parse", "feature")).toBe(featureBefore);
+		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+	});
+
 	it("rebases a branch behind a moved main and pushes to the configured remote", async () => {
 		({dir, remoteDir} = createRepoWithBareRemote());
 		commitFile(dir, "file.txt", "hello", "initial");

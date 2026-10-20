@@ -300,7 +300,6 @@ async function runRebaseTask(task: Task, signal: AbortSignal): Promise<void> {
 		upstreamRef: task.upstreamRef,
 		upstreamRemote: task.upstreamRemote,
 		rebaseMerges: true,
-		restoreBranch: task.upstreamBranch,
 		env,
 		signal,
 		onOutput: (chunk) => {

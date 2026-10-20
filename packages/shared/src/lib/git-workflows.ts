@@ -164,8 +164,12 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 		return result;
 	};
 
+	// Target for restore(): an explicit restoreBranch wins, otherwise the ref that
+	// was checked out before this rebase started (set below, before checkout).
+	let restoreTarget: string | undefined = restoreBranch;
+
 	const restore = async (): Promise<void> => {
-		if (restoreBranch) await run(["checkout", restoreBranch]);
+		if (restoreTarget) await run(["checkout", restoreTarget]);
 	};
 
 	if (signal?.aborted) return cancelledRebase();
@@ -174,6 +178,18 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 		await run(fetchBranch ? ["fetch", upstreamRemote, fetchBranch] : ["fetch", upstreamRemote], signal);
 	}
 	if (signal?.aborted) return cancelledRebase();
+
+	if (!restoreTarget) {
+		const previousBranch = (
+			await tracedExeca("git", ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"], {reject: false, env})
+		).stdout.trim();
+		// A detached HEAD reports "HEAD"; restore to its commit instead.
+		restoreTarget =
+			previousBranch && previousBranch !== "HEAD"
+				? previousBranch
+				: (await tracedExeca("git", ["-C", dir, "rev-parse", "HEAD"], {reject: false, env})).stdout.trim() ||
+					undefined;
+	}
 
 	const checkout = await run(["checkout", branch], signal);
 	if (checkout.exitCode !== 0) {

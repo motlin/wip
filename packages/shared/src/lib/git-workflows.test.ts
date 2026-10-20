@@ -113,6 +113,30 @@ describe("rebaseBranchOntoUpstream", {timeout: 30_000}, () => {
 		expect(chunks.length).toBeGreaterThan(0);
 	});
 
+	it("restores the previously checked-out branch when no restoreBranch is given", async () => {
+		({dir, remoteDir} = createRepoWithBareRemote());
+		commitFile(dir, "file.txt", "hello", "initial");
+		git(dir, "push", "origin", "main");
+
+		git(dir, "checkout", "-b", "feature");
+		commitFile(dir, "feature.txt", "feature", "feature commit");
+		git(dir, "push", "origin", "feature");
+
+		git(dir, "checkout", "main");
+		commitFile(dir, "main-update.txt", "updated", "main moves forward");
+		git(dir, "checkout", "-b", "feature-x");
+
+		const result = await rebaseBranchOntoUpstream(dir, {
+			branch: "feature",
+			project: "workflows-previous-branch",
+			upstreamRef: "main",
+			rebaseMerges: true,
+		});
+
+		expect(result).toStrictEqual({ok: true, message: "Rebased feature onto main"});
+		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("feature-x");
+	});
+
 	it("aborts on conflict, caches merge status, and leaves the branch intact", async () => {
 		({dir, remoteDir} = createRepoWithBareRemote());
 		commitFile(dir, "file.txt", "original", "initial");

@@ -1229,6 +1229,7 @@ export interface AdvancePlanProjectSummary {
 	status: "ready" | "skipped" | "noop";
 	detail?: string;
 	baselineNeedsTest: boolean;
+	baselineSha?: string;
 	concurrency: number;
 	branches: AdvancePlanBranchSummary[];
 }
@@ -1295,6 +1296,7 @@ export async function generateAdvancePlanForProjects(
 			remote: project.remote,
 			status,
 			baselineNeedsTest: plan.baseline.needsTest,
+			baselineSha: plan.baseline.sha,
 			concurrency: resolveAdvanceConcurrency(project.name, project.dir),
 			branches: plan.units.map((unit) => ({
 				project: unit.project,

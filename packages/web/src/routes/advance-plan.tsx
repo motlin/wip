@@ -108,6 +108,23 @@ function AdvancePlanPage() {
 		setRefreshing(false);
 	};
 
+	const runBaselineTest = async (project: AdvancePlanProjectSummary) => {
+		const key = `${project.project}:baseline`;
+		setPendingAction(key);
+		try {
+			if (!project.baselineSha) throw new Error("Baseline commit is unknown; refresh the plan");
+			const result = await testChild({data: {project: project.project, sha: project.baselineSha}});
+			setMessages((previous) => ({...previous, [key]: {level: "success", text: taskMessage(result)}}));
+		} catch (error) {
+			setMessages((previous) => ({
+				...previous,
+				[key]: {level: "error", text: error instanceof Error ? error.message : "Action failed"},
+			}));
+		} finally {
+			setPendingAction(null);
+		}
+	};
+
 	const runBranchAction = async (branch: AdvancePlanBranchSummary, action: BranchAction) => {
 		const key = actionKey(branch, action);
 		setPendingAction(key);
@@ -209,6 +226,7 @@ function AdvancePlanPage() {
 					messages={messages}
 					pendingAction={pendingAction}
 					runBranchAction={runBranchAction}
+					runBaselineTest={runBaselineTest}
 				/>
 				<ProjectGroup title="Skipped" projects={skippedProjects} emptyText="No skipped projects." />
 				<ProjectGroup title="No Changes" projects={noopProjects} emptyText="No no-op projects." />
@@ -237,6 +255,7 @@ function ProjectGroup({
 	messages,
 	pendingAction,
 	runBranchAction,
+	runBaselineTest,
 }: {
 	title: string;
 	projects: AdvancePlanProjectSummary[];
@@ -245,6 +264,7 @@ function ProjectGroup({
 	messages?: Record<string, ActionMessage>;
 	pendingAction?: string | null;
 	runBranchAction?: (branch: AdvancePlanBranchSummary, action: BranchAction) => Promise<void>;
+	runBaselineTest?: (project: AdvancePlanProjectSummary) => Promise<void>;
 }) {
 	return (
 		<section>
@@ -266,6 +286,7 @@ function ProjectGroup({
 							messages={messages}
 							pendingAction={pendingAction}
 							runBranchAction={runBranchAction}
+							runBaselineTest={runBaselineTest}
 						/>
 					))}
 				</div>
@@ -274,19 +295,24 @@ function ProjectGroup({
 	);
 }
 
-function ProjectSection({
+export function ProjectSection({
 	project,
 	getTask,
 	messages,
 	pendingAction,
 	runBranchAction,
+	runBaselineTest,
 }: {
 	project: AdvancePlanProjectSummary;
 	getTask?: (sha: string, project: string) => TaskEvent | undefined;
 	messages?: Record<string, ActionMessage>;
 	pendingAction?: string | null;
 	runBranchAction?: (branch: AdvancePlanBranchSummary, action: BranchAction) => Promise<void>;
+	runBaselineTest?: (project: AdvancePlanProjectSummary) => Promise<void>;
 }) {
+	const baselineKey = `${project.project}:baseline`;
+	const baselinePending = pendingAction === baselineKey;
+	const baselineMessage = messages?.[baselineKey];
 	return (
 		<div className="rounded-lg border border-border-300/40 bg-bg-000">
 			<div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-300/30 px-3 py-2.5">
@@ -306,10 +332,36 @@ function ProjectSection({
 						<span>{project.baselineNeedsTest ? "Baseline needs test" : "Baseline cached green"}</span>
 					</div>
 				</div>
-				<span className="text-xs text-text-500">
-					{project.branches.length} branch{project.branches.length === 1 ? "" : "es"}
-				</span>
+				<div className="flex flex-col items-end gap-1">
+					<span className="text-xs text-text-500">
+						{project.branches.length} branch{project.branches.length === 1 ? "" : "es"}
+					</span>
+					{project.baselineNeedsTest && runBaselineTest && (
+						<button
+							type="button"
+							onClick={() => void runBaselineTest(project)}
+							disabled={baselinePending}
+							className="inline-flex items-center gap-1 rounded-md border border-border-300/50 px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100 disabled:opacity-60"
+						>
+							{baselinePending ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							) : (
+								<FlaskConical className="h-3.5 w-3.5" />
+							)}
+							Run Baseline Tests
+						</button>
+					)}
+				</div>
 			</div>
+			{baselineMessage && (
+				<p
+					className={`px-3 pt-2 text-xs ${
+						baselineMessage.level === "success" ? "text-status-green" : "text-status-red"
+					}`}
+				>
+					{baselineMessage.text}
+				</p>
+			)}
 			{project.branches.length > 0 ? (
 				<div className="divide-y divide-border-300/30">
 					{project.branches.map((branch) => (
@@ -325,7 +377,11 @@ function ProjectSection({
 				</div>
 			) : (
 				<div className="px-3 py-2 text-sm text-text-500">
-					{project.status === "noop" ? "No branch work remains." : "No branch actions available."}
+					{project.status === "noop"
+						? "No branch work remains."
+						: project.baselineNeedsTest
+							? "Run the baseline tests before branch actions are planned."
+							: "No branch actions available."}
 				</div>
 			)}
 		</div>

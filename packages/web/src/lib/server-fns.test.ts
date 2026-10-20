@@ -433,6 +433,31 @@ describe("generateAdvancePlanForProjects", () => {
 		});
 	});
 
+	it("exposes the baseline sha for a ready project with no branches so its baseline test can run", async () => {
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
+		const dir = await createTestGitRepo();
+		const baselineSha = (await execa("git", ["-C", dir, "rev-parse", "main"])).stdout.trim();
+
+		const plan = await generateAdvancePlanForProjects([
+			makeProject({name: "baseline-only-project", dir, upstreamRef: "main", upstreamBranch: "main"}),
+		]);
+
+		expect(plan.projects).toHaveLength(1);
+		expect(plan.projects[0]).toStrictEqual({
+			project: "baseline-only-project",
+			projectDir: dir,
+			upstreamRef: "main",
+			upstreamRemote: "origin",
+			upstreamBranch: "main",
+			remote: "owner/repo",
+			status: "ready",
+			baselineNeedsTest: true,
+			baselineSha,
+			concurrency: 1,
+			branches: [],
+		});
+	});
+
 	it("returns ready branch summaries for planned branch units", async () => {
 		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
 		const dir = await createTestGitRepo();

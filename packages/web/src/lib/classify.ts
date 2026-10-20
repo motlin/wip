@@ -52,8 +52,10 @@ export function classifyTodo(todo: TodoItem): Category {
 	return classifyPlanStatus(todo.planStatus) ?? "triaged";
 }
 
-export function classifyPullRequest(child: GitChildResult, _project?: ProjectInfo): Category {
+export function classifyPullRequest(child: GitChildResult, project?: ProjectInfo): Category {
 	if (child.skippable) return "skippable";
+	if (child.pushing) return "pushing";
+	if (project?.rebaseInProgress) return "rebase_stuck";
 	if (child.testStatus === "running") return "test_running";
 	if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
 	if (child.needsRebase) return "needs_rebase";

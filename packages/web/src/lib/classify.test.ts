@@ -279,6 +279,24 @@ describe("classifyPullRequest", () => {
 		expect(classifyPullRequest(makePR({skippable: true}))).toBe("skippable");
 	});
 
+	it("returns pushing when pushing is true, even if checks passed and approved", () => {
+		expect(
+			classifyPullRequest(
+				makePR({pushing: true, checkStatus: "passed", reviewStatus: "approved"}),
+				makeProject(),
+			),
+		).toBe("pushing");
+	});
+
+	it("returns rebase_stuck when the project has a rebase in progress", () => {
+		expect(
+			classifyPullRequest(
+				makePR({checkStatus: "passed", reviewStatus: "approved"}),
+				makeProject({rebaseInProgress: true}),
+			),
+		).toBe("rebase_stuck");
+	});
+
 	it("returns checks_failed when checks failed, even if approved", () => {
 		expect(classifyPullRequest(makePR({checkStatus: "failed", reviewStatus: "approved"}))).toBe("checks_failed");
 	});

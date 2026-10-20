@@ -78,6 +78,8 @@ export interface WorkQueue {
 	getState(): WorkQueueState;
 	onStateChange(listener: (state: WorkQueueState) => void): () => void;
 	onJobError(listener: (event: WorkJobErrorEvent) => void): () => void;
+	/** Notify job-error listeners of a failure that happened outside a queued job. */
+	reportJobError(event: WorkJobErrorEvent): void;
 	runningCount(): number;
 	/** Drop queued jobs, await in-flight jobs, clear all state and listeners. */
 	reset(): Promise<void>;
@@ -309,6 +311,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		onJobError: (listener) => {
 			errorListeners.add(listener);
 			return () => errorListeners.delete(listener);
+		},
+		reportJobError: (event) => {
+			for (const listener of errorListeners) listener(event);
 		},
 		runningCount: () => running.size,
 		reset,

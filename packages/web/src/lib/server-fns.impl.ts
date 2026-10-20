@@ -675,10 +675,15 @@ const backgroundEnqueues = new Set<Promise<unknown>>();
 // Run a heavy discover-and-enqueue routine in the background so the POST returns
 // immediately. Tasks stream to the client via the task-queue SSE feed as they are
 // enqueued, instead of the click blocking until every project has been scanned.
-function launchBackgroundEnqueue(name: string, run: () => Promise<unknown>): void {
+export function launchBackgroundEnqueue(name: string, run: () => Promise<unknown>): void {
 	const promise = run()
 		.catch((err: unknown) => {
 			log.general.error({err}, `${name} background enqueue failed`);
+			workQueue.reportJobError({
+				kind: name,
+				project: "all projects",
+				message: err instanceof Error ? err.message : String(err),
+			});
 		})
 		.finally(() => {
 			backgroundEnqueues.delete(promise);

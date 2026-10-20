@@ -7,7 +7,13 @@ import {execa} from "execa";
 
 import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, recordTestResult} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
-import {getManagedFailedBaseBranches, seedProjectCache, resetProjectCache} from "./server-fns.impl.js";
+import {
+	getManagedFailedBaseBranches,
+	launchBackgroundEnqueue,
+	seedProjectCache,
+	resetProjectCache,
+} from "./server-fns.impl.js";
+import {onRefreshError} from "./refresh-scheduler.js";
 import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
 
@@ -1612,6 +1618,24 @@ describe("refreshAllHandler", () => {
 
 		const after = getCachedPrStatuses("refresh-handler-test");
 		expect(after).toBeNull();
+	});
+});
+
+describe("launchBackgroundEnqueue failure reporting (B32)", () => {
+	it("reports a background enqueue failure to the client over the refresh-error channel", async () => {
+		const events: Array<{kind: string; project: string; message: string}> = [];
+		const unsubscribe = onRefreshError((event) => events.push(event));
+		try {
+			launchBackgroundEnqueue("testAllChildren", async () => Promise.reject(new Error("planning exploded")));
+			await vi.waitFor(() => {
+				expect(events).toHaveLength(1);
+			});
+		} finally {
+			unsubscribe();
+		}
+		expect(events).toStrictEqual([
+			{kind: "testAllChildren", project: "all projects", message: "planning exploded"},
+		]);
 	});
 });
 

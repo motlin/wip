@@ -11,31 +11,41 @@ updates:
       default-days: 7
     labels:
       - "dependencies"
+    # Renovate's "vite-plus monorepo" group owns vite-plus so its vite alias moves with it.
+    ignore:
+      - dependency-name: "vite-plus"
+    # Only group dependencies that must move in lockstep. typescript was a
+    # single-package group, so it gets its own PR either way -- dropped so a
+    # breaking bump is labelled by name rather than hidden behind a group.
     groups:
-      typescript-ecosystem:
-        patterns:
-          - "typescript"
-          - "@typescript-eslint/*"
       vite-ecosystem:
         patterns:
           - "vite"
           - "@vitejs/*"
-      tanstack-router-start:
-        patterns:
-          - "@tanstack/react-router"
-          - "@tanstack/react-router-with-query"
-          - "@tanstack/react-start"
-      tanstack-query:
-        patterns:
-          - "@tanstack/query-*"
-          - "@tanstack/react-query"
-          - "@tanstack/react-query-*"
       testing:
         patterns:
           - "vitest"
           - "@vitest/*"
           - "@testing-library/*"
           - "playwright"
+      # Storybook ships its core, addons and eslint plugin on one release train
+      # (all at 10.5.7), so they have to move together. @chromatic-com/storybook
+      # is deliberately excluded: different vendor, independent versioning.
+      storybook:
+        patterns:
+          - "storybook"
+          - "@storybook/*"
+          - "eslint-plugin-storybook"
+      # Listed explicitly rather than as "react-*", which also matched the
+      # firebase group's "react-firebase-*" and left the winning group ambiguous.
+      react-ecosystem:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+      tanstack:
+        patterns:
+          - "@tanstack/*"
     commit-message:
       prefix: "dependabot"
       include: "scope"

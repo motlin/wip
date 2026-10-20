@@ -13,6 +13,8 @@ import * as path from "node:path";
 import {fileURLToPath, pathToFileURL} from "node:url";
 import {Readable} from "node:stream";
 
+process.title = "wip-web";
+
 const CONTENT_TYPES = new Map([
 	[".css", "text/css; charset=utf-8"],
 	[".html", "text/html; charset=utf-8"],

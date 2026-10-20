@@ -329,7 +329,9 @@ export function ProjectSection({
 					<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-500">
 						<span>{project.upstreamRef}</span>
 						<span>Concurrency {project.concurrency}</span>
-						<span>{project.baselineNeedsTest ? "Baseline needs test" : "Baseline cached green"}</span>
+						{project.status !== "skipped" && (
+							<span>{project.baselineNeedsTest ? "Baseline needs test" : "Baseline cached green"}</span>
+						)}
 					</div>
 				</div>
 				<div className="flex flex-col items-end gap-1">

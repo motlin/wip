@@ -21,6 +21,26 @@ function readyProject(overrides: Partial<AdvancePlanProjectSummary> = {}): Advan
 	};
 }
 
+describe("ProjectSection baseline label", () => {
+	it("does not claim a cached green baseline for a skipped project whose baseline was never evaluated", () => {
+		const markup = renderToStaticMarkup(
+			<ProjectSection
+				project={readyProject({
+					status: "skipped",
+					detail: "no test configured",
+					baselineNeedsTest: false,
+					baselineSha: undefined,
+					branches: [],
+				})}
+				runBaselineTest={async () => Promise.resolve()}
+			/>,
+		);
+
+		expect(markup).not.toContain("Baseline cached green");
+		expect(markup).not.toContain("Baseline needs test");
+	});
+});
+
 describe("ProjectSection baseline control", () => {
 	it("offers a Run Baseline Tests control for a ready project with no branches whose baseline needs a test", () => {
 		const markup = renderToStaticMarkup(

@@ -95,9 +95,20 @@ ${commit.stdout}
 		return null;
 	}
 
-	const output = ClaudeBranchNamingOutputSchema.parse(JSON.parse(result.stdout));
-	return output.structured_output.branchName;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(result.stdout);
+	} catch {
+		return null;
+	}
+	const output = ClaudeBranchNamingOutputSchema.safeParse(parsed);
+	return output.success ? output.data.structured_output.branchName : null;
 }
+
+// A commit whose naming failed is not retried until this cooldown passes, so a
+// broken claude call does not re-spawn on every children refresh.
+const FAILED_NAMING_COOLDOWN_MS = 10 * 60_000;
+const failedNamingAt = new Map<string, number>();
 
 export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map<string, string>> {
 	const result = new Map<string, string>();
@@ -106,11 +117,15 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
 	// Check cache first
 	const cached = getBranchNames(requests);
 	const uncached: NamingRequest[] = [];
+	const now = Date.now();
 	for (const req of requests) {
 		const key = `${req.project}:${req.sha}`;
 		const name = cached.get(key);
+		const failedAt = failedNamingAt.get(key);
 		if (name) {
 			result.set(key, name);
+		} else if (failedAt !== undefined && now - failedAt < FAILED_NAMING_COOLDOWN_MS) {
+			continue;
 		} else {
 			uncached.push(req);
 		}
@@ -120,10 +135,14 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
 	for (let i = 0; i < uncached.length; i++) {
 		const name = names[i];
 		const req = uncached[i];
-		if (name && req) {
-			const key = `${req.project}:${req.sha}`;
+		if (!req) continue;
+		const key = `${req.project}:${req.sha}`;
+		if (name) {
 			result.set(key, name);
+			failedNamingAt.delete(key);
 			setBranchName(req.sha, req.project, name);
+		} else {
+			failedNamingAt.set(key, Date.now());
 		}
 	}
 

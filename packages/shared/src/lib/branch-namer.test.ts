@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, it, vi} from "vite-plus/test";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
 const {mockedExeca} = vi.hoisted(() => ({
 	mockedExeca: vi.fn<(command: string, args: readonly string[], options?: object) => Promise<unknown>>(),
@@ -6,7 +6,8 @@ const {mockedExeca} = vi.hoisted(() => ({
 
 vi.mock("execa", () => ({execa: mockedExeca}));
 
-import {nameBranch} from "./branch-namer.js";
+import {initDb, resetDb} from "./db.js";
+import {nameBranch, suggestBranchNames} from "./branch-namer.js";
 
 interface Deferred<T> {
 	promise: Promise<T>;
@@ -130,5 +131,78 @@ ${commitContext}
 		secondClaudeResult.resolve(claudeResult("add-bob-feature"));
 
 		await expect(Promise.all(names)).resolves.toStrictEqual(["add-alice-feature", "add-bob-feature"]);
+	});
+});
+
+describe("nameBranch failure handling", () => {
+	beforeEach(() => {
+		mockedExeca.mockReset();
+	});
+
+	it("returns null instead of throwing when claude prints non-JSON output", async () => {
+		mockedExeca
+			.mockResolvedValueOnce({exitCode: 0, stdout: "commit context"})
+			.mockResolvedValueOnce({exitCode: 0, stdout: "not json at all"});
+
+		await expect(
+			nameBranch({sha: "d".repeat(40), project: "p", subject: "s", dir: "/tmp/test/repo"}),
+		).resolves.toBeNull();
+	});
+
+	it("returns null instead of throwing when claude output fails the schema", async () => {
+		mockedExeca.mockResolvedValueOnce({exitCode: 0, stdout: "commit context"}).mockResolvedValueOnce({
+			exitCode: 0,
+			stdout: JSON.stringify({type: "result", subtype: "success", is_error: true}),
+		});
+
+		await expect(
+			nameBranch({sha: "e".repeat(40), project: "p", subject: "s", dir: "/tmp/test/repo"}),
+		).resolves.toBeNull();
+	});
+});
+
+describe("suggestBranchNames negative cache", () => {
+	const request = {sha: "f".repeat(40), project: "neg-project", subject: "Subject", dir: "/tmp/test/neg"};
+
+	beforeEach(() => {
+		initDb(":memory:");
+		mockedExeca.mockReset();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		resetDb();
+	});
+
+	it("does not re-spawn claude for a commit whose naming just failed", async () => {
+		mockedExeca.mockImplementation(async (command: string) =>
+			Promise.resolve(command === "git" ? {exitCode: 0, stdout: "commit context"} : {exitCode: 1, stdout: ""}),
+		);
+
+		const first = await suggestBranchNames([request]);
+		const second = await suggestBranchNames([request]);
+
+		const claudeCalls = mockedExeca.mock.calls.filter(([command]) => command === "claude").length;
+		expect({first: [...first], second: [...second], claudeCalls}).toStrictEqual({
+			first: [],
+			second: [],
+			claudeCalls: 1,
+		});
+	});
+
+	it("retries claude for a failed commit once the failure cooldown has passed", async () => {
+		vi.useFakeTimers({toFake: ["Date"]});
+		vi.setSystemTime(new Date("2026-10-20T10:00:00Z"));
+		mockedExeca.mockImplementation(async (command: string) =>
+			Promise.resolve(command === "git" ? {exitCode: 0, stdout: "commit context"} : {exitCode: 1, stdout: ""}),
+		);
+		const cooldownRequest = {...request, sha: "0".repeat(40)};
+
+		await suggestBranchNames([cooldownRequest]);
+		vi.setSystemTime(new Date("2026-10-20T11:00:00Z"));
+		await suggestBranchNames([cooldownRequest]);
+
+		const claudeCalls = mockedExeca.mock.calls.filter(([command]) => command === "claude").length;
+		expect(claudeCalls).toBe(2);
 	});
 });

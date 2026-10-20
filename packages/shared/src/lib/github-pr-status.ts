@@ -1,6 +1,7 @@
 import {z} from "zod";
 
 import {getGitHubClient} from "../services/github-client.js";
+import {log} from "../services/logger-pino.js";
 import {
 	cachePrStatuses,
 	type CachedPrStatus,
@@ -237,6 +238,10 @@ const ViewerLoginResponseSchema = z.object({
 	}),
 });
 
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
 async function getGhLogin(): Promise<string> {
 	const cached = getCachedGhLogin();
 	if (cached) return cached;
@@ -247,7 +252,8 @@ async function getGhLogin(): Promise<string> {
 		const login = response.data.viewer.login;
 		cacheGhLogin(login);
 		return login;
-	} catch {
+	} catch (error) {
+		log.general.warn({error: errorMessage(error)}, "GitHub viewer login lookup failed");
 		return "";
 	}
 }
@@ -312,8 +318,9 @@ export async function getCanonicalRepo(dir: string, upstreamRemote?: string): Pr
 			return parent;
 		}
 		forkParentCache.set(cacheKey, null);
-	} catch {
+	} catch (error) {
 		// API failure — don't cache, fall through to origin
+		log.general.warn({repo: cacheKey, error: errorMessage(error)}, "GitHub fork-parent lookup failed");
 	}
 
 	// Step 3: Not a fork, use origin
@@ -542,16 +549,21 @@ async function fetchPrStatusesFromApi(
 						allPrs.push(pr);
 					}
 				}
-			} catch {
+			} catch (error) {
 				// Origin query failed — continue with upstream PRs only
+				log.general.warn(
+					{repo: `${origin.owner}/${origin.name}`, error: errorMessage(error)},
+					"GitHub origin PR query failed",
+				);
 			}
 		}
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		// Detect rate limiting and activate cooldown to prevent further calls
-		if (detectRateLimitError(errorMessage)) {
+		if (detectRateLimitError(message)) {
 			markGitHubRateLimited();
 		}
+		log.general.error({error: message, project: projectName}, "GitHub PR status fetch failed");
 		// API call failed — fall back to cached data with degraded check statuses
 		if (projectName) {
 			const cached = getCachedPrStatuses(projectName);

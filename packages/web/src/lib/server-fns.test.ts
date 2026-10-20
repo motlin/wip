@@ -9,6 +9,7 @@ import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, r
 import type {ProjectInfo} from "@wip/shared";
 import {getManagedFailedBaseBranches, seedProjectCache, resetProjectCache} from "./server-fns.impl.js";
 import {resetQueue} from "./task-queue.js";
+import {workQueue} from "./shared-work-queue.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FetchAdapter = require("@pollyjs/adapter-fetch");
@@ -1171,6 +1172,26 @@ describe("getProjectChildrenHandler", () => {
 		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
 		const result = await getProjectChildrenHandler("nonexistent-project");
 		expect(result).toStrictEqual([]);
+	});
+
+	it("routes a cold-cache refresh through the shared work queue", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "cold-queue-test", dir})]);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		await getProjectChildrenHandler("cold-queue-test");
+
+		expect(enqueueSpy).toHaveBeenCalledTimes(1);
+		expect(enqueueSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				coalesceKey: "children:cold-queue-test",
+				kind: "children",
+				project: "cold-queue-test",
+				priority: "foreground",
+			}),
+		);
+		enqueueSpy.mockRestore();
 	});
 
 	it("includes child commits when present", async () => {

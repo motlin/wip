@@ -374,8 +374,37 @@ export async function getProjectChildrenHandler(project: string): Promise<Projec
 			});
 			return cached;
 		}
-		return refreshProjectChildren(project);
+		return refreshChildrenThroughQueue(project);
 	});
+}
+
+/**
+ * Cold-cache read: run the refresh as a foreground job on the shared queue so it
+ * draws from the global concurrency budget, then await its settlement. A
+ * coalesced request reads the result the in-flight job already cached.
+ */
+async function refreshChildrenThroughQueue(project: string): Promise<ProjectChildrenResult> {
+	let result: ProjectChildrenResult | undefined;
+	let failure: {error: unknown} | undefined;
+	const key = `children:${project}`;
+	const handle = workQueue.enqueue({
+		coalesceKey: key,
+		laneKey: key,
+		kind: "children",
+		project,
+		priority: "foreground",
+		run: async () => {
+			try {
+				result = await refreshProjectChildren(project);
+			} catch (error: unknown) {
+				failure = {error};
+				throw error;
+			}
+		},
+	});
+	await handle.settled;
+	if (failure) throw failure.error;
+	return result ?? getCachedChildren(project) ?? [];
 }
 
 const inflightTodosRefresh = new Map<string, Promise<SharedTodoItem[]>>();

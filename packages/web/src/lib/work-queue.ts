@@ -213,7 +213,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 
 	function enqueue(enqueueOptions: EnqueueOptions): JobHandle {
 		const existing = byCoalesceKey.get(enqueueOptions.coalesceKey);
-		if (existing) {
+		// A cancelled job keeps its coalesce key until its run settles; it must
+		// not absorb a fresh request, or that request is silently dropped.
+		if (existing && !existing.controller.signal.aborted) {
 			return {
 				id: existing.id,
 				coalesced: true,

@@ -322,6 +322,24 @@ describe("cancellation", () => {
 		await settle();
 		expect(rerun).toHaveBeenCalledTimes(1);
 	});
+
+	it("does not coalesce onto a running job that was cancelled, and runs the new job after it settles", async () => {
+		makeQueue({globalConcurrency: 2});
+		const gate = deferred();
+		const original = vi.fn<(signal: AbortSignal) => Promise<void>>(async () => gate.promise);
+		const first = queue.enqueue(job("alpha", original));
+		await settle();
+		expect(first.cancel()).toBe(true);
+
+		const rerun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+		const second = queue.enqueue(job("alpha", rerun));
+		expect(second.coalesced).toBe(false);
+		expect(second.id).not.toBe(first.id);
+
+		gate.resolve();
+		await second.settled;
+		expect(rerun).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("resource probe", () => {

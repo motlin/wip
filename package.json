@@ -15,10 +15,10 @@
 		"oxlint:ci": "vp lint . --format github",
 		"fmt": "vp fmt",
 		"fmt:ci": "vp fmt --check",
-		"fallow": "fallow dead-code",
+		"fallow": "fallow fix --yes --no-create-config",
 		"fallow:ci": "fallow dead-code",
-		"fallow:fix": "fallow fix --yes",
 		"test": "node node_modules/vitest/dist/cli.js",
+		"test:ui": "node node_modules/vitest/dist/cli.js --ui",
 		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
 	"devDependencies": {
@@ -31,10 +31,5 @@
 		"vite-plus": "catalog:",
 		"vitest": "catalog:"
 	},
-	"packageManager": "pnpm@12.12.1",
-	"pnpm": {
-		"onlyBuiltDependencies": [
-			"better-sqlite3"
-		]
-	}
+	"packageManager": "pnpm@12.12.1"
 }

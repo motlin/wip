@@ -5,6 +5,8 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 
+process.title = "wip-web-dev";
+
 const webRoot = path.dirname(fileURLToPath(import.meta.url));
 const serverOnlyModules = ["execa", "better-sqlite3", "pino", "pino-pretty", "drizzle-orm/better-sqlite3"];
 

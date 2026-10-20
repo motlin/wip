@@ -1,5 +1,5 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
-import {useSuspenseQuery, useQuery} from "@tanstack/react-query";
+import {useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns";
 import {runPendingAction} from "../lib/pending-action.js";
@@ -22,7 +22,8 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "lucide-react";
-import {taskQueueQueryOptions, runAllCountsQueryOptions} from "../lib/queries";
+import {taskQueueQueryOptions} from "../lib/queries";
+import {useReadyToTestCount} from "../lib/ready-to-test-count";
 
 export const Route = createFileRoute("/tasks")({
 	loader: async ({context: {queryClient}}) => queryClient.query({...taskQueueQueryOptions(), staleTime: "static"}),
@@ -264,11 +265,10 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
 	const {tasks: liveJobs} = useAllTasks();
-	const {data: runCounts} = useQuery(runAllCountsQueryOptions());
 	const [testingAll, setTestingAll] = useState(false);
 	const [groupBy, setGroupBy] = useState<GroupBy>("project");
 	const hasActiveTests = useHasActiveTests();
-	const readyToTest = runCounts?.readyToTest ?? 0;
+	const readyToTest = useReadyToTestCount();
 
 	const allJobs = mergeJobs(serverJobs, liveJobs);
 	const groups = groupTasks(allJobs, groupBy);

@@ -7,8 +7,9 @@
  * Two keys per job:
  * - coalesceKey: dedupe identity. While a job with this key is queued or
  *   running, further enqueues return the existing handle ({coalesced: true}).
- * - resources: exclusive resource keys. A job starts only when none of its
- *   resources is held by a running job, and holds all of them while running.
+ * - resources: counted resource keys (capacity 1, i.e. exclusive, unless
+ *   resourceCapacity says otherwise). A job starts only when none of its
+ *   resources is at capacity, and holds all of them while running.
  *   laneKey is shorthand for one extra resource (per-repo test serialization);
  *   a unique laneKey never serializes.
  *
@@ -65,7 +66,7 @@ export interface EnqueueOptions {
 	coalesceKey: string;
 	/** Shorthand for a single exclusive resource. */
 	laneKey?: string;
-	/** Exclusive resources held for the duration of the run. */
+	/** Counted resources held for the duration of the run. */
 	resources?: string[];
 	kind: string;
 	project: string;
@@ -81,6 +82,8 @@ export interface WorkQueueOptions {
 	globalConcurrency: number;
 	/** Per-class concurrency caps, merged over the defaults. All are bounded by globalConcurrency. */
 	classCaps?: Partial<Record<CostClass, number>>;
+	/** Concurrent holders admitted per resource key (default 1, i.e. exclusive). */
+	resourceCapacity?: (key: string) => number;
 	probe?: WorkResourceProbe | null;
 	loadThreshold?: number;
 	memFloor?: number;
@@ -146,7 +149,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const running = new Map<string, Job>();
 	const byCoalesceKey = new Map<string, Job>();
 	const byId = new Map<string, Job>();
-	const heldResources = new Set<string>();
+	const heldResources = new Map<string, number>();
+	const resourceCapacity = options.resourceCapacity ?? (() => 1);
 	const inFlight = new Set<Promise<void>>();
 
 	const stateListeners = new Set<(state: WorkQueueState) => void>();
@@ -201,6 +205,16 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		return probe.loadPerCore() < loadThreshold && probe.freeMemRatio() > memFloor;
 	}
 
+	function resourceFull(resource: string): boolean {
+		return (heldResources.get(resource) ?? 0) >= Math.max(1, resourceCapacity(resource));
+	}
+
+	function releaseResource(resource: string): void {
+		const held = (heldResources.get(resource) ?? 0) - 1;
+		if (held > 0) heldResources.set(resource, held);
+		else heldResources.delete(resource);
+	}
+
 	function remove(job: Job): void {
 		byId.delete(job.id);
 		if (byCoalesceKey.get(job.coalesceKey) === job) {
@@ -237,7 +251,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		for (let index = 0; index < queued.length && slots > 0;) {
 			const job = queued[index];
 			if (job === undefined) break;
-			if (job.resources.some((resource) => heldResources.has(resource))) {
+			if (job.resources.some((resource) => resourceFull(resource))) {
 				index += 1;
 				continue;
 			}
@@ -249,7 +263,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 
 			queued.splice(index, 1);
 			running.set(job.id, job);
-			for (const resource of job.resources) heldResources.add(resource);
+			for (const resource of job.resources) heldResources.set(resource, (heldResources.get(resource) ?? 0) + 1);
 			slots -= 1;
 			changed = true;
 
@@ -264,7 +278,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 				})
 				.finally(() => {
 					running.delete(job.id);
-					for (const resource of job.resources) heldResources.delete(resource);
+					for (const resource of job.resources) releaseResource(resource);
 					remove(job);
 					inFlight.delete(promise);
 					job.settle();

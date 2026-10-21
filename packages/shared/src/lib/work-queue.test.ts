@@ -337,6 +337,84 @@ describe("resources", () => {
 	});
 });
 
+describe("resource capacity", () => {
+	it("admits N concurrent holders on a key with capacity N and queues the rest", async () => {
+		makeQueue({globalConcurrency: 4, resourceCapacity: (key) => (key === "repo:x" ? 2 : 1)});
+		const gates = [deferred(), deferred(), deferred()];
+		const runs = gates.map((gate) => vi.fn<() => Promise<void>>(async () => gate.promise));
+
+		runs.forEach((run, index) => queue.enqueue(job(`j${index}`, run, {resources: ["repo:x"]})));
+		await settle();
+
+		expect(runs.map((run) => run.mock.calls.length)).toEqual([1, 1, 0]);
+
+		gates[0]?.resolve();
+		await settle();
+		await settle();
+		expect(runs.map((run) => run.mock.calls.length)).toEqual([1, 1, 1]);
+		gates.forEach((gate) => {
+			gate.resolve();
+		});
+	});
+
+	it("stays exclusive by default", async () => {
+		makeQueue({globalConcurrency: 4});
+		const gate = deferred();
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("a", async () => gate.promise, {resources: ["repo:x"]}));
+		queue.enqueue(job("b", secondRun, {resources: ["repo:x"]}));
+		await settle();
+
+		expect(secondRun).not.toHaveBeenCalled();
+		gate.resolve();
+	});
+
+	it("releases capacity on failure", async () => {
+		makeQueue({globalConcurrency: 4, resourceCapacity: () => 2});
+		const gate = deferred();
+		const thirdRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("a", async () => gate.promise, {resources: ["k"]}));
+		queue.enqueue(job("b", async () => Promise.reject(new Error("boom")), {resources: ["k"]}));
+		queue.enqueue(job("c", thirdRun, {resources: ["k"]}));
+		await settle();
+		await settle();
+
+		expect(thirdRun).toHaveBeenCalledTimes(1);
+		gate.resolve();
+	});
+
+	it("releases capacity on cancel of a running job", async () => {
+		makeQueue({globalConcurrency: 4, resourceCapacity: () => 2});
+		const gate = deferred();
+		const thirdRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("a", async () => gate.promise, {resources: ["k"]}));
+		const handle = queue.enqueue(
+			job(
+				"b",
+				async (signal) =>
+					new Promise<void>((resolve) => {
+						signal.addEventListener("abort", () => {
+							resolve();
+						});
+					}),
+				{resources: ["k"]},
+			),
+		);
+		queue.enqueue(job("c", thirdRun, {resources: ["k"]}));
+		await settle();
+		expect(thirdRun).not.toHaveBeenCalled();
+
+		handle.cancel();
+		await settle();
+		await settle();
+		expect(thirdRun).toHaveBeenCalledTimes(1);
+		gate.resolve();
+	});
+});
+
 describe("priority", () => {
 	it("admits queued foreground jobs before queued background jobs", async () => {
 		makeQueue({globalConcurrency: 1});

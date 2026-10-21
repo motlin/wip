@@ -74,6 +74,33 @@ describe("enqueueRefresh", () => {
 		expect(forcedRun).toHaveBeenCalledTimes(1);
 	});
 
+	it("runs exactly one follow-up when many forced enqueues coalesce onto a running job", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const firstRun = vi.fn<() => Promise<void>>(async () => gate);
+		const forcedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		enqueueRefresh({kind: "children", project: "alpha", run: firstRun});
+		await settle();
+		for (let i = 0; i < 5; i++) {
+			enqueueRefresh({kind: "children", project: "alpha", run: forcedRun, force: true});
+		}
+
+		release();
+		await settle();
+		await settle();
+
+		expect(firstRun).toHaveBeenCalledTimes(1);
+		expect(forcedRun).toHaveBeenCalledTimes(1);
+
+		enqueueRefresh({kind: "children", project: "alpha", run: forcedRun, force: true});
+		await settle();
+
+		expect(forcedRun).toHaveBeenCalledTimes(2);
+	});
+
 	it("does not coalesce jobs with different kinds for the same project", async () => {
 		const childrenRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const todosRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);

@@ -75,11 +75,13 @@ export function runningRefreshCount(): number {
 	return workQueue.runningCount();
 }
 
+const pendingForcedReruns = new Map<string, Parameters<typeof enqueueRefresh>[0]>();
+
 /**
  * Enqueue a refresh job. Jobs with the same (kind, project) key coalesce:
  * while one is queued or running, further enqueues are reported as
  * {queued: false}. A coalesced enqueue with force=true is not dropped: it is
- * re-enqueued once the existing job settles, so a manual or watcher-forced
+ * re-enqueued once (however many arrive) after the existing job settles, so a manual or watcher-forced
  * refresh still runs its force-only work instead of being skipped as fresh.
  */
 export function enqueueRefresh(options: {
@@ -101,13 +103,23 @@ export function enqueueRefresh(options: {
 		run: trackRefreshOutcome(key, async () => options.run()),
 	});
 	if (handle.coalesced && options.force === true) {
-		void handle.settled.then(() => enqueueRefresh(options));
+		// One pending rerun per key: further forced requests just replace its options.
+		const alreadyPending = pendingForcedReruns.has(key);
+		pendingForcedReruns.set(key, options);
+		if (!alreadyPending) {
+			void handle.settled.then(() => {
+				const rerun = pendingForcedReruns.get(key);
+				pendingForcedReruns.delete(key);
+				return rerun === undefined ? undefined : enqueueRefresh(rerun);
+			});
+		}
 	}
 	return {queued: !handle.coalesced};
 }
 
 /** Test-only: drop queued jobs, await in-flight jobs, and clear all state. */
 export async function resetScheduler(): Promise<void> {
+	pendingForcedReruns.clear();
 	await workQueue.reset();
 }
 

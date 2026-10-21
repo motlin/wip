@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
 
-import {estimatePlaceholderHeight, resolveLanguage} from "./diff-section-utils";
+import {estimatePlaceholderHeight, resolveLanguage} from "./diff-section-utils.js";
 
 describe("resolveLanguage", () => {
 	it("returns the extension directly when it is a supported shiki language", () => {

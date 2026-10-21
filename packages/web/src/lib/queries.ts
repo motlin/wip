@@ -15,7 +15,7 @@ import {
 	generateAdvancePlan,
 	runAllCounts,
 	getSystemStatus,
-} from "./server-fns";
+} from "./server-fns.js";
 
 export const projectsQueryOptions = () =>
 	queryOptions({

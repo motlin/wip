@@ -2,9 +2,9 @@ import {useMemo} from "react";
 import {DiffView, DiffModeEnum} from "@git-diff-view/react";
 import {DiffFile} from "@git-diff-view/core";
 import "@git-diff-view/react/styles/diff-view.css";
-import type {FileDiff} from "../lib/server-fns";
-import {useInView} from "../lib/use-in-view";
-import {estimatePlaceholderHeight, resolveLanguage} from "./diff-section-utils";
+import type {FileDiff} from "../lib/server-fns.js";
+import {useInView} from "../lib/use-in-view.js";
+import {estimatePlaceholderHeight, resolveLanguage} from "./diff-section-utils.js";
 
 function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "unified") {
 	return useMemo(() => {

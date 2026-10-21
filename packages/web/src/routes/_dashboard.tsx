@@ -7,9 +7,9 @@ import {
 	issuesQueryOptions,
 	projectItemsQueryOptions,
 	snoozedQueryOptions,
-} from "../lib/queries";
+} from "../lib/queries.js";
 import {prefetchInBatches} from "../lib/prefetch-in-batches.js";
-import {usePreserveScroll} from "../lib/use-preserve-scroll";
+import {usePreserveScroll} from "../lib/use-preserve-scroll.js";
 
 const PREFETCH_CONCURRENCY = 4;
 

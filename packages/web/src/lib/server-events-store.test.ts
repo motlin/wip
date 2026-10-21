@@ -10,8 +10,8 @@ import {
 	resetServerEventsStore,
 	subscribeToStoreKey,
 	taskStoreKey,
-} from "./server-events-store";
-import type {TaskEvent} from "./task-queue";
+} from "./server-events-store.js";
+import type {TaskEvent} from "./task-queue.js";
 
 function makeTaskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent {
 	return {

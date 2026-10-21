@@ -1264,6 +1264,32 @@ describe("getProjectChildrenHandler", () => {
 		enqueueSpy.mockRestore();
 	});
 
+	it("a coalesced cold-cache caller sees the failure of the in-flight refresh", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "coalesce-fail-test", dir})]);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		vi.doMock("./watch-suppression.js", () => ({
+			suppressWatcherEvents: async () => {
+				await gate;
+				throw new Error("refresh boom");
+			},
+		}));
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const first = getProjectChildrenHandler("coalesce-fail-test");
+		const second = getProjectChildrenHandler("coalesce-fail-test");
+		const settled = Promise.allSettled([first, second]);
+		release();
+		const [firstResult, secondResult] = await settled;
+		vi.doUnmock("./watch-suppression.js");
+
+		expect(firstResult).toMatchObject({status: "rejected", reason: new Error("refresh boom")});
+		expect(secondResult).toMatchObject({status: "rejected", reason: new Error("refresh boom")});
+	});
+
 	it("includes child commits when present", async () => {
 		const dir = await createTestGitRepo();
 		// Create a child commit beyond the initial commit

@@ -384,9 +384,10 @@ export async function getProjectChildrenHandler(project: string): Promise<Projec
  * draws from the global concurrency budget, then await its settlement. A
  * coalesced request reads the result the in-flight job already cached.
  */
+const childrenRefreshFailures = new Map<string, {error: unknown}>();
+
 async function refreshChildrenThroughQueue(project: string): Promise<ProjectChildrenResult> {
 	let result: ProjectChildrenResult | undefined;
-	let failure: {error: unknown} | undefined;
 	const key = `children:${project}`;
 	const handle = workQueue.enqueue({
 		coalesceKey: key,
@@ -395,15 +396,18 @@ async function refreshChildrenThroughQueue(project: string): Promise<ProjectChil
 		project,
 		priority: "foreground",
 		run: async () => {
+			childrenRefreshFailures.delete(key);
 			try {
 				result = await refreshProjectChildren(project);
 			} catch (error: unknown) {
-				failure = {error};
+				childrenRefreshFailures.set(key, {error});
 				throw error;
 			}
 		},
 	});
 	await handle.settled;
+	// A coalesced caller never runs its own job, so it reads the in-flight job's failure here.
+	const failure = childrenRefreshFailures.get(key);
 	if (failure) throw failure.error;
 	return result ?? getCachedChildren(project) ?? [];
 }

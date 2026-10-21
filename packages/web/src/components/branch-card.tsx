@@ -15,12 +15,12 @@ import {useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
-import {cancelTestFn} from "../lib/server-fns";
-import {useMergeStatus, useTestJob} from "../lib/server-events-context";
-import {AnsiText} from "./ansi-text";
-import {CategoryBadge} from "./category-badge";
-import {BranchActions} from "./commit-actions";
-import {branchRemoteUrl} from "../lib/branch-rename";
+import {cancelTestFn} from "../lib/server-fns.js";
+import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
+import {AnsiText} from "./ansi-text.js";
+import {CategoryBadge} from "./category-badge.js";
+import {BranchActions} from "./commit-actions.js";
+import {branchRemoteUrl} from "../lib/branch-rename.js";
 
 function relativeTime(dateStr: string): string {
 	const date = new Date(dateStr);

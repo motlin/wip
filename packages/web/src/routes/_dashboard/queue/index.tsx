@@ -5,19 +5,19 @@ import {
 	isGitChildBranch,
 	isGitChildCommit,
 	isGitChildUpstreamCi,
-} from "../../../lib/git-child-discriminators";
-import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../../../lib/category-actions";
-import {CommitCard} from "../../../components/commit-card";
-import {BranchCard} from "../../../components/branch-card";
-import {PullRequestCard} from "../../../components/pull-request-card";
-import {IssueCard} from "../../../components/issue-card";
-import {ProjectBoardItemCard} from "../../../components/project-board-item-card";
-import {TodoCard} from "../../../components/todo-card";
-import {UpstreamCiCard} from "../../../components/upstream-ci-card";
-import {useQueueContext, bucketCount} from "../../../lib/queue-context";
-import {limitVisibleItems, SECTION_PAGE_SIZE} from "../../../lib/visible-items";
+} from "../../../lib/git-child-discriminators.js";
+import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../../../lib/category-actions.js";
+import {CommitCard} from "../../../components/commit-card.js";
+import {BranchCard} from "../../../components/branch-card.js";
+import {PullRequestCard} from "../../../components/pull-request-card.js";
+import {IssueCard} from "../../../components/issue-card.js";
+import {ProjectBoardItemCard} from "../../../components/project-board-item-card.js";
+import {TodoCard} from "../../../components/todo-card.js";
+import {UpstreamCiCard} from "../../../components/upstream-ci-card.js";
+import {useQueueContext, bucketCount} from "../../../lib/queue-context.js";
+import {limitVisibleItems, SECTION_PAGE_SIZE} from "../../../lib/visible-items.js";
 import type {Category} from "@wip/shared";
-import type {ColumnItems} from "../../../components/kanban-column";
+import type {ColumnItems} from "../../../components/kanban-column.js";
 
 export const Route = createFileRoute("/_dashboard/queue/")({
 	component: QueueCards,

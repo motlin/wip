@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
 
-import {noLogMessage} from "./no-log-message";
+import {noLogMessage} from "./no-log-message.js";
 
 describe("noLogMessage", () => {
 	it("explains why a log is missing and how to get one", () => {

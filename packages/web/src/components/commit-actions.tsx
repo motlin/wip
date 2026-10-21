@@ -38,15 +38,15 @@ import {
 	mergePr,
 	createBranch,
 	runClaudeCommand,
-} from "../lib/server-fns";
-import {snoozedQueryOptions} from "../lib/queries";
-import {useMergeStatus, useTestJob} from "../lib/server-events-context";
-import {applyRenameToChild} from "../lib/branch-rename";
+} from "../lib/server-fns.js";
+import {snoozedQueryOptions} from "../lib/queries.js";
+import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
+import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
-import type {ProjectChildrenResult} from "../lib/server-fns";
-import {CATEGORIES} from "../lib/category-actions";
-import {GitHubIcon} from "./github-icon";
-import {pushToast, toastLogs} from "../lib/toast-store";
+import type {ProjectChildrenResult} from "../lib/server-fns.js";
+import {CATEGORIES} from "../lib/category-actions.js";
+import {GitHubIcon} from "./github-icon.js";
+import {pushToast, toastLogs} from "../lib/toast-store.js";
 import {runPendingAction} from "../lib/pending-action.js";
 
 const SNOOZE_PRESETS = [

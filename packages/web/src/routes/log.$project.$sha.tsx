@@ -1,11 +1,11 @@
 import {createFileRoute} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {ArrowDown} from "lucide-react";
-import {LineNumberedAnsiText} from "../components/line-numbered-ansi-text";
-import {testLogQueryOptions} from "../lib/queries";
-import {noLogMessage} from "../lib/no-log-message";
-import {useTestLog} from "../lib/server-events-context";
-import {useAutoTail} from "../lib/use-auto-tail";
+import {LineNumberedAnsiText} from "../components/line-numbered-ansi-text.js";
+import {testLogQueryOptions} from "../lib/queries.js";
+import {noLogMessage} from "../lib/no-log-message.js";
+import {useTestLog} from "../lib/server-events-context.js";
+import {useAutoTail} from "../lib/use-auto-tail.js";
 
 export const Route = createFileRoute("/log/$project/$sha")({
 	loader: async ({context: {queryClient}, params}) =>

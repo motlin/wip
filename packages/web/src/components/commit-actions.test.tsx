@@ -4,8 +4,8 @@ import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/reac
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {GitChildResult} from "@wip/shared";
 
-import {BranchActions} from "./commit-actions";
-import {clearToasts, getToasts} from "../lib/toast-store";
+import {BranchActions} from "./commit-actions.js";
+import {clearToasts, getToasts} from "../lib/toast-store.js";
 
 const serverFns = vi.hoisted(() => ({
 	testChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),

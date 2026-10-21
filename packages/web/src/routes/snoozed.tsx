@@ -2,9 +2,9 @@ import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery, useQueryClient} from "@tanstack/react-query";
 import {AlarmClockOff, Loader2} from "lucide-react";
 import {useState} from "react";
-import {unsnoozeChildFn, getProjectChildren} from "../lib/server-fns";
-import type {SnoozedChild} from "../lib/server-fns";
-import {snoozedQueryOptions} from "../lib/queries";
+import {unsnoozeChildFn, getProjectChildren} from "../lib/server-fns.js";
+import type {SnoozedChild} from "../lib/server-fns.js";
+import {snoozedQueryOptions} from "../lib/queries.js";
 
 export const Route = createFileRoute("/snoozed")({
 	loader: async ({context: {queryClient}}) => queryClient.query({...snoozedQueryOptions(), staleTime: "static"}),

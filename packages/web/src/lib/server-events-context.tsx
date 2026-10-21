@@ -1,9 +1,9 @@
 import {useCallback, useEffect, useSyncExternalStore} from "react";
 import {useQueryClient} from "@tanstack/react-query";
-import type {RefreshSchedulerState} from "./refresh-scheduler";
-import {createServerEventApplier, resyncLoadedProjects} from "./server-events-apply";
-import {getProjectChildren, getProjectTodos} from "./server-fns";
-import {ServerEventSchema, type MergeStatusEvent, type TaskEvent} from "./server-events-schema";
+import type {RefreshSchedulerState} from "./refresh-scheduler.js";
+import {createServerEventApplier, resyncLoadedProjects} from "./server-events-apply.js";
+import {getProjectChildren, getProjectTodos} from "./server-fns.js";
+import {ServerEventSchema, type MergeStatusEvent, type TaskEvent} from "./server-events-schema.js";
 import {
 	getAllTasksSnapshot,
 	getMergeStatusSnapshot,
@@ -14,7 +14,7 @@ import {
 	clearActiveTasks,
 	subscribeToStoreKey,
 	taskStoreKey,
-} from "./server-events-store";
+} from "./server-events-store.js";
 
 export type {TaskEvent, MergeStatusEvent};
 

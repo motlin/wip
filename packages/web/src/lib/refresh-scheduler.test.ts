@@ -6,7 +6,7 @@ import {
 	resetScheduler,
 	runningRefreshCount,
 	startPeriodicSweep,
-} from "./refresh-scheduler";
+} from "./refresh-scheduler.js";
 
 // Queue mechanics (concurrency, lanes, priority, state broadcast) are covered
 // by work-queue.test.ts; these tests cover the refresh-flavored adapter.

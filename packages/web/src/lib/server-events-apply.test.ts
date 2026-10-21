@@ -2,8 +2,8 @@ import {QueryClient} from "@tanstack/react-query";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 import type {GitChildResult} from "@wip/shared";
 
-import {createServerEventApplier, type ServerEventApplier} from "./server-events-apply";
-import {ServerEventSchema, type TaskEvent} from "./server-events-schema";
+import {createServerEventApplier, type ServerEventApplier} from "./server-events-apply.js";
+import {ServerEventSchema, type TaskEvent} from "./server-events-schema.js";
 import {
 	getMergeStatusSnapshot,
 	getSchedulerStateSnapshot,
@@ -11,8 +11,8 @@ import {
 	getTaskSnapshot,
 	hasActiveTasksSnapshot,
 	resetServerEventsStore,
-} from "./server-events-store";
-import {clearToasts, getToasts} from "./toast-store";
+} from "./server-events-store.js";
+import {clearToasts, getToasts} from "./toast-store.js";
 
 const SHA = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 
@@ -268,7 +268,7 @@ describe("wire contract", () => {
 
 describe("resyncLoadedProjects", () => {
 	it("rewrites children and todos via setQueryData in small batches and never invalidates", async () => {
-		const {resyncLoadedProjects} = await import("./server-events-apply");
+		const {resyncLoadedProjects} = await import("./server-events-apply.js");
 		const projects = ["a", "b", "c", "d", "e"];
 		for (const p of projects) {
 			queryClient.setQueryData(["children", p], []);
@@ -305,7 +305,7 @@ describe("resyncLoadedProjects", () => {
 	});
 
 	it("clears running/pushing overlays with no active task but keeps ones with an active task", async () => {
-		const {resyncLoadedProjects} = await import("./server-events-apply");
+		const {resyncLoadedProjects} = await import("./server-events-apply.js");
 		const STALE = "b".repeat(40);
 		const PUSHING = "c".repeat(40);
 		queryClient.setQueryData(
@@ -335,7 +335,7 @@ describe("resyncLoadedProjects", () => {
 	});
 
 	it("drops stale queued/running tasks from the store but keeps finished ones", async () => {
-		const {clearActiveTasks} = await import("./server-events-store");
+		const {clearActiveTasks} = await import("./server-events-store.js");
 		const DONE = "d".repeat(40);
 		applier.apply({channel: "task", data: makeTaskEvent({status: "running"})});
 		applier.apply({channel: "task", data: makeTaskEvent({id: "3", sha: DONE, status: "passed"})});

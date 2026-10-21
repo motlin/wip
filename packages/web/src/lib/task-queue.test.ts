@@ -1,8 +1,8 @@
 import {describe, it, expect, vi} from "vite-plus/test";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {cancelTest, enqueueRebase, pruneTerminalTasks, statusToTransition} from "./task-queue";
-import type {Task, TaskStatus} from "./task-queue";
+import {cancelTest, enqueueRebase, pruneTerminalTasks, statusToTransition} from "./task-queue.js";
+import type {Task, TaskStatus} from "./task-queue.js";
 
 const shared = vi.hoisted(() => ({
 	rebaseBranchOntoUpstream: vi.fn<(dir: string, options: {signal: AbortSignal}) => Promise<unknown>>(),

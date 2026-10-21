@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
 
-import {itemBackTarget} from "./item-back-link";
+import {itemBackTarget} from "./item-back-link.js";
 
 describe("itemBackTarget", () => {
 	it("returns /snoozed when the item was opened from the snoozed page", () => {

@@ -1,8 +1,8 @@
 import {createFileRoute} from "@tanstack/react-router";
 import {useEffect, useMemo, useRef, useState} from "react";
 import {z} from "zod";
-import {LogList, type KeyedEntry} from "../components/log-list";
-import {useAutoTail} from "../lib/use-auto-tail";
+import {LogList, type KeyedEntry} from "../components/log-list.js";
+import {useAutoTail} from "../lib/use-auto-tail.js";
 
 export const Route = createFileRoute("/debug/logs")({
 	head: () => ({

@@ -10,7 +10,7 @@ import {
 	classifyIssue,
 	classifyPullRequest,
 	classifyTodo,
-} from "./classify";
+} from "./classify.js";
 
 function makePR(overrides: Partial<GitChildResult> = {}): GitChildResult {
 	return {

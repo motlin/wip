@@ -2,13 +2,13 @@ import {Loader2, Clock, Diff, X, GitBranch, AlertCircle, XCircle} from "lucide-r
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
-import {cancelTestFn} from "../lib/server-fns";
-import {useMergeStatus, useTestJob} from "../lib/server-events-context";
-import {branchRemoteUrl} from "../lib/branch-rename";
-import {AnsiText} from "./ansi-text";
-import {CategoryBadge} from "./category-badge";
-import {PullRequestActions} from "./commit-actions";
-import {GitHubIcon} from "./github-icon";
+import {cancelTestFn} from "../lib/server-fns.js";
+import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
+import {branchRemoteUrl} from "../lib/branch-rename.js";
+import {AnsiText} from "./ansi-text.js";
+import {CategoryBadge} from "./category-badge.js";
+import {PullRequestActions} from "./commit-actions.js";
+import {GitHubIcon} from "./github-icon.js";
 
 function relativeTime(dateStr: string): string {
 	const date = new Date(dateStr);

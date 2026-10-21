@@ -2,8 +2,8 @@ import {describe, it, expect} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 
-import {useReadyToTestCount} from "./ready-to-test-count";
-import {runAllCountsQueryOptions} from "./queries";
+import {useReadyToTestCount} from "./ready-to-test-count.js";
+import {runAllCountsQueryOptions} from "./queries.js";
 
 function Probe() {
 	return <span data-count="">{useReadyToTestCount()}</span>;

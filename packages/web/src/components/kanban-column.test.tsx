@@ -2,8 +2,8 @@ import {describe, it, expect, vi} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 import type {IssueResult} from "@wip/shared";
 
-import {KanbanColumn} from "./kanban-column";
-import {SECTION_PAGE_SIZE} from "../lib/visible-items";
+import {KanbanColumn} from "./kanban-column.js";
+import {SECTION_PAGE_SIZE} from "../lib/visible-items.js";
 
 vi.mock("./issue-card", () => ({
 	IssueCard: () => <span data-card="" />,

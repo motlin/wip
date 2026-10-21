@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 
-import {installResourceProbe, installResourceProbeAtBoot} from "./resource-probe";
-import {workQueue} from "./shared-work-queue";
+import {installResourceProbe, installResourceProbeAtBoot} from "./resource-probe.js";
+import {workQueue} from "./shared-work-queue.js";
 
 const {createSystemProbe, errorLog} = vi.hoisted(() => ({
 	createSystemProbe: vi.fn<() => unknown>(),

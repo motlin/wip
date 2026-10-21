@@ -2,14 +2,14 @@ import {createFileRoute} from "@tanstack/react-router";
 import {useSuspenseQuery, useQueryClient} from "@tanstack/react-query";
 import {RefreshCw} from "lucide-react";
 import {useState, useMemo} from "react";
-import {KanbanColumn} from "../../components/kanban-column";
-import type {ColumnItems} from "../../components/kanban-column";
-import {refreshAll} from "../../lib/server-fns";
-import {projectsQueryOptions} from "../../lib/queries";
-import {useWorkItems} from "../../lib/use-work-items";
-import {classifyGitChild, classifyIssue, classifyTodo} from "../../lib/classify";
+import {KanbanColumn} from "../../components/kanban-column.js";
+import type {ColumnItems} from "../../components/kanban-column.js";
+import {refreshAll} from "../../lib/server-fns.js";
+import {projectsQueryOptions} from "../../lib/queries.js";
+import {useWorkItems} from "../../lib/use-work-items.js";
+import {classifyGitChild, classifyIssue, classifyTodo} from "../../lib/classify.js";
 import {runPendingAction} from "../../lib/pending-action.js";
-import {CATEGORY_PRIORITY} from "../../lib/category-actions";
+import {CATEGORY_PRIORITY} from "../../lib/category-actions.js";
 import type {Category} from "@wip/shared";
 
 function bucketCount(items: ColumnItems): number {

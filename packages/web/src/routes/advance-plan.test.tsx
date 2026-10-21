@@ -1,8 +1,8 @@
 import {describe, it, expect} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 
-import {ProjectSection} from "../components/advance-plan-project-section";
-import type {AdvancePlanProjectSummary} from "../lib/server-fns";
+import {ProjectSection} from "../components/advance-plan-project-section.js";
+import type {AdvancePlanProjectSummary} from "../lib/server-fns.js";
 
 function readyProject(overrides: Partial<AdvancePlanProjectSummary> = {}): AdvancePlanProjectSummary {
 	return {

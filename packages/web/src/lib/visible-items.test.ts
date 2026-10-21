@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
 
-import {limitVisibleItems, SECTION_PAGE_SIZE} from "./visible-items";
+import {limitVisibleItems, SECTION_PAGE_SIZE} from "./visible-items.js";
 
 describe("limitVisibleItems", () => {
 	it("renders only the first page of a large section until expanded", () => {

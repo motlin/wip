@@ -1,5 +1,5 @@
 import type {Category, GitChildResult, IssueResult, TodoItem, ProjectInfo} from "@wip/shared";
-import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminators";
+import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminators.js";
 
 export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {
 	if (child.kind === "upstream_ci") return "checks_failed";

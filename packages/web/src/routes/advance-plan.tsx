@@ -2,16 +2,16 @@ import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {ArrowLeft, Clock, RefreshCw} from "lucide-react";
-import {advancePlanQueryOptions} from "../lib/queries";
-import {rebaseChild, runClaudeCommand, testChild} from "../lib/server-fns";
-import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary, TestJobStatus} from "../lib/server-fns";
-import {useAllTasks, type TaskEvent} from "../lib/server-events-context";
+import {advancePlanQueryOptions} from "../lib/queries.js";
+import {rebaseChild, runClaudeCommand, testChild} from "../lib/server-fns.js";
+import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary, TestJobStatus} from "../lib/server-fns.js";
+import {useAllTasks, type TaskEvent} from "../lib/server-events-context.js";
 import {
 	ProjectSection,
 	actionKey,
 	type ActionMessage,
 	type BranchAction,
-} from "../components/advance-plan-project-section";
+} from "../components/advance-plan-project-section.js";
 
 export const Route = createFileRoute("/advance-plan")({
 	loader: async ({context: {queryClient}}) => queryClient.query({...advancePlanQueryOptions(), staleTime: "static"}),

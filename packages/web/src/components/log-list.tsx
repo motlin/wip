@@ -1,7 +1,7 @@
 import {useVirtualizer} from "@tanstack/react-virtual";
 import {useEffect, type ReactNode, type RefObject} from "react";
 import type {LogEntry} from "@wip/shared";
-import {scrollToBottom} from "../lib/use-auto-tail";
+import {scrollToBottom} from "../lib/use-auto-tail.js";
 
 export interface KeyedEntry {
 	id: number;

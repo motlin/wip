@@ -18,10 +18,10 @@ import {
 	Diff,
 	Eye,
 } from "lucide-react";
-import {BranchActions, PullRequestActions} from "../components/commit-actions";
-import {CategoryBadge} from "../components/category-badge";
-import {GitHubIcon} from "../components/github-icon";
-import {AnsiText} from "../components/ansi-text";
+import {BranchActions, PullRequestActions} from "../components/commit-actions.js";
+import {CategoryBadge} from "../components/category-badge.js";
+import {GitHubIcon} from "../components/github-icon.js";
+import {AnsiText} from "../components/ansi-text.js";
 import {
 	projectChildrenQueryOptions,
 	diffQueryOptions,
@@ -29,14 +29,14 @@ import {
 	testLogQueryOptions,
 	projectsQueryOptions,
 	snoozedQueryOptions,
-} from "../lib/queries";
-import {classifyCommit, classifyBranch, classifyPullRequest} from "../lib/classify";
+} from "../lib/queries.js";
+import {classifyCommit, classifyBranch, classifyPullRequest} from "../lib/classify.js";
 import {applyTransition} from "@wip/shared/schemas.js";
-import {CATEGORIES, categoryTextClass} from "../lib/category-actions";
-import {branchRemoteUrl} from "../lib/branch-rename";
-import {useTestJob, useTestLog} from "../lib/server-events-context";
-import {useAutoTail} from "../lib/use-auto-tail";
-import {itemBackLabel, itemBackTarget} from "../lib/item-back-link";
+import {CATEGORIES, categoryTextClass} from "../lib/category-actions.js";
+import {branchRemoteUrl} from "../lib/branch-rename.js";
+import {useTestJob, useTestLog} from "../lib/server-events-context.js";
+import {useAutoTail} from "../lib/use-auto-tail.js";
+import {itemBackLabel, itemBackTarget} from "../lib/item-back-link.js";
 
 const itemSearchSchema = z.object({
 	from: z.string().optional(),

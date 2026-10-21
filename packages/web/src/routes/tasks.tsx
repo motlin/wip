@@ -1,11 +1,11 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
-import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns";
+import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
-import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context";
-import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel";
+import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context.js";
+import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel.js";
 import {
 	Clock,
 	Play,
@@ -22,8 +22,8 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "lucide-react";
-import {taskQueueQueryOptions} from "../lib/queries";
-import {useReadyToTestCount} from "../lib/ready-to-test-count";
+import {taskQueueQueryOptions} from "../lib/queries.js";
+import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
 
 export const Route = createFileRoute("/tasks")({
 	loader: async ({context: {queryClient}}) => queryClient.query({...taskQueueQueryOptions(), staleTime: "static"}),

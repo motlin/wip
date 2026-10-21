@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 
-import {createWorkQueue, type WorkQueue} from "./work-queue";
+import {createWorkQueue, type WorkQueue} from "./work-queue.js";
 
 interface Deferred {
 	promise: Promise<void>;

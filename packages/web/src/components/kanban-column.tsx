@@ -5,16 +5,16 @@ import {
 	isGitChildBranch,
 	isGitChildCommit,
 	isGitChildUpstreamCi,
-} from "../lib/git-child-discriminators";
-import {CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions";
-import {CommitCard} from "./commit-card";
-import {BranchCard} from "./branch-card";
-import {PullRequestCard} from "./pull-request-card";
-import {IssueCard} from "./issue-card";
-import {ProjectBoardItemCard} from "./project-board-item-card";
-import {TodoCard} from "./todo-card";
-import {UpstreamCiCard} from "./upstream-ci-card";
-import {limitVisibleItems, SECTION_PAGE_SIZE} from "../lib/visible-items";
+} from "../lib/git-child-discriminators.js";
+import {CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions.js";
+import {CommitCard} from "./commit-card.js";
+import {BranchCard} from "./branch-card.js";
+import {PullRequestCard} from "./pull-request-card.js";
+import {IssueCard} from "./issue-card.js";
+import {ProjectBoardItemCard} from "./project-board-item-card.js";
+import {TodoCard} from "./todo-card.js";
+import {UpstreamCiCard} from "./upstream-ci-card.js";
+import {limitVisibleItems, SECTION_PAGE_SIZE} from "../lib/visible-items.js";
 
 export interface ColumnItems {
 	gitChildren?: GitChildResult[];

@@ -1,7 +1,7 @@
 import {useSyncExternalStore} from "react";
 import {useQuery} from "@tanstack/react-query";
 
-import {runAllCountsQueryOptions} from "./queries";
+import {runAllCountsQueryOptions} from "./queries.js";
 
 const noopSubscribe = () => () => {};
 const isClient = () => true;

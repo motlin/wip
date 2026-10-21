@@ -1,5 +1,5 @@
-import type {RefreshSchedulerState} from "./refresh-scheduler";
-import type {MergeStatusEvent, TaskEvent} from "./server-events-schema";
+import type {RefreshSchedulerState} from "./refresh-scheduler.js";
+import type {MergeStatusEvent, TaskEvent} from "./server-events-schema.js";
 
 /**
  * Client-side store for server-pushed state, subscribed via

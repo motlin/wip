@@ -1,6 +1,6 @@
 import {Bot, CheckCircle, Clock, FlaskConical, GitBranch, GitMerge, Loader2, Wrench, XCircle} from "lucide-react";
-import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary} from "../lib/server-fns";
-import type {TaskEvent} from "../lib/server-events-context";
+import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary} from "../lib/server-fns.js";
+import type {TaskEvent} from "../lib/server-events-context.js";
 
 export type BranchAction = "test" | "rebase" | "resolve-conflicts" | "fix-failure";
 

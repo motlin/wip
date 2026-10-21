@@ -8,17 +8,22 @@ import {
 	projectItemsQueryOptions,
 	snoozedQueryOptions,
 } from "../lib/queries";
+import {prefetchInBatches} from "../lib/prefetch-in-batches.js";
 import {usePreserveScroll} from "../lib/use-preserve-scroll";
+
+const PREFETCH_CONCURRENCY = 4;
 
 export const Route = createFileRoute("/_dashboard")({
 	loader: async ({context: {queryClient}}) => {
 		const projects =
 			queryClient.getQueryData<ProjectInfo[]>(["projects"]) ??
 			(await queryClient.query({...projectsQueryOptions(), staleTime: "static"}));
-		for (const p of projects) {
-			queryClient.query(projectChildrenQueryOptions(p.name)).catch(() => undefined);
-			queryClient.query(projectTodosQueryOptions(p.name)).catch(() => undefined);
-		}
+		void prefetchInBatches(projects, PREFETCH_CONCURRENCY, async (p) =>
+			Promise.all([
+				queryClient.query(projectChildrenQueryOptions(p.name)),
+				queryClient.query(projectTodosQueryOptions(p.name)),
+			]),
+		);
 		queryClient.query(issuesQueryOptions()).catch(() => undefined);
 		queryClient.query(projectItemsQueryOptions()).catch(() => undefined);
 		queryClient.query(snoozedQueryOptions()).catch(() => undefined);

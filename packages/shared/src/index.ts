@@ -13,6 +13,7 @@ export {
 	setConfigValue,
 	unsetConfigValue,
 	getWorkQueueClassCaps,
+	getActionMaxWaitMs,
 } from "./lib/config.js";
 export {
 	type RemoteBranchInfo,

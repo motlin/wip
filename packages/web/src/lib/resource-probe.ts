@@ -1,4 +1,5 @@
 import {log} from "@wip/shared/services/logger-pino.js";
+import {setActionMaxWaitMs} from "./queued-action.js";
 import {workQueue} from "./shared-work-queue.js";
 import type {WorkResourceProbe} from "./work-queue.js";
 
@@ -12,6 +13,8 @@ export async function installResourceProbe(probe?: WorkResourceProbe): Promise<v
 	const shared = await import("@wip/shared");
 	workQueue.setProbe(probe ?? shared.createSystemProbe());
 	workQueue.setClassCaps(shared.getWorkQueueClassCaps());
+	const maxWait = shared.getActionMaxWaitMs();
+	if (maxWait !== undefined) setActionMaxWaitMs(maxWait);
 }
 
 /**

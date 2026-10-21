@@ -5,6 +5,7 @@
  */
 export async function createEventsResponse(): Promise<Response> {
 	const {emitter: taskEmitter, getAllActiveTasks} = await import("./task-queue.js");
+	const {actionEmitter} = await import("./action-events.js");
 	const {emitter: mergeEmitter} = await import("./merge-queue.js");
 	const {projectEmitter} = await import("./project-events.js");
 	const {childrenEmitter} = await import("./children-events.js");
@@ -78,13 +79,18 @@ export async function createEventsResponse(): Promise<Response> {
 			const onTodos = (event: unknown) => {
 				send("todos", event);
 			};
+			const onAction = (event: unknown) => {
+				send("action", event);
+			};
 			taskEmitter.on("task", onTask);
+			actionEmitter.on("action", onAction);
 			mergeEmitter.on("mergeStatus", onMerge);
 			projectEmitter.on("projects", onProjects);
 			childrenEmitter.on("children", onChildren);
 			todoEmitter.on("todos", onTodos);
 			disposers.push(
 				() => taskEmitter.off("task", onTask),
+				() => actionEmitter.off("action", onAction),
 				() => mergeEmitter.off("mergeStatus", onMerge),
 				() => projectEmitter.off("projects", onProjects),
 				() => childrenEmitter.off("children", onChildren),

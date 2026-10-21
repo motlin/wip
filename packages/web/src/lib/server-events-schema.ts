@@ -54,6 +54,16 @@ const WorkQueueStateEventSchema = z.object({
 	runningByClass: z.object({cheap: z.number(), "git-write": z.number(), build: z.number(), ai: z.number()}),
 });
 
+const ActionEventSchema = z.object({
+	id: z.string(),
+	project: z.string(),
+	label: z.string(),
+	status: z.enum(["waiting", "running", "done", "busy"]),
+	/** Kind of the job holding the repo while this action waits (or timed out). */
+	waitingFor: z.string().optional(),
+});
+export type ActionEvent = z.infer<typeof ActionEventSchema>;
+
 const RefreshErrorEventSchema = z.object({
 	kind: z.string(),
 	project: z.string(),
@@ -76,6 +86,7 @@ export const ServerEventSchema = z.discriminatedUnion("channel", [
 	z.object({channel: z.literal("projects"), data: z.array(ProjectInfoSchema)}),
 	z.object({channel: z.literal("children"), data: ChildrenEventSchema}),
 	z.object({channel: z.literal("todos"), data: TodoEventSchema}),
+	z.object({channel: z.literal("action"), data: ActionEventSchema}),
 	z.object({channel: z.literal("refresh-error"), data: RefreshErrorEventSchema}),
 	z.object({channel: z.literal("refresh-state"), data: WorkQueueStateEventSchema}),
 ]);

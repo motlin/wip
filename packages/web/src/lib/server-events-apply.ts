@@ -134,6 +134,23 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				todosBatcher.add(event.data.project, event.data.todos);
 				return;
 			}
+			case "action": {
+				const {label, project, status, waitingFor} = event.data;
+				if (status === "waiting") {
+					pushToast({
+						level: "info",
+						message: `${label} queued for ${project}`,
+						detail: waitingFor ? `Waiting for ${waitingFor} to finish` : undefined,
+					});
+				} else if (status === "busy") {
+					pushToast({
+						level: "error",
+						message: `${label} not run: repo busy`,
+						detail: `${waitingFor ?? "Another job"} is still running on ${project}; try again shortly`,
+					});
+				}
+				return;
+			}
 			case "refresh-state": {
 				applySchedulerState(event.data);
 				return;

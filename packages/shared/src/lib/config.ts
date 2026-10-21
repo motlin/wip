@@ -116,3 +116,11 @@ export function getWorkQueueClassCaps(
 	}
 	return caps;
 }
+
+/** Max milliseconds a user-click git action waits for a busy repo, from config key `actionMaxWaitMs`. Undefined when unset or invalid. */
+export function getActionMaxWaitMs(config: Record<string, ConfigValue> = readConfig()): number | undefined {
+	const value = config["actionMaxWaitMs"];
+	if (typeof value !== "string") return undefined;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
+}

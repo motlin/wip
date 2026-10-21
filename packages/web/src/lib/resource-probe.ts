@@ -1,3 +1,4 @@
+import {log} from "@wip/shared/services/logger-pino.js";
 import {workQueue} from "./shared-work-queue.js";
 import type {WorkResourceProbe} from "./work-queue.js";
 
@@ -10,4 +11,14 @@ import type {WorkResourceProbe} from "./work-queue.js";
 export async function installResourceProbe(probe?: WorkResourceProbe): Promise<void> {
 	const resolved = probe ?? (await import("@wip/shared")).createSystemProbe();
 	workQueue.setProbe(resolved);
+}
+
+/**
+ * Boot-time wrapper: an install failure leaves the queue ungated, so it is
+ * logged rather than silently swallowed. Never rejects.
+ */
+export async function installResourceProbeAtBoot(): Promise<void> {
+	await installResourceProbe().catch((error: unknown) => {
+		log.general.error({error}, "Resource probe install failed; work queue is ungated");
+	});
 }

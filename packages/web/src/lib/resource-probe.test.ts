@@ -1,7 +1,21 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 
-import {installResourceProbe} from "./resource-probe";
+import {installResourceProbe, installResourceProbeAtBoot} from "./resource-probe";
 import {workQueue} from "./shared-work-queue";
+
+const {createSystemProbe, errorLog} = vi.hoisted(() => ({
+	createSystemProbe: vi.fn<() => unknown>(),
+	errorLog: vi.fn<(...args: unknown[]) => void>(),
+}));
+
+vi.mock("@wip/shared", async (importOriginal) => ({
+	...(await importOriginal<object>()),
+	createSystemProbe,
+}));
+
+vi.mock("@wip/shared/services/logger-pino.js", () => ({
+	log: {general: {error: errorLog}},
+}));
 
 // B27: the resource probe must be installed at server boot, not on the first
 // SSE connect. These tests never call ensureBackgroundRefresh or open
@@ -70,5 +84,18 @@ describe("installResourceProbe", () => {
 		expect(runs[1]).toHaveBeenCalledTimes(1);
 		gates[0]!.resolve();
 		gates[1]!.resolve();
+	});
+});
+
+describe("installResourceProbeAtBoot", () => {
+	it("logs the failure and resolves when the default probe cannot be created", async () => {
+		const failure = new Error("probe unavailable");
+		createSystemProbe.mockImplementationOnce(() => {
+			throw failure;
+		});
+
+		await expect(installResourceProbeAtBoot()).resolves.toBeUndefined();
+
+		expect(errorLog).toHaveBeenCalledWith({error: failure}, "Resource probe install failed; work queue is ungated");
 	});
 });

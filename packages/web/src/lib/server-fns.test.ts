@@ -5,7 +5,16 @@ import {mkdtemp, rm} from "node:fs/promises";
 import {join} from "node:path";
 import {execa} from "execa";
 
-import {initDb, resetDb, setGitHubClient, resetGitHubClient, createTestClient, recordTestResult} from "@wip/shared";
+import {
+	initDb,
+	resetDb,
+	setGitHubClient,
+	resetGitHubClient,
+	createTestClient,
+	recordTestResult,
+	cacheUpstreamSha,
+	cacheMergeStatus,
+} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {
 	getManagedFailedBaseBranches,
@@ -522,6 +531,33 @@ describe("generateAdvancePlanForProjects", () => {
 			"feature/passed": ["rebase"],
 			"feature/failed": ["rebase", "fix-failure"],
 			"feature/untested": ["test", "rebase"],
+		});
+	});
+
+	it("offers resolve-conflicts only for branches whose cached merge status is not rebaseable", async () => {
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
+		const dir = await createTestGitRepo();
+		const upstreamSha = (await execa("git", ["-C", dir, "rev-parse", "main"])).stdout.trim();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/conflicting", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Conflicting work"]);
+		const conflictingSha = (await execa("git", ["-C", dir, "rev-parse", "feature/conflicting"])).stdout.trim();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/clean", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Clean work"]);
+		const cleanSha = (await execa("git", ["-C", dir, "rev-parse", "feature/clean"])).stdout.trim();
+		cacheUpstreamSha("conflict-project", "main", upstreamSha);
+		cacheMergeStatus("conflict-project", conflictingSha, upstreamSha, 1, 2, false);
+		cacheMergeStatus("conflict-project", cleanSha, upstreamSha, 1, 2, true);
+
+		const plan = await generateAdvancePlanForProjects([
+			makeProject({name: "conflict-project", dir, upstreamRef: "main", upstreamBranch: "main"}),
+		]);
+
+		const actionsByBranch = Object.fromEntries(
+			plan.projects[0]!.branches.map((branch) => [branch.branch, branch.expectedActions]),
+		);
+		expect(actionsByBranch).toStrictEqual({
+			"feature/conflicting": ["test", "rebase", "resolve-conflicts"],
+			"feature/clean": ["test", "rebase"],
 		});
 	});
 });

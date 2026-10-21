@@ -1280,10 +1280,14 @@ export interface GenerateAdvancePlanInput {
 }
 
 /** Actions worth offering on a branch, given the recorded test result for its tip. */
-function expectedActionsForTipResult(result: "passed" | "failed" | undefined): AdvancePlanAction[] {
-	if (result === "passed") return ["rebase"];
-	if (result === "failed") return ["rebase", "fix-failure"];
-	return ["test", "rebase"];
+function expectedActionsForTipResult(
+	result: "passed" | "failed" | undefined,
+	rebaseable: boolean | null | undefined,
+): AdvancePlanAction[] {
+	const actions: AdvancePlanAction[] =
+		result === "passed" ? ["rebase"] : result === "failed" ? ["rebase", "fix-failure"] : ["test", "rebase"];
+	if (rebaseable === false) actions.push("resolve-conflicts");
+	return actions;
 }
 
 function skipReason(project: ProjectInfo): string | undefined {
@@ -1327,6 +1331,10 @@ export async function generateAdvancePlanForProjects(
 		const plan = await planProject({project: project.name, dir: project.dir, upstreamRef: project.upstreamRef});
 		const status = plan.units.length === 0 && !plan.baseline.needsTest ? "noop" : "ready";
 		const tipResults = getTestResultsForProject(project.name);
+		const upstreamSha = getCachedUpstreamSha(project.name);
+		const rebaseableBySha = new Map<string, boolean | null>(
+			upstreamSha ? getCachedMergeStatuses(project.name, upstreamSha).map((ms) => [ms.sha, ms.rebaseable]) : [],
+		);
 
 		projectSummaries.push({
 			project: project.name,
@@ -1347,7 +1355,10 @@ export async function generateAdvancePlanForProjects(
 				ownedCommitCount: unit.chain.length,
 				dependsOn: unit.dependsOn,
 				worktreeRequired: unit.worktreeRequired,
-				expectedActions: expectedActionsForTipResult(tipResults.get(unit.tipSha)),
+				expectedActions: expectedActionsForTipResult(
+					tipResults.get(unit.tipSha),
+					rebaseableBySha.get(unit.tipSha),
+				),
 			})),
 		});
 	}

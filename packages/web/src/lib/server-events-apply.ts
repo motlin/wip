@@ -3,7 +3,7 @@ import type {GitChildResult, SnoozedChild, TestStatus, TodoItem} from "@wip/shar
 import {createQueryUpdateBatcher} from "./query-update-batcher.js";
 import type {ProjectChildrenResult} from "./server-fns.js";
 import type {ServerEvent, TaskEvent} from "./server-events-schema.js";
-import {applyMergeEvent, applySchedulerState, applyTaskEvent} from "./server-events-store.js";
+import {applyMergeEvent, applySchedulerState, applyTaskEvent, getTaskSnapshot} from "./server-events-store.js";
 import {filterSnoozedChildren} from "./snoozed-filter.js";
 import {pushToast} from "./toast-store.js";
 
@@ -37,14 +37,19 @@ function patchChildItem(queryClient: QueryClient, project: string, sha: string, 
  * from the cached item across a children replace, so a debounced children event
  * mid-push or mid-test does not clear it until the next task event.
  */
-function keepClientOverlays(old: GitChildResult[] | undefined, incoming: GitChildResult[]): GitChildResult[] {
+function keepClientOverlays(
+	old: GitChildResult[] | undefined,
+	incoming: GitChildResult[],
+	isActive?: (child: GitChildResult, taskType: "test" | "push") => boolean,
+): GitChildResult[] {
 	if (!old) return incoming;
 	const previous = new Map(old.map((c) => [c.sha, c]));
 	return incoming.map((child) => {
 		const prior = previous.get(child.sha);
 		if (!prior) return child;
-		const pushing = prior.pushing ? true : child.pushing;
-		const testStatus = prior.testStatus === "running" ? "running" : child.testStatus;
+		const pushing = prior.pushing && (!isActive || isActive(child, "push")) ? true : child.pushing;
+		const testStatus =
+			prior.testStatus === "running" && (!isActive || isActive(child, "test")) ? "running" : child.testStatus;
 		return {...child, pushing, testStatus};
 	});
 }
@@ -153,6 +158,11 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 	};
 }
 
+function hasActiveTask(child: GitChildResult, taskType: "test" | "push"): boolean {
+	const task = getTaskSnapshot(child.sha, child.project);
+	return task?.taskType === taskType && (task.status === "queued" || task.status === "running");
+}
+
 export interface ResyncFetchers {
 	fetchChildren: (project: string) => Promise<GitChildResult[]>;
 	fetchTodos: (project: string) => Promise<TodoItem[]>;
@@ -163,7 +173,8 @@ const RESYNC_BATCH_SIZE = 2;
 /**
  * After an EventSource reopen, events emitted during the gap are lost. Re-fetch
  * children (which carry merge status) and todos for projects already loaded in
- * the cache and write them with setQueryData. Fetches run in small batches to
+ * the cache and write them with setQueryData. Running/pushing overlays survive
+ * only while the task store still has an active task of that type for the sha. Fetches run in small batches to
  * avoid a git/claude fan-out spike. Never invalidates.
  */
 export async function resyncLoadedProjects(
@@ -190,7 +201,7 @@ export async function resyncLoadedProjects(
 					const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
 					queryClient.setQueryData(
 						["children", project],
-						filterSnoozedChildren(keepClientOverlays(old, children.value), project, snoozed),
+						filterSnoozedChildren(keepClientOverlays(old, children.value, hasActiveTask), project, snoozed),
 					);
 				}
 				if (todos.status === "fulfilled") queryClient.setQueryData(["todos", project], todos.value);

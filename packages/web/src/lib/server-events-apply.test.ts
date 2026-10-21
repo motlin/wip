@@ -9,6 +9,7 @@ import {
 	getSchedulerStateSnapshot,
 	getTaskLogSnapshot,
 	getTaskSnapshot,
+	hasActiveTasksSnapshot,
 	resetServerEventsStore,
 } from "./server-events-store";
 import {clearToasts, getToasts} from "./toast-store";
@@ -31,6 +32,10 @@ function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult {
 		reviewStatus: "no_pr",
 		...overrides,
 	};
+}
+
+function makeChildAt(sha: string, overrides: Partial<GitChildResult> = {}): GitChildResult {
+	return makeChild({sha, shortSha: sha.slice(0, 7), ...overrides});
 }
 
 function makeTaskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent {
@@ -103,7 +108,11 @@ describe("task events", () => {
 			data: makeTaskEvent({taskType: "rebase", status: "failed", message: "conflicts"}),
 		});
 
-		expect(getToasts().at(-1)).toMatchObject({level: "error", message: "Rebase failed", detail: "conflicts"});
+		expect(getToasts().at(-1)).toMatchObject({
+			level: "error",
+			message: "Rebase failed",
+			detail: "conflicts",
+		});
 	});
 });
 
@@ -293,5 +302,48 @@ describe("resyncLoadedProjects", () => {
 		expect(setSpy).toHaveBeenCalledWith(["todos", "e"], []);
 		expect(invalidateSpy).not.toHaveBeenCalled();
 		expect(maxInFlight).toBeLessThanOrEqual(4);
+	});
+
+	it("clears running/pushing overlays with no active task but keeps ones with an active task", async () => {
+		const {resyncLoadedProjects} = await import("./server-events-apply");
+		const STALE = "b".repeat(40);
+		const PUSHING = "c".repeat(40);
+		queryClient.setQueryData(
+			["children", "wip"],
+			[
+				makeChildAt(SHA, {testStatus: "running"}),
+				makeChildAt(STALE, {testStatus: "running", pushing: true}),
+				makeChildAt(PUSHING, {pushing: true}),
+			],
+		);
+		applier.apply({channel: "task", data: makeTaskEvent({taskType: "test", status: "running"})});
+		applier.apply({
+			channel: "task",
+			data: makeTaskEvent({id: "2", sha: PUSHING, taskType: "push", status: "running"}),
+		});
+
+		await resyncLoadedProjects(queryClient, {
+			fetchChildren: async () => Promise.resolve([makeChildAt(SHA), makeChildAt(STALE), makeChildAt(PUSHING)]),
+			fetchTodos: async () => Promise.resolve([]),
+		});
+
+		expect(queryClient.getQueryData(["children", "wip"])).toEqual([
+			makeChildAt(SHA, {testStatus: "running"}),
+			makeChildAt(STALE),
+			makeChildAt(PUSHING, {pushing: true}),
+		]);
+	});
+
+	it("drops stale queued/running tasks from the store but keeps finished ones", async () => {
+		const {clearActiveTasks} = await import("./server-events-store");
+		const DONE = "d".repeat(40);
+		applier.apply({channel: "task", data: makeTaskEvent({status: "running"})});
+		applier.apply({channel: "task", data: makeTaskEvent({id: "3", sha: DONE, status: "passed"})});
+		clearActiveTasks();
+		expect([getTaskSnapshot(SHA, "wip"), getTaskSnapshot(DONE, "wip")]).toEqual([
+			undefined,
+			makeTaskEvent({id: "3", sha: DONE, status: "passed"}),
+		]);
+		expect(hasActiveTasksSnapshot()).toBe(false);
 	});
 });

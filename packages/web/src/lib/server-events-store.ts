@@ -68,6 +68,22 @@ export function applyTaskEvent(event: TaskEvent): void {
 	notifyKey("tasks");
 }
 
+/**
+ * Drop queued/running tasks. Called when the event stream reopens: the server
+ * replays its real active tasks on connect, so anything left over here missed
+ * its terminal event during the gap.
+ */
+export function clearActiveTasks(): void {
+	for (const [key, task] of tasks) {
+		if (task.status !== "queued" && task.status !== "running") continue;
+		tasks.delete(key);
+		notifyKey(`task:${key}`);
+	}
+	tasksSnapshot = new Map(tasks);
+	hasActiveTasks = false;
+	notifyKey("tasks");
+}
+
 export function applyMergeEvent(event: MergeStatusEvent): void {
 	mergeStatuses.set(taskStoreKey(event.project, event.sha), event);
 	notifyKey(`merge:${taskStoreKey(event.project, event.sha)}`);

@@ -11,6 +11,7 @@ import {
 	getTaskLogSnapshot,
 	getTaskSnapshot,
 	hasActiveTasksSnapshot,
+	clearActiveTasks,
 	subscribeToStoreKey,
 	taskStoreKey,
 } from "./server-events-store";
@@ -34,6 +35,7 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 
 		es.addEventListener("open", () => {
 			if (opened) {
+				clearActiveTasks();
 				void resyncLoadedProjects(queryClient, {
 					fetchChildren: async (project) => getProjectChildren({data: {project}}),
 					fetchTodos: async (project) => getProjectTodos({data: {project}}),

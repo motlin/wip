@@ -36,7 +36,6 @@ import {
 	getGitHubRateLimitState,
 	getCachedTodos,
 	cacheTodos,
-	invalidateTodosCache,
 	type ProjectInfo,
 	type GitChildResult,
 	type TodoItem as SharedTodoItem,
@@ -1422,20 +1421,18 @@ export async function generateAdvancePlanHandler(input: GenerateAdvancePlanInput
 	});
 }
 
-export async function refreshAllHandler(): Promise<ActionResult> {
-	return tracedAction("refreshAll", async () => {
-		cachedProjects = null;
-		cachedProjectsTime = 0;
+export async function refreshAllHandler(): Promise<{started: number}> {
+	return traced("refreshAll", async () => {
 		invalidateIssuesCache();
 		invalidateProjectItemsCache();
-		// Re-populate the project cache and invalidate PR caches
-		const projects = await refreshProjectCache();
+		const projects = await ensureProjects();
+		// fallow-ignore-next-line circular-dependency
+		const {enqueueProjectRefresh} = await import("./background-refresh.js");
 		for (const p of projects) {
 			invalidatePrCache(p.name);
-			invalidateChildrenCache(p.name);
-			invalidateTodosCache(p.name);
+			enqueueProjectRefresh(p.name, {force: true});
 		}
-		return {ok: true, message: "All caches invalidated"};
+		return {started: projects.length};
 	});
 }
 

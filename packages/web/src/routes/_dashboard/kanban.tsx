@@ -1,5 +1,5 @@
 import {createFileRoute} from "@tanstack/react-router";
-import {useSuspenseQuery, useQueryClient} from "@tanstack/react-query";
+import {useSuspenseQuery} from "@tanstack/react-query";
 import {RefreshCw} from "lucide-react";
 import {useState, useMemo} from "react";
 import {KanbanColumn} from "../../components/kanban-column.js";
@@ -31,7 +31,6 @@ export const Route = createFileRoute("/_dashboard/kanban")({
 function Kanban() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
-	const queryClient = useQueryClient();
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
 	const {grouped, totalCount} = useMemo(() => {
@@ -99,14 +98,6 @@ function Kanban() {
 	const handleRefreshAll = async () => {
 		await runPendingAction("Refresh all", setRefreshingAll, async () => {
 			await refreshAll();
-			await Promise.all([
-				queryClient.invalidateQueries({queryKey: ["children"]}),
-				queryClient.invalidateQueries({queryKey: ["todos"]}),
-				queryClient.invalidateQueries({queryKey: ["issues"]}),
-				queryClient.invalidateQueries({queryKey: ["projectItems"]}),
-				queryClient.invalidateQueries({queryKey: ["projects"]}),
-				queryClient.invalidateQueries({queryKey: ["snoozed"]}),
-			]);
 		});
 	};
 

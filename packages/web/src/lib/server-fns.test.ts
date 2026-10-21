@@ -27,6 +27,12 @@ import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
 import {repoResource} from "./repo-resource.js";
 
+const forcedRefreshSpy = vi.hoisted(() => vi.fn<(project: string, options: {force?: boolean}) => void>());
+vi.mock("./background-refresh.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./background-refresh.js")>()),
+	enqueueProjectRefresh: forcedRefreshSpy,
+}));
+
 const fakeExeca = vi.hoisted(() => ({
 	handler: undefined as
 		| undefined
@@ -1708,6 +1714,21 @@ describe("rebaseLocalHandler", () => {
 });
 
 // -- refreshAllHandler (direct handler tests) --
+
+describe("refreshAllHandler enqueues through the queue", () => {
+	it("enqueues one forced refresh per project and returns started immediately", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "ra-one", dir}), makeProject({name: "ra-two", dir})]);
+		forcedRefreshSpy.mockClear();
+		const {refreshAllHandler} = await import("./server-fns.impl.js");
+		const result = await refreshAllHandler();
+		expect(result).toStrictEqual({started: 2});
+		expect(forcedRefreshSpy.mock.calls).toStrictEqual([
+			["ra-one", {force: true}],
+			["ra-two", {force: true}],
+		]);
+	});
+});
 
 describe("refreshAllHandler", () => {
 	it("invalidates all caches and returns success", async () => {

@@ -186,7 +186,7 @@ export const generateAdvancePlan = createServerFn({method: "POST"})
 	)
 	.handler(async ({data}): Promise<AdvancePlanSummary> => (await serverFns()).generateAdvancePlanHandler(data));
 
-export const refreshAll = createServerFn({method: "POST"}).handler(async (): Promise<ActionResult> =>
+export const refreshAll = createServerFn({method: "POST"}).handler(async (): Promise<{started: number}> =>
 	(await serverFns()).refreshAllHandler(),
 );
 

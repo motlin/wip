@@ -40,7 +40,7 @@ const watchGate = createWatchGate(refSnapshot);
  * its cache is still fresh, so the periodic sweep costs nothing while data is
  * current. Pass force=true (manual Refresh) to bypass the freshness gate.
  */
-function enqueueProjectRefresh(project: string, options: {force?: boolean} = {}): void {
+export function enqueueProjectRefresh(project: string, options: {force?: boolean} = {}): void {
 	const force = options.force === true;
 	enqueueRefresh({
 		kind: "children",

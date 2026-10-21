@@ -259,3 +259,15 @@ export {
 	setGitHubClient,
 	resetGitHubClient,
 } from "./services/github-client.js";
+export {
+	createWorkQueue,
+	type EnqueueOptions,
+	type JobHandle,
+	type WorkJobErrorEvent,
+	type WorkJobSummary,
+	type WorkPriority,
+	type WorkQueue,
+	type WorkQueueOptions,
+	type WorkQueueState,
+	type WorkResourceProbe,
+} from "./lib/work-queue.js";

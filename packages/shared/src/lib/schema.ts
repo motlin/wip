@@ -331,3 +331,19 @@ export const projectCache = sqliteTable(
 		index("project_cache_active_idx").on(table.name, table.systemTo),
 	],
 );
+
+export const taskRecords = sqliteTable(
+	"task_records",
+	{
+		id: text("id").notNull().primaryKey(),
+		kind: text("kind").notNull(),
+		project: text("project").notNull(),
+		sha: text("sha").notNull(),
+		status: text("status", {enum: ["queued", "running", "passed", "failed", "cancelled"]}).notNull(),
+		outcome: text("outcome"),
+		createdAt: text("created_at").notNull(),
+		finishedAt: text("finished_at"),
+		error: text("error"),
+	},
+	(table) => [index("task_records_created_idx").on(table.createdAt)],
+);

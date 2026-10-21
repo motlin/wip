@@ -42,6 +42,8 @@ import {
 	invalidateTodosCache,
 	setCachedProjectList,
 	getCachedProjectList,
+	upsertTaskRecord,
+	loadRecentTaskRecords,
 } from "./db.js";
 import type {GitHubIssue} from "./github-issues.js";
 import type {GitHubProjectItem} from "./github-projects.js";
@@ -1401,5 +1403,48 @@ describe("setCachedProjectList deduplication", () => {
 		expect(allRows).toHaveLength(2);
 
 		vi.useRealTimers();
+	});
+});
+
+describe("task records", () => {
+	const base = {
+		id: "t1",
+		kind: "test",
+		project: "alpha",
+		sha: "abc123",
+		status: "queued" as const,
+		outcome: null,
+		createdAt: "2026-10-21 10:00:00.000",
+		finishedAt: null,
+		error: null,
+	};
+
+	it("round-trips a task record", () => {
+		upsertTaskRecord(base);
+		expect(loadRecentTaskRecords()).toEqual([base]);
+	});
+
+	it("overwrites the record on status transitions", () => {
+		upsertTaskRecord(base);
+		const finished = {
+			...base,
+			status: "failed" as const,
+			outcome: "conflicts",
+			finishedAt: "2026-10-21 10:01:00.000",
+			error: "boom",
+		};
+		upsertTaskRecord(finished);
+		expect(loadRecentTaskRecords()).toEqual([finished]);
+	});
+
+	it("returns newest first and caps at 200", () => {
+		for (let i = 0; i < 205; i++) {
+			const createdAt = `2026-10-21 10:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000`;
+			upsertTaskRecord({...base, id: `t${i}`, createdAt});
+		}
+		const loaded = loadRecentTaskRecords();
+		expect(loaded).toHaveLength(200);
+		expect(loaded[0]?.id).toBe("t204");
+		expect(loaded[199]?.id).toBe("t5");
 	});
 });

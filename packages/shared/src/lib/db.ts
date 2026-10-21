@@ -43,6 +43,7 @@ import {
 	prStatusCache,
 	projectCache,
 	snoozed,
+	taskRecords,
 	testResults,
 	todosCache,
 	upstreamRefs,
@@ -434,6 +435,21 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS advance_config_active_idx ON advance_config (project, system_to)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS task_records (
+			id TEXT NOT NULL PRIMARY KEY,
+			kind TEXT NOT NULL,
+			project TEXT NOT NULL,
+			sha TEXT NOT NULL,
+			status TEXT NOT NULL,
+			outcome TEXT,
+			created_at TEXT NOT NULL,
+			finished_at TEXT,
+			error TEXT
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS task_records_created_idx ON task_records (created_at)`);
 
 	db = drizzle(sqlite, {schema});
 
@@ -1391,6 +1407,25 @@ export function setAdvanceConfig(project: string, concurrency: number): void {
 		isUnchanged: (existing) => existing.concurrency === concurrency,
 		newRow: {project, concurrency},
 	});
+}
+
+// --- Persisted task records ---
+
+export type TaskRecord = typeof taskRecords.$inferSelect;
+
+const TASK_RECORD_LIMIT = 200;
+
+export function upsertTaskRecord(record: TaskRecord): void {
+	getDb().insert(taskRecords).values(record).onConflictDoUpdate({target: taskRecords.id, set: record}).run();
+}
+
+export function loadRecentTaskRecords(): TaskRecord[] {
+	return getDb()
+		.select()
+		.from(taskRecords)
+		.orderBy(desc(taskRecords.createdAt), desc(sql`rowid`))
+		.limit(TASK_RECORD_LIMIT)
+		.all();
 }
 
 // --- Project cache ---

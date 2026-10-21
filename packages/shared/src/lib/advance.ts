@@ -1,6 +1,7 @@
 import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";
 import {runAdvanceUnits} from "./advance-queue.js";
-import {createSystemProbe, type ResourceProbe} from "./system-probe.js";
+import {createSystemProbe} from "./system-probe.js";
+import type {WorkResourceProbe} from "./work-queue.js";
 import {RunMemory, normalizeFailureSignature, type UnitRef} from "./advance-progress.js";
 import {type NodeStatus, type ReportNode} from "./advance-report.js";
 import {tracedExeca} from "../services/traced-execa.js";
@@ -52,7 +53,7 @@ export interface AdvanceProjectOptions {
 	loadThreshold?: number;
 	memFloor?: number;
 	maxAttemptsPerUnit?: number;
-	probe?: ResourceProbe;
+	probe?: WorkResourceProbe;
 	onEvent?: (event: AdvanceEvent) => void;
 }
 

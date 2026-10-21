@@ -1,10 +1,10 @@
 import {describe, it, expect} from "vite-plus/test";
 
 import {runAdvanceUnits, type AdvanceQueueOptions, type SchedulableUnit} from "./advance-queue.js";
-import type {ResourceProbe} from "./system-probe.js";
+import type {WorkResourceProbe} from "./work-queue.js";
 
-const idleProbe: ResourceProbe = {loadPerCore: () => 0, freeMemRatio: () => 1};
-const busyProbe: ResourceProbe = {loadPerCore: () => 99, freeMemRatio: () => 0};
+const idleProbe: WorkResourceProbe = {loadPerCore: () => 0, freeMemRatio: () => 1};
+const busyProbe: WorkResourceProbe = {loadPerCore: () => 99, freeMemRatio: () => 0};
 
 function units(...specs: Array<[string, string, string[]]>): SchedulableUnit[] {
 	return specs.map(([id, project, dependsOn]) => ({id, project, dependsOn}));

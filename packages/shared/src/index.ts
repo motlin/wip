@@ -117,7 +117,7 @@ export {
 	type UnitOutcome,
 	type AdvanceQueueOptions,
 } from "./lib/advance-queue.js";
-export {createSystemProbe, type ResourceProbe} from "./lib/system-probe.js";
+export {createSystemProbe} from "./lib/system-probe.js";
 export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
 export {

@@ -36,7 +36,7 @@ import {CATEGORIES, categoryTextClass} from "../lib/category-actions";
 import {branchRemoteUrl} from "../lib/branch-rename";
 import {useTestJob, useTestLog} from "../lib/server-events-context";
 import {useAutoTail} from "../lib/use-auto-tail";
-import {itemBackTarget} from "../lib/item-back-link";
+import {itemBackLabel, itemBackTarget} from "../lib/item-back-link";
 
 const itemSearchSchema = z.object({
 	from: z.string().optional(),
@@ -154,7 +154,7 @@ function ItemDetail() {
 						className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
 					>
 						<ArrowLeft className="h-4 w-4" />
-						Back
+						{itemBackLabel(backTo)}
 					</Link>
 					<div className="mt-4 rounded-lg border border-border-300/30 bg-bg-100 p-4">
 						<h2 className="mb-2 text-sm font-semibold text-text-500">{CATEGORIES.snoozed.label}</h2>
@@ -177,7 +177,7 @@ function ItemDetail() {
 					className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
 				>
 					<ArrowLeft className="h-4 w-4" />
-					Back
+					{itemBackLabel(backTo)}
 				</Link>
 				<div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-border-300/30 bg-bg-100 p-8">
 					<SearchX className="h-8 w-8 text-text-500" />
@@ -189,7 +189,7 @@ function ItemDetail() {
 						to={backTo}
 						className="mt-2 inline-flex items-center gap-1 rounded bg-bg-200 px-3 py-1.5 text-xs font-medium text-text-200 transition-colors hover:bg-bg-300"
 					>
-						Back to Queue
+						{itemBackLabel(backTo)}
 					</Link>
 				</div>
 			</div>
@@ -213,7 +213,7 @@ function ItemDetail() {
 				className="mb-4 inline-flex items-center gap-1 text-sm text-text-400 hover:text-text-100 transition-colors"
 			>
 				<ArrowLeft className="h-4 w-4" />
-				Back
+				{itemBackLabel(backTo)}
 			</Link>
 
 			<div className="grid gap-6 md:grid-cols-[280px_1fr]">

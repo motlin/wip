@@ -242,17 +242,29 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+// A failed viewer lookup is not retried until this cooldown passes, so a broken
+// lookup warns at most once per cooldown instead of on every PR status fetch.
+const GH_LOGIN_FAILURE_COOLDOWN_MS = 10 * 60_000;
+let ghLoginFailedAt: number | null = null;
+
+export function resetGhLoginFailureForTests(): void {
+	ghLoginFailedAt = null;
+}
+
 async function getGhLogin(): Promise<string> {
 	const cached = getCachedGhLogin();
 	if (cached) return cached;
+	if (ghLoginFailedAt !== null && Date.now() - ghLoginFailedAt < GH_LOGIN_FAILURE_COOLDOWN_MS) return "";
 	try {
 		const client = getGitHubClient();
 		const raw = await client.graphql("{ viewer { login } }");
 		const response = ViewerLoginResponseSchema.parse(raw);
 		const login = response.data.viewer.login;
 		cacheGhLogin(login);
+		ghLoginFailedAt = null;
 		return login;
 	} catch (error) {
+		ghLoginFailedAt = Date.now();
 		log.general.warn({error: errorMessage(error)}, "GitHub viewer login lookup failed");
 		return "";
 	}

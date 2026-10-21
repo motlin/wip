@@ -99,10 +99,15 @@ ${commit.stdout}
 	try {
 		parsed = JSON.parse(result.stdout);
 	} catch {
+		log.general.warn({sha: req.sha, project: req.project}, "branch naming output was not JSON");
 		return null;
 	}
 	const output = ClaudeBranchNamingOutputSchema.safeParse(parsed);
-	return output.success ? output.data.structured_output.branchName : null;
+	if (!output.success) {
+		log.general.warn({sha: req.sha, project: req.project}, "branch naming output failed schema validation");
+		return null;
+	}
+	return output.data.structured_output.branchName;
 }
 
 // A commit whose naming failed is not retried until this cooldown passes, so a
@@ -110,14 +115,28 @@ ${commit.stdout}
 const FAILED_NAMING_COOLDOWN_MS = 10 * 60_000;
 const failedNamingAt = new Map<string, number>();
 
+export function failedNamingKeysForTests(): string[] {
+	return [...failedNamingAt.keys()];
+}
+
+function pruneExpiredFailures(now: number): void {
+	for (const [key, failedAt] of failedNamingAt) {
+		if (now - failedAt >= FAILED_NAMING_COOLDOWN_MS) {
+			failedNamingAt.delete(key);
+		}
+	}
+}
+
 export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map<string, string>> {
 	const result = new Map<string, string>();
 	if (requests.length === 0) return result;
 
+	const now = Date.now();
+	pruneExpiredFailures(now);
+
 	// Check cache first
 	const cached = getBranchNames(requests);
 	const uncached: NamingRequest[] = [];
-	const now = Date.now();
 	for (const req of requests) {
 		const key = `${req.project}:${req.sha}`;
 		const name = cached.get(key);

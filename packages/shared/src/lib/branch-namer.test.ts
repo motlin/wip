@@ -6,8 +6,18 @@ const {mockedExeca} = vi.hoisted(() => ({
 
 vi.mock("execa", () => ({execa: mockedExeca}));
 
+const {mockedWarn} = vi.hoisted(() => ({mockedWarn: vi.fn<(...args: unknown[]) => void>()}));
+
+vi.mock("../services/logger-pino.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../services/logger-pino.js")>();
+	return {
+		...actual,
+		log: {...actual.log, general: {...actual.log.general, warn: mockedWarn}},
+	};
+});
+
 import {initDb, resetDb} from "./db.js";
-import {nameBranch, suggestBranchNames} from "./branch-namer.js";
+import {nameBranch, suggestBranchNames, failedNamingKeysForTests} from "./branch-namer.js";
 
 interface Deferred<T> {
 	promise: Promise<T>;
@@ -137,6 +147,7 @@ ${commitContext}
 describe("nameBranch failure handling", () => {
 	beforeEach(() => {
 		mockedExeca.mockReset();
+		mockedWarn.mockReset();
 	});
 
 	it("returns null instead of throwing when claude prints non-JSON output", async () => {
@@ -147,6 +158,9 @@ describe("nameBranch failure handling", () => {
 		await expect(
 			nameBranch({sha: "d".repeat(40), project: "p", subject: "s", dir: "/tmp/test/repo"}),
 		).resolves.toBeNull();
+		expect(mockedWarn.mock.calls).toStrictEqual([
+			[{sha: "d".repeat(40), project: "p"}, expect.stringContaining("not JSON")],
+		]);
 	});
 
 	it("returns null instead of throwing when claude output fails the schema", async () => {
@@ -158,6 +172,9 @@ describe("nameBranch failure handling", () => {
 		await expect(
 			nameBranch({sha: "e".repeat(40), project: "p", subject: "s", dir: "/tmp/test/repo"}),
 		).resolves.toBeNull();
+		expect(mockedWarn.mock.calls).toStrictEqual([
+			[{sha: "e".repeat(40), project: "p"}, expect.stringContaining("schema")],
+		]);
 	});
 });
 
@@ -204,5 +221,38 @@ describe("suggestBranchNames negative cache", () => {
 
 		const claudeCalls = mockedExeca.mock.calls.filter(([command]) => command === "claude").length;
 		expect(claudeCalls).toBe(2);
+	});
+});
+
+describe("suggestBranchNames failed-naming cache pruning", () => {
+	beforeEach(() => {
+		initDb(":memory:");
+		mockedExeca.mockReset();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		resetDb();
+	});
+
+	it("removes expired failure entries from the cache on the next call", async () => {
+		vi.useFakeTimers({toFake: ["Date"]});
+		vi.setSystemTime(new Date("2026-10-20T10:00:00Z"));
+		mockedExeca.mockImplementation(async (command: string) =>
+			Promise.resolve(command === "git" ? {exitCode: 0, stdout: "commit context"} : {exitCode: 1, stdout: ""}),
+		);
+		const expiring = {sha: "1".repeat(40), project: "prune-project", subject: "s", dir: "/tmp/test/prune"};
+		const other = {sha: "2".repeat(40), project: "prune-project", subject: "s", dir: "/tmp/test/prune"};
+
+		await suggestBranchNames([expiring]);
+		expect(failedNamingKeysForTests()).toContain("prune-project:" + expiring.sha);
+
+		vi.setSystemTime(new Date("2026-10-20T11:00:00Z"));
+		await suggestBranchNames([other]);
+
+		expect({
+			hasExpired: failedNamingKeysForTests().includes("prune-project:" + expiring.sha),
+			hasOther: failedNamingKeysForTests().includes("prune-project:" + other.sha),
+		}).toStrictEqual({hasExpired: false, hasOther: true});
 	});
 });

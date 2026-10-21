@@ -22,7 +22,7 @@ import {
 	seedProjectCache,
 	resetProjectCache,
 } from "./server-fns.impl.js";
-import {onRefreshError} from "./refresh-scheduler.js";
+import {enqueueRefresh, onRefreshError} from "./refresh-scheduler.js";
 import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
 import {repoResource} from "./repo-resource.js";
@@ -1355,6 +1355,81 @@ describe("getProjectChildrenHandler", () => {
 
 		expect(firstResult).toMatchObject({status: "rejected", reason: new Error("refresh boom")});
 		expect(secondResult).toMatchObject({status: "rejected", reason: new Error("refresh boom")});
+	});
+
+	it("a cold-cache caller coalescing onto a failing background refresh rejects", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "coalesce-bg-fail", dir})]);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		enqueueRefresh({
+			kind: "children",
+			project: "coalesce-bg-fail",
+			run: async () => {
+				await gate;
+				throw new Error("background boom");
+			},
+		});
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const caller = getProjectChildrenHandler("coalesce-bg-fail");
+		const settled = Promise.allSettled([caller]);
+		release();
+		const [result] = await settled;
+
+		expect(result).toMatchObject({status: "rejected", reason: new Error("background boom")});
+	});
+
+	it("a cold-cache caller coalescing onto a successful background refresh returns data", async () => {
+		const dir = await createTestGitRepo();
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Child commit"]);
+		seedProjectCache([makeProject({name: "coalesce-bg-ok", dir, upstreamRef: "main~1"})]);
+		const {getProjectChildrenHandler, refreshProjectChildren} = await import("./server-fns.impl.js");
+		enqueueRefresh({
+			kind: "children",
+			project: "coalesce-bg-ok",
+			run: async () => {
+				await refreshProjectChildren("coalesce-bg-ok");
+			},
+		});
+
+		const result = await getProjectChildrenHandler("coalesce-bg-ok");
+
+		expect(result.map((c) => c.subject)).toStrictEqual(["Child commit"]);
+	});
+
+	it("a cold-cache caller coalescing onto a cancelled refresh rejects instead of returning []", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "coalesce-cancelled", dir})]);
+		const background = workQueue.enqueue({
+			coalesceKey: "children:coalesce-cancelled",
+			resources: [repoResource("coalesce-cancelled")],
+			kind: "children",
+			project: "coalesce-cancelled",
+			run: async (signal) => {
+				await new Promise<void>((resolve) => {
+					signal.addEventListener("abort", () => {
+						resolve();
+					});
+				});
+			},
+		});
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const caller = getProjectChildrenHandler("coalesce-cancelled");
+		const settled = Promise.allSettled([caller]);
+		await new Promise<void>((resolve) => {
+			setTimeout(resolve, 20);
+		});
+		background.cancel();
+		const [result] = await settled;
+
+		expect(result).toMatchObject({
+			status: "rejected",
+			reason: new Error("Refresh cancelled: children:coalesce-cancelled"),
+		});
 	});
 
 	it("includes child commits when present", async () => {

@@ -65,7 +65,7 @@ import {
 	matchesFilters,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
-import {enqueueRefresh} from "./refresh-scheduler.js";
+import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
 import {runQueuedAction} from "./queued-action.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -386,11 +386,10 @@ export async function getProjectChildrenHandler(project: string): Promise<Projec
  * draws from the global concurrency budget, then await its settlement. A
  * coalesced request reads the result the in-flight job already cached.
  */
-const childrenRefreshFailures = new Map<string, {error: unknown}>();
-
 async function refreshChildrenThroughQueue(project: string): Promise<ProjectChildrenResult> {
 	let result: ProjectChildrenResult | undefined;
 	const key = `children:${project}`;
+	const mark = refreshOutcomeMark();
 	const handle = workQueue.enqueue({
 		coalesceKey: key,
 		resources: [repoResource(project)],
@@ -398,19 +397,14 @@ async function refreshChildrenThroughQueue(project: string): Promise<ProjectChil
 		project,
 		costClass: "cheap",
 		priority: "foreground",
-		run: async () => {
-			childrenRefreshFailures.delete(key);
-			try {
-				result = await refreshProjectChildren(project);
-			} catch (error: unknown) {
-				childrenRefreshFailures.set(key, {error});
-				throw error;
-			}
-		},
+		run: trackRefreshOutcome(key, async () => {
+			result = await refreshProjectChildren(project);
+		}),
 	});
 	await handle.settled;
-	// A coalesced caller never runs its own job, so it reads the in-flight job's failure here.
-	const failure = childrenRefreshFailures.get(key);
+	// A coalesced caller never runs its own job (it may be a background refresh), so it
+	// reads the outcome the shared job recorded: failures and cancellations throw.
+	const failure = refreshFailureSince(key, mark);
 	if (failure) throw failure.error;
 	return result ?? getCachedChildren(project) ?? [];
 }

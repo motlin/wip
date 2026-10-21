@@ -29,6 +29,48 @@ export function onRefreshError(
 	return workQueue.onJobError(listener);
 }
 
+let outcomeSeq = 0;
+const refreshOutcomes = new Map<string, {seq: number; error?: unknown}>();
+
+/** Monotonic marker; pass to refreshFailureSince to ask what happened after this point. */
+export function refreshOutcomeMark(): number {
+	return outcomeSeq;
+}
+
+/**
+ * Wrap a job body so its outcome (success, failure, or cancellation) is recorded under its
+ * coalesce key. A caller that coalesced onto the job reads it back via refreshFailureSince.
+ */
+export function trackRefreshOutcome(
+	key: string,
+	run: (signal: AbortSignal) => Promise<void>,
+): (signal: AbortSignal) => Promise<void> {
+	return async (signal) => {
+		try {
+			await run(signal);
+		} catch (error: unknown) {
+			refreshOutcomes.set(key, {seq: ++outcomeSeq, error});
+			throw error;
+		}
+		refreshOutcomes.set(
+			key,
+			signal.aborted ? {seq: ++outcomeSeq, error: new Error(`Refresh cancelled: ${key}`)} : {seq: ++outcomeSeq},
+		);
+	};
+}
+
+/**
+ * The failure of the job under `key` that settled after `mark`, if any. A job that was
+ * cancelled before it ever ran records nothing, so that is reported as a cancellation too.
+ */
+export function refreshFailureSince(key: string, mark: number): {error: unknown} | undefined {
+	const outcome = refreshOutcomes.get(key);
+	if (outcome === undefined || outcome.seq <= mark) {
+		return {error: new Error(`Refresh cancelled: ${key}`)};
+	}
+	return outcome.error === undefined ? undefined : {error: outcome.error};
+}
+
 export function runningRefreshCount(): number {
 	return workQueue.runningCount();
 }
@@ -56,7 +98,7 @@ export function enqueueRefresh(options: {
 		kind: options.kind,
 		project: options.project,
 		costClass: options.kind === "merge-status" ? "git-write" : "cheap",
-		run: async () => options.run(),
+		run: trackRefreshOutcome(key, async () => options.run()),
 	});
 	if (handle.coalesced && options.force === true) {
 		void handle.settled.then(() => enqueueRefresh(options));

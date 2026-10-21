@@ -1283,15 +1283,19 @@ export interface GenerateAdvancePlanInput {
 	exclude?: string[];
 }
 
-/** Actions worth offering on a branch, given the recorded test result for its tip. */
+/**
+ * Actions worth offering on a branch, given the recorded test result for its tip.
+ * `testInFlight` means a test for this tip is already queued or running, so offering "test" would duplicate it.
+ */
 function expectedActionsForTipResult(
 	result: "passed" | "failed" | undefined,
 	rebaseable: boolean | null | undefined,
+	testInFlight: boolean,
 ): AdvancePlanAction[] {
 	const actions: AdvancePlanAction[] =
 		result === "passed" ? ["rebase"] : result === "failed" ? ["rebase", "fix-failure"] : ["test", "rebase"];
 	if (rebaseable === false) actions.push("resolve-conflicts");
-	return actions;
+	return testInFlight ? actions.filter((action) => action !== "test") : actions;
 }
 
 function skipReason(project: ProjectInfo): string | undefined {
@@ -1308,6 +1312,7 @@ export async function generateAdvancePlanForProjects(
 	const include = input.include ?? [];
 	const exclude = input.exclude ?? [];
 	const projectSummaries: AdvancePlanProjectSummary[] = [];
+	const {getAllActiveTasks} = await import("./task-queue.js");
 
 	for (const project of projects) {
 		if (!matchesFilters(project.name, include, exclude)) continue;
@@ -1335,6 +1340,11 @@ export async function generateAdvancePlanForProjects(
 		const plan = await planProject({project: project.name, dir: project.dir, upstreamRef: project.upstreamRef});
 		const status = plan.units.length === 0 && !plan.baseline.needsTest ? "noop" : "ready";
 		const tipResults = getTestResultsForProject(project.name);
+		const testShasInFlight = new Set(
+			getAllActiveTasks()
+				.filter((task) => task.taskType === "test" && task.project === project.name)
+				.map((task) => task.sha),
+		);
 		const upstreamSha = getCachedUpstreamSha(project.name);
 		const rebaseableBySha = new Map<string, boolean | null>(
 			upstreamSha ? getCachedMergeStatuses(project.name, upstreamSha).map((ms) => [ms.sha, ms.rebaseable]) : [],
@@ -1362,6 +1372,7 @@ export async function generateAdvancePlanForProjects(
 				expectedActions: expectedActionsForTipResult(
 					tipResults.get(unit.tipSha),
 					rebaseableBySha.get(unit.tipSha),
+					testShasInFlight.has(unit.tipSha),
 				),
 			})),
 		});

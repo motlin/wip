@@ -560,6 +560,42 @@ describe("generateAdvancePlanForProjects", () => {
 			"feature/clean": ["test", "rebase"],
 		});
 	});
+
+	it("omits test for a branch whose tip already has a test running or queued", async () => {
+		const taskQueue = await import("./task-queue.js");
+		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
+		const dir = await createTestGitRepo();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/running", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Running work"]);
+		const runningSha = (await execa("git", ["-C", dir, "rev-parse", "feature/running"])).stdout.trim();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/queued", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Queued work"]);
+		const queuedSha = (await execa("git", ["-C", dir, "rev-parse", "feature/queued"])).stdout.trim();
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/idle", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Idle work"]);
+		const activeTasks = [
+			{taskType: "test", project: "in-flight-project", sha: runningSha, status: "running"},
+			{taskType: "test", project: "in-flight-project", sha: queuedSha, status: "queued"},
+		] as unknown as ReturnType<typeof taskQueue.getAllActiveTasks>;
+		const activeSpy = vi.spyOn(taskQueue, "getAllActiveTasks").mockReturnValue(activeTasks);
+
+		try {
+			const plan = await generateAdvancePlanForProjects([
+				makeProject({name: "in-flight-project", dir, upstreamRef: "main", upstreamBranch: "main"}),
+			]);
+
+			const actionsByBranch = Object.fromEntries(
+				plan.projects[0]!.branches.map((branch) => [branch.branch, branch.expectedActions]),
+			);
+			expect(actionsByBranch).toStrictEqual({
+				"feature/running": ["rebase"],
+				"feature/queued": ["rebase"],
+				"feature/idle": ["test", "rebase"],
+			});
+		} finally {
+			activeSpy.mockRestore();
+		}
+	});
 });
 
 // -- getIssues() --

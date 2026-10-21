@@ -67,6 +67,7 @@ import {
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh} from "./refresh-scheduler.js";
+import {runQueuedAction} from "./queued-action.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
@@ -969,34 +970,36 @@ export async function refreshChildHandler(project: string): Promise<ActionResult
 export async function createBranchHandler(data: CreateBranchInput): Promise<ActionResult> {
 	return tracedAction("createBranch", async () => {
 		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "createBranch", async () => {
+			const result = await tracedExeca("git", ["-C", p.dir, "checkout", "-b", data.branchName, data.sha], {
+				reject: false,
+			});
 
-		const result = await tracedExeca("git", ["-C", p.dir, "checkout", "-b", data.branchName, data.sha], {
-			reject: false,
+			if (result.exitCode === 0) {
+				return {ok: true, message: `Created branch ${data.branchName}`};
+			}
+
+			return {ok: false, message: `Failed to create branch: ${result.stderr}`};
 		});
-
-		if (result.exitCode === 0) {
-			return {ok: true, message: `Created branch ${data.branchName}`};
-		}
-
-		return {ok: false, message: `Failed to create branch: ${result.stderr}`};
 	});
 }
 
 export async function deleteBranchHandler(data: DeleteBranchInput): Promise<ActionResult> {
 	return tracedAction("deleteBranch", async () => {
 		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "deleteBranch", async () => {
+			const result = await tracedExeca("git", ["-C", p.dir, "branch", "-D", data.branch], {
+				reject: false,
+			});
 
-		const result = await tracedExeca("git", ["-C", p.dir, "branch", "-D", data.branch], {
-			reject: false,
+			if (result.exitCode === 0) {
+				invalidatePrCache(data.project);
+				invalidateChildrenCache(data.project);
+				return {ok: true, message: `Deleted branch ${data.branch}`};
+			}
+
+			return {ok: false, message: `Failed to delete branch: ${result.stderr}`};
 		});
-
-		if (result.exitCode === 0) {
-			invalidatePrCache(data.project);
-			invalidateChildrenCache(data.project);
-			return {ok: true, message: `Deleted branch ${data.branch}`};
-		}
-
-		return {ok: false, message: `Failed to delete branch: ${result.stderr}`};
 	});
 }
 
@@ -1044,18 +1047,19 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 export async function renameBranchHandler(data: RenameBranchInput): Promise<ActionResult> {
 	return tracedAction("renameBranch", async () => {
 		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "renameBranch", async () => {
+			const result = await tracedExeca("git", ["-C", p.dir, "branch", "-m", data.oldBranch, data.newBranch], {
+				reject: false,
+			});
 
-		const result = await tracedExeca("git", ["-C", p.dir, "branch", "-m", data.oldBranch, data.newBranch], {
-			reject: false,
+			if (result.exitCode === 0) {
+				invalidatePrCache(data.project);
+				invalidateChildrenCache(data.project);
+				return {ok: true, message: `Renamed ${data.oldBranch} → ${data.newBranch}`};
+			}
+
+			return {ok: false, message: `Failed to rename branch: ${result.stderr}`};
 		});
-
-		if (result.exitCode === 0) {
-			invalidatePrCache(data.project);
-			invalidateChildrenCache(data.project);
-			return {ok: true, message: `Renamed ${data.oldBranch} → ${data.newBranch}`};
-		}
-
-		return {ok: false, message: `Failed to rename branch: ${result.stderr}`};
 	});
 }
 

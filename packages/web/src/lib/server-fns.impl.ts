@@ -562,77 +562,83 @@ export async function pushChildHandler(data: PushChildInput): Promise<TestJobSta
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
-		const env = await getMiseEnv(p.dir);
+		return runQueuedAction(data.project, "createPr", async () => {
+			const env = await getMiseEnv(p.dir);
 
-		const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
-			reject: false,
-			env,
-		});
-		if (fetch.exitCode !== 0) {
-			return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
-		}
-
-		const branch = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${data.branch}^{commit}`], {
-			reject: false,
-			env,
-		});
-		if (branch.exitCode !== 0) {
-			return {ok: false, message: `Could not resolve branch ${data.branch}: ${branch.stderr}`};
-		}
-
-		const upstream = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${p.upstreamRef}^{commit}`], {
-			reject: false,
-			env,
-		});
-		if (upstream.exitCode !== 0) {
-			return {ok: false, message: `Could not resolve upstream ${p.upstreamRef}: ${upstream.stderr}`};
-		}
-
-		const containsUpstream = await tracedExeca(
-			"git",
-			["-C", p.dir, "merge-base", "--is-ancestor", p.upstreamRef, data.branch],
-			{reject: false, env},
-		);
-		if (containsUpstream.exitCode !== 0) {
-			return {ok: false, message: `${data.branch} is behind ${p.upstreamRef}; rebase before creating a PR`};
-		}
-
-		let headRefName = data.branch;
-		if (p.upstreamRemote !== "origin") {
-			const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
+			const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
 				reject: false,
+				env,
 			});
-			if (originUrl.exitCode === 0) {
-				const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
-				if (match) {
-					headRefName = `${match[1]}:${data.branch}`;
+			if (fetch.exitCode !== 0) {
+				return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
+			}
+
+			const branch = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${data.branch}^{commit}`], {
+				reject: false,
+				env,
+			});
+			if (branch.exitCode !== 0) {
+				return {ok: false, message: `Could not resolve branch ${data.branch}: ${branch.stderr}`};
+			}
+
+			const upstream = await tracedExeca(
+				"git",
+				["-C", p.dir, "rev-parse", "--verify", `${p.upstreamRef}^{commit}`],
+				{
+					reject: false,
+					env,
+				},
+			);
+			if (upstream.exitCode !== 0) {
+				return {ok: false, message: `Could not resolve upstream ${p.upstreamRef}: ${upstream.stderr}`};
+			}
+
+			const containsUpstream = await tracedExeca(
+				"git",
+				["-C", p.dir, "merge-base", "--is-ancestor", p.upstreamRef, data.branch],
+				{reject: false, env},
+			);
+			if (containsUpstream.exitCode !== 0) {
+				return {ok: false, message: `${data.branch} is behind ${p.upstreamRef}; rebase before creating a PR`};
+			}
+
+			let headRefName = data.branch;
+			if (p.upstreamRemote !== "origin") {
+				const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
+					reject: false,
+				});
+				if (originUrl.exitCode === 0) {
+					const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
+					if (match) {
+						headRefName = `${match[1]}:${data.branch}`;
+					}
 				}
 			}
-		}
 
-		const [owner, name] = p.remote.split("/");
-		if (!owner || !name) {
-			return {ok: false, message: `Could not parse owner/repo from remote: ${p.remote}`};
-		}
+			const [owner, name] = p.remote.split("/");
+			if (!owner || !name) {
+				return {ok: false, message: `Could not parse owner/repo from remote: ${p.remote}`};
+			}
 
-		const {createPullRequest} = await import("@wip/shared");
-		const result = await createPullRequest({
-			owner,
-			name,
-			baseRefName: p.upstreamBranch,
-			headRefName,
-			title: data.title,
-			body: data.body ?? "",
-			draft: data.draft !== false,
+			const {createPullRequest} = await import("@wip/shared");
+			const result = await createPullRequest({
+				owner,
+				name,
+				baseRefName: p.upstreamBranch,
+				headRefName,
+				title: data.title,
+				body: data.body ?? "",
+				draft: data.draft !== false,
+			});
+
+			if (result.ok) {
+				invalidatePrCache(data.project);
+				invalidateChildrenCache(data.project);
+				return {ok: true, message: `Created PR: ${result.prUrl}`, compareUrl: result.prUrl};
+			}
+
+			return {ok: false, message: result.message};
 		});
-
-		if (result.ok) {
-			invalidatePrCache(data.project);
-			invalidateChildrenCache(data.project);
-			return {ok: true, message: `Created PR: ${result.prUrl}`, compareUrl: result.prUrl};
-		}
-
-		return {ok: false, message: result.message};
 	});
 }
 
@@ -1006,41 +1012,51 @@ export async function deleteBranchHandler(data: DeleteBranchInput): Promise<Acti
 export async function forcePushHandler(data: ForcePushInput): Promise<ActionResult> {
 	return tracedAction("forcePush", async () => {
 		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "forcePush", async () => {
+			const result = await tracedExeca(
+				"git",
+				[
+					"-C",
+					p.dir,
+					"push",
+					"--force-with-lease",
+					p.upstreamRemote,
+					`${data.branch}:refs/heads/${data.branch}`,
+				],
+				{reject: false},
+			);
 
-		const result = await tracedExeca(
-			"git",
-			["-C", p.dir, "push", "--force-with-lease", p.upstreamRemote, `${data.branch}:refs/heads/${data.branch}`],
-			{reject: false},
-		);
+			if (result.exitCode === 0) {
+				invalidatePrCache(data.project);
+				invalidateChildrenCache(data.project);
+				return {ok: true, message: `Force-pushed to ${data.branch}`};
+			}
 
-		if (result.exitCode === 0) {
-			invalidatePrCache(data.project);
-			invalidateChildrenCache(data.project);
-			return {ok: true, message: `Force-pushed to ${data.branch}`};
-		}
-
-		return {ok: false, message: `Failed to force-push: ${result.stderr}`};
+			return {ok: false, message: `Failed to force-push: ${result.stderr}`};
+		});
 	});
 }
 
 export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> {
 	return tracedAction("mergePr", async () => {
 		const p = await resolveProject(data.project);
-		const {execa} = await import("execa");
-		const env = await getMiseEnv(p.dir);
-		const result = await execa(
-			"gh",
-			["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", p.remote],
-			{reject: false, cwd: p.dir, env},
-		);
+		return runQueuedAction(data.project, "mergePr", async () => {
+			const {execa} = await import("execa");
+			const env = await getMiseEnv(p.dir);
+			const result = await execa(
+				"gh",
+				["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", p.remote],
+				{reject: false, cwd: p.dir, env},
+			);
 
-		if (result.exitCode === 0) {
-			invalidatePrCache(data.project);
-			invalidateMergeStatus(data.project);
-			return {ok: true, message: `Merged PR #${data.prNumber}`};
-		}
+			if (result.exitCode === 0) {
+				invalidatePrCache(data.project);
+				invalidateMergeStatus(data.project);
+				return {ok: true, message: `Merged PR #${data.prNumber}`};
+			}
 
-		return {ok: false, message: `Failed to merge PR: ${result.stderr}`};
+			return {ok: false, message: `Failed to merge PR: ${result.stderr}`};
+		});
 	});
 }
 

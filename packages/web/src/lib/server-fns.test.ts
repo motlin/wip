@@ -25,6 +25,7 @@ import {
 import {onRefreshError} from "./refresh-scheduler.js";
 import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
+import {repoResource} from "./repo-resource.js";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FetchAdapter = require("@pollyjs/adapter-fetch");
@@ -1739,3 +1740,77 @@ describe("launchBackgroundEnqueue failure reporting (B32)", () => {
 
 // Re-export harness utilities for use in future test files
 export {setupPolly, makeProject, createTestGitRepo};
+
+async function tick(): Promise<void> {
+	await new Promise((resolve) => {
+		setTimeout(resolve, 0);
+	});
+}
+
+function holdRepo(project: string): () => void {
+	let release!: () => void;
+	workQueue.enqueue({
+		coalesceKey: `hold:${project}`,
+		resources: [repoResource(project)],
+		kind: "rebase",
+		project,
+		costClass: "git-write",
+		priority: "foreground",
+		run: async () =>
+			new Promise<void>((resolve) => {
+				release = resolve;
+			}),
+	});
+	return () => {
+		release();
+	};
+}
+
+/** Calls the action while another job holds the repo; reports whether it settled before release. */
+async function settledWhileRepoHeld(project: string, call: () => Promise<unknown>): Promise<boolean> {
+	const release = holdRepo(project);
+	await tick();
+	let settled = false;
+	const pending = call().finally(() => {
+		settled = true;
+	});
+	await new Promise((resolve) => {
+		setTimeout(resolve, 100);
+	});
+	const settledEarly = settled;
+	release();
+	await pending;
+	return settledEarly;
+}
+
+describe("queued git actions", () => {
+	it("forcePushHandler waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-force-push", dir})]);
+		const {forcePushHandler} = await import("./server-fns.impl.js");
+		const early = await settledWhileRepoHeld("queued-force-push", async () =>
+			forcePushHandler({project: "queued-force-push", branch: "main"}),
+		);
+		expect(early).toBe(false);
+	});
+
+	it("mergePrHandler waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-merge-pr", dir})]);
+		const {mergePrHandler} = await import("./server-fns.impl.js");
+		const early = await settledWhileRepoHeld("queued-merge-pr", async () =>
+			mergePrHandler({project: "queued-merge-pr", prNumber: 1}),
+		);
+		expect(early).toBe(false);
+	});
+
+	it("createPrHandler waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-create-pr", dir})]);
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const early = await settledWhileRepoHeld("queued-create-pr", async () =>
+			createPrHandler({project: "queued-create-pr", branch: "main", title: "t", draft: true}),
+		);
+		expect(early).toBe(false);
+	});
+});

@@ -70,6 +70,8 @@ export interface EnqueueOptions {
 	kind: string;
 	project: string;
 	priority?: WorkPriority;
+	/** Lower runs first among queued jobs (default 0). Improves with waiting time so nothing starves. */
+	rank?: number;
 	/** Defaults to "cheap". */
 	costClass?: CostClass;
 	run: (signal: AbortSignal) => Promise<void>;
@@ -83,6 +85,10 @@ export interface WorkQueueOptions {
 	loadThreshold?: number;
 	memFloor?: number;
 	stateCoalesceMs?: number;
+	/** Clock for aging; injectable for tests. */
+	now?: () => number;
+	/** Milliseconds of waiting that improve a queued job's effective rank by 1. */
+	agingMsPerRank?: number;
 }
 
 export interface WorkQueue {
@@ -107,6 +113,9 @@ interface Job {
 	kind: string;
 	project: string;
 	priority: WorkPriority;
+	rank: number;
+	seq: number;
+	enqueuedAt: number;
 	costClass: CostClass;
 	run: (signal: AbortSignal) => Promise<void>;
 	controller: AbortController;
@@ -117,6 +126,9 @@ interface Job {
 const DEFAULT_LOAD_THRESHOLD = 2;
 const DEFAULT_MEM_FLOOR = 0.1;
 const DEFAULT_STATE_COALESCE_MS = 100;
+const DEFAULT_AGING_MS_PER_RANK = 10_000;
+/** Background jobs start this many rank units behind foreground ones, until aging closes the gap. */
+const BACKGROUND_RANK_PENALTY = 100;
 
 export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const globalConcurrency = options.globalConcurrency;
@@ -125,6 +137,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const loadThreshold = options.loadThreshold ?? DEFAULT_LOAD_THRESHOLD;
 	const memFloor = options.memFloor ?? DEFAULT_MEM_FLOOR;
 	const stateCoalesceMs = options.stateCoalesceMs ?? DEFAULT_STATE_COALESCE_MS;
+
+	const now = options.now ?? Date.now;
+	const agingMsPerRank = options.agingMsPerRank ?? DEFAULT_AGING_MS_PER_RANK;
 
 	let nextId = 1;
 	const queued: Job[] = [];
@@ -193,7 +208,19 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		}
 	}
 
+	function effectiveRank(job: Job, at: number): number {
+		const tierPenalty = job.priority === "background" ? BACKGROUND_RANK_PENALTY : 0;
+		return job.rank + tierPenalty - (at - job.enqueuedAt) / agingMsPerRank;
+	}
+
+	// Order by (tier + rank, improved by waiting time), then enqueue order.
+	function sortQueued(): void {
+		const at = now();
+		queued.sort((a, b) => effectiveRank(a, at) - effectiveRank(b, at) || a.seq - b.seq);
+	}
+
 	function pump(): void {
+		sortQueued();
 		let slots = globalConcurrency - running.size;
 		if (slots <= 0) return;
 
@@ -278,6 +305,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			kind: enqueueOptions.kind,
 			project: enqueueOptions.project,
 			priority: enqueueOptions.priority ?? "background",
+			rank: enqueueOptions.rank ?? 0,
+			seq: nextId,
+			enqueuedAt: now(),
 			costClass: enqueueOptions.costClass ?? "cheap",
 			run: enqueueOptions.run,
 			controller: new AbortController(),
@@ -285,12 +315,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			settled,
 		};
 
-		if (job.priority === "foreground") {
-			const firstBackground = queued.findIndex((other) => other.priority === "background");
-			queued.splice(firstBackground === -1 ? queued.length : firstBackground, 0, job);
-		} else {
-			queued.push(job);
-		}
+		queued.push(job);
+		sortQueued();
 		byCoalesceKey.set(job.coalesceKey, job);
 		byId.set(job.id, job);
 		emitState();

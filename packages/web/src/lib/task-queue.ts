@@ -17,6 +17,8 @@ import {log} from "@wip/shared/services/logger-pino.js";
 import {EventEmitter} from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type {Category} from "@wip/shared/schemas.js";
+import {stageRank} from "./stage-rank.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import type {JobHandle} from "./work-queue.js";
@@ -392,6 +394,14 @@ async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 	emit(task);
 }
 
+// The category a task's commit is in when the task is enqueued; closest to pushed runs first.
+const TASK_STAGE: Record<TaskType, Category> = {
+	push: "ready_to_push",
+	test: "ready_to_test",
+	rebase: "needs_rebase",
+	claude: "ready_to_test",
+};
+
 const TASK_COST_CLASS: Record<TaskType, CostClass> = {
 	test: "build",
 	claude: "ai",
@@ -415,6 +425,7 @@ function registerTask(task: Task): Task {
 		kind: task.taskType,
 		project: task.project,
 		costClass: TASK_COST_CLASS[task.taskType],
+		rank: stageRank(TASK_STAGE[task.taskType]),
 		// Tasks are user clicks; they jump ahead of queued background refreshes.
 		priority: "foreground",
 		run: async (signal) => {

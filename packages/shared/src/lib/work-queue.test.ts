@@ -706,3 +706,54 @@ describe("cost classes", () => {
 		gate.resolve();
 	});
 });
+
+describe("rank ordering", () => {
+	it("runs a lower-rank job enqueued later before a higher-rank one", async () => {
+		makeQueue({globalConcurrency: 1});
+		const gate = deferred();
+		const order: string[] = [];
+		queue.enqueue(job("blocker", async () => gate.promise));
+		await settle();
+		queue.enqueue(job("rebase", async () => Promise.resolve(void order.push("rebase")), {rank: 10}));
+		queue.enqueue(job("push", async () => Promise.resolve(void order.push("push")), {rank: 1}));
+		gate.resolve();
+		await settle();
+		await settle();
+		expect(order).toEqual(["push", "rebase"]);
+	});
+
+	it("lets an aged background job run before newer foreground jobs", async () => {
+		let now = 0;
+		makeQueue({globalConcurrency: 1, now: () => now, agingMsPerRank: 1000});
+		const gate = deferred();
+		const order: string[] = [];
+		queue.enqueue(job("blocker", async () => gate.promise));
+		await settle();
+		queue.enqueue(
+			job("old", async () => Promise.resolve(void order.push("old")), {priority: "background", rank: 0}),
+		);
+		now = 1_000_000;
+		queue.enqueue(
+			job("new", async () => Promise.resolve(void order.push("new")), {priority: "foreground", rank: 0}),
+		);
+		gate.resolve();
+		await settle();
+		await settle();
+		expect(order).toEqual(["old", "new"]);
+	});
+
+	it("does not age a background job past a fresh foreground job immediately", async () => {
+		let now = 0;
+		makeQueue({globalConcurrency: 1, now: () => now, agingMsPerRank: 1000});
+		const gate = deferred();
+		const order: string[] = [];
+		queue.enqueue(job("blocker", async () => gate.promise));
+		await settle();
+		queue.enqueue(job("bg", async () => Promise.resolve(void order.push("bg")), {priority: "background"}));
+		queue.enqueue(job("fg", async () => Promise.resolve(void order.push("fg")), {priority: "foreground"}));
+		gate.resolve();
+		await settle();
+		await settle();
+		expect(order).toEqual(["fg", "bg"]);
+	});
+});

@@ -73,6 +73,33 @@ describe("rebaseBranchOntoUpstream", {timeout: 30_000}, () => {
 		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
 	});
 
+	it("flags a cancel that interrupts the push step as possibly landed", async () => {
+		({dir, remoteDir} = createRepoWithBareRemote());
+		commitFile(dir, "file.txt", "hello", "initial");
+		git(dir, "push", "origin", "main");
+		git(dir, "checkout", "-b", "feature");
+		commitFile(dir, "feature.txt", "feature", "feature commit");
+		git(dir, "push", "origin", "feature");
+		git(dir, "checkout", "main");
+		commitFile(dir, "main-update.txt", "updated", "main moves forward");
+
+		const controller = new AbortController();
+		const result = await rebaseBranchOntoUpstream(dir, {
+			branch: "feature",
+			project: "workflows-cancel-push",
+			upstreamRef: "main",
+			rebaseMerges: true,
+			restoreBranch: "main",
+			signal: controller.signal,
+			// The push is the only step that prints the remote URL.
+			onOutput: (chunk) => {
+				if (chunk.includes(remoteDir!)) controller.abort();
+			},
+		});
+
+		expect(result).toStrictEqual({ok: false, stage: "cancelled", stderr: "", pushMayHaveLanded: true});
+	});
+
 	it("rebases a branch behind a moved main and pushes to the configured remote", async () => {
 		({dir, remoteDir} = createRepoWithBareRemote());
 		commitFile(dir, "file.txt", "hello", "initial");

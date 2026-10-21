@@ -127,10 +127,19 @@ export interface RebaseBranchOptions {
 
 export type RebaseBranchResult =
 	| {ok: true; message: string}
-	| {ok: false; stage: "checkout" | "rebase" | "push" | "cancelled"; stderr: string};
+	| {ok: false; stage: "checkout" | "rebase" | "push"; stderr: string}
+	| {
+			ok: false;
+			stage: "cancelled";
+			stderr: string;
+			/** The cancel interrupted the push, so the remote ref may have been updated; callers should refresh caches. */
+			pushMayHaveLanded?: true;
+	  };
 
-function cancelledRebase(): RebaseBranchResult {
-	return {ok: false, stage: "cancelled", stderr: ""};
+function cancelledRebase(pushMayHaveLanded = false): RebaseBranchResult {
+	return pushMayHaveLanded
+		? {ok: false, stage: "cancelled", stderr: "", pushMayHaveLanded: true}
+		: {ok: false, stage: "cancelled", stderr: ""};
 }
 
 /**
@@ -232,7 +241,7 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 	const push = await run(["push", pushRemote, `${branch}:${branch}`, "--force-with-lease"], signal);
 	if (signal?.aborted) {
 		await restore();
-		return cancelledRebase();
+		return cancelledRebase(true);
 	}
 	if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
 		await restore();

@@ -317,8 +317,16 @@ async function runRebaseTask(task: Task, signal: AbortSignal): Promise<void> {
 	});
 
 	// A cancelled task already reported its final status; the git work that
-	// was killed or skipped must not overwrite it or invalidate caches.
-	if (signal.aborted || task.status === "cancelled") return;
+	// was killed or skipped must not overwrite its status. A cancel that
+	// interrupted the push may still have updated the remote, so refresh caches.
+	if (signal.aborted || task.status === "cancelled") {
+		if (!result.ok && result.stage === "cancelled" && result.pushMayHaveLanded) {
+			invalidatePrCache(task.project);
+			invalidateChildrenCache(task.project);
+			invalidateMergeStatus(task.project);
+		}
+		return;
+	}
 
 	if (!result.ok) {
 		if (result.stage === "checkout") {

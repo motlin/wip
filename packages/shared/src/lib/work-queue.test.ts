@@ -467,6 +467,31 @@ describe("errors", () => {
 		const handle = queue.enqueue(job("alpha", async () => Promise.reject(new Error("boom"))));
 		await expect(handle.settled).resolves.toBeUndefined();
 	});
+
+	it("settles a job whose run throws synchronously, releases its resources, and keeps later jobs running", async () => {
+		makeQueue({globalConcurrency: 4});
+		const errors: unknown[] = [];
+		queue.onJobError((event) => errors.push(event));
+		const nextRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		const throwing = queue.enqueue(
+			job(
+				"throws",
+				() => {
+					throw new Error("sync boom");
+				},
+				{resources: ["A"]},
+			),
+		);
+		queue.enqueue(job("next", nextRun, {resources: ["A"]}));
+
+		await expect(throwing.settled).resolves.toBeUndefined();
+		await settle();
+
+		expect(errors).toStrictEqual([{kind: "children", project: "throws", message: "sync boom"}]);
+		expect(nextRun).toHaveBeenCalledTimes(1);
+		expect(queue.getState().running).toStrictEqual([]);
+	});
 });
 
 describe("cancellation", () => {

@@ -269,8 +269,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			slots -= 1;
 			changed = true;
 
-			const promise = job
-				.run(job.controller.signal)
+			// The async wrapper turns a synchronous throw from run() into a rejection,
+			// so it reaches the catch/finally release path instead of escaping pump().
+			const promise = (async () => job.run(job.controller.signal))()
 				.catch((error: unknown) => {
 					const message = error instanceof Error ? error.message : String(error);
 					log.general.error({kind: job.kind, project: job.project, error}, "Background job failed");

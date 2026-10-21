@@ -22,6 +22,7 @@
 		"@tanstack/react-router": "^1.170.44",
 		"@tanstack/react-router-ssr-query": "^1.167.3",
 		"@tanstack/react-start": "^1.169.2",
+		"@tanstack/react-virtual": "^3.14.21",
 		"@wip/shared": "workspace:*",
 		"ansi-to-html": "^0.7.2",
 		"better-sqlite3": "^13.0.3",

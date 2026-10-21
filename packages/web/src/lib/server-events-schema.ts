@@ -51,6 +51,7 @@ const WorkQueueStateEventSchema = z.object({
 	slots: z.number(),
 	running: z.array(z.object({kind: z.string(), project: z.string()})),
 	queued: z.array(z.object({kind: z.string(), project: z.string()})),
+	runningByClass: z.object({cheap: z.number(), "git-write": z.number(), build: z.number(), ai: z.number()}),
 });
 
 const RefreshErrorEventSchema = z.object({

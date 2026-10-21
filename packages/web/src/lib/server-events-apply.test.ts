@@ -235,7 +235,12 @@ describe("other channels", () => {
 	it("stores refresh state", () => {
 		applier.apply({
 			channel: "refresh-state",
-			data: {slots: 4, running: [{kind: "children", project: "wip"}], queued: []},
+			data: {
+				slots: 4,
+				running: [{kind: "children", project: "wip"}],
+				queued: [],
+				runningByClass: {cheap: 1, "git-write": 0, build: 0, ai: 0},
+			},
 		});
 		expect(getSchedulerStateSnapshot().running).toHaveLength(1);
 	});

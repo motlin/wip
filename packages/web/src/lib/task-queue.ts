@@ -8,6 +8,7 @@ import {
 	invalidatePrCache,
 	rebaseBranchOntoUpstream,
 	recordTestResult,
+	type CostClass,
 	type TaskType,
 	type TransitionOutcome,
 	type Transition,
@@ -391,6 +392,13 @@ async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 	emit(task);
 }
 
+const TASK_COST_CLASS: Record<TaskType, CostClass> = {
+	test: "build",
+	claude: "ai",
+	rebase: "git-write",
+	push: "git-write",
+};
+
 function registerTask(task: Task): Task {
 	pruneTerminalTasks(tasks, TERMINAL_TASK_RETENTION);
 	tasks.set(task.id, task);
@@ -406,6 +414,7 @@ function registerTask(task: Task): Task {
 			: {resources: [repoResource(task.project)]}),
 		kind: task.taskType,
 		project: task.project,
+		costClass: TASK_COST_CLASS[task.taskType],
 		// Tasks are user clicks; they jump ahead of queued background refreshes.
 		priority: "foreground",
 		run: async (signal) => {

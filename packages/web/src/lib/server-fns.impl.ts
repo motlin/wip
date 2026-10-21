@@ -251,6 +251,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					laneKey: "branch-name",
 					kind: "branch-name",
 					project: request.project,
+					costClass: "ai",
 					run: async () => {
 						await suggestBranchNames([request]);
 					},
@@ -395,6 +396,7 @@ async function refreshChildrenThroughQueue(project: string): Promise<ProjectChil
 		resources: [repoResource(project)],
 		kind: "children",
 		project,
+		costClass: "cheap",
 		priority: "foreground",
 		run: async () => {
 			childrenRefreshFailures.delete(key);

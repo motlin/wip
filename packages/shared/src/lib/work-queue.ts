@@ -29,6 +29,11 @@ export interface WorkResourceProbe {
 
 export type WorkPriority = "foreground" | "background";
 
+/** Coarse cost of a job; each class has its own concurrency cap. */
+export type CostClass = "cheap" | "git-write" | "build" | "ai";
+
+const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 1, ai: 1};
+
 export interface WorkJobSummary {
 	kind: string;
 	project: string;
@@ -38,6 +43,7 @@ export interface WorkQueueState {
 	slots: number;
 	running: WorkJobSummary[];
 	queued: WorkJobSummary[];
+	runningByClass: Record<CostClass, number>;
 }
 
 export interface WorkJobErrorEvent {
@@ -64,11 +70,15 @@ export interface EnqueueOptions {
 	kind: string;
 	project: string;
 	priority?: WorkPriority;
+	/** Defaults to "cheap". */
+	costClass?: CostClass;
 	run: (signal: AbortSignal) => Promise<void>;
 }
 
 export interface WorkQueueOptions {
 	globalConcurrency: number;
+	/** Per-class concurrency caps, merged over the defaults. All are bounded by globalConcurrency. */
+	classCaps?: Partial<Record<CostClass, number>>;
 	probe?: WorkResourceProbe | null;
 	loadThreshold?: number;
 	memFloor?: number;
@@ -97,6 +107,7 @@ interface Job {
 	kind: string;
 	project: string;
 	priority: WorkPriority;
+	costClass: CostClass;
 	run: (signal: AbortSignal) => Promise<void>;
 	controller: AbortController;
 	settle: () => void;
@@ -109,6 +120,7 @@ const DEFAULT_STATE_COALESCE_MS = 100;
 
 export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const globalConcurrency = options.globalConcurrency;
+	const classCaps: Record<CostClass, number> = {...DEFAULT_CLASS_CAPS, ...options.classCaps};
 	let probe = options.probe ?? null;
 	const loadThreshold = options.loadThreshold ?? DEFAULT_LOAD_THRESHOLD;
 	const memFloor = options.memFloor ?? DEFAULT_MEM_FLOOR;
@@ -125,11 +137,25 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const stateListeners = new Set<(state: WorkQueueState) => void>();
 	const errorListeners = new Set<(event: WorkJobErrorEvent) => void>();
 
+	function runningInClass(costClass: CostClass): number {
+		let count = 0;
+		for (const job of running.values()) {
+			if (job.costClass === costClass) count += 1;
+		}
+		return count;
+	}
+
 	function getState(): WorkQueueState {
 		return {
 			slots: globalConcurrency,
 			running: [...running.values()].map((job) => ({kind: job.kind, project: job.project})),
 			queued: queued.map((job) => ({kind: job.kind, project: job.project})),
+			runningByClass: {
+				cheap: runningInClass("cheap"),
+				"git-write": runningInClass("git-write"),
+				build: runningInClass("build"),
+				ai: runningInClass("ai"),
+			},
 		};
 	}
 
@@ -185,6 +211,11 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			const job = queued[index];
 			if (job === undefined) break;
 			if (job.resources.some((resource) => heldResources.has(resource))) {
+				index += 1;
+				continue;
+			}
+
+			if (runningInClass(job.costClass) >= Math.min(classCaps[job.costClass], globalConcurrency)) {
 				index += 1;
 				continue;
 			}
@@ -247,6 +278,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			kind: enqueueOptions.kind,
 			project: enqueueOptions.project,
 			priority: enqueueOptions.priority ?? "background",
+			costClass: enqueueOptions.costClass ?? "cheap",
 			run: enqueueOptions.run,
 			controller: new AbortController(),
 			settle,

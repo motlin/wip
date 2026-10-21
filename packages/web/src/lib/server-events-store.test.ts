@@ -86,7 +86,7 @@ describe("applySchedulerState", () => {
 		const listener = vi.fn<() => void>();
 		subscribeToStoreKey("scheduler", listener);
 
-		const state = {slots: 2, running: [], queued: []};
+		const state = {slots: 2, running: [], queued: [], runningByClass: {cheap: 0, "git-write": 0, build: 0, ai: 0}};
 		applySchedulerState(state);
 
 		expect(getSchedulerStateSnapshot()).toBe(state);
@@ -100,7 +100,12 @@ describe("subscribeToStoreKey", () => {
 		const unsubscribe = subscribeToStoreKey("scheduler", listener);
 		unsubscribe();
 
-		applySchedulerState({slots: 2, running: [], queued: []});
+		applySchedulerState({
+			slots: 2,
+			running: [],
+			queued: [],
+			runningByClass: {cheap: 0, "git-write": 0, build: 0, ai: 0},
+		});
 
 		expect(listener).not.toHaveBeenCalled();
 	});

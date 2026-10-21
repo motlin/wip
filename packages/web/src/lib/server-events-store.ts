@@ -12,7 +12,12 @@ import type {MergeStatusEvent, TaskEvent} from "./server-events-schema.js";
 
 export type {MergeStatusEvent};
 
-const EMPTY_SCHEDULER_STATE: RefreshSchedulerState = {slots: 0, running: [], queued: []};
+const EMPTY_SCHEDULER_STATE: RefreshSchedulerState = {
+	slots: 0,
+	running: [],
+	queued: [],
+	runningByClass: {cheap: 0, "git-write": 0, build: 0, ai: 0},
+};
 
 const tasks = new Map<string, TaskEvent>();
 const logs = new Map<string, string>();

@@ -55,6 +55,7 @@ export function enqueueRefresh(options: {
 		resources: options.kind === "discovery" ? [key] : [repoResource(options.project)],
 		kind: options.kind,
 		project: options.project,
+		costClass: options.kind === "merge-status" ? "git-write" : "cheap",
 		run: async () => options.run(),
 	});
 	if (handle.coalesced && options.force === true) {

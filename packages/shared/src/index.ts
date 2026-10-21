@@ -261,6 +261,7 @@ export {
 } from "./services/github-client.js";
 export {
 	createWorkQueue,
+	type CostClass,
 	type EnqueueOptions,
 	type JobHandle,
 	type WorkJobErrorEvent,

@@ -536,6 +536,7 @@ describe("state", () => {
 				{kind: "children", project: "project-1"},
 			],
 			queued: [{kind: "children", project: "project-2"}],
+			runningByClass: {cheap: 2, "git-write": 0, build: 0, ai: 0},
 		});
 
 		for (const gate of gates) {
@@ -543,7 +544,12 @@ describe("state", () => {
 		}
 		await settle();
 
-		expect(queue.getState()).toStrictEqual({slots: 2, running: [], queued: []});
+		expect(queue.getState()).toStrictEqual({
+			slots: 2,
+			running: [],
+			queued: [],
+			runningByClass: {cheap: 0, "git-write": 0, build: 0, ai: 0},
+		});
 	});
 
 	it("notifies state listeners with coalesced snapshots ending in the final state", async () => {
@@ -604,5 +610,99 @@ describe("reset", () => {
 
 		expect(queuedRun).not.toHaveBeenCalled();
 		expect(queue.runningCount()).toBe(0);
+	});
+});
+
+describe("cost classes", () => {
+	it("caps build jobs at 1 while a flood of cheap jobs is capped at 3", async () => {
+		makeQueue({globalConcurrency: 10});
+		const gates = Array.from({length: 8}, () => deferred());
+		const started: string[] = [];
+		for (const [index, gate] of gates.entries()) {
+			const costClass = index < 2 ? "build" : "cheap";
+			queue.enqueue(
+				job(
+					`j${index}`,
+					async () => {
+						started.push(`j${index}`);
+						await gate.promise;
+					},
+					{costClass},
+				),
+			);
+		}
+		await settle();
+
+		expect(started).toEqual(["j0", "j2", "j3", "j4"]);
+		expect(queue.getState().runningByClass).toEqual({cheap: 3, "git-write": 0, build: 1, ai: 0});
+
+		gates[0]?.resolve();
+		await settle();
+		expect(started).toEqual(["j0", "j2", "j3", "j4", "j1"]);
+		for (const gate of gates) gate.resolve();
+	});
+
+	it("a full class does not block other classes", async () => {
+		makeQueue({globalConcurrency: 10});
+		const gate = deferred();
+		const started: string[] = [];
+		queue.enqueue(
+			job(
+				"b1",
+				async () => {
+					started.push("b1");
+					await gate.promise;
+				},
+				{costClass: "build"},
+			),
+		);
+		queue.enqueue(
+			job(
+				"b2",
+				async () => {
+					started.push("b2");
+					await gate.promise;
+				},
+				{costClass: "build"},
+			),
+		);
+		queue.enqueue(
+			job(
+				"a1",
+				async () => {
+					started.push("a1");
+					await gate.promise;
+				},
+				{costClass: "ai"},
+			),
+		);
+		await settle();
+
+		expect(started).toEqual(["b1", "a1"]);
+		gate.resolve();
+	});
+
+	it("honours custom classCaps and the global concurrency bound", async () => {
+		makeQueue({globalConcurrency: 2, classCaps: {cheap: 5}});
+		const gate = deferred();
+		for (let index = 0; index < 4; index += 1) {
+			queue.enqueue(job(`c${index}`, async () => gate.promise));
+		}
+		await settle();
+
+		expect(queue.getState().runningByClass.cheap).toBe(2);
+		gate.resolve();
+	});
+
+	it("defaults to the cheap class", async () => {
+		makeQueue({globalConcurrency: 10});
+		const gate = deferred();
+		for (let index = 0; index < 5; index += 1) {
+			queue.enqueue(job(`d${index}`, async () => gate.promise));
+		}
+		await settle();
+
+		expect(queue.runningCount()).toBe(3);
+		gate.resolve();
 	});
 });

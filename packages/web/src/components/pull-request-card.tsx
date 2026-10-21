@@ -29,7 +29,7 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 	const testJob = useTestJob(pr.sha, pr.project);
 
 	const effectiveCategory = testJob?.transition
-		? (applyTransition(category, testJob.transition) ?? category)
+		? (applyTransition(category, testJob.transition, testJob.outcome) ?? category)
 		: category;
 
 	const mergeStatus = useMergeStatus(pr.sha, pr.project);

@@ -52,7 +52,7 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 	}, [copied]);
 
 	const effectiveCategory = testJob?.transition
-		? (applyTransition(category, testJob.transition) ?? category)
+		? (applyTransition(category, testJob.transition, testJob.outcome) ?? category)
 		: category;
 
 	const mergeStatus = useMergeStatus(branch.sha, branch.project);

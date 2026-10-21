@@ -162,6 +162,7 @@ export {
 	TransitionSchema,
 	type Transition,
 	type StateTransition,
+	type TransitionOutcome,
 	STATE_MACHINE,
 	getTransitionsFrom,
 	getTransitionsTo,

@@ -9,6 +9,7 @@ import {
 	rebaseBranchOntoUpstream,
 	recordTestResult,
 	type TaskType,
+	type TransitionOutcome,
 	type Transition,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
@@ -41,6 +42,7 @@ export interface Task {
 	createBranch?: boolean;
 	status: TaskStatus;
 	message?: string;
+	outcome?: TransitionOutcome;
 	compareUrl?: string;
 	queuedAt: number;
 	startedAt?: number;
@@ -70,7 +72,11 @@ export function pruneTerminalTasks(registry: Map<string, Task>, keep: number): v
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
 
-export function statusToTransition(status: TaskStatus, taskType: TaskType = "test"): Transition | undefined {
+export function statusToTransition(
+	status: TaskStatus,
+	taskType: TaskType = "test",
+	outcome?: TransitionOutcome,
+): Transition | undefined {
 	if (taskType === "test") {
 		switch (status) {
 			case "queued":
@@ -100,8 +106,9 @@ export function statusToTransition(status: TaskStatus, taskType: TaskType = "tes
 			case "queued":
 			case "running":
 				return "rebase";
-			case "passed":
 			case "failed":
+				return outcome === "conflicts" ? "rebase" : undefined;
+			case "passed":
 			case "cancelled":
 				return undefined;
 		}
@@ -110,7 +117,7 @@ export function statusToTransition(status: TaskStatus, taskType: TaskType = "tes
 }
 
 function emit(task: Task): void {
-	const transition = statusToTransition(task.status, task.taskType);
+	const transition = statusToTransition(task.status, task.taskType, task.outcome);
 	const event: TaskEvent = {
 		id: task.id,
 		taskType: task.taskType,
@@ -121,6 +128,7 @@ function emit(task: Task): void {
 		branch: task.branch,
 		status: task.status,
 		transition,
+		outcome: task.outcome,
 		message: task.message,
 		compareUrl: task.compareUrl,
 		type: "status",
@@ -316,6 +324,7 @@ async function runRebaseTask(task: Task, signal: AbortSignal): Promise<void> {
 		if (result.stage === "checkout") {
 			finish("failed", `Failed to checkout ${task.branch}`);
 		} else if (result.stage === "rebase") {
+			task.outcome = "conflicts";
 			finish("failed", `${task.branch}: rebase conflicts`);
 		} else {
 			finish("failed", `${task.branch}: rebased but push failed`);

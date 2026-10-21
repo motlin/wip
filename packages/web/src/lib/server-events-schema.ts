@@ -29,6 +29,7 @@ const TaskEventSchema = z.object({
 	branch: z.string().optional(),
 	status: TaskStatusSchema,
 	transition: TransitionSchema.optional(),
+	outcome: z.enum(["clean", "conflicts"]).optional(),
 	message: z.string().optional(),
 	compareUrl: z.string().optional(),
 	type: z.enum(["status", "log"]).optional(),

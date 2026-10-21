@@ -136,7 +136,7 @@ function ItemDetail() {
 					: undefined;
 	const category =
 		baseCategory && testJob?.transition
-			? (applyTransition(baseCategory, testJob.transition) ?? baseCategory)
+			? (applyTransition(baseCategory, testJob.transition, testJob.outcome) ?? baseCategory)
 			: baseCategory;
 
 	const isLocalChanges = category === "local_changes";

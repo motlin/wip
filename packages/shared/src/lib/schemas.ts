@@ -82,11 +82,15 @@ export const TransitionSchema = z.enum([
 ]);
 export type Transition = z.infer<typeof TransitionSchema>;
 
+export type TransitionOutcome = "clean" | "conflicts";
+
 export interface StateTransition {
 	from: Category;
 	transition: Transition;
 	to: Category;
 	kind: "active" | "passive";
+	// Set on nondeterministic transitions: which outcome selects this edge.
+	outcome?: TransitionOutcome;
 }
 
 // Formal state machine: every valid (from, action, to) triple.
@@ -139,10 +143,10 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: "test_running", transition: "snooze", to: "snoozed", kind: "active"},
 
 	// Rebase flow
-	{from: "needs_rebase", transition: "rebase", to: "ready_to_test", kind: "active"},
-	{from: "needs_rebase", transition: "rebase", to: "rebase_conflicts", kind: "active"},
-	{from: "rebase_unknown", transition: "rebase", to: "ready_to_test", kind: "active"},
-	{from: "rebase_unknown", transition: "rebase", to: "rebase_conflicts", kind: "active"},
+	{from: "needs_rebase", transition: "rebase", to: "ready_to_test", kind: "active", outcome: "clean"},
+	{from: "needs_rebase", transition: "rebase", to: "rebase_conflicts", kind: "active", outcome: "conflicts"},
+	{from: "rebase_unknown", transition: "rebase", to: "ready_to_test", kind: "active", outcome: "clean"},
+	{from: "rebase_unknown", transition: "rebase", to: "rebase_conflicts", kind: "active", outcome: "conflicts"},
 	{
 		from: "rebase_conflicts",
 		transition: "resolve_conflicts",
@@ -212,8 +216,13 @@ export function getTransitionsTo(state: Category): StateTransition[] {
 	return STATE_MACHINE.filter((t) => t.to === state);
 }
 
-export function applyTransition(from: Category, transition: Transition): Category | undefined {
-	const match = STATE_MACHINE.find((t) => t.from === from && t.transition === transition);
+export function applyTransition(
+	from: Category,
+	transition: Transition,
+	outcome: TransitionOutcome = "clean",
+): Category | undefined {
+	const matches = STATE_MACHINE.filter((t) => t.from === from && t.transition === transition);
+	const match = matches.find((t) => t.outcome === outcome) ?? matches.find((t) => t.outcome === undefined);
 	return match?.to;
 }
 

@@ -130,6 +130,17 @@ describe("applyTransition", () => {
 		expect(applyTransition("needs_rebase", "rebase")).toBe("ready_to_test");
 	});
 
+	it("resolves rebase to the outcome passed in", () => {
+		expect(applyTransition("needs_rebase", "rebase", "clean")).toBe("ready_to_test");
+		expect(applyTransition("needs_rebase", "rebase", "conflicts")).toBe("rebase_conflicts");
+		expect(applyTransition("rebase_unknown", "rebase", "conflicts")).toBe("rebase_conflicts");
+		expect(applyTransition("rebase_unknown", "rebase", "clean")).toBe("ready_to_test");
+	});
+
+	it("ignores outcome for transitions without outcome variants", () => {
+		expect(applyTransition("test_running", "snooze", "conflicts")).toBe("snoozed");
+	});
+
 	it("returns approved for merge from approved", () => {
 		expect(applyTransition("approved", "merge")).toBe("approved");
 	});

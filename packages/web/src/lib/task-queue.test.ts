@@ -79,6 +79,10 @@ describe("statusToTransition", () => {
 		expect(statusToTransition("cancelled", "rebase")).toBeUndefined();
 	});
 
+	it("maps a failed rebase with conflicts outcome to rebase", () => {
+		expect(statusToTransition("failed", "rebase", "conflicts")).toBe("rebase");
+	});
+
 	it("defaults to test task type when not specified", () => {
 		expect(statusToTransition("passed")).toBe("test_pass");
 	});

@@ -7,8 +7,10 @@
  * Two keys per job:
  * - coalesceKey: dedupe identity. While a job with this key is queued or
  *   running, further enqueues return the existing handle ({coalesced: true}).
- * - laneKey: mutual-exclusion group. At most one job per lane runs at a time
- *   (per-repo test serialization); a unique laneKey never serializes.
+ * - resources: exclusive resource keys. A job starts only when none of its
+ *   resources is held by a running job, and holds all of them while running.
+ *   laneKey is shorthand for one extra resource (per-repo test serialization);
+ *   a unique laneKey never serializes.
  *
  * No node builtins — this module is statically imported from client-reachable
  * code. The resource probe is injected (structurally compatible with
@@ -55,7 +57,10 @@ export interface JobHandle {
 
 export interface EnqueueOptions {
 	coalesceKey: string;
-	laneKey: string;
+	/** Shorthand for a single exclusive resource. */
+	laneKey?: string;
+	/** Exclusive resources held for the duration of the run. */
+	resources?: string[];
 	kind: string;
 	project: string;
 	priority?: WorkPriority;
@@ -88,7 +93,7 @@ export interface WorkQueue {
 interface Job {
 	id: string;
 	coalesceKey: string;
-	laneKey: string;
+	resources: string[];
 	kind: string;
 	project: string;
 	priority: WorkPriority;
@@ -114,7 +119,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const running = new Map<string, Job>();
 	const byCoalesceKey = new Map<string, Job>();
 	const byId = new Map<string, Job>();
-	const runningLanes = new Set<string>();
+	const heldResources = new Set<string>();
 	const inFlight = new Set<Promise<void>>();
 
 	const stateListeners = new Set<(state: WorkQueueState) => void>();
@@ -174,19 +179,19 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		}
 
 		let changed = false;
-		// Scan in order, skipping lane-blocked jobs so one busy repo never
+		// Scan in order, skipping resource-blocked jobs so one busy repo never
 		// stalls work for every other repo behind it.
 		for (let index = 0; index < queued.length && slots > 0;) {
 			const job = queued[index];
 			if (job === undefined) break;
-			if (runningLanes.has(job.laneKey)) {
+			if (job.resources.some((resource) => heldResources.has(resource))) {
 				index += 1;
 				continue;
 			}
 
 			queued.splice(index, 1);
 			running.set(job.id, job);
-			runningLanes.add(job.laneKey);
+			for (const resource of job.resources) heldResources.add(resource);
 			slots -= 1;
 			changed = true;
 
@@ -201,7 +206,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 				})
 				.finally(() => {
 					running.delete(job.id);
-					runningLanes.delete(job.laneKey);
+					for (const resource of job.resources) heldResources.delete(resource);
 					remove(job);
 					inFlight.delete(promise);
 					job.settle();
@@ -233,7 +238,12 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		const job: Job = {
 			id: String(nextId++),
 			coalesceKey: enqueueOptions.coalesceKey,
-			laneKey: enqueueOptions.laneKey,
+			resources: [
+				...new Set([
+					...(enqueueOptions.laneKey === undefined ? [] : [enqueueOptions.laneKey]),
+					...(enqueueOptions.resources ?? []),
+				]),
+			],
 			kind: enqueueOptions.kind,
 			project: enqueueOptions.project,
 			priority: enqueueOptions.priority ?? "background",
@@ -289,7 +299,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			await Promise.allSettled(inFlight);
 		}
 		running.clear();
-		runningLanes.clear();
+		heldResources.clear();
 		byCoalesceKey.clear();
 		byId.clear();
 		stateListeners.clear();

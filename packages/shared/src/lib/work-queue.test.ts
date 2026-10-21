@@ -217,6 +217,126 @@ describe("concurrency", () => {
 	});
 });
 
+describe("resources", () => {
+	it("serializes jobs sharing a resource", async () => {
+		makeQueue({globalConcurrency: 4});
+		const firstGate = deferred();
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("a", async () => firstGate.promise, {resources: ["repo:x"]}));
+		queue.enqueue(job("b", secondRun, {resources: ["repo:x"]}));
+		await settle();
+		expect(secondRun).not.toHaveBeenCalled();
+
+		firstGate.resolve();
+		await settle();
+		expect(secondRun).toHaveBeenCalledTimes(1);
+	});
+
+	it("runs jobs with disjoint resources in parallel up to the global cap", async () => {
+		makeQueue({globalConcurrency: 2});
+		const gate = deferred();
+		const runs = ["a", "b", "c"].map(() => vi.fn<() => Promise<void>>(async () => gate.promise));
+
+		runs.forEach((run, index) => {
+			queue.enqueue(job(`job${index}`, run, {resources: [`res${index}`]}));
+		});
+		await settle();
+
+		expect(runs.map((run) => run.mock.calls.length)).toStrictEqual([1, 1, 0]);
+		gate.resolve();
+		await settle();
+		expect(runs[2]).toHaveBeenCalledTimes(1);
+	});
+
+	it("waits for all of a job's resources", async () => {
+		makeQueue({globalConcurrency: 4});
+		const gateA = deferred();
+		const gateB = deferred();
+		const bothRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("holdA", async () => gateA.promise, {resources: ["A"]}));
+		queue.enqueue(job("holdB", async () => gateB.promise, {resources: ["B"]}));
+		queue.enqueue(job("both", bothRun, {resources: ["A", "B"]}));
+		await settle();
+		expect(bothRun).not.toHaveBeenCalled();
+
+		gateA.resolve();
+		await settle();
+		expect(bothRun).not.toHaveBeenCalled();
+
+		gateB.resolve();
+		await settle();
+		expect(bothRun).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not stall later jobs behind a resource-blocked job", async () => {
+		makeQueue({globalConcurrency: 2});
+		const gate = deferred();
+		const blockedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+		const freeRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("holder", async () => gate.promise, {resources: ["A"]}));
+		queue.enqueue(job("blocked", blockedRun, {resources: ["A", "B"]}));
+		queue.enqueue(job("free", freeRun, {resources: ["C"]}));
+		await settle();
+
+		expect(freeRun).toHaveBeenCalledTimes(1);
+		expect(blockedRun).not.toHaveBeenCalled();
+		gate.resolve();
+	});
+
+	it("treats laneKey as one resource alongside resources", async () => {
+		makeQueue({globalConcurrency: 4});
+		const gate = deferred();
+		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("a", async () => gate.promise, {laneKey: "shared"}));
+		queue.enqueue(job("b", secondRun, {laneKey: "other", resources: ["shared"]}));
+		await settle();
+		expect(secondRun).not.toHaveBeenCalled();
+		gate.resolve();
+	});
+
+	it("releases resources when a job fails", async () => {
+		makeQueue({globalConcurrency: 4});
+		const nextRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		queue.enqueue(job("fails", async () => Promise.reject(new Error("boom")), {resources: ["A"]}));
+		queue.enqueue(job("next", nextRun, {resources: ["A"]}));
+		await settle();
+		await settle();
+
+		expect(nextRun).toHaveBeenCalledTimes(1);
+	});
+
+	it("releases resources when a running job is cancelled", async () => {
+		makeQueue({globalConcurrency: 4});
+		const nextRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+		const handle = queue.enqueue(
+			job(
+				"running",
+				async (signal) =>
+					new Promise<void>((resolve) => {
+						signal.addEventListener("abort", () => {
+							resolve();
+						});
+					}),
+				{resources: ["A"]},
+			),
+		);
+		queue.enqueue(job("next", nextRun, {resources: ["A"]}));
+		await settle();
+		expect(nextRun).not.toHaveBeenCalled();
+
+		handle.cancel();
+		await settle();
+		await settle();
+		expect(nextRun).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("priority", () => {
 	it("admits queued foreground jobs before queued background jobs", async () => {
 		makeQueue({globalConcurrency: 1});

@@ -1,5 +1,6 @@
 import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";
-import {AdvanceScheduler, createSystemProbe, type ResourceProbe, type UnitOutcome} from "./advance-scheduler.js";
+import {runAdvanceUnits} from "./advance-queue.js";
+import {createSystemProbe, type ResourceProbe} from "./system-probe.js";
 import {RunMemory, normalizeFailureSignature, type UnitRef} from "./advance-progress.js";
 import {type NodeStatus, type ReportNode} from "./advance-report.js";
 import {tracedExeca} from "../services/traced-execa.js";
@@ -277,37 +278,27 @@ export async function advanceProject(
 	}
 
 	const perRepo = options.perRepoConcurrency ?? options.globalConcurrency ?? 1;
-	const scheduler = new AdvanceScheduler(plan.units, {
-		globalConcurrency: options.globalConcurrency ?? 1,
-		loadThreshold: options.loadThreshold ?? 1,
-		memFloor: options.memFloor ?? 0.1,
-		perRepoConcurrency: () => perRepo,
-		probe: options.probe ?? createSystemProbe(),
-	});
-
 	const unitsById = new Map(plan.units.map((u) => [u.id, u]));
 	const results = new Map<string, UnitResult>();
 
-	/* eslint-disable no-await-in-loop -- each batch must finish before the scheduler admits the next */
-	while (!scheduler.done) {
-		const batch = scheduler.nextAdmissible();
-		if (batch.length === 0) break;
-
-		batch.forEach((u) => {
-			scheduler.markRunning(u.id);
-		});
-		await Promise.all(
-			batch.map(async (schedUnit) => {
-				const unit = unitsById.get(schedUnit.id);
-				if (!unit) throw new Error(`Unknown advance unit: ${schedUnit.id}`);
-				const result = await advanceUnit(unit, actions, memory, opts, emit);
-				results.set(unit.id, result);
-				const outcome: UnitOutcome = result.status === "green" ? "green" : "red";
-				scheduler.recordResult(unit.id, outcome);
-			}),
-		);
-	}
-	/* eslint-enable no-await-in-loop */
+	// A unit with no result was cascade-skipped by the graph because a dependency failed.
+	await runAdvanceUnits(
+		plan.units,
+		async (schedUnit) => {
+			const unit = unitsById.get(schedUnit.id);
+			if (!unit) throw new Error(`Unknown advance unit: ${schedUnit.id}`);
+			const result = await advanceUnit(unit, actions, memory, opts, emit);
+			results.set(unit.id, result);
+			return result.status === "green";
+		},
+		{
+			globalConcurrency: options.globalConcurrency ?? 1,
+			loadThreshold: options.loadThreshold ?? 1,
+			memFloor: options.memFloor ?? 0.1,
+			perRepoConcurrency: () => perRepo,
+			probe: options.probe ?? createSystemProbe(),
+		},
+	);
 
 	const children: ReportNode[] = plan.units.map((unit) => {
 		const result = results.get(unit.id);

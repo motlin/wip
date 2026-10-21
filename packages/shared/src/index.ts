@@ -110,13 +110,12 @@ export {renderTree, type NodeStatus, type ReportNode} from "./lib/advance-report
 export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from "./lib/advance-config.js";
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
 export {
-	AdvanceScheduler,
-	createSystemProbe,
+	runAdvanceUnits,
 	type SchedulableUnit,
-	type ResourceProbe,
-	type SchedulerOptions,
 	type UnitOutcome,
-} from "./lib/advance-scheduler.js";
+	type AdvanceQueueOptions,
+} from "./lib/advance-queue.js";
+export {createSystemProbe, type ResourceProbe} from "./lib/system-probe.js";
 export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
 export {

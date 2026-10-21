@@ -1,7 +1,7 @@
 import {describe, it, expect} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 
-import {ProjectSection} from "./advance-plan";
+import {ProjectSection} from "../components/advance-plan-project-section";
 import type {AdvancePlanProjectSummary} from "../lib/server-fns";
 
 function readyProject(overrides: Partial<AdvancePlanProjectSummary> = {}): AdvancePlanProjectSummary {

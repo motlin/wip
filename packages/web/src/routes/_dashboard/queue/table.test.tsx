@@ -2,7 +2,7 @@ import {describe, it, expect} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 import type {Category} from "@wip/shared";
 
-import {QueueTable} from "./table";
+import {QueueTable} from "../../../components/queue-table";
 import {QueueContext, type QueueContextValue} from "../../../lib/queue-context";
 import {CATEGORIES, CATEGORY_PRIORITY} from "../../../lib/category-actions";
 import type {ColumnItems} from "../../../components/kanban-column";

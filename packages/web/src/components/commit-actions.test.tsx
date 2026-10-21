@@ -52,6 +52,7 @@ describe("commit-actions error toasts", () => {
 				{level: "error", message: "Test", detail: "boom"},
 			]);
 		});
+		expect(screen.queryByText("boom")).toBeNull();
 	});
 
 	it("shows an error toast when running a Claude command fails", async () => {
@@ -65,5 +66,6 @@ describe("commit-actions error toasts", () => {
 				{level: "error", message: "Run Claude", detail: "claude exploded"},
 			]);
 		});
+		expect(screen.queryByText("claude exploded")).toBeNull();
 	});
 });

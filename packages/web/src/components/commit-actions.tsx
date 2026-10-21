@@ -285,17 +285,14 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 
 	const handleTest = async () => {
 		setError(null);
-		try {
+		await runPendingAction("Test", undefined, async () => {
 			await testChild({
 				data: {
 					project: item.project,
 					sha: item.sha,
 				},
 			});
-		} catch (e) {
-			showActionError("Test", e);
-			setError(e instanceof Error ? e.message : "Failed to enqueue test");
-		}
+		});
 	};
 
 	const handleCancelTest = async () => {
@@ -619,17 +616,11 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 
 	const handleRunClaude = async () => {
 		if (!llmCommand || !branch) return;
-		setRunningClaude(true);
-		try {
+		await runPendingAction("Run Claude", setRunningClaude, async () => {
 			await runClaudeCommand({
 				data: {project: item.project, sha: item.sha, branch, command: llmCommand},
 			});
-		} catch (e) {
-			showActionError("Run Claude", e);
-			setError(e instanceof Error ? e.message : "Failed to run Claude command");
-		} finally {
-			setRunningClaude(false);
-		}
+		});
 	};
 
 	const categoryConfig = CATEGORIES[category];

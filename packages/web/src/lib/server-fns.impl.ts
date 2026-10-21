@@ -1416,7 +1416,10 @@ export async function refreshAllHandler(): Promise<{started: number}> {
 	return traced("refreshAll", async () => {
 		invalidateIssuesCache();
 		invalidateProjectItemsCache();
-		const projects = await ensureProjects();
+		// Drop the TTL cache and rediscover so newly cloned or removed repos are picked up.
+		cachedProjects = null;
+		cachedProjectsTime = 0;
+		const projects = await refreshProjectCache();
 		// fallow-ignore-next-line circular-dependency
 		const {enqueueProjectRefresh} = await import("./background-refresh.js");
 		for (const p of projects) {

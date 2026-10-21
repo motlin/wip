@@ -39,12 +39,14 @@ export const issuesQueryOptions = () =>
 	queryOptions({
 		queryKey: ["issues"],
 		queryFn: async () => getIssues(),
+		staleTime: 0,
 	});
 
 export const projectItemsQueryOptions = () =>
 	queryOptions({
 		queryKey: ["projectItems"],
 		queryFn: async () => getProjectItemsFn(),
+		staleTime: 0,
 	});
 
 export const snoozedQueryOptions = () =>

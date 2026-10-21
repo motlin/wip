@@ -1,7 +1,7 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 import {Polly, type PollyConfig} from "@pollyjs/core";
 import {tmpdir} from "node:os";
-import {mkdtemp, rm} from "node:fs/promises";
+import {mkdir as makeDirectory, mkdtemp, rm} from "node:fs/promises";
 import {join} from "node:path";
 import {execa} from "execa";
 
@@ -32,6 +32,15 @@ vi.mock("./background-refresh.js", async (importOriginal) => ({
 	...(await importOriginal<typeof import("./background-refresh.js")>()),
 	enqueueProjectRefresh: forcedRefreshSpy,
 }));
+
+const projectsDirsOverride = vi.hoisted(() => ({dirs: undefined as undefined | string[]}));
+vi.mock("@wip/shared", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@wip/shared")>();
+	return {
+		...actual,
+		getProjectsDirs: (flagValue?: string) => projectsDirsOverride.dirs ?? actual.getProjectsDirs(flagValue),
+	};
+});
 
 const fakeExeca = vi.hoisted(() => ({
 	handler: undefined as
@@ -1790,18 +1799,59 @@ describe("rebaseLocalHandler", () => {
 
 // -- refreshAllHandler (direct handler tests) --
 
+/** Create a git repo under projectsDir that project discovery accepts (origin, upstream, upstream/main). */
+async function addDiscoverableRepo(projectsDir: string, name: string): Promise<void> {
+	const dir = join(projectsDir, name);
+	await makeDirectory(dir);
+	await execa("git", ["init", "--initial-branch=main"], {cwd: dir});
+	await execa("git", ["config", "user.email", "test@test.com"], {cwd: dir});
+	await execa("git", ["config", "user.name", "Test User"], {cwd: dir});
+	await execa("git", ["commit", "--allow-empty", "-m", "Initial commit"], {cwd: dir});
+	await execa("git", ["remote", "add", "origin", `https://github.com/owner/${name}.git`], {cwd: dir});
+	await execa("git", ["remote", "add", "upstream", `https://github.com/owner/${name}.git`], {cwd: dir});
+	await execa("git", ["update-ref", "refs/remotes/upstream/main", "HEAD"], {cwd: dir});
+}
+
 describe("refreshAllHandler enqueues through the queue", () => {
 	it("enqueues one forced refresh per project and returns started immediately", async () => {
-		const dir = await createTestGitRepo();
-		seedProjectCache([makeProject({name: "ra-one", dir}), makeProject({name: "ra-two", dir})]);
-		forcedRefreshSpy.mockClear();
-		const {refreshAllHandler} = await import("./server-fns.impl.js");
-		const result = await refreshAllHandler();
-		expect(result).toStrictEqual({started: 2});
-		expect(forcedRefreshSpy.mock.calls).toStrictEqual([
-			["ra-one", {force: true}],
-			["ra-two", {force: true}],
-		]);
+		const projectsDir = await mkdtemp(join(tmpdir(), "wip-projects-"));
+		tmpDirs.push(projectsDir);
+		projectsDirsOverride.dirs = [projectsDir];
+		try {
+			await addDiscoverableRepo(projectsDir, "ra-one");
+			await addDiscoverableRepo(projectsDir, "ra-two");
+			forcedRefreshSpy.mockClear();
+			const {refreshAllHandler} = await import("./server-fns.impl.js");
+			const result = await refreshAllHandler();
+			expect(result).toStrictEqual({started: 2});
+			expect(forcedRefreshSpy.mock.calls).toStrictEqual([
+				["ra-one", {force: true}],
+				["ra-two", {force: true}],
+			]);
+		} finally {
+			projectsDirsOverride.dirs = undefined;
+		}
+	});
+});
+
+describe("refreshAllHandler rediscovers projects", () => {
+	it("picks up a repo cloned after the project cache was seeded", async () => {
+		const {getProjectsHandler, refreshAllHandler} = await import("./server-fns.impl.js");
+		const projectsDir = await mkdtemp(join(tmpdir(), "wip-projects-"));
+		tmpDirs.push(projectsDir);
+		projectsDirsOverride.dirs = [projectsDir];
+		try {
+			await addDiscoverableRepo(projectsDir, "rr-existing");
+			seedProjectCache([makeProject({name: "rr-stale", dir: projectsDir})]);
+			await addDiscoverableRepo(projectsDir, "rr-new");
+
+			await refreshAllHandler();
+
+			const names = (await getProjectsHandler()).map((p) => p.name).toSorted();
+			expect(names).toStrictEqual(["rr-existing", "rr-new"]);
+		} finally {
+			projectsDirsOverride.dirs = undefined;
+		}
 	});
 });
 

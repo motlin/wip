@@ -1,7 +1,16 @@
-import {describe, it, expect, vi} from "vite-plus/test";
+import {afterEach, beforeEach, describe, it, expect, vi} from "vite-plus/test";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {cancelTest, enqueueRebase, pruneTerminalTasks, resetQueue, statusToTransition} from "./task-queue.js";
+import {initDb, resetDb, loadRecentTaskRecords, upsertTaskRecord} from "@wip/shared";
+import {
+	cancelTest,
+	enqueueRebase,
+	getAllTasks,
+	pruneTerminalTasks,
+	reloadTasksFromDb,
+	resetQueue,
+	statusToTransition,
+} from "./task-queue.js";
 import {enqueueRefresh, resetScheduler} from "./refresh-scheduler.js";
 import type {Task, TaskStatus} from "./task-queue.js";
 
@@ -18,6 +27,14 @@ vi.mock("@wip/shared", async (importOriginal) => ({
 	invalidateChildrenCache: () => {},
 	invalidateMergeStatus: () => {},
 }));
+
+beforeEach(() => {
+	initDb(":memory:");
+});
+
+afterEach(() => {
+	resetDb();
+});
 
 function makeTask(id: string, status: TaskStatus, finishedAt?: number): Task {
 	return {
@@ -220,5 +237,82 @@ describe("repo resource sharing", () => {
 		expect(sameProject).toHaveBeenCalledTimes(1);
 		await resetScheduler();
 		await resetQueue();
+	});
+});
+
+describe("task persistence", () => {
+	beforeEach(async () => {
+		await resetQueue();
+	});
+
+	afterEach(async () => {
+		await resetQueue();
+	});
+
+	it("persists a task when it finishes and a reload sees it", async () => {
+		shared.rebaseBranchOntoUpstream.mockResolvedValue({ok: true, message: "rebased ok"});
+		const task = enqueueRebase(rebaseOptions("alpha"));
+		await tick();
+		await tick();
+
+		expect(task.status).toBe("passed");
+		const records = loadRecentTaskRecords();
+		expect(
+			records.map((r) => ({id: r.id, kind: r.kind, project: r.project, status: r.status, error: r.error})),
+		).toStrictEqual([{id: task.id, kind: "rebase", project: "alpha", status: "passed", error: "rebased ok"}]);
+
+		reloadTasksFromDb();
+		const reloaded = getAllTasks().get(task.id);
+		expect({
+			taskType: reloaded?.taskType,
+			project: reloaded?.project,
+			sha: reloaded?.sha,
+			status: reloaded?.status,
+			message: reloaded?.message,
+			queuedAt: reloaded?.queuedAt,
+		}).toStrictEqual({
+			taskType: "rebase",
+			project: "alpha",
+			sha: task.sha,
+			status: "passed",
+			message: "rebased ok",
+			queuedAt: task.queuedAt,
+		});
+	});
+
+	it("loads tasks that were queued or running as cancelled and continues ids after history", () => {
+		const base = {kind: "test", project: "wip", sha: "b".repeat(40), outcome: null, finishedAt: null, error: null};
+		upsertTaskRecord({...base, id: "7", status: "running", createdAt: new Date(1000).toISOString()});
+		upsertTaskRecord({...base, id: "8", status: "queued", createdAt: new Date(2000).toISOString()});
+		upsertTaskRecord({
+			...base,
+			id: "9",
+			status: "passed",
+			createdAt: new Date(3000).toISOString(),
+			finishedAt: new Date(3500).toISOString(),
+		});
+
+		reloadTasksFromDb();
+
+		const statuses = [...getAllTasks().values()]
+			.map((t) => [t.id, t.status])
+			.toSorted((a, b) => Number(a[0]) - Number(b[0]));
+		expect(statuses).toStrictEqual([
+			["7", "cancelled"],
+			["8", "cancelled"],
+			["9", "passed"],
+		]);
+		expect(
+			loadRecentTaskRecords()
+				.map((r) => [r.id, r.status])
+				.toSorted((a, b) => Number(a[0]) - Number(b[0])),
+		).toStrictEqual([
+			["7", "cancelled"],
+			["8", "cancelled"],
+			["9", "passed"],
+		]);
+
+		shared.rebaseBranchOntoUpstream.mockResolvedValue({ok: true, message: "ok"});
+		expect(enqueueRebase(rebaseOptions("gamma")).id).toBe("10");
 	});
 });

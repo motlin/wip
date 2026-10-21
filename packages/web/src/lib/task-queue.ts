@@ -6,8 +6,11 @@ import {
 	invalidateChildrenCache,
 	invalidateMergeStatus,
 	invalidatePrCache,
+	loadRecentTaskRecords,
 	rebaseBranchOntoUpstream,
 	recordTestResult,
+	upsertTaskRecord,
+	TaskTypeSchema,
 	type CostClass,
 	type TaskType,
 	type TransitionOutcome,
@@ -73,6 +76,73 @@ export function pruneTerminalTasks(registry: Map<string, Task>, keep: number): v
 	}
 }
 
+function persistTask(task: Task): void {
+	upsertTaskRecord({
+		id: task.id,
+		kind: task.taskType,
+		project: task.project,
+		sha: task.sha,
+		status: task.status,
+		outcome: task.outcome ?? null,
+		createdAt: new Date(task.queuedAt).toISOString(),
+		finishedAt: task.finishedAt === undefined ? null : new Date(task.finishedAt).toISOString(),
+		error: task.message ?? null,
+	});
+}
+
+// Only the persisted columns survive a restart, so reloaded tasks carry a
+// short sha as their subject and no project directory. Their process died
+// with the server, so anything queued or running is loaded as cancelled.
+function loadPersistedTasks(): void {
+	const records = loadRecentTaskRecords();
+	let maxId = 0;
+	for (const record of records) {
+		const parsedType = TaskTypeSchema.safeParse(record.kind);
+		if (!parsedType.success) continue;
+		const stale = record.status === "queued" || record.status === "running";
+		const shortSha = record.sha.slice(0, 7);
+		const task: Task = {
+			id: record.id,
+			taskType: parsedType.data,
+			project: record.project,
+			projectDir: "",
+			sha: record.sha,
+			shortSha,
+			subject: shortSha,
+			status: stale ? "cancelled" : record.status,
+			message: stale ? `${shortSha} cancelled by server restart` : (record.error ?? undefined),
+			outcome: record.outcome === "conflicts" ? "conflicts" : undefined,
+			queuedAt: Date.parse(record.createdAt),
+			finishedAt: record.finishedAt === null ? undefined : Date.parse(record.finishedAt),
+		};
+		if (stale) {
+			task.finishedAt = Date.now();
+			persistTask(task);
+		}
+		tasks.set(task.id, task);
+		const numericId = Number(task.id);
+		if (Number.isInteger(numericId) && numericId > maxId) maxId = numericId;
+	}
+	nextId = Math.max(nextId, maxId + 1);
+}
+
+let loaded = false;
+
+function ensureLoaded(): void {
+	if (loaded) return;
+	loaded = true;
+	loadPersistedTasks();
+}
+
+// Replaces the in-memory registry with the persisted history, as a server restart would.
+export function reloadTasksFromDb(): void {
+	tasks.clear();
+	jobHandles.clear();
+	nextId = 1;
+	loaded = true;
+	loadPersistedTasks();
+}
+
 export const emitter = new EventEmitter();
 emitter.setMaxListeners(100);
 
@@ -121,6 +191,7 @@ export function statusToTransition(
 }
 
 function emit(task: Task): void {
+	persistTask(task);
 	const transition = statusToTransition(task.status, task.taskType, task.outcome);
 	const event: TaskEvent = {
 		id: task.id,
@@ -459,6 +530,7 @@ export function enqueueTask(
 	branch?: string,
 	command?: string,
 ): Task {
+	ensureLoaded();
 	const existing = findTask(sha, project, taskType);
 	if (existing && (existing.status === "queued" || existing.status === "running")) {
 		return existing;
@@ -492,6 +564,7 @@ export interface EnqueuePushOptions {
 }
 
 export function enqueuePush(opts: EnqueuePushOptions): Task {
+	ensureLoaded();
 	const existing = findTask(opts.sha, opts.project, "push");
 	if (existing && (existing.status === "queued" || existing.status === "running")) {
 		return existing;
@@ -528,6 +601,7 @@ export interface EnqueueRebaseOptions {
 }
 
 export function enqueueRebase(opts: EnqueueRebaseOptions): Task {
+	ensureLoaded();
 	const existing = findTask(opts.sha, opts.project, "rebase");
 	if (existing && (existing.status === "queued" || existing.status === "running")) {
 		return existing;
@@ -561,14 +635,17 @@ function findTask(sha: string, project: string, taskType?: TaskType): Task | und
 }
 
 export function getAllActiveTasks(): Task[] {
+	ensureLoaded();
 	return Array.from(tasks.values()).filter((t) => t.status === "queued" || t.status === "running");
 }
 
 export function getAllTasks(): Map<string, Task> {
+	ensureLoaded();
 	return tasks;
 }
 
 function cancelTask(id: string): {ok: boolean; message: string} {
+	ensureLoaded();
 	const task = tasks.get(id);
 	if (!task) return {ok: false, message: "Task not found"};
 	if (task.status === "passed" || task.status === "failed" || task.status === "cancelled") {
@@ -607,4 +684,5 @@ export async function resetQueue(): Promise<void> {
 	tasks.clear();
 	jobHandles.clear();
 	nextId = 1;
+	loaded = false;
 }

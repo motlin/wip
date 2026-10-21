@@ -94,6 +94,9 @@ export {
 	getAdvanceConfig,
 	getAllAdvanceConfig,
 	setAdvanceConfig,
+	upsertTaskRecord,
+	loadRecentTaskRecords,
+	type TaskRecord,
 } from "./lib/db.js";
 export {suggestBranchNames} from "./lib/branch-namer.js";
 export {

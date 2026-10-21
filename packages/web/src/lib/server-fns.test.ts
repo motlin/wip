@@ -1813,4 +1813,34 @@ describe("queued git actions", () => {
 		);
 		expect(early).toBe(false);
 	});
+
+	it("applyFixesHandler waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-apply-fixes", dir})]);
+		const {applyFixesHandler} = await import("./server-fns.impl.js");
+		const early = await settledWhileRepoHeld("queued-apply-fixes", async () =>
+			applyFixesHandler({project: "queued-apply-fixes", branch: "main", prNumber: 1}),
+		);
+		expect(early).toBe(false);
+	});
+
+	it("rebaseLocalHandler waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-rebase-local", dir})]);
+		const {rebaseLocalHandler} = await import("./server-fns.impl.js");
+		const early = await settledWhileRepoHeld("queued-rebase-local", async () =>
+			rebaseLocalHandler({project: "queued-rebase-local", branch: "main"}),
+		);
+		expect(early).toBe(false);
+	});
+
+	it("commitWorkingTreeHandler waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-commit-tree", dir})]);
+		const {commitWorkingTreeHandler} = await import("./server-fns.impl.js");
+		const early = await settledWhileRepoHeld("queued-commit-tree", async () =>
+			commitWorkingTreeHandler("queued-commit-tree"),
+		);
+		expect(early).toBe(false);
+	});
 });

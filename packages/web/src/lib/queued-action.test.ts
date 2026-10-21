@@ -65,4 +65,18 @@ describe("runQueuedAction", () => {
 		await expect(runQueuedAction("beta", "createBranch", async () => Promise.resolve("ran"))).resolves.toBe("ran");
 		release();
 	});
+
+	it("runs with the requested cost class", async () => {
+		let observed: Record<string, number> | undefined;
+		await runQueuedAction(
+			"alpha",
+			"commitWorkingTree",
+			async () => {
+				observed = {...workQueue.getState().runningByClass};
+				return Promise.resolve("ran");
+			},
+			"ai",
+		);
+		expect(observed).toStrictEqual({cheap: 0, "git-write": 0, build: 0, ai: 1});
+	});
 });

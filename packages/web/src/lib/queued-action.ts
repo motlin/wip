@@ -1,4 +1,5 @@
 import {repoResource} from "./repo-resource.js";
+import type {CostClass} from "@wip/shared";
 import {workQueue} from "./shared-work-queue.js";
 
 let nextActionId = 1;
@@ -10,14 +11,19 @@ let nextActionId = 1;
  * outcome, so callers keep their return shapes and only wait when the repo is
  * busy. Queue state changes reach clients through the usual queue events.
  */
-export async function runQueuedAction<T>(project: string, label: string, fn: () => Promise<T>): Promise<T> {
+export async function runQueuedAction<T>(
+	project: string,
+	label: string,
+	fn: () => Promise<T>,
+	costClass: CostClass = "git-write",
+): Promise<T> {
 	let outcome: {ok: true; value: T} | {ok: false; error: unknown} | undefined;
 	const handle = workQueue.enqueue({
 		coalesceKey: `action:${label}:${project}:${nextActionId++}`,
 		resources: [repoResource(project)],
 		kind: label,
 		project,
-		costClass: "git-write",
+		costClass,
 		priority: "foreground",
 		run: async () => {
 			try {

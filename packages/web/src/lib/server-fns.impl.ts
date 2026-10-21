@@ -859,18 +859,25 @@ export async function commitWorkingTreeHandler(project: string): Promise<ActionR
 	return tracedAction("commitWorkingTree", async () => {
 		const p = await resolveProject(project);
 
-		const result = await tracedExeca("claude", ["-p", "/git:commit"], {
-			cwd: p.dir,
-			reject: false,
-			timeout: 120_000,
-		});
-		if (result.exitCode !== 0) {
-			return {
-				ok: false,
-				message: result.stderr || result.stdout || `claude exited with code ${result.exitCode}`,
-			};
-		}
-		return {ok: true, message: result.stdout};
+		return runQueuedAction(
+			project,
+			"commitWorkingTree",
+			async () => {
+				const result = await tracedExeca("claude", ["-p", "/git:commit"], {
+					cwd: p.dir,
+					reject: false,
+					timeout: 120_000,
+				});
+				if (result.exitCode !== 0) {
+					return {
+						ok: false,
+						message: result.stderr || result.stdout || `claude exited with code ${result.exitCode}`,
+					};
+				}
+				return {ok: true, message: result.stdout};
+			},
+			"ai",
+		);
 	});
 }
 
@@ -1083,14 +1090,16 @@ export async function applyFixesHandler(data: ApplyFixesInput): Promise<ActionRe
 	return tracedAction("applyFixes", async () => {
 		const p = await resolveProject(data.project);
 
-		const env = await getMiseEnv(p.dir);
+		return runQueuedAction(data.project, "applyFixes", async () => {
+			const env = await getMiseEnv(p.dir);
 
-		const result = await applyFixesToBranch(p.dir, {branch: data.branch, prNumber: data.prNumber, env});
-		if (result.ok) {
-			invalidatePrCache(data.project);
-			invalidateChildrenCache(data.project);
-		}
-		return result;
+			const result = await applyFixesToBranch(p.dir, {branch: data.branch, prNumber: data.prNumber, env});
+			if (result.ok) {
+				invalidatePrCache(data.project);
+				invalidateChildrenCache(data.project);
+			}
+			return result;
+		});
 	});
 }
 
@@ -1098,42 +1107,44 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 	return tracedAction("rebaseLocal", async () => {
 		const p = await resolveProject(data.project);
 
-		const env = await getMiseEnv(p.dir);
+		return runQueuedAction(data.project, "rebaseLocal", async () => {
+			const env = await getMiseEnv(p.dir);
 
-		// Validate transition: rebase is allowed from needs_rebase state
-		// Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
-		if (p.dirty) {
-			log.subprocess.debug(
-				{project: data.project, branch: data.branch},
-				"Warning: rebasing with dirty working directory",
-			);
-		}
+			// Validate transition: rebase is allowed from needs_rebase state
+			// Rebasing requires a clean working directory (all commits), unlike test/push which work on any commit
+			if (p.dirty) {
+				log.subprocess.debug(
+					{project: data.project, branch: data.branch},
+					"Warning: rebasing with dirty working directory",
+				);
+			}
 
-		// No explicit pushRemote: this handler used to push to p.remote, but that is
-		// the GitHub "owner/repo" slug, not a git remote name, so the push silently
-		// failed. Let the operation resolve the branch's configured git remote
-		// (falling back to "origin"), same as the task queue's rebase.
-		const result = await rebaseBranchOntoUpstream(p.dir, {
-			branch: data.branch,
-			project: data.project,
-			upstreamRef: p.upstreamRef,
-			upstreamRemote: p.upstreamRemote,
-			fetchBranch: p.upstreamBranch,
-			env,
+			// No explicit pushRemote: this handler used to push to p.remote, but that is
+			// the GitHub "owner/repo" slug, not a git remote name, so the push silently
+			// failed. Let the operation resolve the branch's configured git remote
+			// (falling back to "origin"), same as the task queue's rebase.
+			const result = await rebaseBranchOntoUpstream(p.dir, {
+				branch: data.branch,
+				project: data.project,
+				upstreamRef: p.upstreamRef,
+				upstreamRemote: p.upstreamRemote,
+				fetchBranch: p.upstreamBranch,
+				env,
+			});
+			if (!result.ok) {
+				if (result.stage === "checkout") {
+					return {ok: false, message: `Failed to checkout ${data.branch}: ${result.stderr}`};
+				}
+				if (result.stage === "rebase") {
+					return {ok: false, message: `Rebase failed with conflicts: ${result.stderr}`};
+				}
+				return {ok: false, message: `Rebased but failed to push: ${result.stderr}`};
+			}
+
+			invalidatePrCache(data.project);
+			invalidateMergeStatus(data.project);
+			return {ok: true, message: result.message};
 		});
-		if (!result.ok) {
-			if (result.stage === "checkout") {
-				return {ok: false, message: `Failed to checkout ${data.branch}: ${result.stderr}`};
-			}
-			if (result.stage === "rebase") {
-				return {ok: false, message: `Rebase failed with conflicts: ${result.stderr}`};
-			}
-			return {ok: false, message: `Rebased but failed to push: ${result.stderr}`};
-		}
-
-		invalidatePrCache(data.project);
-		invalidateMergeStatus(data.project);
-		return {ok: true, message: result.message};
 	});
 }
 

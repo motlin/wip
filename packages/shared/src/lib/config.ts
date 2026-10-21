@@ -100,3 +100,19 @@ export function getProjectsDirs(flagValue?: string): string[] {
 	// Fall back to singular projectsDir for backward compatibility
 	return [getProjectsDir()];
 }
+
+const WORK_QUEUE_CLASSES = ["cheap", "git-write", "build", "ai"] as const;
+
+/** Per-class work queue caps from config keys like `workQueue.build: "3"`. Invalid values are ignored. */
+export function getWorkQueueClassCaps(
+	config: Record<string, ConfigValue> = readConfig(),
+): Partial<Record<(typeof WORK_QUEUE_CLASSES)[number], number>> {
+	const caps: Partial<Record<(typeof WORK_QUEUE_CLASSES)[number], number>> = {};
+	for (const costClass of WORK_QUEUE_CLASSES) {
+		const value = config[`workQueue.${costClass}`];
+		if (typeof value !== "string") continue;
+		const parsed = Number(value);
+		if (Number.isInteger(parsed) && parsed >= 1) caps[costClass] = parsed;
+	}
+	return caps;
+}

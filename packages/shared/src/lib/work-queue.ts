@@ -33,7 +33,7 @@ export type WorkPriority = "foreground" | "background";
 /** Coarse cost of a job; each class has its own concurrency cap. */
 export type CostClass = "cheap" | "git-write" | "build" | "ai";
 
-const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 1, ai: 1};
+const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
 
 export interface WorkJobSummary {
 	kind: string;
@@ -99,6 +99,8 @@ export interface WorkQueue {
 	cancel(id: string): boolean;
 	/** Install (or replace) the resource probe after creation — the shared instance is created in client-safe code, but createSystemProbe needs node:os, so the server bootstrap injects it late. */
 	setProbe(probe: WorkResourceProbe | null): void;
+	/** Override per-class concurrency caps after creation (the server bootstrap applies config.json5 values). */
+	setClassCaps(caps: Partial<Record<CostClass, number>>): void;
 	getState(): WorkQueueState;
 	onStateChange(listener: (state: WorkQueueState) => void): () => void;
 	onJobError(listener: (event: WorkJobErrorEvent) => void): () => void;
@@ -135,7 +137,7 @@ const BACKGROUND_RANK_PENALTY = 100;
 
 export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const globalConcurrency = options.globalConcurrency;
-	const classCaps: Record<CostClass, number> = {...DEFAULT_CLASS_CAPS, ...options.classCaps};
+	let classCaps: Record<CostClass, number> = {...DEFAULT_CLASS_CAPS, ...options.classCaps};
 	let probe = options.probe ?? null;
 	const loadThreshold = options.loadThreshold ?? DEFAULT_LOAD_THRESHOLD;
 	const memFloor = options.memFloor ?? DEFAULT_MEM_FLOOR;
@@ -382,6 +384,10 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	return {
 		enqueue,
 		cancel,
+		setClassCaps: (caps) => {
+			classCaps = {...classCaps, ...caps};
+			pump();
+		},
 		setProbe: (nextProbe) => {
 			probe = nextProbe;
 		},

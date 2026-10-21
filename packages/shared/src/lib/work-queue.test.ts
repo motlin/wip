@@ -692,12 +692,12 @@ describe("reset", () => {
 });
 
 describe("cost classes", () => {
-	it("caps build jobs at 1 while a flood of cheap jobs is capped at 3", async () => {
+	it("caps build jobs at 2 while a flood of cheap jobs is capped at 3", async () => {
 		makeQueue({globalConcurrency: 10});
 		const gates = Array.from({length: 8}, () => deferred());
 		const started: string[] = [];
 		for (const [index, gate] of gates.entries()) {
-			const costClass = index < 2 ? "build" : "cheap";
+			const costClass = index < 3 ? "build" : "cheap";
 			queue.enqueue(
 				job(
 					`j${index}`,
@@ -711,12 +711,12 @@ describe("cost classes", () => {
 		}
 		await settle();
 
-		expect(started).toEqual(["j0", "j2", "j3", "j4"]);
-		expect(queue.getState().runningByClass).toEqual({cheap: 3, "git-write": 0, build: 1, ai: 0});
+		expect(started).toEqual(["j0", "j1", "j3", "j4", "j5"]);
+		expect(queue.getState().runningByClass).toEqual({cheap: 3, "git-write": 0, build: 2, ai: 0});
 
 		gates[0]?.resolve();
 		await settle();
-		expect(started).toEqual(["j0", "j2", "j3", "j4", "j1"]);
+		expect(started).toEqual(["j0", "j1", "j3", "j4", "j5", "j2"]);
 		for (const gate of gates) gate.resolve();
 	});
 
@@ -756,7 +756,54 @@ describe("cost classes", () => {
 		);
 		await settle();
 
-		expect(started).toEqual(["b1", "a1"]);
+		expect(started).toEqual(["b1", "b2", "a1"]);
+		gate.resolve();
+	});
+
+	it("keeps ai at 1 by default", async () => {
+		makeQueue({globalConcurrency: 10});
+		const gate = deferred();
+		for (let index = 0; index < 3; index += 1) {
+			queue.enqueue(job(`ai${index}`, async () => gate.promise, {costClass: "ai"}));
+		}
+		await settle();
+
+		expect(queue.getState().runningByClass.ai).toBe(1);
+		gate.resolve();
+	});
+
+	it("runs build jobs for different repos concurrently", async () => {
+		makeQueue({globalConcurrency: 4});
+		const gate = deferred();
+		const started: string[] = [];
+		for (const repo of ["repo-a", "repo-b"]) {
+			queue.enqueue(
+				job(
+					`test:${repo}`,
+					async () => {
+						started.push(repo);
+						await gate.promise;
+					},
+					{costClass: "build", resources: [`repo:${repo}`], laneKey: undefined},
+				),
+			);
+		}
+		await settle();
+
+		expect(started).toEqual(["repo-a", "repo-b"]);
+		gate.resolve();
+	});
+
+	it("setClassCaps overrides caps at runtime", async () => {
+		makeQueue({globalConcurrency: 10});
+		queue.setClassCaps({build: 3});
+		const gate = deferred();
+		for (let index = 0; index < 4; index += 1) {
+			queue.enqueue(job(`s${index}`, async () => gate.promise, {costClass: "build"}));
+		}
+		await settle();
+
+		expect(queue.getState().runningByClass.build).toBe(3);
 		gate.resolve();
 	});
 

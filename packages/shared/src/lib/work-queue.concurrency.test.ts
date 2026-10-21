@@ -4,7 +4,7 @@ import {createWorkQueue, type CostClass, type WorkQueue} from "./work-queue.js";
 
 const PROJECT_COUNT = 60;
 const GLOBAL_CONCURRENCY = 4;
-const CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 1, ai: 1};
+const CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
 
 let queue: WorkQueue;
 

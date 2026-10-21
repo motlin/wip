@@ -12,6 +12,7 @@ export {
 	getConfigValue,
 	setConfigValue,
 	unsetConfigValue,
+	getWorkQueueClassCaps,
 } from "./lib/config.js";
 export {
 	type RemoteBranchInfo,

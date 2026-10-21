@@ -9,8 +9,9 @@ import type {WorkResourceProbe} from "./work-queue.js";
  * Node-only dependency (createSystemProbe) is late-bound.
  */
 export async function installResourceProbe(probe?: WorkResourceProbe): Promise<void> {
-	const resolved = probe ?? (await import("@wip/shared")).createSystemProbe();
-	workQueue.setProbe(resolved);
+	const shared = await import("@wip/shared");
+	workQueue.setProbe(probe ?? shared.createSystemProbe());
+	workQueue.setClassCaps(shared.getWorkQueueClassCaps());
 }
 
 /**

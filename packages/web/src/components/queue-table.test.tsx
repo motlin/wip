@@ -2,10 +2,10 @@ import {describe, it, expect} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 import type {Category} from "@wip/shared";
 
-import {QueueTable} from "../../../components/queue-table.js";
-import {QueueContext, type QueueContextValue} from "../../../lib/queue-context.js";
-import {CATEGORIES, CATEGORY_PRIORITY} from "../../../lib/category-actions.js";
-import type {ColumnItems} from "../../../components/kanban-column.js";
+import {QueueTable} from "./queue-table.js";
+import {QueueContext, type QueueContextValue} from "../lib/queue-context.js";
+import {CATEGORIES, CATEGORY_PRIORITY} from "../lib/category-actions.js";
+import type {ColumnItems} from "./kanban-column.js";
 
 function emptyGrouped(): Record<Category, ColumnItems> {
 	const grouped = {} as Record<Category, ColumnItems>;

@@ -24,7 +24,8 @@ export async function createEventsResponse(): Promise<Response> {
 		},
 		start(controller) {
 			const encoder = new TextEncoder();
-			let closed = false;
+			let closed = false as boolean;
+			const disposers: Array<() => void> = [];
 
 			function send(channel: string, data: unknown) {
 				if (closed) return;
@@ -59,6 +60,9 @@ export async function createEventsResponse(): Promise<Response> {
 				});
 			send("refresh-state", getSchedulerState());
 
+			// A failed initial send already ran cleanup(); register nothing then.
+			if (closed) return;
+
 			const onTask = (event: unknown) => {
 				send("task", event);
 			};
@@ -79,12 +83,21 @@ export async function createEventsResponse(): Promise<Response> {
 			projectEmitter.on("projects", onProjects);
 			childrenEmitter.on("children", onChildren);
 			todoEmitter.on("todos", onTodos);
-			const unsubscribeErrors = onRefreshError((event) => {
-				send("refresh-error", event);
-			});
-			const unsubscribeSchedulerState = onSchedulerStateChange((state) => {
-				send("refresh-state", state);
-			});
+			disposers.push(
+				() => taskEmitter.off("task", onTask),
+				() => mergeEmitter.off("mergeStatus", onMerge),
+				() => projectEmitter.off("projects", onProjects),
+				() => childrenEmitter.off("children", onChildren),
+				() => todoEmitter.off("todos", onTodos),
+			);
+			disposers.push(
+				onRefreshError((event) => {
+					send("refresh-error", event);
+				}),
+				onSchedulerStateChange((state) => {
+					send("refresh-state", state);
+				}),
+			);
 
 			const keepalive = setInterval(() => {
 				if (closed) return;
@@ -94,18 +107,14 @@ export async function createEventsResponse(): Promise<Response> {
 					cleanup();
 				}
 			}, 15000);
+			disposers.push(() => {
+				clearInterval(keepalive);
+			});
 
 			function cleanup() {
 				if (closed) return;
 				closed = true;
-				taskEmitter.off("task", onTask);
-				mergeEmitter.off("mergeStatus", onMerge);
-				projectEmitter.off("projects", onProjects);
-				childrenEmitter.off("children", onChildren);
-				todoEmitter.off("todos", onTodos);
-				unsubscribeErrors();
-				unsubscribeSchedulerState();
-				clearInterval(keepalive);
+				for (const dispose of disposers) dispose();
 				try {
 					controller.close();
 				} catch {

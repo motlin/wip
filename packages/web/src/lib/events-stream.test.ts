@@ -3,6 +3,7 @@ import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 vi.mock("./background-refresh.js", () => ({ensureBackgroundRefresh: () => {}}));
 vi.mock("./server-fns.js", () => ({getProjects: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([])}));
 
+import * as taskQueue from "./task-queue.js";
 import {emitter as taskEmitter} from "./task-queue.js";
 import {emitter as mergeEmitter} from "./merge-queue.js";
 import {projectEmitter} from "./project-events.js";
@@ -52,6 +53,18 @@ describe("createEventsResponse", () => {
 		expect(vi.getTimerCount()).toBe(timersBefore + 1);
 
 		await response.body?.cancel();
+
+		expect(listenerCounts()).toEqual(before);
+		expect(vi.getTimerCount()).toBe(timersBefore);
+	});
+
+	it("registers no listeners or keepalive when an initial send fails", async () => {
+		const before = listenerCounts();
+		const timersBefore = vi.getTimerCount();
+		const unserializable = {id: 1n} as unknown as ReturnType<typeof taskQueue.getAllActiveTasks>[number];
+		vi.spyOn(taskQueue, "getAllActiveTasks").mockReturnValue([unserializable]);
+
+		await createEventsResponse();
 
 		expect(listenerCounts()).toEqual(before);
 		expect(vi.getTimerCount()).toBe(timersBefore);

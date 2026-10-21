@@ -27,6 +27,30 @@ import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
 import {repoResource} from "./repo-resource.js";
 
+const fakeExeca = vi.hoisted(() => ({
+	handler: undefined as
+		| undefined
+		| ((
+				command: string,
+				args: string[],
+		  ) => {stdout: string; stderr: string; exitCode: number; failed: boolean; command: string}),
+}));
+
+// Passes through to the real execa unless a test installs a fake handler.
+vi.mock("execa", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("execa")>();
+	return {
+		...actual,
+		execa: (...callArgs: Parameters<typeof actual.execa>) => {
+			const [command, args] = callArgs as unknown as [string, string[]];
+			if (fakeExeca.handler) {
+				return Promise.resolve(fakeExeca.handler(command, Array.isArray(args) ? args : []));
+			}
+			return (actual.execa as (...a: unknown[]) => unknown)(...callArgs);
+		},
+	};
+});
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const FetchAdapter = require("@pollyjs/adapter-fetch");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1766,81 +1790,106 @@ function holdRepo(project: string): () => void {
 	};
 }
 
-/** Calls the action while another job holds the repo; reports whether it settled before release. */
-async function settledWhileRepoHeld(project: string, call: () => Promise<unknown>): Promise<boolean> {
+interface ExecCall {
+	command: string;
+	args: string[];
+}
+
+/**
+ * Runs the action while another job holds the repo and reports which subprocesses
+ * were spawned before and after the hold was released. Subprocesses are faked, so
+ * no real claude, gh or git push ever runs.
+ */
+async function execCallsAroundRepoHold(
+	project: string,
+	call: () => Promise<unknown>,
+): Promise<{whileHeld: ExecCall[]; afterRelease: ExecCall[]}> {
+	const calls: ExecCall[] = [];
+	fakeExeca.handler = (command, args) => {
+		calls.push({command, args});
+		const stdout = command === "mise" ? "{}" : "";
+		return {stdout, stderr: "", exitCode: 0, failed: false, command: [command, ...args].join(" ")};
+	};
 	const release = holdRepo(project);
 	await tick();
-	let settled = false;
-	const pending = call().finally(() => {
-		settled = true;
-	});
+	const pending = call();
 	await new Promise((resolve) => {
-		setTimeout(resolve, 100);
+		setTimeout(resolve, 20);
 	});
-	const settledEarly = settled;
+	const whileHeld = [...calls];
 	release();
 	await pending;
-	return settledEarly;
+	return {whileHeld, afterRelease: calls.slice(whileHeld.length)};
 }
 
 describe("queued git actions", () => {
+	afterEach(() => {
+		fakeExeca.handler = undefined;
+	});
+
 	it("forcePushHandler waits for a running job on the same project", async () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "queued-force-push", dir})]);
 		const {forcePushHandler} = await import("./server-fns.impl.js");
-		const early = await settledWhileRepoHeld("queued-force-push", async () =>
+		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-force-push", async () =>
 			forcePushHandler({project: "queued-force-push", branch: "main"}),
 		);
-		expect(early).toBe(false);
+		expect(whileHeld).toEqual([]);
+		expect(afterRelease.map((c) => [c.command, c.args.includes("push")])).toContainEqual(["git", true]);
 	});
 
 	it("mergePrHandler waits for a running job on the same project", async () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "queued-merge-pr", dir})]);
 		const {mergePrHandler} = await import("./server-fns.impl.js");
-		const early = await settledWhileRepoHeld("queued-merge-pr", async () =>
+		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-merge-pr", async () =>
 			mergePrHandler({project: "queued-merge-pr", prNumber: 1}),
 		);
-		expect(early).toBe(false);
+		expect(whileHeld).toEqual([]);
+		expect(afterRelease.map((c) => [c.command, c.args.slice(0, 3)])).toContainEqual(["gh", ["pr", "merge", "1"]]);
 	});
 
 	it("createPrHandler waits for a running job on the same project", async () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "queued-create-pr", dir})]);
 		const {createPrHandler} = await import("./server-fns.impl.js");
-		const early = await settledWhileRepoHeld("queued-create-pr", async () =>
+		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-create-pr", async () =>
 			createPrHandler({project: "queued-create-pr", branch: "main", title: "t", draft: true}),
 		);
-		expect(early).toBe(false);
+		expect(whileHeld).toEqual([]);
+		expect(afterRelease.map((c) => [c.command, c.args.includes("fetch")])).toContainEqual(["git", true]);
 	});
 
 	it("applyFixesHandler waits for a running job on the same project", async () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "queued-apply-fixes", dir})]);
 		const {applyFixesHandler} = await import("./server-fns.impl.js");
-		const early = await settledWhileRepoHeld("queued-apply-fixes", async () =>
+		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-apply-fixes", async () =>
 			applyFixesHandler({project: "queued-apply-fixes", branch: "main", prNumber: 1}),
 		);
-		expect(early).toBe(false);
+		expect(whileHeld).toEqual([]);
+		expect(afterRelease.length).toBeGreaterThan(0);
 	});
 
 	it("rebaseLocalHandler waits for a running job on the same project", async () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "queued-rebase-local", dir})]);
 		const {rebaseLocalHandler} = await import("./server-fns.impl.js");
-		const early = await settledWhileRepoHeld("queued-rebase-local", async () =>
+		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-rebase-local", async () =>
 			rebaseLocalHandler({project: "queued-rebase-local", branch: "main"}),
 		);
-		expect(early).toBe(false);
+		expect(whileHeld).toEqual([]);
+		expect(afterRelease.length).toBeGreaterThan(0);
 	});
 
 	it("commitWorkingTreeHandler waits for a running job on the same project", async () => {
 		const dir = await createTestGitRepo();
 		seedProjectCache([makeProject({name: "queued-commit-tree", dir})]);
 		const {commitWorkingTreeHandler} = await import("./server-fns.impl.js");
-		const early = await settledWhileRepoHeld("queued-commit-tree", async () =>
+		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-commit-tree", async () =>
 			commitWorkingTreeHandler("queued-commit-tree"),
 		);
-		expect(early).toBe(false);
+		expect(whileHeld).toEqual([]);
+		expect(afterRelease.map((c) => [c.command, c.args])).toContainEqual(["claude", ["-p", "/git:commit"]]);
 	});
 });

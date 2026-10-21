@@ -1,7 +1,8 @@
 import {describe, it, expect, vi} from "vite-plus/test";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {cancelTest, enqueueRebase, pruneTerminalTasks, statusToTransition} from "./task-queue.js";
+import {cancelTest, enqueueRebase, pruneTerminalTasks, resetQueue, statusToTransition} from "./task-queue.js";
+import {enqueueRefresh, resetScheduler} from "./refresh-scheduler.js";
 import type {Task, TaskStatus} from "./task-queue.js";
 
 const shared = vi.hoisted(() => ({
@@ -161,5 +162,63 @@ describe("pruneTerminalTasks", () => {
 		]);
 		pruneTerminalTasks(tasks, 1);
 		expect(new Set(tasks.keys())).toStrictEqual(new Set(["1", "2", "4"]));
+	});
+});
+
+async function tick(): Promise<void> {
+	await new Promise((resolve) => {
+		setTimeout(resolve, 0);
+	});
+}
+
+function rebaseOptions(project: string) {
+	return {
+		project,
+		projectDir: `/tmp/${project}`,
+		sha: "a".repeat(40),
+		shortSha: "aaaaaaa",
+		subject: "Subject",
+		branch: "feature",
+		upstreamRemote: "upstream",
+		upstreamRef: "upstream/main",
+		upstreamBranch: "main",
+		remote: "origin",
+	};
+}
+
+describe("repo resource sharing", () => {
+	it("serializes a refresh and a rebase for one project but overlaps different projects", async () => {
+		let releaseRebase!: () => void;
+		shared.rebaseBranchOntoUpstream.mockImplementation(
+			async () =>
+				new Promise((resolve) => {
+					releaseRebase = () => {
+						resolve({status: "rebased"});
+					};
+				}),
+		);
+		await resetScheduler();
+		await resetQueue();
+
+		enqueueRebase(rebaseOptions("alpha"));
+		await tick();
+		expect(shared.rebaseBranchOntoUpstream).toHaveBeenCalledTimes(1);
+
+		const sameProject = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+		const otherProject = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+		enqueueRefresh({kind: "children", project: "alpha", run: sameProject});
+		enqueueRefresh({kind: "merge-status", project: "beta", run: otherProject});
+		await tick();
+
+		expect(sameProject).not.toHaveBeenCalled();
+		expect(otherProject).toHaveBeenCalledTimes(1);
+
+		releaseRebase();
+		await tick();
+		await tick();
+
+		expect(sameProject).toHaveBeenCalledTimes(1);
+		await resetScheduler();
+		await resetQueue();
 	});
 });

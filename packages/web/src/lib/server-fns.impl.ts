@@ -67,6 +67,7 @@ import {
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh} from "./refresh-scheduler.js";
+import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
@@ -391,7 +392,7 @@ async function refreshChildrenThroughQueue(project: string): Promise<ProjectChil
 	const key = `children:${project}`;
 	const handle = workQueue.enqueue({
 		coalesceKey: key,
-		laneKey: key,
+		resources: [repoResource(project)],
 		kind: "children",
 		project,
 		priority: "foreground",

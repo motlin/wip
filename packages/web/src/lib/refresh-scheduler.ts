@@ -1,3 +1,4 @@
+import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import type {WorkQueueState} from "./work-queue.js";
 
@@ -48,7 +49,10 @@ export function enqueueRefresh(options: {
 	const key = `${options.kind}:${options.project}`;
 	const handle = workQueue.enqueue({
 		coalesceKey: key,
-		laneKey: key,
+		// Every refresh kind touches the repo's git state (fetch, ref reads), so
+		// they share one exclusive per-repo resource with tasks. Discovery is
+		// not tied to a single repo.
+		resources: options.kind === "discovery" ? [key] : [repoResource(options.project)],
 		kind: options.kind,
 		project: options.project,
 		run: async () => options.run(),

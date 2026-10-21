@@ -16,6 +16,7 @@ import {log} from "@wip/shared/services/logger-pino.js";
 import {EventEmitter} from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import type {JobHandle} from "./work-queue.js";
 
@@ -397,10 +398,12 @@ function registerTask(task: Task): Task {
 
 	const handle = workQueue.enqueue({
 		coalesceKey: `task:${task.taskType}:${task.project}:${task.sha}`,
-		// Push gets a unique lane so it never waits behind a long test; every
-		// other type shares one lane per project, preserving the old per-project
-		// serial queue (a test and a rebase must not touch the same repo at once).
-		laneKey: task.taskType === "push" ? `push:${task.project}:${task.sha}` : `task:${task.project}`,
+		// Push keeps a unique lane so it never waits behind a long test; every
+		// other type holds the shared per-repo resource, so a test, a rebase and
+		// a refresh never touch the same repo at once.
+		...(task.taskType === "push"
+			? {laneKey: `push:${task.project}:${task.sha}`}
+			: {resources: [repoResource(task.project)]}),
 		kind: task.taskType,
 		project: task.project,
 		// Tasks are user clicks; they jump ahead of queued background refreshes.

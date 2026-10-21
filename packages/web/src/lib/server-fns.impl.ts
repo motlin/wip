@@ -1,6 +1,5 @@
 import {
 	applyFixesToBranch,
-	captureLogs,
 	clearExpiredSnoozes,
 	discoverAllProjects,
 	fetchAssignedIssues,
@@ -66,7 +65,7 @@ import {
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
-import {runQueuedAction} from "./queued-action.js";
+import {captureActionLogs, runQueuedAction} from "./queued-action.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
@@ -94,9 +93,7 @@ async function traced<T>(name: string, fn: () => Promise<T>): Promise<T> {
  * entries to show toasts to the user.
  */
 async function tracedAction(name: string, fn: () => Promise<ActionResult>): Promise<ActionResult> {
-	const {result, logs} = await captureLogs(async () => traced(name, fn), {
-		categories: ["subprocess", "general"],
-	});
+	const {result, logs} = await captureActionLogs(async () => traced(name, fn));
 	if (logs.length === 0) return result;
 	return {
 		...result,

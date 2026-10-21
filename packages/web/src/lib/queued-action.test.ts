@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {actionEmitter, type ActionEvent} from "./action-events.js";
-import {runQueuedAction} from "./queued-action.js";
+import {writeLogEntry} from "@wip/shared";
+import {captureActionLogs, runQueuedAction} from "./queued-action.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 
@@ -27,6 +28,10 @@ function holdRepo(project: string): () => void {
 	return () => {
 		release();
 	};
+}
+
+function entry(msg: string): void {
+	writeLogEntry({time: 1, level: 30, category: "subprocess", msg});
 }
 
 afterEach(async () => {
@@ -114,5 +119,32 @@ describe("runQueuedAction", () => {
 		actionEmitter.off("action", listener);
 		expect(fn).not.toHaveBeenCalled();
 		expect(events.map((event) => event.status)).toStrictEqual(["waiting", "busy"]);
+	});
+});
+
+describe("captureActionLogs", () => {
+	it("excludes logs emitted while the action waits for the repo but keeps its own", async () => {
+		const release = holdRepo("alpha");
+		await tick();
+		const pending = captureActionLogs(async () =>
+			runQueuedAction("alpha", "createBranch", async () => {
+				entry("own");
+				return Promise.resolve("ran");
+			}),
+		);
+		await tick();
+		entry("other job");
+		release();
+		const {result, logs} = await pending;
+		expect(result).toBe("ran");
+		expect(logs.map((e) => e.msg)).toStrictEqual(["own"]);
+	});
+
+	it("captures logs from actions that never queue", async () => {
+		const {logs} = await captureActionLogs(async () => {
+			entry("direct");
+			return Promise.resolve(1);
+		});
+		expect(logs.map((e) => e.msg)).toStrictEqual(["direct"]);
 	});
 });

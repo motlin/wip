@@ -152,3 +152,49 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 		},
 	};
 }
+
+export interface ResyncFetchers {
+	fetchChildren: (project: string) => Promise<GitChildResult[]>;
+	fetchTodos: (project: string) => Promise<TodoItem[]>;
+}
+
+const RESYNC_BATCH_SIZE = 2;
+
+/**
+ * After an EventSource reopen, events emitted during the gap are lost. Re-fetch
+ * children (which carry merge status) and todos for projects already loaded in
+ * the cache and write them with setQueryData. Fetches run in small batches to
+ * avoid a git/claude fan-out spike. Never invalidates.
+ */
+export async function resyncLoadedProjects(
+	queryClient: QueryClient,
+	fetchers: ResyncFetchers,
+	batchSize: number = RESYNC_BATCH_SIZE,
+): Promise<void> {
+	const projects = new Set<string>();
+	for (const query of queryClient.getQueryCache().findAll()) {
+		const [kind, project] = query.queryKey;
+		if ((kind === "children" || kind === "todos") && typeof project === "string") projects.add(project);
+	}
+	const list = [...projects];
+	for (let i = 0; i < list.length; i += batchSize) {
+		// eslint-disable-next-line no-await-in-loop -- batches are sequential on purpose to throttle load
+		await Promise.all(
+			list.slice(i, i + batchSize).map(async (project) => {
+				const [children, todos] = await Promise.allSettled([
+					fetchers.fetchChildren(project),
+					fetchers.fetchTodos(project),
+				]);
+				if (children.status === "fulfilled") {
+					const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
+					const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
+					queryClient.setQueryData(
+						["children", project],
+						filterSnoozedChildren(keepClientOverlays(old, children.value), project, snoozed),
+					);
+				}
+				if (todos.status === "fulfilled") queryClient.setQueryData(["todos", project], todos.value);
+			}),
+		);
+	}
+}

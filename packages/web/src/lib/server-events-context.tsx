@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useSyncExternalStore} from "react";
 import {useQueryClient} from "@tanstack/react-query";
 import type {RefreshSchedulerState} from "./refresh-scheduler";
-import {createServerEventApplier} from "./server-events-apply";
+import {createServerEventApplier, resyncLoadedProjects} from "./server-events-apply";
+import {getProjectChildren, getProjectTodos} from "./server-fns";
 import {ServerEventSchema, type MergeStatusEvent, type TaskEvent} from "./server-events-schema";
 import {
 	getAllTasksSnapshot,
@@ -29,6 +30,17 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 	useEffect(() => {
 		const applier = createServerEventApplier(queryClient);
 		const es = new EventSource("/api/events");
+		let opened = false;
+
+		es.addEventListener("open", () => {
+			if (opened) {
+				void resyncLoadedProjects(queryClient, {
+					fetchChildren: async (project) => getProjectChildren({data: {project}}),
+					fetchTodos: async (project) => getProjectTodos({data: {project}}),
+				});
+			}
+			opened = true;
+		});
 
 		es.addEventListener("message", (event) => {
 			const data: unknown = event.data;

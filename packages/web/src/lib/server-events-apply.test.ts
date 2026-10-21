@@ -256,3 +256,42 @@ describe("wire contract", () => {
 		expect(result.success).toBe(false);
 	});
 });
+
+describe("resyncLoadedProjects", () => {
+	it("rewrites children and todos via setQueryData in small batches and never invalidates", async () => {
+		const {resyncLoadedProjects} = await import("./server-events-apply");
+		const projects = ["a", "b", "c", "d", "e"];
+		for (const p of projects) {
+			queryClient.setQueryData(["children", p], []);
+			queryClient.setQueryData(["todos", p], []);
+		}
+		const setSpy = vi.spyOn(queryClient, "setQueryData");
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const track = async <T>(value: T): Promise<T> => {
+			inFlight++;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			await Promise.resolve();
+			inFlight--;
+			return value;
+		};
+
+		await resyncLoadedProjects(
+			queryClient,
+			{
+				fetchChildren: async (project) => track([makeChild({project})]),
+				fetchTodos: async () => track([]),
+			},
+			2,
+		);
+
+		expect(projects.map((p) => queryClient.getQueryData(["children", p]))).toEqual(
+			projects.map((project) => [makeChild({project})]),
+		);
+		expect(setSpy).toHaveBeenCalledWith(["children", "a"], [makeChild({project: "a"})]);
+		expect(setSpy).toHaveBeenCalledWith(["todos", "e"], []);
+		expect(invalidateSpy).not.toHaveBeenCalled();
+		expect(maxInFlight).toBeLessThanOrEqual(4);
+	});
+});

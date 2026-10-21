@@ -293,6 +293,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				},
 			});
 		} catch (e) {
+			showActionError("Test", e);
 			setError(e instanceof Error ? e.message : "Failed to enqueue test");
 		}
 	};
@@ -624,6 +625,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				data: {project: item.project, sha: item.sha, branch, command: llmCommand},
 			});
 		} catch (e) {
+			showActionError("Run Claude", e);
 			setError(e instanceof Error ? e.message : "Failed to run Claude command");
 		} finally {
 			setRunningClaude(false);

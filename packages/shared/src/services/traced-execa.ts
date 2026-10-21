@@ -30,7 +30,7 @@ export async function tracedExeca(command: string, args: string[], options?: Opt
 			return {
 				stdout: String(result.stdout ?? ""),
 				stderr: String(result.stderr ?? ""),
-				exitCode: result.exitCode ?? 0,
+				exitCode: result.exitCode ?? 1,
 				failed: result.failed,
 				command: result.command,
 			};

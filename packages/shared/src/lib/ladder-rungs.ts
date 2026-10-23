@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import {tracedExeca, type ExecaResult} from "../services/traced-execa.js";
 import {getCacheDir} from "./config.js";
-import type {LadderResult, LadderRungName} from "./ladder.js";
+import {planLadder, type LadderProjectInfo, type LadderResult, type LadderRungName} from "./ladder.js";
 
 /**
  * Ladder rungs that never touch the main checkout: fetch, replay, and rebase-leftovers. Server-only
@@ -16,6 +16,8 @@ export interface LadderRungProject {
 	path: string;
 	upstreamRemote: string;
 	upstreamBranch: string;
+	/** Aborts running subprocesses (execa cancelSignal). */
+	signal?: AbortSignal | undefined;
 }
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}(?:\\[[0-9;]*m|\\(B)`, "g");
@@ -31,6 +33,7 @@ async function runRecipe(project: LadderRungProject, recipeArgs: string[]): Prom
 		},
 		extendEnv: true,
 		reject: false,
+		...(project.signal ? {cancelSignal: project.signal} : {}),
 	});
 }
 
@@ -80,8 +83,8 @@ export async function runReplayRung(project: LadderRungProject): Promise<LadderR
 	return {project: project.name, rungs: [{rung: "replay", status: "passed", detail: "replayed"}]};
 }
 
-async function gitIn(dir: string, args: string[]): Promise<ExecaResult> {
-	return tracedExeca("git", ["-C", dir, ...args], {reject: false});
+async function gitIn(dir: string, args: string[], signal?: AbortSignal): Promise<ExecaResult> {
+	return tracedExeca("git", ["-C", dir, ...args], signal ? {reject: false, cancelSignal: signal} : {reject: false});
 }
 
 /**
@@ -91,9 +94,13 @@ async function gitIn(dir: string, args: string[]): Promise<ExecaResult> {
  */
 export async function runRebaseLeftoversRung(project: LadderRungProject): Promise<LadderResult> {
 	const upstream = `${project.upstreamRemote}/${project.upstreamBranch}`;
-	const branchList = await gitIn(project.path, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
+	const branchList = await gitIn(
+		project.path,
+		["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+		project.signal,
+	);
 	if (branchList.exitCode !== 0) return errorResult(project, "rebase-leftovers", branchList);
-	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"]);
+	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"], project.signal);
 	if (worktrees.exitCode !== 0) return errorResult(project, "rebase-leftovers", worktrees);
 	const checkedOut = new Set(
 		worktrees.stdout
@@ -106,7 +113,7 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	/* oxlint-disable no-await-in-loop -- git subprocesses run one at a time: worktree add/remove contend on the repo lock and rebases are heavy */
 	for (const branch of branchList.stdout.split("\n").filter(Boolean)) {
 		if (checkedOut.has(branch)) continue;
-		const contains = await gitIn(project.path, ["merge-base", "--is-ancestor", upstream, branch]);
+		const contains = await gitIn(project.path, ["merge-base", "--is-ancestor", upstream, branch], project.signal);
 		if (contains.exitCode !== 0) leftovers.push(branch);
 	}
 
@@ -116,13 +123,17 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	fs.mkdirSync(base, {recursive: true});
 	for (const branch of leftovers) {
 		const dir = fs.mkdtempSync(path.join(base, "wt-"));
-		const added = await gitIn(project.path, ["worktree", "add", "--detach", dir, branch]);
+		const added = await gitIn(project.path, ["worktree", "add", "--detach", dir, branch], project.signal);
 		if (added.exitCode !== 0) {
 			fs.rmSync(dir, {recursive: true, force: true});
 			conflicts.push(branch);
 			continue;
 		}
-		const rebase = await gitIn(dir, ["rebase", "--rebase-merges", "--update-refs", upstream, branch]);
+		const rebase = await gitIn(
+			dir,
+			["rebase", "--rebase-merges", "--update-refs", upstream, branch],
+			project.signal,
+		);
 		if (rebase.exitCode === 0) {
 			rebased.push(branch);
 		} else {
@@ -134,7 +145,7 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 		await gitIn(project.path, ["worktree", "remove", dir]);
 	}
 	/* oxlint-enable no-await-in-loop */
-	await gitIn(project.path, ["worktree", "prune"]);
+	await gitIn(project.path, ["worktree", "prune"], project.signal);
 
 	if (conflicts.length > 0) {
 		return {
@@ -156,7 +167,7 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 }
 
 export async function runPruneRung(project: LadderRungProject): Promise<LadderResult> {
-	const result = await gitIn(project.path, ["worktree", "prune"]);
+	const result = await gitIn(project.path, ["worktree", "prune"], project.signal);
 	if (result.exitCode !== 0) return errorResult(project, "worktree-prune", result);
 	return {project: project.name, rungs: [{rung: "worktree-prune", status: "passed", detail: "pruned worktrees"}]};
 }
@@ -168,9 +179,13 @@ export async function runPruneRung(project: LadderRungProject): Promise<LadderRe
  */
 export async function runDeleteMergedLocalRung(project: LadderRungProject): Promise<LadderResult> {
 	const upstream = `remotes/${project.upstreamRemote}/${project.upstreamBranch}`;
-	const merged = await gitIn(project.path, ["branch", "--merged", upstream, "--format=%(refname:short)"]);
+	const merged = await gitIn(
+		project.path,
+		["branch", "--merged", upstream, "--format=%(refname:short)"],
+		project.signal,
+	);
 	if (merged.exitCode !== 0) return errorResult(project, "delete-merged-local", merged);
-	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"]);
+	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"], project.signal);
 	if (worktrees.exitCode !== 0) return errorResult(project, "delete-merged-local", worktrees);
 	const checkedOut = new Set(
 		worktrees.stdout
@@ -183,7 +198,7 @@ export async function runDeleteMergedLocalRung(project: LadderRungProject): Prom
 	/* oxlint-disable no-await-in-loop -- branch deletions take the repo ref lock; run one at a time */
 	for (const branch of merged.stdout.split("\n").filter(Boolean)) {
 		if (checkedOut.has(branch) || branch === project.upstreamBranch) continue;
-		const result = await gitIn(project.path, ["branch", "-d", branch]);
+		const result = await gitIn(project.path, ["branch", "-d", branch], project.signal);
 		if (result.exitCode === 0) deleted++;
 	}
 	/* oxlint-enable no-await-in-loop */
@@ -191,4 +206,67 @@ export async function runDeleteMergedLocalRung(project: LadderRungProject): Prom
 		project: project.name,
 		rungs: [{rung: "delete-merged-local", status: "passed", detail: `deleted ${deleted} branch(es)`}],
 	};
+}
+
+export type LadderRunner = (project: LadderRungProject) => Promise<LadderResult>;
+
+const DEFAULT_LADDER_RUNNERS: Record<LadderRungName, LadderRunner> = {
+	fetch: runFetchRung,
+	replay: runReplayRung,
+	"rebase-leftovers": runRebaseLeftoversRung,
+	"worktree-prune": runPruneRung,
+	"delete-merged-local": runDeleteMergedLocalRung,
+};
+
+export interface RunLadderOptions {
+	/** Return the plan as skipped rungs without running anything. */
+	dryRun?: boolean;
+	/** Checked between rungs and passed to subprocesses. */
+	signal?: AbortSignal;
+	/** Override rung implementations (tests). */
+	runners?: Record<LadderRungName, LadderRunner>;
+}
+
+export type LadderRunProject = LadderRungProject & Omit<LadderProjectInfo, "project">;
+
+/** Runs the planned rungs in order, stopping at the first stopped rung. */
+export async function runLadder(project: LadderRunProject, options: RunLadderOptions = {}): Promise<LadderResult> {
+	const runners = options.runners ?? DEFAULT_LADDER_RUNNERS;
+	const plan = planLadder({
+		project: project.name,
+		dirty: project.dirty,
+		detached: project.detached,
+		rebaseInProgress: project.rebaseInProgress,
+		offline: project.offline,
+	});
+	if (options.dryRun) {
+		return {
+			project: project.name,
+			rungs: plan.map((r) => ({rung: r.rung, status: "skipped", detail: "dry run"})),
+		};
+	}
+	const rungProject: LadderRungProject = {
+		name: project.name,
+		path: project.path,
+		upstreamRemote: project.upstreamRemote,
+		upstreamBranch: project.upstreamBranch,
+		signal: options.signal,
+	};
+	const result: LadderResult = {project: project.name, rungs: []};
+	/* oxlint-disable no-await-in-loop -- rungs are ordered and must run one at a time */
+	for (const {rung} of plan) {
+		if (options.signal?.aborted) {
+			result.rungs.push({rung, status: "stopped", detail: "aborted"});
+			result.stop = {stop: "error", branches: []};
+			return result;
+		}
+		const rungResult = await runners[rung](rungProject);
+		result.rungs.push(...rungResult.rungs);
+		if (rungResult.stop) {
+			result.stop = rungResult.stop;
+			return result;
+		}
+	}
+	/* oxlint-enable no-await-in-loop */
+	return result;
 }

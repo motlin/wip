@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, describe, expect, it} from "vite-plus/test";
-import {cleanup, fireEvent, render, screen} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {
 	Outlet,
@@ -65,21 +65,30 @@ describe("snoozed back link wiring", () => {
 		const queryClient = seededClient();
 		const router = buildRouter(queryClient);
 
-		render(
-			<QueryClientProvider client={queryClient}>
-				<RouterProvider router={router} />
-			</QueryClientProvider>,
-		);
+		// Resolve route matches before rendering so assertions do not race the
+		// router's async load under CPU contention.
+		await router.load();
+		await act(async () => {
+			render(
+				<QueryClientProvider client={queryClient}>
+					<RouterProvider router={router} />
+				</QueryClientProvider>,
+			);
+			await router.load();
+		});
 
-		const card = (await screen.findByText("Snoozed commit")).closest("a");
+		const card = screen.getByText("Snoozed commit").closest("a");
 		expect(card).not.toBeNull();
 		const href = new URL(card!.getAttribute("href")!, "http://localhost");
 		expect(href.pathname).toBe(`/item/${project}/${sha}`);
 		expect(href.searchParams.get("from")).toBe("/snoozed");
 
-		fireEvent.click(card!);
+		await act(async () => {
+			fireEvent.click(card!);
+			await router.load();
+		});
 
-		expect(await screen.findByRole("link", {name: "Back to Snoozed"})).toBeTruthy();
+		expect(screen.getByRole("link", {name: "Back to Snoozed"})).toBeTruthy();
 		expect(screen.queryByRole("link", {name: "Back to Queue"})).toBeNull();
 	});
 });

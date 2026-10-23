@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, describe, expect, it} from "vite-plus/test";
-import {cleanup, render, screen} from "@testing-library/react";
+import {act, cleanup, render, screen} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {
 	Outlet,
@@ -48,13 +48,19 @@ describe("log route with no stored log", () => {
 		const queryClient = seededClient();
 		const router = buildRouter(queryClient);
 
-		render(
-			<QueryClientProvider client={queryClient}>
-				<RouterProvider router={router} />
-			</QueryClientProvider>,
-		);
+		// Resolve route matches before rendering so the assertion does not race
+		// the router's async load under CPU contention.
+		await router.load();
+		await act(async () => {
+			render(
+				<QueryClientProvider client={queryClient}>
+					<RouterProvider router={router} />
+				</QueryClientProvider>,
+			);
+			await router.load();
+		});
 
-		const message = await screen.findByText(noLogMessage());
+		const message = screen.getByText(noLogMessage());
 		expect(message.textContent).toBe(noLogMessage());
 		expect(screen.queryByText("No log available.")).toBeNull();
 	});

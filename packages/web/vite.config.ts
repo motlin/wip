@@ -43,10 +43,11 @@ export default defineConfig({
 		tsconfigPaths: true,
 	},
 	server: {
-		port: 3456,
+		// Dev on 3457 (wip-dev.m4.notlin.com); production `just serve` keeps 3456 (wip.m4.notlin.com)
+		port: 3457,
 		strictPort: true,
 		host: "127.0.0.1",
-		allowedHosts: ["wip.m4.notlin.com"],
+		allowedHosts: ["wip-dev.m4.notlin.com"],
 		watch: {},
 	},
 	optimizeDeps: {

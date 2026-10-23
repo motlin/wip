@@ -154,3 +154,41 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 		rungs: [{rung: "rebase-leftovers", status: "passed", detail: `rebased ${rebased.length} branch(es)`}],
 	};
 }
+
+export async function runPruneRung(project: LadderRungProject): Promise<LadderResult> {
+	const result = await gitIn(project.path, ["worktree", "prune"]);
+	if (result.exitCode !== 0) return errorResult(project, "worktree-prune", result);
+	return {project: project.name, rungs: [{rung: "worktree-prune", status: "passed", detail: "pruned worktrees"}]};
+}
+
+/**
+ * Deletes local branches merged into the upstream ref with `git branch -d` (never -D). Skips the
+ * current branch, branches checked out in any worktree, and the upstream branch's own name.
+ * Remote branches are never touched.
+ */
+export async function runDeleteMergedLocalRung(project: LadderRungProject): Promise<LadderResult> {
+	const upstream = `remotes/${project.upstreamRemote}/${project.upstreamBranch}`;
+	const merged = await gitIn(project.path, ["branch", "--merged", upstream, "--format=%(refname:short)"]);
+	if (merged.exitCode !== 0) return errorResult(project, "delete-merged-local", merged);
+	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"]);
+	if (worktrees.exitCode !== 0) return errorResult(project, "delete-merged-local", worktrees);
+	const checkedOut = new Set(
+		worktrees.stdout
+			.split("\n")
+			.filter((line) => line.startsWith("branch refs/heads/"))
+			.map((line) => line.slice("branch refs/heads/".length)),
+	);
+
+	let deleted = 0;
+	/* oxlint-disable no-await-in-loop -- branch deletions take the repo ref lock; run one at a time */
+	for (const branch of merged.stdout.split("\n").filter(Boolean)) {
+		if (checkedOut.has(branch) || branch === project.upstreamBranch) continue;
+		const result = await gitIn(project.path, ["branch", "-d", branch]);
+		if (result.exitCode === 0) deleted++;
+	}
+	/* oxlint-enable no-await-in-loop */
+	return {
+		project: project.name,
+		rungs: [{rung: "delete-merged-local", status: "passed", detail: `deleted ${deleted} branch(es)`}],
+	};
+}

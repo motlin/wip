@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {runRebaseLeftoversRung, runReplayRung} from "./ladder-rungs.js";
+import {runDeleteMergedLocalRung, runPruneRung, runRebaseLeftoversRung, runReplayRung} from "./ladder-rungs.js";
 
 function git(dir: string, ...args: string[]): string {
 	return execFileSync("git", ["-C", dir, ...args], {encoding: "utf-8"}).trim();
@@ -144,5 +144,77 @@ describe("runRebaseLeftoversRung with real repos", () => {
 		});
 		expect(git(clone, "rev-parse", "clean~1")).toBe(git(clone, "rev-parse", "upstream/main"));
 		expect(git(clone, "status", "--porcelain")).toBe(" M base.txt\n?? dirty.txt".trim());
+	});
+});
+
+describe("runPruneRung and runDeleteMergedLocalRung with real repos", () => {
+	let root: string;
+	let clone: string;
+
+	beforeEach(() => {
+		root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ladder-prune-")));
+		const origin = path.join(root, "origin");
+		clone = path.join(root, "clone");
+		fs.mkdirSync(origin);
+		git(origin, "init", "-q", "-b", "main");
+		git(origin, "config", "user.email", "t@example.com");
+		git(origin, "config", "user.name", "T");
+		commit(origin, "base.txt", "base\n", "base");
+		execFileSync("git", ["clone", "-q", "-o", "upstream", origin, clone]);
+		git(clone, "config", "user.email", "t@example.com");
+		git(clone, "config", "user.name", "T");
+		git(clone, "branch", "merged", "upstream/main");
+		git(clone, "branch", "in-worktree", "upstream/main");
+		git(clone, "checkout", "-q", "-b", "unmerged", "upstream/main");
+		commit(clone, "u.txt", "u\n", "unmerged change");
+		git(clone, "checkout", "-q", "-b", "current", "upstream/main");
+	});
+
+	afterEach(() => {
+		fs.rmSync(root, {recursive: true, force: true});
+	});
+
+	const project = () => ({name: "clone", path: clone, upstreamRemote: "upstream", upstreamBranch: "main"});
+
+	it("prunes worktree records whose directory is gone", async () => {
+		const wt = path.join(root, "gone-wt");
+		git(clone, "worktree", "add", "-q", "--detach", wt, "unmerged");
+		fs.rmSync(wt, {recursive: true, force: true});
+
+		const result = await runPruneRung(project());
+
+		expect(result).toEqual({
+			project: "clone",
+			rungs: [{rung: "worktree-prune", status: "passed", detail: "pruned worktrees"}],
+		});
+		expect(
+			git(clone, "worktree", "list", "--porcelain")
+				.split("\n")
+				.filter((l) => l.startsWith("worktree ")),
+		).toEqual([`worktree ${clone}`]);
+	});
+
+	it("deletes merged local branches but keeps unmerged, current, worktree, and upstream-named branches", async () => {
+		const wt = path.join(root, "wt");
+		git(clone, "worktree", "add", "-q", wt, "in-worktree");
+
+		const result = await runDeleteMergedLocalRung(project());
+
+		expect(result).toEqual({
+			project: "clone",
+			rungs: [{rung: "delete-merged-local", status: "passed", detail: "deleted 1 branch(es)"}],
+		});
+		expect(git(clone, "for-each-ref", "--format=%(refname:short)", "refs/heads").split("\n")).toEqual([
+			"current",
+			"in-worktree",
+			"main",
+			"unmerged",
+		]);
+	});
+
+	it("never touches remote branches", async () => {
+		const before = git(clone, "for-each-ref", "--format=%(refname)", "refs/remotes");
+		await runDeleteMergedLocalRung(project());
+		expect(git(clone, "for-each-ref", "--format=%(refname)", "refs/remotes")).toBe(before);
 	});
 });

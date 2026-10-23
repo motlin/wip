@@ -19,7 +19,7 @@ If the baseline is green (or already cached green), proceed straight to the unit
 
 ## Rebase each branch, resolving conflicts
 
-For each unit, mechanically rebase its branch onto the upstream ref (`git rebase --rebase-merges --update-refs <upstreamRef>`). If the rebase reports conflicts, invoke `/git:conflicts` to resolve them and continue; if `/git:conflicts` cannot make progress, abort that branch's rebase, mark the branch `stuck` with the conflict detail, and skip its unit.
+For each unit, try replay first (`just --global-justfile replay-all true`, or `git replay`) so clean branches move onto the upstream ref without a checkout-based rebase. Only the branches replay leaves behind get a mechanical rebase (`git rebase --rebase-merges --update-refs <upstreamRef>`). Never force anything. If the rebase reports conflicts, invoke `/git:conflicts` to resolve them and continue; if `/git:conflicts` cannot make progress, abort that branch's rebase, mark the branch `stuck` with the conflict detail, and skip its unit.
 
 ## Fan out branch workers respecting dependencies and concurrency
 

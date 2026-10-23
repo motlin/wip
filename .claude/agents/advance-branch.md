@@ -9,7 +9,7 @@ You are an L3 leaf in the advance tree. Your input is one branch unit: `{ projec
 
 ## Work in an isolated checkout when required
 
-If `worktreeRequired` is true, the branch is not the repo's current checkout, so it cannot be checked out in `dir` without disturbing other workers. Create a dedicated worktree with `git -C <dir> worktree add <path> <branch>` and do all of this branch's work there, removing it with `git -C <dir> worktree remove --force <path>` when done. If `worktreeRequired` is false, work in `dir`. Run the test/fix commands below from inside whichever working directory you settled on (the `just`/git-test recipes act on the current directory), and load the repo's environment first (direnv/mise) so the tests see the right toolchain.
+If `worktreeRequired` is true, the branch is not the repo's current checkout, so it cannot be checked out in `dir` without disturbing other workers. Create a dedicated worktree with `git -C <dir> worktree add <path> <branch>` and do all of this branch's work there, removing it with `git -C <dir> worktree remove <path>` when done. Never pass `--force`; if git refuses the removal, leave the worktree in place and name it in the branch detail. If `worktreeRequired` is false, work in `dir`. Run the test/fix commands below from inside whichever working directory you settled on (the `just`/git-test recipes act on the current directory), and load the repo's environment first (direnv/mise) so the tests see the right toolchain.
 
 ## Run the test-and-fix loop
 

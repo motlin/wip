@@ -17,6 +17,12 @@
 - `pnpm --filter @wip/shared build` -- build the shared package only
 - `pnpm -r run test` -- run tests across all packages
 
+## Servers and Databases
+
+- `just serve` -- production build on port 3456 (wip.m4.notlin.com), database `~/.local/share/wip/wip.db`
+- `just dev` -- dev server on port 3457 (wip-dev.m4.notlin.com), database `~/.local/share/wip/wip-dev.db`
+- `WIP_DB_PATH` overrides the database file (`resolveDbPath` in `packages/shared/src/lib/db.ts`); `just dev` sets it so dev and production never share a database. Both scan state from disk independently.
+
 ## Testing
 
 ### Patterns

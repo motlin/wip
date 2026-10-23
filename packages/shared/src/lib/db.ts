@@ -53,11 +53,18 @@ const APP_NAME = "wip";
 const DB_BUSY_TIMEOUT_MS = 5000;
 const WRITE_TRANSACTION_CONFIG = {behavior: "immediate"} as const;
 
-function getDbPath(): string {
-	const xdgData = process.env.XDG_DATA_HOME ?? path.join(process.env.HOME ?? "", ".local", "share");
-	const dir = path.join(xdgData, APP_NAME);
-	fs.mkdirSync(dir, {recursive: true});
-	return path.join(dir, "wip.db");
+/**
+ * WIP_DB_PATH overrides the database file so `just dev` never shares production's wip.db;
+ * otherwise the file is $XDG_DATA_HOME/wip/wip.db (default ~/.local/share/wip/wip.db).
+ */
+export function resolveDbPath(env: NodeJS.ProcessEnv = process.env): string {
+	const override = env.WIP_DB_PATH;
+	const dbPath =
+		override !== undefined && override !== ""
+			? override
+			: path.join(env.XDG_DATA_HOME ?? path.join(env.HOME ?? "", ".local", "share"), APP_NAME, "wip.db");
+	fs.mkdirSync(path.dirname(dbPath), {recursive: true});
+	return dbPath;
 }
 
 function now(): string {
@@ -105,7 +112,7 @@ function checkKey(checks: Array<{name: string; url: string | null}>): string {
 export function getDb(): BetterSQLite3Database<typeof schema> {
 	if (db) return db;
 
-	const dbPath = customDbPath ?? getDbPath();
+	const dbPath = customDbPath ?? resolveDbPath();
 	const sqlite = new DatabaseConstructor(dbPath);
 	sqlite.pragma("journal_mode = WAL");
 	sqlite.pragma(`busy_timeout = ${DB_BUSY_TIMEOUT_MS}`);

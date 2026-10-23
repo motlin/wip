@@ -104,10 +104,12 @@ verify quick="": check build fallow pre-commit
 [group('build')]
 precommit quick="": (verify quick)
 
-# Run dev server
+dev_db := env("XDG_DATA_HOME", env("HOME", "") / ".local/share") / "wip/wip-dev.db"
+
+# Run dev server on its own database
 [group('web')]
 dev *args: build-shared
-    vp exec pnpm --filter @wip/web dev {{ args }}
+    WIP_DB_PATH="{{ dev_db }}" vp exec pnpm --filter @wip/web dev {{ args }}
 
 # Start web dashboard (production build)
 [group('web')]

@@ -48,6 +48,17 @@ export interface LadderResult {
 	herdr?: {tabId: string; paneId: string};
 	/** Progress of the AI rung that follows a conflict stop. */
 	aiStatus?: LadderAiStatus;
+	/** Branches the ladder rebased cleanly; the test/fix rung runs on these. */
+	rebased?: string[];
+	/** Test/fix rung progress per branch. */
+	testFix?: LadderTestFix[];
+}
+
+export interface LadderTestFix {
+	branch: string;
+	/** running: agent working; red: tests failed, will retry; green: passing; stuck: gave up. */
+	status: "running" | "green" | "red" | "stuck";
+	attempts: number;
 }
 
 export type LadderAiStatus = "queued" | "running" | "done" | "stuck";
@@ -92,4 +103,14 @@ export const LadderResultSchema = z.object({
 	needsAi: z.object({command: z.string()}).optional(),
 	herdr: z.object({tabId: z.string(), paneId: z.string()}).optional(),
 	aiStatus: z.enum(["queued", "running", "done", "stuck"]).optional(),
+	rebased: z.array(z.string()).optional(),
+	testFix: z
+		.array(
+			z.object({
+				branch: z.string(),
+				status: z.enum(["running", "green", "red", "stuck"]),
+				attempts: z.number(),
+			}),
+		)
+		.optional(),
 });

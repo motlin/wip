@@ -134,3 +134,13 @@ export function getAiRungTimeoutMs(config: Record<string, ConfigValue> = readCon
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_AI_RUNG_TIMEOUT_MS;
 }
+
+export const DEFAULT_AI_MAX_ATTEMPTS = 10;
+
+/** Cap on AI test/fix attempts per branch, from config key `aiMaxAttempts`. Defaults to 10. */
+export function getAiMaxAttempts(config: Record<string, ConfigValue> = readConfig()): number {
+	const value = config["aiMaxAttempts"];
+	if (typeof value !== "string") return DEFAULT_AI_MAX_ATTEMPTS;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_AI_MAX_ATTEMPTS;
+}

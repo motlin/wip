@@ -54,6 +54,28 @@ describe("LadderSection", () => {
 		expect(betaRow?.textContent).toContain("feature-b");
 	});
 
+	it("shows test/fix progress per branch", () => {
+		render(
+			<LadderSection
+				results={[
+					{
+						...passed,
+						testFix: [
+							{branch: "feature-a", status: "green", attempts: 1},
+							{branch: "feature-b", status: "stuck", attempts: 3},
+						],
+					},
+				]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		const row = screen.getByText("alpha").closest("li");
+		expect(row?.textContent).toContain("feature-a");
+		expect(row?.textContent).toContain("test/fix green (attempt 1)");
+		expect(row?.textContent).toContain("test/fix stuck (attempt 3)");
+	});
+
 	it("reports a failed run only through the toast", async () => {
 		const runLadderAll = vi.fn<() => Promise<unknown>>().mockRejectedValue(new Error("boom"));
 		const {container} = render(<LadderSection results={[]} runLadderAll={runLadderAll} focusPane={noFocus} />);

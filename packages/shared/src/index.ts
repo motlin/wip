@@ -15,6 +15,7 @@ export {
 	getWorkQueueClassCaps,
 	getActionMaxWaitMs,
 	getAiRungTimeoutMs,
+	getAiMaxAttempts,
 	DEFAULT_AI_RUNG_TIMEOUT_MS,
 } from "./lib/config.js";
 export {
@@ -128,6 +129,7 @@ export {
 	type LadderRungName,
 	type LadderRungResult,
 	type LadderStop,
+	type LadderTestFix,
 	type LadderStopInfo,
 } from "./lib/ladder.js";
 export {

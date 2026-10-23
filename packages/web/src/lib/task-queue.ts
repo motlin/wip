@@ -15,6 +15,8 @@ import {
 	LadderResultSchema,
 	type CostClass,
 	type LadderResult,
+	type LadderRunProject,
+	type LadderTestFix,
 	type RunLadderOptions,
 	type TaskType,
 	type TransitionOutcome,
@@ -26,7 +28,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type {Category} from "@wip/shared/schemas.js";
 import {probeHerdr} from "./herdr/availability.js";
-import {runAiConflictRung, type AiRungDeps} from "./herdr/ai-rungs.js";
+import {runAiConflictRung, runAiTestFixLoop, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {stageRank} from "./stage-rank.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -496,11 +498,93 @@ async function runLadderTask(task: Task, signal: AbortSignal): Promise<void> {
 	emit(task);
 }
 
+function ladderRunProject(task: Task, info: LadderTaskProject): LadderRunProject {
+	return {
+		name: task.project,
+		path: task.projectDir,
+		upstreamRemote: info.upstreamRemote,
+		upstreamBranch: info.upstreamBranch,
+		dirty: info.dirty,
+		detached: info.detached,
+		rebaseInProgress: info.rebaseInProgress,
+		offline: false,
+	};
+}
+
+function finishLadderTask(task: Task): void {
+	const result = task.ladderResult;
+	task.finishedAt = Date.now();
+	if (result?.stop) {
+		const branches = result.stop.branches.length > 0 ? ` (${result.stop.branches.join(", ")})` : "";
+		task.status = "failed";
+		task.message = `stopped: ${result.stop.stop}${branches}`;
+	} else {
+		task.status = "passed";
+		task.message = `${result?.rungs.length ?? 0} rung(s) passed`;
+	}
+	emit(task);
+}
+
+function setTestFix(task: Task, entry: LadderTestFix): void {
+	const current = task.ladderResult;
+	if (!current) return;
+	const others = (current.testFix ?? []).filter((e) => e.branch !== entry.branch);
+	task.ladderResult = {...current, testFix: [...others, entry]};
+	emit(task);
+}
+
+/** Test and fix each branch the ladder rebased, or hand the exact command to the user when herdr is unavailable. */
+async function runLadderTestFix(task: Task, branches: string[]): Promise<void> {
+	const ai = task.ladderAi;
+	const info = task.ladderProject;
+	if (!ai || !info || branches.length === 0 || !task.ladderResult) return;
+
+	const available = await (ai.probe ?? (async () => (await probeHerdr()).available))();
+	if (!available) {
+		task.ladderResult = {
+			...task.ladderResult,
+			needsAi: {command: `cd ${task.projectDir} && claude "/build:test-branch"`},
+		};
+		emit(task);
+		return;
+	}
+
+	const project = ladderRunProject(task, info);
+	/* oxlint-disable no-await-in-loop -- one branch at a time per project */
+	for (const branch of branches) {
+		const done = await runAiTestFixLoop(
+			project,
+			branch,
+			{
+				...ai.overrides,
+				onLaunched: (launched) => {
+					if (task.ladderResult) task.ladderResult = {...task.ladderResult, herdr: launched};
+					ai.overrides?.onLaunched?.(launched);
+					emit(task);
+				},
+			},
+			(progress) => {
+				setTestFix(task, {branch, ...progress});
+			},
+		);
+		setTestFix(task, {branch, ...done});
+	}
+	/* oxlint-enable no-await-in-loop */
+	emit(task);
+}
+
 async function runLadderAiFollowUp(task: Task): Promise<void> {
 	const ai = task.ladderAi;
 	const info = task.ladderProject;
 	const result = task.ladderResult;
-	if (!ai || !info || result?.stop?.stop !== "conflict" || task.status !== "failed") return;
+	if (!ai || !info || !result) return;
+
+	if (result.stop?.stop !== "conflict") {
+		// The ladder finished or stopped for another reason; test the branches it rebased cleanly.
+		if (!result.stop && task.status === "passed") await runLadderTestFix(task, result.rebased ?? []);
+		return;
+	}
+	if (task.status !== "failed") return;
 
 	const available = await (ai.probe ?? (async () => (await probeHerdr()).available))();
 	if (!available) {
@@ -512,43 +596,25 @@ async function runLadderAiFollowUp(task: Task): Promise<void> {
 	let herdr: LadderResult["herdr"];
 	task.ladderResult = {...result, aiStatus: "queued"};
 	emit(task);
-	const next = await runAiConflictRung(
-		{
-			name: task.project,
-			path: task.projectDir,
-			upstreamRemote: info.upstreamRemote,
-			upstreamBranch: info.upstreamBranch,
-			dirty: info.dirty,
-			detached: info.detached,
-			rebaseInProgress: info.rebaseInProgress,
-			offline: false,
+	const next = await runAiConflictRung(ladderRunProject(task, info), result.stop, {
+		...ai.overrides,
+		onLaunched: (launched) => {
+			herdr = launched;
+			task.ladderResult = {...(task.ladderResult ?? result), herdr, aiStatus: "running"};
+			emit(task);
 		},
-		result.stop,
-		{
-			...ai.overrides,
-			onLaunched: (launched) => {
-				herdr = launched;
-				task.ladderResult = {...(task.ladderResult ?? result), herdr, aiStatus: "running"};
-				emit(task);
-			},
-		},
-	);
+	});
 	const final = next === "stuck" ? result : next;
 	task.ladderResult = {
 		...final,
 		...(herdr ? {herdr} : {}),
 		aiStatus: next === "stuck" || next.stop ? "stuck" : "done",
 	};
-	task.finishedAt = Date.now();
-	if (task.ladderResult.stop) {
-		const branches =
-			task.ladderResult.stop.branches.length > 0 ? ` (${task.ladderResult.stop.branches.join(", ")})` : "";
-		task.message = `stopped: ${task.ladderResult.stop.stop}${branches}`;
-	} else {
-		task.status = "passed";
-		task.message = `${task.ladderResult.rungs.length} rung(s) passed`;
+	finishLadderTask(task);
+	if (next !== "stuck" && !next.stop) {
+		const resolved = [...new Set([...result.stop.branches, ...(next.rebased ?? [])])];
+		await runLadderTestFix(task, resolved);
 	}
-	emit(task);
 }
 
 async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {

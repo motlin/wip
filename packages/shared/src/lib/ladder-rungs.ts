@@ -163,6 +163,7 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	return {
 		project: project.name,
 		rungs: [{rung: "rebase-leftovers", status: "passed", detail: `rebased ${rebased.length} branch(es)`}],
+		rebased,
 	};
 }
 
@@ -262,6 +263,9 @@ export async function runLadder(project: LadderRunProject, options: RunLadderOpt
 		}
 		const rungResult = await runners[rung](rungProject);
 		result.rungs.push(...rungResult.rungs);
+		if (rungResult.rebased && rungResult.rebased.length > 0) {
+			result.rebased = [...(result.rebased ?? []), ...rungResult.rebased];
+		}
 		if (rungResult.stop) {
 			result.stop = rungResult.stop;
 			return result;

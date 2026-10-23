@@ -141,7 +141,9 @@ describe("runRebaseLeftoversRung with real repos", () => {
 		expect(result).toEqual({
 			project: "clone",
 			rungs: [{rung: "rebase-leftovers", status: "passed", detail: "rebased 2 branch(es)"}],
+			rebased: result.rebased,
 		});
+		expect(new Set(result.rebased)).toStrictEqual(new Set(["clean", "main"]));
 		expect(git(clone, "rev-parse", "clean~1")).toBe(git(clone, "rev-parse", "upstream/main"));
 		expect(git(clone, "status", "--porcelain")).toBe(" M base.txt\n?? dirty.txt".trim());
 	});

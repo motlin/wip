@@ -66,6 +66,18 @@ export function LadderSection({
 									<span>AI {result.aiStatus}</span>
 								</div>
 							)}
+							{result.testFix?.map((entry) => (
+								<div
+									key={entry.branch}
+									className="ml-6 flex items-center gap-1.5 text-xs text-text-400"
+								>
+									<Bot className="h-3.5 w-3.5" />
+									<span className="font-mono">{entry.branch}</span>
+									<span>
+										test/fix {entry.status} (attempt {entry.attempts})
+									</span>
+								</div>
+							))}
 							{result.needsAi && (
 								<div className="ml-6 flex items-center gap-1.5 text-xs text-text-400">
 									<Bot className="h-3.5 w-3.5" />

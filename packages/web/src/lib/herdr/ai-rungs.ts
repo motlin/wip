@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+	getAiMaxAttempts,
 	getAiRungTimeoutMs,
 	getCacheDir,
 	runLadder,
@@ -34,6 +35,10 @@ export interface AiRungDeps {
 	timeoutMs: number;
 	/** Creates the throwaway worktree with the rebase stopped on its conflict; null when it cannot. */
 	prepare: (project: LadderRunProject, branch: string) => Promise<PreparedConflictWorktree | null>;
+	/** Resolves a branch tip sha; used to detect a test/fix run that left the same red tip. Defaults to git rev-parse. */
+	tip?: (project: LadderRunProject, branch: string) => Promise<string>;
+	/** Cap on test/fix attempts per branch (defaults to config aiMaxAttempts, 10). */
+	maxAttempts?: number;
 	/** Called with the herdr tab and pane once the agent tab is launched. */
 	onLaunched?: (launched: HerdrLaunchResult) => void;
 }
@@ -111,6 +116,9 @@ export function parseGitTestResults(output: string): "green" | "red" {
 
 async function defaultResults(project: LadderRunProject, branch: string): Promise<"green" | "red"> {
 	const range = `${project.upstreamRemote}/${project.upstreamBranch}..${branch}`;
+	// A branch with no commits beyond upstream has nothing to test.
+	const ahead = await git(project.path, ["rev-list", "--count", range]);
+	if (ahead.exitCode === 0 && ahead.stdout.trim() === "0") return "green";
 	const result = await tracedExeca("git", ["-C", project.path, "test", "results", "--no-color", range], {
 		reject: false,
 	});
@@ -219,6 +227,7 @@ export async function runAiTestFixRung(
 				focus: false,
 			});
 			if (!launched.ok) return;
+			deps.onLaunched?.(launched.value);
 			const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
 			if (waited !== "done") return;
 			outcome = await deps.results(project, branch);
@@ -226,4 +235,45 @@ export async function runAiTestFixRung(
 	});
 	await handle.settled;
 	return outcome;
+}
+
+async function defaultTip(project: LadderRunProject, branch: string): Promise<string> {
+	const out = await git(project.path, ["rev-parse", branch]);
+	return out.stdout.trim();
+}
+
+export interface AiTestFixLoopResult {
+	status: "green" | "stuck";
+	attempts: number;
+}
+
+/**
+ * Runs the test/fix rung repeatedly for one branch. A red run is retried while the branch tip keeps
+ * changing; the branch is stuck when the same tip comes back red twice, the attempt cap is reached,
+ * or a run times out / cannot launch.
+ */
+export async function runAiTestFixLoop(
+	project: LadderRunProject,
+	branch: string,
+	overrides: Partial<AiRungDeps> = {},
+	onAttempt?: (progress: {status: "running" | "red"; attempts: number}) => void,
+): Promise<AiTestFixLoopResult> {
+	const tip = overrides.tip ?? defaultTip;
+	const cap = overrides.maxAttempts ?? getAiMaxAttempts();
+	let lastRedTip: string | undefined;
+	let attempts = 0;
+	/* oxlint-disable no-await-in-loop -- attempts are sequential: each depends on the previous tip */
+	while (attempts < cap) {
+		attempts += 1;
+		onAttempt?.({status: "running", attempts});
+		const outcome = await runAiTestFixRung(project, branch, overrides);
+		if (outcome === "green") return {status: "green", attempts};
+		if (outcome === "stuck") return {status: "stuck", attempts};
+		const redTip = await tip(project, branch);
+		if (redTip === lastRedTip) return {status: "stuck", attempts};
+		lastRedTip = redTip;
+		onAttempt?.({status: "red", attempts});
+	}
+	/* oxlint-enable no-await-in-loop */
+	return {status: "stuck", attempts};
 }

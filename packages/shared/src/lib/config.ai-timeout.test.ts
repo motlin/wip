@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 
-import {DEFAULT_AI_RUNG_TIMEOUT_MS, getAiRungTimeoutMs} from "./config.js";
+import {DEFAULT_AI_MAX_ATTEMPTS, DEFAULT_AI_RUNG_TIMEOUT_MS, getAiMaxAttempts, getAiRungTimeoutMs} from "./config.js";
 
 describe("getAiRungTimeoutMs", () => {
 	it("defaults to 30 minutes", () => {
@@ -15,5 +15,15 @@ describe("getAiRungTimeoutMs", () => {
 	it("ignores invalid values", () => {
 		expect(getAiRungTimeoutMs({aiRungTimeoutMs: "0"})).toBe(DEFAULT_AI_RUNG_TIMEOUT_MS);
 		expect(getAiRungTimeoutMs({aiRungTimeoutMs: "abc"})).toBe(DEFAULT_AI_RUNG_TIMEOUT_MS);
+	});
+});
+
+describe("getAiMaxAttempts", () => {
+	it("defaults to 10, reads aiMaxAttempts, and ignores invalid values", () => {
+		expect(DEFAULT_AI_MAX_ATTEMPTS).toBe(10);
+		expect(getAiMaxAttempts({})).toBe(10);
+		expect(getAiMaxAttempts({aiMaxAttempts: "3"})).toBe(3);
+		expect(getAiMaxAttempts({aiMaxAttempts: "0"})).toBe(10);
+		expect(getAiMaxAttempts({aiMaxAttempts: "x"})).toBe(10);
 	});
 });

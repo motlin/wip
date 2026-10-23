@@ -105,7 +105,11 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		const mainHeadBefore = git(clone, "rev-parse", "HEAD");
 		const mainStatusBefore = git(clone, "status", "--porcelain");
 		const overrides: Partial<AiRungDeps> = {
+			results: async () => Promise.resolve("green"),
 			launch: async (request) => {
+				if (request.label.includes(":test-fix:")) {
+					return Promise.resolve({ok: true, value: {tabId: "tab-2", paneId: "pane-2"}});
+				}
 				launches.push(request);
 				stateAtLaunch.push({
 					conflicting: git(clone, "rev-parse", "conflicting"),
@@ -116,7 +120,8 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 				return Promise.resolve({ok: true, value: {tabId: "tab-1", paneId: "pane-1"}});
 			},
 			// The fake agent: resolve the rebase conflict with scripted git commands, then report done.
-			wait: async () => {
+			wait: async (paneId) => {
+				if (paneId === "pane-2") return Promise.resolve("done");
 				const wt = launches[0]?.cwd ?? "";
 				// The rebase is already stopped on the conflict in the throwaway worktree.
 				fs.writeFileSync(path.join(wt, "shared.txt"), "two\nmine\n");
@@ -170,7 +175,7 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		// After the fake agent finished, the repo is rebased and the final result is green.
 		expect(git(clone, "rev-parse", "conflicting~1")).toBe(upstream);
 		expect(result?.stop).toBeUndefined();
-		expect(result?.herdr).toStrictEqual({tabId: "tab-1", paneId: "pane-1"});
+		expect(result?.herdr).toStrictEqual({tabId: "tab-2", paneId: "pane-2"});
 		expect(result?.rungs.every((r) => r.status === "passed")).toBe(true);
 		// Nothing was pushed and the remote is untouched.
 		expect(fs.existsSync(pushMarker)).toBe(false);

@@ -60,6 +60,7 @@ function makeAi(available: boolean): {
 				return Promise.resolve(available);
 			},
 			overrides: {
+				results: async () => Promise.resolve("green"),
 				prepare: async (project) =>
 					Promise.resolve({cwd: project.path, conflicted: true, finish: async () => Promise.resolve(true)}),
 				launch: async (request) => {
@@ -107,6 +108,7 @@ describe("ladder AI wiring", () => {
 
 		expect(
 			spies.launches
+				.filter((l) => l.label.endsWith(":conflicts"))
 				.map((l) => ({cwd: l.cwd, label: l.label, command: l.command}))
 				.toSorted((a, b) => a.cwd.localeCompare(b.cwd)),
 		).toStrictEqual([
@@ -117,7 +119,7 @@ describe("ladder AI wiring", () => {
 			{project: "alpha", stop: undefined, needsAi: undefined},
 			{project: "beta", stop: undefined, needsAi: undefined},
 		]);
-		expect(new Set([alpha.herdr?.paneId, beta.herdr?.paneId])).toStrictEqual(new Set(["pane-1", "pane-2"]));
+		expect(new Set([alpha.herdr?.paneId, beta.herdr?.paneId])).toStrictEqual(new Set(["pane-3", "pane-4"]));
 	});
 
 	it("never calls herdr when unavailable and marks needsAi with the exact command", async () => {
@@ -139,7 +141,9 @@ describe("ladder AI wiring", () => {
 		const alpha = await latestFor("alpha");
 		const beta = await latestFor("beta");
 
-		expect(spies.launches.map((l) => l.cwd)).toStrictEqual(["/nonexistent/alpha"]);
+		expect(spies.launches.filter((l) => l.label.endsWith(":conflicts")).map((l) => l.cwd)).toStrictEqual([
+			"/nonexistent/alpha",
+		]);
 		expect(alpha.stop).toBeUndefined();
 		expect(beta.stop).toStrictEqual({stop: "conflict", branches: ["feature"]});
 		expect(beta.needsAi).toBeUndefined();
@@ -150,6 +154,7 @@ describe("ladder AI wiring", () => {
 		const seen: (string | undefined)[] = [];
 		const gate = {open: false};
 		ai.overrides.wait = async () => {
+			if (seen.length > 0) return Promise.resolve("done");
 			seen.push(getLatestLadderResults().find((r) => r.project === "alpha")?.aiStatus);
 			await expect.poll(() => gate.open).toBe(true);
 			return "done";
@@ -171,6 +176,104 @@ describe("ladder AI wiring", () => {
 		const alpha = await latestFor("alpha");
 		expect(alpha.aiStatus).toBe("stuck");
 		expect(alpha.stop).toStrictEqual({stop: "conflict", branches: ["feature"]});
+	});
+});
+
+/** The ladder passes and rebases "feature" cleanly, so only the test/fix rung applies. */
+const rebasedRunners: Runners = {
+	...conflictRunners,
+	replay: async (p) => Promise.resolve({project: p.name, rungs: [{rung: "replay", status: "passed", detail: "ok"}]}),
+	"rebase-leftovers": async (p) =>
+		Promise.resolve({
+			project: p.name,
+			rungs: [{rung: "rebase-leftovers", status: "passed", detail: "rebased 1 branch(es)"}],
+			rebased: ["feature"],
+		}),
+};
+
+function testFixAi(
+	available: boolean,
+	outcomes: ("green" | "red")[],
+	tips: string[],
+	maxAttempts = 10,
+): ReturnType<typeof makeAi> {
+	const made = makeAi(available);
+	made.ai.overrides.results = async () => Promise.resolve(outcomes.shift() ?? "red");
+	made.ai.overrides.tip = async () => Promise.resolve(tips.shift() ?? "tip-end");
+	made.ai.overrides.maxAttempts = maxAttempts;
+	return made;
+}
+
+describe("ladder test/fix rung", () => {
+	it("records green when the first test/fix run passes", async () => {
+		const {ai, spies} = testFixAi(true, ["green"], []);
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(spies.launches.map((l) => ({cwd: l.cwd, command: l.command}))).toStrictEqual([
+			{cwd: "/nonexistent/alpha", command: 'claude "/build:test-branch"'},
+		]);
+		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "green", attempts: 1}]);
+		expect(alpha.herdr?.paneId).toBe("pane-1");
+	});
+
+	it("retries a red branch while the tip changes, then records green", async () => {
+		const {ai, spies} = testFixAi(true, ["red", "green"], ["tip-1"]);
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(spies.launches).toHaveLength(2);
+		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "green", attempts: 2}]);
+	});
+
+	it("marks the branch stuck when the same tip comes back red twice", async () => {
+		const {ai, spies} = testFixAi(true, ["red", "red", "green"], ["tip-1", "tip-1"]);
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(spies.launches).toHaveLength(2);
+		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "stuck", attempts: 2}]);
+	});
+
+	it("marks the branch stuck when the attempt cap is hit", async () => {
+		const {ai, spies} = testFixAi(true, ["red", "red", "red", "red"], ["t1", "t2", "t3", "t4"], 3);
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(spies.launches).toHaveLength(3);
+		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "stuck", attempts: 3}]);
+	});
+
+	it("marks the branch stuck when the agent times out", async () => {
+		const {ai} = testFixAi(true, ["green"], []);
+		ai.overrides.wait = async () => Promise.resolve("timeout");
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "stuck", attempts: 1}]);
+	});
+
+	it("hands over the exact command and never calls herdr when unavailable", async () => {
+		const {ai, spies} = testFixAi(false, ["green"], []);
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(spies.launches).toStrictEqual([]);
+		expect(alpha.testFix).toBeUndefined();
+		expect(alpha.needsAi).toStrictEqual({command: 'cd /nonexistent/alpha && claude "/build:test-branch"'});
+	});
+
+	it("tests the conflicted branch after the conflict rung resolves it", async () => {
+		const {ai, spies} = testFixAi(true, ["green"], []);
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(spies.launches.map((l) => l.command)).toStrictEqual([
+			'claude "/git:conflicts feature"',
+			'claude "/build:test-branch"',
+		]);
+		expect(alpha.aiStatus).toBe("done");
+		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "green", attempts: 1}]);
 	});
 });
 

@@ -117,6 +117,23 @@ export {
 	type UnitOutcome,
 	type AdvanceQueueOptions,
 } from "./lib/advance-queue.js";
+export {
+	LADDER_RUNGS,
+	planLadder,
+	type LadderResult,
+	type LadderRung,
+	type LadderRungName,
+	type LadderRungResult,
+	type LadderStop,
+	type LadderStopInfo,
+} from "./lib/ladder.js";
+export {runLadder, type RunLadderOptions, type LadderRunProject} from "./lib/ladder-rungs.js";
+export {
+	ladderResultsToTree,
+	runLadderAcrossProjects,
+	type LadderAllOptions,
+	type LadderAllProject,
+} from "./lib/ladder-all.js";
 export {createSystemProbe} from "./lib/system-probe.js";
 export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";

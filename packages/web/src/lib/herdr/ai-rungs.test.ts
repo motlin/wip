@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 import {createWorkQueue, type LadderResult, type LadderRunProject} from "@wip/shared";
-import {runAiConflictRung, type AiRungDeps} from "./ai-rungs.js";
+import {parseGitTestResults, runAiConflictRung, runAiTestFixRung, type AiRungDeps} from "./ai-rungs.js";
 
 const project: LadderRunProject = {
 	name: "demo",
@@ -32,11 +32,12 @@ interface Calls {
 	launches: {cwd: string; label: string; command: string; focus: boolean}[];
 	waits: {paneId: string; timeoutMs: number}[];
 	reruns: number;
+	resultsCalls: {project: string; branch: string}[];
 	order: string[];
 }
 
 function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls: Calls} {
-	const calls: Calls = {launches: [], waits: [], reruns: 0, order: []};
+	const calls: Calls = {launches: [], waits: [], reruns: 0, resultsCalls: [], order: []};
 	const deps: AiRungDeps = {
 		queue: createWorkQueue({globalConcurrency: 2, probe: null}),
 		launch: async (request) => {
@@ -53,6 +54,11 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 			calls.order.push("rerun");
 			calls.reruns += 1;
 			return Promise.resolve(clean);
+		},
+		results: async (p, branch) => {
+			calls.order.push("results");
+			calls.resultsCalls.push({project: p.name, branch});
+			return Promise.resolve("green");
 		},
 		timeoutMs: 1234,
 		...overrides,
@@ -120,5 +126,52 @@ describe("runAiConflictRung", () => {
 		const {deps} = makeDeps({queue, wait: slow});
 		await Promise.all([runAiConflictRung(project, stop, deps), runAiConflictRung(project, stop, deps)]);
 		expect(maxActive).toBe(1);
+	});
+});
+
+describe("parseGitTestResults", () => {
+	it("is green only when every commit line is good", () => {
+		expect(parseGitTestResults("good  abc one\ngood  def two\n")).toBe("green");
+		expect(parseGitTestResults("good  abc one\nbad   def two\n")).toBe("red");
+		expect(parseGitTestResults("good  abc one\n?     def two\n")).toBe("red");
+		expect(parseGitTestResults("")).toBe("red");
+	});
+});
+
+describe("runAiTestFixRung", () => {
+	it("launches claude /build:test-branch, waits, then reads git test results", async () => {
+		const {deps, calls} = makeDeps();
+		const result = await runAiTestFixRung(project, "feat-a", deps);
+		expect(result).toBe("green");
+		expect(calls.launches).toEqual([
+			{
+				cwd: "/tmp/demo",
+				label: "wip:demo:test-fix:feat-a",
+				command: `claude "/build:test-branch"`,
+				focus: false,
+			},
+		]);
+		expect(calls.waits).toEqual([{paneId: "p1", timeoutMs: 1234}]);
+		expect(calls.resultsCalls).toEqual([{project: "demo", branch: "feat-a"}]);
+		expect(calls.order).toEqual(["launch", "wait", "results"]);
+	});
+
+	it("returns red when results are not all good", async () => {
+		const {deps} = makeDeps({results: async () => Promise.resolve("red")});
+		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("red");
+	});
+
+	it("returns stuck on timeout without reading results", async () => {
+		const {deps, calls} = makeDeps({wait: async () => Promise.resolve("timeout")});
+		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
+		expect(calls.resultsCalls).toEqual([]);
+	});
+
+	it("returns stuck when herdr cannot launch the tab", async () => {
+		const {deps, calls} = makeDeps({
+			launch: async () => Promise.resolve({ok: false, code: "unavailable", message: "no herdr"}),
+		});
+		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
+		expect(calls.resultsCalls).toEqual([]);
 	});
 });

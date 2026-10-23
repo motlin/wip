@@ -8,6 +8,7 @@ import {
 	type LadderStopInfo,
 	type WorkQueue,
 } from "@wip/shared";
+import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {repoResource} from "../repo-resource.js";
 import {workQueue} from "../shared-work-queue.js";
 import type {HerdrResult} from "./client.js";
@@ -25,6 +26,8 @@ export interface AiRungDeps {
 	wait: (paneId: string, options: HerdrWaitOptions) => Promise<HerdrWaitResult>;
 	/** Re-runs the cheap ladder rungs (replay + rebase leftovers) after the agent finished. */
 	rerun: (project: LadderRunProject, signal: AbortSignal) => Promise<LadderResult>;
+	/** Reads the stored `git test` results for a branch after the agent finished. */
+	results: (project: LadderRunProject, branch: string) => Promise<"green" | "red">;
 	timeoutMs: number;
 }
 
@@ -42,6 +45,20 @@ async function defaultRerun(project: LadderRunProject, signal: AbortSignal): Pro
 			"rebase-leftovers": runRebaseLeftoversRung,
 		},
 	});
+}
+
+/** Green only when at least one commit is listed and every line reports "good". */
+export function parseGitTestResults(output: string): "green" | "red" {
+	const lines = output.split("\n").filter((line) => line.trim() !== "");
+	return lines.length > 0 && lines.every((line) => line.startsWith("good")) ? "green" : "red";
+}
+
+async function defaultResults(project: LadderRunProject, branch: string): Promise<"green" | "red"> {
+	const range = `${project.upstreamRemote}/${project.upstreamBranch}..${branch}`;
+	const result = await tracedExeca("git", ["-C", project.path, "test", "results", "--no-color", range], {
+		reject: false,
+	});
+	return result.failed ? "red" : parseGitTestResults(result.stdout);
 }
 
 function shellQuote(text: string): string {
@@ -63,6 +80,7 @@ export async function runAiConflictRung(
 		launch: launchInHerdr,
 		wait: waitForHerdrAgent,
 		rerun: defaultRerun,
+		results: defaultResults,
 		timeoutMs: getAiRungTimeoutMs(),
 		...overrides,
 	};
@@ -88,6 +106,50 @@ export async function runAiConflictRung(
 			const next = await deps.rerun(project, signal);
 			const again = next.stop?.stop === "conflict" && next.stop.branches.some((b) => stop.branches.includes(b));
 			outcome = again ? "stuck" : next;
+		},
+	});
+	await handle.settled;
+	return outcome;
+}
+
+/**
+ * Test and fix a branch with `claude "/build:test-branch"` in a herdr tab. Afterwards reads
+ * `git test results` for the branch: "green" or "red", or "stuck" when the timeout fires or
+ * herdr cannot launch the tab.
+ */
+export async function runAiTestFixRung(
+	project: LadderRunProject,
+	branch: string,
+	overrides: Partial<AiRungDeps> = {},
+): Promise<"green" | "red" | "stuck"> {
+	const deps: AiRungDeps = {
+		queue: workQueue,
+		launch: launchInHerdr,
+		wait: waitForHerdrAgent,
+		rerun: defaultRerun,
+		results: defaultResults,
+		timeoutMs: getAiRungTimeoutMs(),
+		...overrides,
+	};
+
+	let outcome: "green" | "red" | "stuck" = "stuck";
+	const handle = deps.queue.enqueue({
+		coalesceKey: `ai-rung:test-fix:${project.name}:${branch}`,
+		resources: [repoResource(project.name)],
+		kind: "ai-test-fix",
+		project: project.name,
+		costClass: "ai",
+		run: async (signal) => {
+			const launched = await deps.launch({
+				cwd: project.path,
+				label: `wip:${project.name}:test-fix:${branch}`,
+				command: `claude ${shellQuote("/build:test-branch")}`,
+				focus: false,
+			});
+			if (!launched.ok) return;
+			const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
+			if (waited !== "done") return;
+			outcome = await deps.results(project, branch);
 		},
 	});
 	await handle.settled;

@@ -45,6 +45,7 @@ export type ResourceLock = (resource: string, signal: AbortSignal) => Promise<()
 export interface WorkJobSummary {
 	kind: string;
 	project: string;
+	costClass: CostClass;
 }
 
 export interface WorkQueueState {
@@ -181,8 +182,12 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	function getState(): WorkQueueState {
 		return {
 			slots: globalConcurrency,
-			running: [...running.values()].map((job) => ({kind: job.kind, project: job.project})),
-			queued: queued.map((job) => ({kind: job.kind, project: job.project})),
+			running: [...running.values()].map((job) => ({
+				kind: job.kind,
+				project: job.project,
+				costClass: job.costClass,
+			})),
+			queued: queued.map((job) => ({kind: job.kind, project: job.project, costClass: job.costClass})),
 			runningByClass: {
 				cheap: runningInClass("cheap"),
 				"git-write": runningInClass("git-write"),

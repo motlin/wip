@@ -6,6 +6,12 @@ import {workQueue} from "./shared-work-queue.js";
 
 let nextActionId = 1;
 
+/** Human-readable name for the job holding a repo, naming the AI conflict rung when that is what runs. */
+function describeHolder(job: {kind: string; costClass: CostClass} | undefined): string | undefined {
+	if (!job) return undefined;
+	return job.costClass === "ai" ? "AI conflict rung" : job.kind;
+}
+
 interface LogGate {
 	active: boolean;
 }
@@ -84,7 +90,7 @@ export async function runQueuedAction<T>(
 	});
 	const running = workQueue.getState().running.find((job) => job.project === project);
 	if (!state.started) {
-		actionEmitter.emit("action", {id, project, label, status: "waiting", waitingFor: running?.kind});
+		actionEmitter.emit("action", {id, project, label, status: "waiting", waitingFor: describeHolder(running)});
 	}
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -100,7 +106,7 @@ export async function runQueuedAction<T>(
 		state.abandoned = true;
 		if (gate) gate.active = true;
 		handle.cancel();
-		const holder = workQueue.getState().running.find((job) => job.project === project)?.kind ?? running?.kind;
+		const holder = describeHolder(workQueue.getState().running.find((job) => job.project === project) ?? running);
 		actionEmitter.emit("action", {id, project, label, status: "busy", waitingFor: holder});
 		throw new Error(`repo busy: ${holder ?? "another job"} is running on ${project}; try again shortly`);
 	}

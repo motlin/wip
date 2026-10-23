@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {actionEmitter, type ActionEvent} from "./action-events.js";
-import {writeLogEntry} from "@wip/shared";
+import {writeLogEntry, type CostClass} from "@wip/shared";
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -11,14 +11,14 @@ async function tick(): Promise<void> {
 	});
 }
 
-function holdRepo(project: string): () => void {
+function holdRepo(project: string, kind = "rebase", costClass: CostClass = "git-write"): () => void {
 	let release!: () => void;
 	workQueue.enqueue({
 		coalesceKey: `hold:${project}`,
 		resources: [repoResource(project)],
-		kind: "rebase",
+		kind,
 		project,
-		costClass: "git-write",
+		costClass,
 		priority: "foreground",
 		run: async () =>
 			new Promise<void>((resolve) => {
@@ -119,6 +119,25 @@ describe("runQueuedAction", () => {
 		actionEmitter.off("action", listener);
 		expect(fn).not.toHaveBeenCalled();
 		expect(events.map((event) => event.status)).toStrictEqual(["waiting", "busy"]);
+	});
+
+	it("names the AI conflict rung as the busy reason in the error and events", async () => {
+		const events: ActionEvent[] = [];
+		const listener = (event: ActionEvent) => events.push(event);
+		actionEmitter.on("action", listener);
+		const release = holdRepo("alpha", "resolveConflicts", "ai");
+		await tick();
+		const fn = vi.fn<() => Promise<string>>(async () => Promise.resolve("ran"));
+		await expect(runQueuedAction("alpha", "mergePr", fn, "git-write", 20)).rejects.toThrow(
+			"repo busy: AI conflict rung is running on alpha; try again shortly",
+		);
+		release();
+		await tick();
+		actionEmitter.off("action", listener);
+		expect(events.map((event) => [event.status, event.waitingFor])).toStrictEqual([
+			["waiting", "AI conflict rung"],
+			["busy", "AI conflict rung"],
+		]);
 	});
 });
 

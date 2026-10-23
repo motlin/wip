@@ -1,10 +1,11 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
-import {useSuspenseQuery} from "@tanstack/react-query";
+import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
-import {testAllChildren, cancelTestFn, pushChild} from "../lib/server-fns.js";
+import {testAllChildren, cancelTestFn, pushChild, runLadderAll} from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
 import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context.js";
+import {LadderSection} from "../components/ladder-section.js";
 import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel.js";
 import {
 	Clock,
@@ -22,7 +23,7 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "lucide-react";
-import {taskQueueQueryOptions} from "../lib/queries.js";
+import {ladderResultsQueryOptions, taskQueueQueryOptions} from "../lib/queries.js";
 import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
 
 export const Route = createFileRoute("/tasks")({
@@ -266,6 +267,7 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 
 function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
+	const {data: ladderResults = []} = useQuery(ladderResultsQueryOptions());
 	const {tasks: liveJobs} = useAllTasks();
 	const [testingAll, setTestingAll] = useState(false);
 	const [groupBy, setGroupBy] = useState<GroupBy>("project");
@@ -377,6 +379,8 @@ function Tasks() {
 			</div>
 
 			<RefreshSchedulerPanel />
+
+			<LadderSection results={ladderResults} runLadderAll={async () => runLadderAll()} />
 
 			{allJobs.length === 0 ? (
 				<div className="rounded-lg border border-border-300/50 bg-bg-100 p-8 text-center text-text-500">

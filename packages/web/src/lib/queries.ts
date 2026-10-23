@@ -15,6 +15,7 @@ import {
 	generateAdvancePlan,
 	runAllCounts,
 	getSystemStatus,
+	getLadderResults,
 } from "./server-fns.js";
 
 export const projectsQueryOptions = () =>
@@ -118,4 +119,11 @@ export const boardItemByNumberQueryOptions = (project: string, number: number) =
 	queryOptions({
 		queryKey: ["boardItem", project, number],
 		queryFn: async () => getProjectItemByNumber({data: {project, number}}),
+	});
+
+export const ladderResultsQueryOptions = () =>
+	queryOptions({
+		queryKey: ["ladderResults"],
+		queryFn: async () => getLadderResults(),
+		refetchInterval: 5000,
 	});

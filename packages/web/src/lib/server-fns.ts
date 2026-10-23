@@ -25,7 +25,7 @@ import type {
 	SystemStatus,
 	TestJobStatus,
 } from "./server-fns.impl.js";
-import type {GitHubProjectItem, IssueResult, ProjectItemResult} from "@wip/shared";
+import type {GitHubProjectItem, IssueResult, LadderResult, ProjectItemResult} from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
 
 export type {
@@ -87,6 +87,14 @@ export const testAllChildren = createServerFn({method: "POST"}).handler(async ()
 	(await serverFns()).launchTestAllChildren();
 	return {started: true} as const;
 });
+
+export const runLadderAll = createServerFn({method: "POST"}).handler(async (): Promise<TestJobStatus[]> =>
+	(await serverFns()).runLadderAllHandler(),
+);
+
+export const getLadderResults = createServerFn({method: "GET"}).handler(async (): Promise<LadderResult[]> =>
+	(await serverFns()).getLadderResultsHandler(),
+);
 
 export const getCommitDiff = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))

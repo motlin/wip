@@ -6,7 +6,7 @@ import {z} from "zod";
 
 const APP_NAME = "wip";
 
-function getConfigDir(): string {
+export function getConfigDir(): string {
 	const xdgConfig = process.env.XDG_CONFIG_HOME ?? path.join(process.env.HOME ?? "", ".config");
 	return path.join(xdgConfig, APP_NAME);
 }

@@ -276,3 +276,11 @@ export {
 	type WorkQueueState,
 	type WorkResourceProbe,
 } from "./lib/work-queue.js";
+export {
+	type Inventory,
+	type InventoryError,
+	type ProjectRecord,
+	ProjectRecordSchema,
+	loadInventory,
+	saveInventory,
+} from "./lib/inventory.js";

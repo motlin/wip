@@ -13,9 +13,13 @@ import {
 } from "lucide-react";
 import {useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
+import {useQuery} from "@tanstack/react-query";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
 import {cancelTestFn} from "../lib/server-fns.js";
+import {ladderResultsQueryOptions} from "../lib/queries.js";
+import {ladderStateForBranch} from "../lib/ladder-card-state.js";
+import {LadderCardState} from "./ladder-card-state.js";
 import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {AnsiText} from "./ansi-text.js";
 import {CategoryBadge} from "./category-badge.js";
@@ -59,6 +63,9 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 	const commitsBehind = mergeStatus?.commitsBehind ?? branch.commitsBehind;
 	const commitsAhead = mergeStatus?.commitsAhead ?? branch.commitsAhead;
 	const rebaseable = mergeStatus?.rebaseable ?? branch.rebaseable;
+
+	const {data: ladderResults} = useQuery(ladderResultsQueryOptions());
+	const ladderState = ladderStateForBranch(ladderResults ?? [], branch.project, branch.branch ?? "");
 
 	const ghBranchUrl = branchRemoteUrl(branch);
 
@@ -186,6 +193,8 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 					className="mt-2 overflow-x-auto rounded bg-red-50 p-1.5 font-mono text-[10px] leading-tight text-red-700 dark:bg-red-950/30 dark:text-red-300"
 				/>
 			)}
+
+			{ladderState && <LadderCardState state={ladderState} />}
 
 			{branch.blockReason && (
 				<div className="mt-2 rounded bg-amber-50 p-1.5 dark:bg-amber-950/30">

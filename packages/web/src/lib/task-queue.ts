@@ -684,12 +684,9 @@ function registerTask(task: Task): Task {
 
 	const handle = workQueue.enqueue({
 		coalesceKey: `task:${task.taskType}:${task.project}:${task.sha}`,
-		// Push keeps a unique lane so it never waits behind a long test; every
-		// other type holds the shared per-repo resource, so a test, a rebase and
-		// a refresh never touch the same repo at once.
-		...(task.taskType === "push"
-			? {laneKey: `push:${task.project}:${task.sha}`}
-			: {resources: [repoResource(task.project)]}),
+		// Every type, push included, holds the shared per-repo resource, so a test,
+		// a rebase, a push and a refresh never touch the same repo at once.
+		resources: [repoResource(task.project)],
 		kind: task.taskType,
 		project: task.project,
 		costClass: TASK_COST_CLASS[task.taskType],

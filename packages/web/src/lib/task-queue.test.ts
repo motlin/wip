@@ -1,9 +1,11 @@
 import {afterEach, beforeEach, describe, it, expect, vi} from "vite-plus/test";
+import {EventEmitter} from "node:events";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {initDb, resetDb, loadRecentTaskRecords, upsertTaskRecord} from "@wip/shared";
 import {
 	cancelTest,
+	enqueuePush,
 	enqueueRebase,
 	getAllTasks,
 	pruneTerminalTasks,
@@ -17,6 +19,10 @@ import type {Task, TaskStatus} from "./task-queue.js";
 const shared = vi.hoisted(() => ({
 	rebaseBranchOntoUpstream: vi.fn<(dir: string, options: {signal: AbortSignal}) => Promise<unknown>>(),
 }));
+
+const execaMock = vi.hoisted(() => ({fn: vi.fn<(cmd: string, args: string[]) => unknown>()}));
+
+vi.mock("execa", () => ({execa: execaMock.fn}));
 
 vi.mock("@wip/shared", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@wip/shared")>()),
@@ -235,6 +241,62 @@ describe("repo resource sharing", () => {
 		await tick();
 
 		expect(sameProject).toHaveBeenCalledTimes(1);
+		await resetScheduler();
+		await resetQueue();
+	});
+});
+
+function pushOptions(project: string) {
+	return {
+		project,
+		projectDir: `/tmp/${project}`,
+		sha: "b".repeat(40),
+		shortSha: "bbbbbbb",
+		subject: "Subject",
+		branch: "feature",
+		upstreamRemote: "upstream",
+		remote: "owner/wip",
+		createBranch: false,
+	};
+}
+
+describe("push tasks hold the repo resource", () => {
+	it("never overlaps a push with a rebase on the same project and still coalesces the push", async () => {
+		let releaseRebase!: () => void;
+		shared.rebaseBranchOntoUpstream.mockImplementation(
+			async () =>
+				new Promise((resolve) => {
+					releaseRebase = () => {
+						resolve({status: "rebased"});
+					};
+				}),
+		);
+		execaMock.fn.mockReturnValue(
+			Object.assign(Promise.resolve({exitCode: 0, stdout: "", stderr: ""}), {
+				stdout: new EventEmitter(),
+				stderr: new EventEmitter(),
+				kill: () => {},
+			}),
+		);
+		await resetScheduler();
+		await resetQueue();
+
+		enqueueRebase(rebaseOptions("alpha"));
+		await tick();
+		expect(shared.rebaseBranchOntoUpstream).toHaveBeenCalledTimes(1);
+
+		const first = enqueuePush(pushOptions("alpha"));
+		const second = enqueuePush(pushOptions("alpha"));
+		expect(second).toBe(first);
+		await tick();
+		expect(execaMock.fn).not.toHaveBeenCalled();
+		expect(first.status).toBe("queued");
+
+		releaseRebase();
+		await vi.waitFor(() => {
+			expect(first.status).toBe("passed");
+		});
+		expect(execaMock.fn).toHaveBeenCalledTimes(1);
 		await resetScheduler();
 		await resetQueue();
 	});

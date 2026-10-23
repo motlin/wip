@@ -124,3 +124,13 @@ export function getActionMaxWaitMs(config: Record<string, ConfigValue> = readCon
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
 }
+
+export const DEFAULT_AI_RUNG_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** Overall timeout for an AI ladder rung, from config key `aiRungTimeoutMs`. Defaults to 30 minutes. */
+export function getAiRungTimeoutMs(config: Record<string, ConfigValue> = readConfig()): number {
+	const value = config["aiRungTimeoutMs"];
+	if (typeof value !== "string") return DEFAULT_AI_RUNG_TIMEOUT_MS;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_AI_RUNG_TIMEOUT_MS;
+}

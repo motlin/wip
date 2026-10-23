@@ -14,6 +14,8 @@ export {
 	unsetConfigValue,
 	getWorkQueueClassCaps,
 	getActionMaxWaitMs,
+	getAiRungTimeoutMs,
+	DEFAULT_AI_RUNG_TIMEOUT_MS,
 } from "./lib/config.js";
 export {
 	type RemoteBranchInfo,
@@ -128,7 +130,13 @@ export {
 	type LadderStop,
 	type LadderStopInfo,
 } from "./lib/ladder.js";
-export {runLadder, type RunLadderOptions, type LadderRunProject} from "./lib/ladder-rungs.js";
+export {
+	runLadder,
+	runReplayRung,
+	runRebaseLeftoversRung,
+	type RunLadderOptions,
+	type LadderRunProject,
+} from "./lib/ladder-rungs.js";
 export {
 	ladderResultsToTree,
 	runLadderAcrossProjects,

@@ -284,3 +284,13 @@ export {
 	loadInventory,
 	saveInventory,
 } from "./lib/inventory.js";
+export {
+	type BuildInventoryOptions,
+	type InventoryConflict,
+	type LanguageTemplate,
+	type ParsedProjectsYaml,
+	type TemplateInventory,
+	type TemplateTexts,
+	buildInventoryFromTemplates,
+	parseProjectsYaml,
+} from "./lib/inventory-import.js";

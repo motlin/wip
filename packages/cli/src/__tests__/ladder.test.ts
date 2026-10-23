@@ -13,9 +13,17 @@ vi.mock("@wip/shared", () => ({
 	runLadderAcrossProjects: vi.fn<Shared["runLadderAcrossProjects"]>(),
 	ladderResultsToTree: vi.fn<Shared["ladderResultsToTree"]>(),
 	renderTree: vi.fn<Shared["renderTree"]>(() => "TREE"),
+	inventoryExists: vi.fn<Shared["inventoryExists"]>(() => true),
+	getInventoryPath: vi.fn<Shared["getInventoryPath"]>(() => "/tmp/fake-config/wip/projects.json5"),
 }));
 
-import {discoverAllProjects, ladderResultsToTree, matchesFilters, runLadderAcrossProjects} from "@wip/shared";
+import {
+	discoverAllProjects,
+	inventoryExists,
+	ladderResultsToTree,
+	matchesFilters,
+	runLadderAcrossProjects,
+} from "@wip/shared";
 
 function proj(name: string): ProjectInfo {
 	return {
@@ -103,5 +111,31 @@ describe("wip ladder", () => {
 		await expect(Ladder.run([])).rejects.toThrow(/project|--all/);
 		expect(runLadderAcrossProjects).not.toHaveBeenCalled();
 		expect(matchesFilters).not.toHaveBeenCalled();
+	});
+
+	it("refuses --all when no project registry exists, without scanning directories", async () => {
+		vi.mocked(inventoryExists).mockReturnValueOnce(false);
+		const {default: Ladder} = await import("../commands/ladder.js");
+		await expect(Ladder.run(["--all"])).rejects.toThrow(
+			"No project registry at /tmp/fake-config/wip/projects.json5; import one with `wip inventory import` before running the ladder on every project",
+		);
+		expect(discoverAllProjects).not.toHaveBeenCalled();
+		expect(runLadderAcrossProjects).not.toHaveBeenCalled();
+	});
+
+	it("still runs a single named project when no registry exists", async () => {
+		vi.mocked(inventoryExists).mockReturnValue(false);
+		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b")]);
+		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("a")]);
+		vi.mocked(ladderResultsToTree).mockReturnValue(tree);
+		const c = capture();
+		restores.push(c.restore);
+
+		const {default: Ladder} = await import("../commands/ladder.js");
+		await Ladder.run(["a", "--json"]);
+		c.restore();
+		vi.mocked(inventoryExists).mockReturnValue(true);
+
+		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[0].map((p) => p.name)).toEqual(["a"]);
 	});
 });

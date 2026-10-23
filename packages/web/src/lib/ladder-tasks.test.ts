@@ -9,6 +9,7 @@ import {
 } from "@wip/shared";
 
 import {getLadderResultsHandler, resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
+import {useTempConfigHome} from "./temp-registry.js";
 import {getAllTasks, reloadTasksFromDb, resetQueue} from "./task-queue.js";
 
 const noHerdr = {probe: async () => Promise.resolve(false)};
@@ -67,15 +68,22 @@ async function settled(count: number): Promise<void> {
 		.toBe(count);
 }
 
+let tempConfig: ReturnType<typeof useTempConfigHome>;
+
 beforeEach(() => {
 	initDb(":memory:");
 	seedProjectCache([makeProject("alpha"), makeProject("beta")]);
+	tempConfig = useTempConfigHome([
+		{name: "alpha", dir: "/nonexistent/alpha", template: "typescript", kind: "own"},
+		{name: "beta", dir: "/nonexistent/beta", template: "typescript", kind: "own"},
+	]);
 });
 
 afterEach(async () => {
 	await resetQueue();
 	resetProjectCache();
 	resetDb();
+	tempConfig.restore();
 });
 
 describe("runLadderAllHandler", () => {

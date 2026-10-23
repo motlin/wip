@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
-import {initDb, resetDb, type LadderResult, type ProjectInfo} from "@wip/shared";
+import {initDb, resetDb, saveInventory, type LadderResult, type ProjectInfo} from "@wip/shared";
 
 import {runAiConflictRung, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
@@ -83,6 +83,7 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			hasTestConfigured: true,
 			rebaseInProgress: false,
 		};
+		saveInventory([{name: "clone", dir: clone, template: "typescript", kind: "own"}]);
 		initDb(":memory:");
 		seedProjectCache([info]);
 	});

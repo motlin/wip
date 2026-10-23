@@ -25,7 +25,7 @@ import type {
 	SystemStatus,
 	TestJobStatus,
 } from "./server-fns.impl.js";
-import type {GitHubProjectItem, IssueResult, LadderResult, ProjectItemResult} from "@wip/shared";
+import type {GitHubProjectItem, InventoryStatus, IssueResult, LadderResult, ProjectItemResult} from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
 
 export type {
@@ -90,6 +90,14 @@ export const testAllChildren = createServerFn({method: "POST"}).handler(async ()
 
 export const runLadderAll = createServerFn({method: "POST"}).handler(async (): Promise<TestJobStatus[]> =>
 	(await serverFns()).runLadderAllHandler(),
+);
+
+export const getInventoryStatus = createServerFn({method: "GET"}).handler(async (): Promise<InventoryStatus> =>
+	(await serverFns()).getInventoryStatusHandler(),
+);
+
+export const importInventory = createServerFn({method: "POST"}).handler(async (): Promise<InventoryStatus> =>
+	(await serverFns()).importInventoryHandler(),
 );
 
 export const focusHerdrPaneFn = createServerFn({method: "POST"})

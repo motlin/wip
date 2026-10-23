@@ -1,7 +1,14 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
-import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
+import {useQuery, useQueryClient, useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
-import {testAllChildren, cancelTestFn, pushChild, runLadderAll, focusHerdrPaneFn} from "../lib/server-fns.js";
+import {
+	testAllChildren,
+	cancelTestFn,
+	pushChild,
+	runLadderAll,
+	focusHerdrPaneFn,
+	importInventory,
+} from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
 import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context.js";
@@ -23,7 +30,7 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "lucide-react";
-import {ladderResultsQueryOptions, taskQueueQueryOptions} from "../lib/queries.js";
+import {inventoryStatusQueryOptions, ladderResultsQueryOptions, taskQueueQueryOptions} from "../lib/queries.js";
 import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
 
 export const Route = createFileRoute("/tasks")({
@@ -268,6 +275,8 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
 	const {data: ladderResults = []} = useQuery(ladderResultsQueryOptions());
+	const {data: inventory} = useQuery(inventoryStatusQueryOptions());
+	const queryClient = useQueryClient();
 	const {tasks: liveJobs} = useAllTasks();
 	const [testingAll, setTestingAll] = useState(false);
 	const [groupBy, setGroupBy] = useState<GroupBy>("project");
@@ -381,6 +390,10 @@ function Tasks() {
 			<RefreshSchedulerPanel />
 
 			<LadderSection
+				inventory={inventory}
+				importInventory={async () => {
+					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, await importInventory());
+				}}
 				results={ladderResults}
 				runLadderAll={async () => runLadderAll()}
 				focusPane={async (paneId) => focusHerdrPaneFn({data: {paneId}})}

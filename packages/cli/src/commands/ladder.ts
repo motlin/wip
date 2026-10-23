@@ -5,7 +5,9 @@ import {
 	createRepoResourceLock,
 	createSystemProbe,
 	discoverAllProjects,
+	getInventoryPath,
 	getProjectsDirs,
+	inventoryExists,
 	ladderResultsToTree,
 	matchesFilters,
 	renderTree,
@@ -55,6 +57,11 @@ export default class Ladder extends Command {
 		const {args, flags} = await this.parse(Ladder);
 		if (!args.project && !flags.all) {
 			this.error("Specify a project name or --all");
+		}
+		if (!args.project && !inventoryExists()) {
+			this.error(
+				`No project registry at ${getInventoryPath()}; import one with \`wip inventory import\` before running the ladder on every project`,
+			);
 		}
 		const include = flags.include ?? [];
 		const exclude = flags.exclude ?? [];

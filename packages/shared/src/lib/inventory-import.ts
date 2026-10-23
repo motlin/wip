@@ -160,3 +160,35 @@ export function buildInventoryFromTemplates(
 	conflicts.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 	return {projects, conflicts};
 }
+
+export interface InventoryImportSummary {
+	total: number;
+	byTemplate: Record<string, number>;
+	byKind: Record<string, number>;
+	conflicts: InventoryConflict[];
+	skipped: number;
+}
+
+/** Whether the project registry exists, plus a preview of what an import would write when it does not. */
+export interface InventoryStatus {
+	exists: boolean;
+	registryPath: string;
+	templatesDir: string;
+	preview: InventoryImportSummary | null;
+}
+
+function countBy(projects: ProjectRecord[], key: "template" | "kind"): Record<string, number> {
+	const counts: Record<string, number> = {};
+	for (const project of projects) counts[project[key]] = (counts[project[key]] ?? 0) + 1;
+	return counts;
+}
+
+export function summarizeInventoryImport({projects, conflicts}: TemplateInventory): InventoryImportSummary {
+	return {
+		total: projects.length,
+		byTemplate: countBy(projects, "template"),
+		byKind: countBy(projects, "kind"),
+		conflicts,
+		skipped: projects.filter((project) => project.kind === "skip").length,
+	};
+}

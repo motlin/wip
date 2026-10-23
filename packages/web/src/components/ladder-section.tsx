@@ -1,22 +1,88 @@
 import {useState} from "react";
 import {Bot, CheckCircle, Copy, ExternalLink, GitMerge, Loader2, OctagonAlert} from "lucide-react";
-import type {LadderResult} from "@wip/shared";
+import type {InventoryStatus, LadderResult} from "@wip/shared";
 import {runPendingAction} from "../lib/pending-action.js";
 
+function ImportStep({
+	inventory,
+	importInventory,
+}: {
+	inventory: InventoryStatus;
+	importInventory: () => Promise<unknown>;
+}) {
+	const [importing, setImporting] = useState(false);
+	const {preview} = inventory;
+	return (
+		<section
+			aria-label="Import project registry"
+			className="mb-3 rounded-md border border-status-yellow/50 bg-bg-200 p-3 text-xs text-text-300"
+		>
+			<p className="mb-2">
+				No project registry at <code className="font-mono">{inventory.registryPath}</code>. Import one before
+				running the ladder on every project.
+			</p>
+			{preview && (
+				<div className="mb-2 flex flex-col gap-1">
+					<p className="font-medium text-text-200">
+						{preview.total} projects from <code className="font-mono">{inventory.templatesDir}</code>
+					</p>
+					<ul className="ml-4 list-disc">
+						{Object.entries(preview.byTemplate).map(([template, count]) => (
+							<li key={template}>
+								{template}: {count}
+							</li>
+						))}
+					</ul>
+					<p>Skipped: {preview.skipped}</p>
+					<p>Conflicts: {preview.conflicts.length}</p>
+					{preview.conflicts.length > 0 && (
+						<ul className="ml-4 list-disc font-mono">
+							{preview.conflicts.map((conflict) => (
+								<li key={conflict.dir}>
+									{conflict.dir} ({conflict.templates.join(", ")})
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			)}
+			<button
+				type="button"
+				disabled={importing}
+				onClick={() => {
+					void runPendingAction("Import", setImporting, importInventory);
+				}}
+				className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 font-medium text-text-200 transition-colors hover:bg-bg-100"
+			>
+				{importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+				Import
+			</button>
+		</section>
+	);
+}
+
 /**
- * Ladder results per project with a button that queues the ladder for every project.
- * Failures to start the run surface only as a toast via runPendingAction.
+ * Ladder results per project with a button that queues the ladder for every project. Until a
+ * project registry exists the button stays disabled and an import step takes its place, so one
+ * click can never fall back to scanning every directory. Failures surface only as a toast via
+ * runPendingAction.
  */
 export function LadderSection({
+	inventory,
+	importInventory,
 	results,
 	runLadderAll,
 	focusPane,
 }: {
+	/** Registry status; undefined while loading. */
+	inventory: InventoryStatus | undefined;
+	importInventory: () => Promise<unknown>;
 	results: readonly LadderResult[];
 	runLadderAll: () => Promise<unknown>;
 	focusPane: (paneId: string) => Promise<unknown>;
 }) {
 	const [running, setRunning] = useState(false);
+	const registered = inventory?.exists === true;
 
 	return (
 		<section className="mb-6 rounded-lg border border-border-300/50 bg-bg-100 p-4">
@@ -27,16 +93,17 @@ export function LadderSection({
 				</h2>
 				<button
 					type="button"
-					disabled={running}
+					disabled={running || !registered}
 					onClick={() => {
 						void runPendingAction("Run ladder", setRunning, runLadderAll);
 					}}
-					className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 text-xs font-medium text-text-200 transition-colors hover:bg-bg-200"
+					className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 text-xs font-medium text-text-200 transition-colors hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
 					Run ladder
 				</button>
 			</div>
+			{inventory && !inventory.exists && <ImportStep inventory={inventory} importInventory={importInventory} />}
 			{results.length === 0 ? (
 				<p className="text-xs text-text-500">No ladder results yet.</p>
 			) : (

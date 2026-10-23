@@ -3,6 +3,7 @@ import {initDb, resetDb, type LadderResult, type ProjectInfo, type RunLadderOpti
 
 import type {AiRungDeps} from "./herdr/ai-rungs.js";
 import {focusHerdrPaneHandler, resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
+import {useTempConfigHome} from "./temp-registry.js";
 import {getLatestLadderResults, getAllTasks, resetQueue} from "./task-queue.js";
 
 type Runners = NonNullable<RunLadderOptions["runners"]>;
@@ -87,15 +88,22 @@ async function latestFor(project: string): Promise<LadderResult> {
 	return result;
 }
 
+let tempConfig: ReturnType<typeof useTempConfigHome>;
+
 beforeEach(() => {
 	initDb(":memory:");
 	seedProjectCache([makeProject("alpha"), makeProject("beta")]);
+	tempConfig = useTempConfigHome([
+		{name: "alpha", dir: "/nonexistent/alpha", template: "typescript", kind: "own"},
+		{name: "beta", dir: "/nonexistent/beta", template: "typescript", kind: "own"},
+	]);
 });
 
 afterEach(async () => {
 	await resetQueue();
 	resetProjectCache();
 	resetDb();
+	tempConfig.restore();
 });
 
 describe("ladder AI wiring", () => {

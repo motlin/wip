@@ -15,6 +15,7 @@ import {
 	generateAdvancePlan,
 	runAllCounts,
 	getSystemStatus,
+	getInventoryStatus,
 	getLadderResults,
 } from "./server-fns.js";
 
@@ -126,4 +127,10 @@ export const ladderResultsQueryOptions = () =>
 		queryKey: ["ladderResults"],
 		queryFn: async () => getLadderResults(),
 		refetchInterval: 5000,
+	});
+
+export const inventoryStatusQueryOptions = () =>
+	queryOptions({
+		queryKey: ["inventoryStatus"],
+		queryFn: async () => getInventoryStatus(),
 	});

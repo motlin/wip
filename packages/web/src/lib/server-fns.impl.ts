@@ -64,6 +64,13 @@ import {
 	resolveAdvanceConcurrency,
 	getTestResultsForProject,
 	matchesFilters,
+	buildInventoryFromTemplates,
+	getInventoryPath,
+	inventoryExists,
+	readTemplateTexts,
+	saveInventory,
+	summarizeInventoryImport,
+	type InventoryStatus,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
@@ -78,6 +85,7 @@ import type {EnqueueRebaseOptions, LadderAiOptions} from "./task-queue.js";
 import {focusHerdrPane} from "./herdr/focus.js";
 import type {HerdrResult} from "./herdr/client.js";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 async function traced<T>(name: string, fn: () => Promise<T>): Promise<T> {
@@ -1297,6 +1305,11 @@ export interface RunLadderAllOptions {
  */
 export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Promise<TestJobStatus[]> {
 	return traced("runLadderAll", async () => {
+		if (!inventoryExists()) {
+			throw new Error(
+				`No project registry at ${getInventoryPath()}; import one with \`wip inventory import\` before running the ladder on every project`,
+			);
+		}
 		const {enqueueLadder} = await import("./task-queue.js");
 		const projects = await ensureProjects();
 		return projects.map((p) => {
@@ -1314,6 +1327,47 @@ export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Pr
 			return {id: task.id, status: task.status, message: task.message};
 		});
 	});
+}
+
+export interface InventoryImportOptions {
+	/** Directory holding the *-template projects (default ~/projects). */
+	templatesDir?: string;
+	/** Home directory used to expand `~` in the templates (default os.homedir()). */
+	homeDir?: string;
+}
+
+function resolveTemplatesDir(options: InventoryImportOptions): string {
+	return options.templatesDir ?? path.join(os.homedir(), "projects");
+}
+
+function templateInventory(templatesDir: string, options: InventoryImportOptions) {
+	return buildInventoryFromTemplates(readTemplateTexts(templatesDir), templatesDir, {
+		homeDir: options.homeDir ?? os.homedir(),
+	});
+}
+
+function inventoryStatus(options: InventoryImportOptions): InventoryStatus {
+	const registryPath = getInventoryPath();
+	const templatesDir = resolveTemplatesDir(options);
+	if (inventoryExists()) return {exists: true, registryPath, templatesDir, preview: null};
+	const preview = summarizeInventoryImport(templateInventory(templatesDir, options));
+	return {exists: false, registryPath, templatesDir, preview};
+}
+
+/** Whether the project registry exists; when it does not, previews what `wip inventory import` would write. */
+export async function getInventoryStatusHandler(options: InventoryImportOptions = {}): Promise<InventoryStatus> {
+	return traced("getInventoryStatus", async () => Promise.resolve(inventoryStatus(options)));
+}
+
+function importRegistry(options: InventoryImportOptions): InventoryStatus {
+	if (inventoryExists()) throw new Error(`Registry already exists at ${getInventoryPath()}`);
+	saveInventory(templateInventory(resolveTemplatesDir(options), options).projects);
+	return inventoryStatus(options);
+}
+
+/** Writes the project registry from the template projects.yaml files. Never overwrites an existing one. */
+export async function importInventoryHandler(options: InventoryImportOptions = {}): Promise<InventoryStatus> {
+	return traced("importInventory", async () => Promise.resolve(importRegistry(options)));
 }
 
 /** The latest persisted ladder result per project. */

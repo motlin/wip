@@ -316,15 +316,19 @@ export {
 	type ProjectRecord,
 	ProjectRecordSchema,
 	loadInventory,
+	readTemplateTexts,
 	saveInventory,
 } from "./lib/inventory.js";
 export {
 	type BuildInventoryOptions,
 	type InventoryConflict,
+	type InventoryImportSummary,
+	type InventoryStatus,
 	type LanguageTemplate,
 	type ParsedProjectsYaml,
 	type TemplateInventory,
 	type TemplateTexts,
 	buildInventoryFromTemplates,
 	parseProjectsYaml,
+	summarizeInventoryImport,
 } from "./lib/inventory-import.js";

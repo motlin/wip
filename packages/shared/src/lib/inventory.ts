@@ -5,6 +5,7 @@ import JSON5 from "json5";
 import {z} from "zod";
 
 import {getConfigDir} from "./config.js";
+import type {TemplateTexts} from "./inventory-import.js";
 
 export const ProjectRecordSchema = z.object({
 	name: z.string().min(1),
@@ -92,4 +93,16 @@ export function diffInventories(before: ProjectRecord[], after: ProjectRecord[])
 function sortKeys(project: ProjectRecord): [string, unknown][] {
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.entries
 	return Object.entries(project).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+}
+
+const TEMPLATE_NAMES = ["project", "typescript", "java", "rust", "playdate"] as const;
+
+/** Reads each `<name>-template/.llm/projects.yaml` under templatesDir that exists. */
+export function readTemplateTexts(templatesDir: string): TemplateTexts {
+	const texts: TemplateTexts = {};
+	for (const name of TEMPLATE_NAMES) {
+		const file = path.join(templatesDir, `${name}-template`, ".llm", "projects.yaml");
+		if (fs.existsSync(file)) texts[name] = fs.readFileSync(file, "utf-8");
+	}
+	return texts;
 }

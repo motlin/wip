@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -10,40 +9,19 @@ import {
 	getInventoryPath,
 	inventoryExists,
 	loadInventory,
+	readTemplateTexts,
 	saveInventory,
-	type InventoryConflict,
+	summarizeInventoryImport,
 	type InventoryDiff,
+	type InventoryImportSummary,
 	type ProjectRecord,
-	type TemplateTexts,
 } from "@wip/shared";
 
-export interface InventoryImportResult {
+export interface InventoryImportResult extends InventoryImportSummary {
 	dryRun: boolean;
 	written: boolean;
 	registryPath: string;
-	total: number;
-	byTemplate: Record<string, number>;
-	byKind: Record<string, number>;
-	conflicts: InventoryConflict[];
-	skipped: number;
 	diff?: InventoryDiff;
-}
-
-const TEMPLATES = ["project", "typescript", "java", "rust", "playdate"] as const;
-
-function readTemplateTexts(templatesDir: string): TemplateTexts {
-	const texts: TemplateTexts = {};
-	for (const name of TEMPLATES) {
-		const file = path.join(templatesDir, `${name}-template`, ".llm", "projects.yaml");
-		if (fs.existsSync(file)) texts[name] = fs.readFileSync(file, "utf-8");
-	}
-	return texts;
-}
-
-function countBy(projects: ProjectRecord[], key: "template" | "kind"): Record<string, number> {
-	const counts: Record<string, number> = {};
-	for (const project of projects) counts[project[key]] = (counts[project[key]] ?? 0) + 1;
-	return counts;
 }
 
 function describeProject(project: ProjectRecord): string {
@@ -84,9 +62,10 @@ export default class InventoryImport extends Command {
 		const {flags} = await this.parse(InventoryImport);
 		const templatesDir = path.resolve(flags["templates-dir"] ?? path.join(os.homedir(), "projects"));
 		const dryRun = flags["dry-run"];
-		const {projects, conflicts} = buildInventoryFromTemplates(readTemplateTexts(templatesDir), templatesDir, {
+		const inventory = buildInventoryFromTemplates(readTemplateTexts(templatesDir), templatesDir, {
 			homeDir: os.homedir(),
 		});
+		const {projects, conflicts} = inventory;
 
 		const existed = inventoryExists();
 		const diff = existed ? diffInventories(loadInventory().projects, projects) : undefined;
@@ -94,11 +73,7 @@ export default class InventoryImport extends Command {
 			dryRun,
 			written: false,
 			registryPath: getInventoryPath(),
-			total: projects.length,
-			byTemplate: countBy(projects, "template"),
-			byKind: countBy(projects, "kind"),
-			conflicts,
-			skipped: projects.filter((project) => project.kind === "skip").length,
+			...summarizeInventoryImport(inventory),
 			...(diff ? {diff} : {}),
 		};
 

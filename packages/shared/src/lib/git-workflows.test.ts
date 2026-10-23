@@ -48,7 +48,12 @@ afterEach(() => {
 	}
 });
 
-describe("rebaseBranchOntoUpstream", {timeout: 30_000}, () => {
+// These tests spawn dozens of real git processes (init, commit, push, rebase) per case.
+// Under heavy machine load (precommit runs builds and every suite in parallel) a 1-3s test
+// has exceeded 30s, so allow a wide margin; a genuine hang still fails.
+const GIT_SUBPROCESS_TIMEOUT = 120_000;
+
+describe("rebaseBranchOntoUpstream", {timeout: GIT_SUBPROCESS_TIMEOUT}, () => {
 	it("runs no git step and reports cancelled when the signal is already aborted", async () => {
 		({dir, remoteDir} = createRepoWithBareRemote());
 		commitFile(dir, "file.txt", "hello", "initial");
@@ -222,7 +227,7 @@ describe("rebaseBranchOntoUpstream", {timeout: 30_000}, () => {
 	});
 });
 
-describe("applyFixesToBranch", {timeout: 30_000}, () => {
+describe("applyFixesToBranch", {timeout: GIT_SUBPROCESS_TIMEOUT}, () => {
 	it("returns the exact message when no fix branches exist", async () => {
 		({dir, remoteDir} = createRepoWithBareRemote());
 		commitFile(dir, "file.txt", "hello", "initial");

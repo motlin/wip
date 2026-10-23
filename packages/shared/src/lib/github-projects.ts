@@ -2,23 +2,11 @@ import {z} from "zod";
 
 import {getGitHubClient} from "../services/github-client.js";
 import {log} from "../services/logger-pino.js";
-import {LabelSchema} from "./schemas.js";
+import {GitHubProjectItemSchema, LabelSchema, type GitHubProjectItem} from "./schemas.js";
 import {getCachedProjectItems, cacheProjectItems, isCacheFresh, invalidateProjectItemsCacheDb} from "./db.js";
 import {detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited} from "./rate-limit.js";
 
-export {LabelSchema as GitHubProjectItemLabelSchema};
-
-export const GitHubProjectItemSchema = z.object({
-	id: z.string().min(1),
-	title: z.string().min(1),
-	status: z.string(),
-	type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
-	url: z.url().optional(),
-	number: z.number().int().positive().optional(),
-	repository: z.string().min(1).optional(),
-	labels: z.array(LabelSchema),
-});
-export type GitHubProjectItem = z.infer<typeof GitHubProjectItemSchema>;
+export {LabelSchema as GitHubProjectItemLabelSchema, GitHubProjectItemSchema, type GitHubProjectItem};
 
 export const ProjectItemResultSchema = GitHubProjectItemSchema.pick({
 	title: true,
@@ -80,7 +68,7 @@ export async function fetchProjects(): Promise<GitHubProject[]> {
 		return data.data?.viewer.projectsV2.nodes ?? [];
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		log.subprocess.debug({error: message}, "GitHub projects GraphQL request failed");
+		log.subprocess.warn({error: message}, "GitHub projects GraphQL request failed");
 
 		if (detectRateLimitError(message)) {
 			markGitHubRateLimited();
@@ -224,7 +212,7 @@ export async function fetchProjectItems(projectNumber: number, owner?: string): 
 		return allItems;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		log.subprocess.debug({error: message}, `GitHub project items ${projectNumber} GraphQL request failed`);
+		log.subprocess.warn({error: message}, `GitHub project items ${projectNumber} GraphQL request failed`);
 
 		if (detectRateLimitError(message)) {
 			markGitHubRateLimited();

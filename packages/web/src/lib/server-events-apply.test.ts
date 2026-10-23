@@ -232,6 +232,26 @@ describe("other channels", () => {
 		expect(queryClient.getQueryData(["projects"])).toStrictEqual([]);
 	});
 
+	it("writes refreshed issues and project items straight into the cache", () => {
+		const issue = {
+			number: 3,
+			title: "Real issue",
+			url: "https://github.com/owner/repo/issues/3",
+			labels: [],
+			repository: {name: "repo", nameWithOwner: "owner/repo"},
+		};
+		const item = {id: "PVTI_1", title: "Board item", status: "Todo", type: "DRAFT_ISSUE" as const, labels: []};
+		applier.apply({channel: "issues", data: [issue]});
+		applier.apply({channel: "projectItems", data: [item]});
+		expect({
+			issues: queryClient.getQueryData(["issues"]),
+			projectItems: queryClient.getQueryData(["projectItems"]),
+		}).toStrictEqual({
+			issues: [issue],
+			projectItems: [item],
+		});
+	});
+
 	it("stores refresh state", () => {
 		applier.apply({
 			channel: "refresh-state",

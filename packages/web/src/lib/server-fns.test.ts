@@ -14,8 +14,11 @@ import {
 	recordTestResult,
 	cacheUpstreamSha,
 	cacheMergeStatus,
+	cacheIssues,
+	cacheProjectItems,
+	type GitHubIssue,
+	type ProjectInfo,
 } from "@wip/shared";
-import type {ProjectInfo} from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
 	getManagedFailedBaseBranches,
@@ -799,6 +802,176 @@ describe("getProjectItemsFn (underlying logic)", () => {
 		// (the server fn just returns fetchAllProjectItems() directly)
 		expect(items[0]!.title).toBe("Server fn item");
 		expect(items[0]!.number).toBe(5);
+	});
+});
+
+// -- getIssuesHandler / getProjectItemsHandler serve the cache --
+
+const STALE_MS = 20 * 60 * 1000;
+
+/** Run fn with the wall clock set to `ms`, so cache rows get that timestamp. */
+function atTime<T>(ms: number, fn: () => T): T {
+	vi.useFakeTimers({toFake: ["Date"]});
+	vi.setSystemTime(ms);
+	try {
+		return fn();
+	} finally {
+		vi.useRealTimers();
+	}
+}
+
+function makeIssue(number: number, title: string): GitHubIssue {
+	return {
+		number,
+		title,
+		url: `https://github.com/owner/repo/issues/${number}`,
+		labels: [],
+		repository: {name: "repo", nameWithOwner: "owner/repo"},
+	};
+}
+
+/** Resolves to "blocked" if the handler is still waiting after a short grace period. */
+async function settleOrBlocked<T>(promise: Promise<T>): Promise<T | "blocked"> {
+	return Promise.race([
+		promise,
+		new Promise<"blocked">((resolve) => {
+			setTimeout(() => {
+				resolve("blocked");
+			}, 500);
+		}),
+	]);
+}
+
+describe("getIssuesHandler serves the cache", () => {
+	it("returns stale cached issues without awaiting GitHub, then pushes the refreshed list", async () => {
+		atTime(Date.now() - STALE_MS, () => {
+			cacheIssues([makeIssue(1, "Cached issue")]);
+		});
+		const {polly, stop} = setupPolly({name: "getIssuesHandler-stale"});
+		pollyStop = stop;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		polly.server.post("https://api.github.com/graphql").intercept(async (_req, res) => {
+			await gate;
+			res.status(200).json({
+				data: {
+					search: {
+						nodes: [
+							{
+								number: 2,
+								title: "Fresh issue",
+								url: "https://github.com/owner/repo/issues/2",
+								labels: {nodes: []},
+								repository: {name: "repo", nameWithOwner: "owner/repo"},
+							},
+						],
+					},
+				},
+			});
+		});
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+		const {githubEmitter} = await import("./github-events.js");
+		const pushed = new Promise((resolve) => {
+			githubEmitter.once("issues", resolve);
+		});
+
+		const {getIssuesHandler} = await import("./server-fns.impl.js");
+		const result = await settleOrBlocked(getIssuesHandler());
+		release();
+
+		expect(result).toStrictEqual([makeIssue(1, "Cached issue")]);
+		expect(enqueueSpy).toHaveBeenCalledWith(
+			expect.objectContaining({coalesceKey: "issues:github", kind: "issues", project: "github"}),
+		);
+		expect(await pushed).toStrictEqual([makeIssue(2, "Fresh issue")]);
+		enqueueSpy.mockRestore();
+	});
+
+	it("returns fresh cached issues without enqueueing a refresh", async () => {
+		cacheIssues([makeIssue(1, "Cached issue")]);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+
+		const {getIssuesHandler} = await import("./server-fns.impl.js");
+		const result = await getIssuesHandler();
+
+		expect({result, enqueued: enqueueSpy.mock.calls.length}).toStrictEqual({
+			result: [makeIssue(1, "Cached issue")],
+			enqueued: 0,
+		});
+		enqueueSpy.mockRestore();
+	});
+
+	it("treats a refreshed-but-empty issue list as cached instead of fetching in the foreground", async () => {
+		atTime(Date.now() - STALE_MS, () => {
+			cacheIssues([]);
+		});
+		const {polly, stop} = setupPolly({name: "getIssuesHandler-empty-stale"});
+		pollyStop = stop;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		polly.server.post("https://api.github.com/graphql").intercept(async (_req, res) => {
+			await gate;
+			res.status(200).json({data: {search: {nodes: []}}});
+		});
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+
+		const {getIssuesHandler} = await import("./server-fns.impl.js");
+		const result = await settleOrBlocked(getIssuesHandler());
+		release();
+
+		expect(result).toStrictEqual([]);
+		expect(enqueueSpy).toHaveBeenCalledWith(expect.objectContaining({coalesceKey: "issues:github"}));
+		enqueueSpy.mockRestore();
+	});
+});
+
+describe("getProjectItemsHandler serves the cache", () => {
+	it("returns stale cached project items without awaiting GitHub, then pushes the refreshed list", async () => {
+		const cachedItem = {
+			id: "PVTI_cached",
+			title: "Cached item",
+			status: "Todo",
+			type: "ISSUE" as const,
+			url: "https://github.com/owner/repo/issues/8",
+			number: 8,
+			repository: "owner/repo",
+			labels: [],
+		};
+		atTime(Date.now() - STALE_MS, () => {
+			cacheProjectItems([cachedItem]);
+		});
+		const {resetViewerLoginCache} = await import("@wip/shared");
+		resetViewerLoginCache();
+		const {polly, stop} = setupPolly({name: "getProjectItemsHandler-stale"});
+		pollyStop = stop;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		polly.server.post("https://api.github.com/graphql").intercept(async (_req, res) => {
+			await gate;
+			res.status(200).json({data: {viewer: {projectsV2: {nodes: []}}}});
+		});
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+		const {githubEmitter} = await import("./github-events.js");
+		const pushed = new Promise((resolve) => {
+			githubEmitter.once("projectItems", resolve);
+		});
+
+		const {getProjectItemsHandler} = await import("./server-fns.impl.js");
+		const result = await settleOrBlocked(getProjectItemsHandler());
+		release();
+
+		expect(result).toStrictEqual([cachedItem]);
+		expect(enqueueSpy).toHaveBeenCalledWith(
+			expect.objectContaining({coalesceKey: "project-items:github", kind: "project-items", project: "github"}),
+		);
+		expect(await pushed).toStrictEqual([]);
+		enqueueSpy.mockRestore();
 	});
 });
 

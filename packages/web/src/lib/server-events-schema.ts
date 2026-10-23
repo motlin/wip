@@ -1,6 +1,8 @@
 import {z} from "zod";
 import {
 	GitChildResultSchema,
+	GitHubIssueSchema,
+	GitHubProjectItemSchema,
 	ProjectInfoSchema,
 	TaskTypeSchema,
 	TodoItemSchema,
@@ -88,6 +90,8 @@ export const ServerEventSchema = z.discriminatedUnion("channel", [
 	z.object({channel: z.literal("projects"), data: z.array(ProjectInfoSchema)}),
 	z.object({channel: z.literal("children"), data: ChildrenEventSchema}),
 	z.object({channel: z.literal("todos"), data: TodoEventSchema}),
+	z.object({channel: z.literal("issues"), data: z.array(GitHubIssueSchema)}),
+	z.object({channel: z.literal("projectItems"), data: z.array(GitHubProjectItemSchema)}),
 	z.object({channel: z.literal("action"), data: ActionEventSchema}),
 	z.object({channel: z.literal("refresh-error"), data: RefreshErrorEventSchema}),
 	z.object({channel: z.literal("refresh-state"), data: WorkQueueStateEventSchema}),

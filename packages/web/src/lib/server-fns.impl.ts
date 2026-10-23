@@ -35,6 +35,8 @@ import {
 	getGitHubRateLimitState,
 	getCachedTodos,
 	cacheTodos,
+	getCachedIssues,
+	getCachedProjectItems,
 	type LadderResult,
 	type ProjectInfo,
 	type RunLadderOptions,
@@ -472,12 +474,60 @@ export async function getProjectTodosHandler(project: string): Promise<SharedTod
 	});
 }
 
+export const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Serve a GitHub-backed list from the DB cache and refresh it in the background
+ * through the shared WorkQueue, pushing the result over SSE. Only a cache that
+ * was never filled waits on GitHub.
+ */
+async function serveGitHubCache<T>(options: {
+	kind: "issues" | "project-items";
+	freshnessKey: string;
+	event: "issues" | "projectItems";
+	readCache: () => T[] | null;
+	fetch: () => Promise<T[]>;
+}): Promise<T[]> {
+	// An empty list stores no rows, so a freshness row alone marks it as cached.
+	const everRefreshed = getCacheFreshnessByPrefix(options.freshnessKey).has("");
+	const cached = options.readCache() ?? (everRefreshed ? [] : null);
+	if (cached === null) return options.fetch();
+	if (!isCacheFresh(options.freshnessKey, GITHUB_CACHE_TTL_MS)) {
+		enqueueRefresh({
+			kind: options.kind,
+			project: "github",
+			run: async () => {
+				const fresh = await options.fetch();
+				const {githubEmitter} = await import("./github-events.js");
+				githubEmitter.emit(options.event, fresh);
+			},
+		});
+	}
+	return cached;
+}
+
 export async function getIssuesHandler(): Promise<IssueResult[]> {
-	return traced("getIssues", async () => fetchAssignedIssues());
+	return traced("getIssues", async () =>
+		serveGitHubCache({
+			kind: "issues",
+			freshnessKey: "github-issues",
+			event: "issues",
+			readCache: getCachedIssues,
+			fetch: fetchAssignedIssues,
+		}),
+	);
 }
 
 export async function getProjectItemsHandler(): Promise<GitHubProjectItem[]> {
-	return traced("getProjectItemsFn", async () => fetchAllProjectItems());
+	return traced("getProjectItemsFn", async () =>
+		serveGitHubCache({
+			kind: "project-items",
+			freshnessKey: "github-project-items",
+			event: "projectItems",
+			readCache: getCachedProjectItems,
+			fetch: fetchAllProjectItems,
+		}),
+	);
 }
 
 export async function getIssueByNumberHandler(data: {project: string; number: number}): Promise<IssueResult | null> {

@@ -126,6 +126,14 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				queryClient.setQueryData(["projects"], event.data);
 				return;
 			}
+			case "issues": {
+				queryClient.setQueryData(["issues"], event.data);
+				return;
+			}
+			case "projectItems": {
+				queryClient.setQueryData(["projectItems"], event.data);
+				return;
+			}
 			case "children": {
 				childrenBatcher.add(event.data.project, event.data.children);
 				return;

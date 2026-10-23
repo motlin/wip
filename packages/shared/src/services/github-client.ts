@@ -14,21 +14,43 @@ export interface GitHubClient {
 
 let cachedToken: string | undefined;
 let tokenCachedAt = 0;
+let inflightTokenRefresh: Promise<string> | undefined;
 const TOKEN_CACHE_TTL_MS = 60_000;
 
+async function refreshToken(): Promise<string> {
+	inflightTokenRefresh ??= execa("gh", ["auth", "token"])
+		.then((result) => {
+			cachedToken = result.stdout.trim();
+			tokenCachedAt = Date.now();
+			return cachedToken;
+		})
+		.finally(() => {
+			inflightTokenRefresh = undefined;
+		});
+	return inflightTokenRefresh;
+}
+
+/**
+ * Only the very first request waits on `gh auth token`. After that the cached
+ * token is served immediately and an expired one is refreshed in the background.
+ */
 async function getToken(): Promise<string> {
 	const envToken = process.env["GITHUB_TOKEN"];
 	if (envToken) return envToken;
 
-	const now = Date.now();
-	if (cachedToken && now - tokenCachedAt < TOKEN_CACHE_TTL_MS) {
-		return cachedToken;
+	if (cachedToken === undefined) return refreshToken();
+	if (Date.now() - tokenCachedAt >= TOKEN_CACHE_TTL_MS) {
+		refreshToken().catch((error: unknown) => {
+			log.subprocess.warn({error}, "Background gh auth token refresh failed");
+		});
 	}
-
-	const result = await execa("gh", ["auth", "token"]);
-	cachedToken = result.stdout.trim();
-	tokenCachedAt = now;
 	return cachedToken;
+}
+
+/** Forget the cached gh token, so the next request fetches a new one. */
+export function resetGitHubTokenCache(): void {
+	cachedToken = undefined;
+	tokenCachedAt = 0;
 }
 
 function rateLimitResetEpochMs(response: Response): number | undefined {
@@ -58,6 +80,7 @@ function createProductionClient(): GitHubClient {
 			if (!response.ok) {
 				const body = await response.text();
 				if (response.status === 401) {
+					resetGitHubTokenCache();
 					throw new Error(`GitHub API authentication failed (401): ${body}`);
 				}
 				if (response.status === 403 || response.status === 429) {

@@ -10,6 +10,7 @@ export async function createEventsResponse(): Promise<Response> {
 	const {projectEmitter} = await import("./project-events.js");
 	const {childrenEmitter} = await import("./children-events.js");
 	const {todoEmitter} = await import("./todo-events.js");
+	const {githubEmitter} = await import("./github-events.js");
 	const {getSchedulerState, onRefreshError, onSchedulerStateChange} = await import("./refresh-scheduler.js");
 	const {ensureBackgroundRefresh} = await import("./background-refresh.js");
 	const {getProjects} = await import("./server-fns.js");
@@ -79,6 +80,12 @@ export async function createEventsResponse(): Promise<Response> {
 			const onTodos = (event: unknown) => {
 				send("todos", event);
 			};
+			const onIssues = (event: unknown) => {
+				send("issues", event);
+			};
+			const onProjectItems = (event: unknown) => {
+				send("projectItems", event);
+			};
 			const onAction = (event: unknown) => {
 				send("action", event);
 			};
@@ -88,6 +95,8 @@ export async function createEventsResponse(): Promise<Response> {
 			projectEmitter.on("projects", onProjects);
 			childrenEmitter.on("children", onChildren);
 			todoEmitter.on("todos", onTodos);
+			githubEmitter.on("issues", onIssues);
+			githubEmitter.on("projectItems", onProjectItems);
 			disposers.push(
 				() => taskEmitter.off("task", onTask),
 				() => actionEmitter.off("action", onAction),
@@ -95,6 +104,8 @@ export async function createEventsResponse(): Promise<Response> {
 				() => projectEmitter.off("projects", onProjects),
 				() => childrenEmitter.off("children", onChildren),
 				() => todoEmitter.off("todos", onTodos),
+				() => githubEmitter.off("issues", onIssues),
+				() => githubEmitter.off("projectItems", onProjectItems),
 			);
 			disposers.push(
 				onRefreshError((event) => {

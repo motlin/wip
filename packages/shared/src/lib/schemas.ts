@@ -376,6 +376,32 @@ export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 export const PlanStatusSchema = z.enum(["none", "unreviewed", "approved"]);
 export type PlanStatus = z.infer<typeof PlanStatusSchema>;
 
+export const GitHubIssueSchema = z.object({
+	number: z.number().int().positive(),
+	title: z.string().min(1),
+	url: z.url(),
+	labels: z.array(LabelSchema),
+	repository: RepositorySchema,
+});
+export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
+
+export const IssueResultSchema = GitHubIssueSchema.extend({
+	planStatus: PlanStatusSchema.optional(),
+});
+export type IssueResult = z.infer<typeof IssueResultSchema>;
+
+export const GitHubProjectItemSchema = z.object({
+	id: z.string().min(1),
+	title: z.string().min(1),
+	status: z.string(),
+	type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
+	url: z.url().optional(),
+	number: z.number().int().positive().optional(),
+	repository: z.string().min(1).optional(),
+	labels: z.array(LabelSchema),
+});
+export type GitHubProjectItem = z.infer<typeof GitHubProjectItemSchema>;
+
 // A task from a todo.md file
 export const TodoItemSchema = z.object({
 	project: z.string(),

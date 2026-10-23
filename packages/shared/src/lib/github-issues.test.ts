@@ -1,4 +1,5 @@
 import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
+import {z} from "zod";
 
 import {GitHubIssueSchema, GitHubIssueLabelSchema, fetchAssignedIssues} from "./github-issues.js";
 import {initDb, resetDb} from "./db.js";
@@ -225,6 +226,47 @@ describe("fetchAssignedIssues", () => {
 		const result = await fetchAssignedIssues();
 		expect(result).toHaveLength(1);
 		expect(result[0]?.number).toBe(99);
+	});
+
+	it("skips non-issue search nodes and asks GitHub for issues only", async () => {
+		const {polly, stop} = setupPolly({name: "fetchAssignedIssues-pull-request-nodes"});
+		pollyStop = stop;
+
+		const queries: string[] = [];
+		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
+			const body = z.object({query: z.string()}).parse(JSON.parse(String(req.body)));
+			queries.push(body.query);
+			// Pull requests match the search but not the `... on Issue` fragment, so they arrive as {}.
+			res.status(200).json({
+				data: {
+					search: {
+						nodes: [
+							{},
+							{
+								number: 3,
+								title: "Real issue",
+								url: "https://github.com/owner/repo/issues/3",
+								labels: {nodes: []},
+								repository: {name: "repo", nameWithOwner: "owner/repo"},
+							},
+							{},
+						],
+					},
+				},
+			});
+		});
+
+		const issues = await fetchAssignedIssues();
+		expect(issues).toStrictEqual([
+			{
+				number: 3,
+				title: "Real issue",
+				url: "https://github.com/owner/repo/issues/3",
+				labels: [],
+				repository: {name: "repo", nameWithOwner: "owner/repo"},
+			},
+		]);
+		expect(queries.map((query) => query.includes('"assignee:@me state:open is:issue"'))).toStrictEqual([true]);
 	});
 
 	it("returns empty array when API returns empty nodes", async () => {

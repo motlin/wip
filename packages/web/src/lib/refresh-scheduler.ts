@@ -8,7 +8,10 @@ import type {WorkQueueState} from "./work-queue.js";
  * pipeline, so refresh fan-out shares a budget with tests, rebases, and pushes
  * instead of owning a private slot count.
  */
-export type RefreshKind = "children" | "todos" | "merge-status" | "discovery";
+export type RefreshKind = "children" | "todos" | "merge-status" | "discovery" | "issues" | "project-items";
+
+/** Refresh kinds that touch the GitHub API rather than one repo's git state. */
+const REPO_INDEPENDENT_KINDS: ReadonlySet<RefreshKind> = new Set(["discovery", "issues", "project-items"]);
 
 export type RefreshSchedulerState = WorkQueueState;
 
@@ -93,10 +96,10 @@ export function enqueueRefresh(options: {
 	const key = `${options.kind}:${options.project}`;
 	const handle = workQueue.enqueue({
 		coalesceKey: key,
-		// Every refresh kind touches the repo's git state (fetch, ref reads), so
-		// they share one exclusive per-repo resource with tasks. Discovery is
-		// not tied to a single repo.
-		resources: options.kind === "discovery" ? [key] : [repoResource(options.project)],
+		// Repo refresh kinds touch the repo's git state (fetch, ref reads), so
+		// they share one exclusive per-repo resource with tasks. Discovery and
+		// GitHub API refreshes are not tied to a single repo.
+		resources: REPO_INDEPENDENT_KINDS.has(options.kind) ? [key] : [repoResource(options.project)],
 		kind: options.kind,
 		project: options.project,
 		costClass: options.kind === "merge-status" ? "git-write" : "cheap",

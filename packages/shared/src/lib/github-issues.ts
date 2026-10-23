@@ -4,29 +4,15 @@ import {getGitHubClient} from "../services/github-client.js";
 import {log} from "../services/logger-pino.js";
 import {getCachedIssues, cacheIssues, isCacheFresh, invalidateIssuesCacheDb} from "./db.js";
 import {detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited} from "./rate-limit.js";
-import {LabelSchema, PlanStatusSchema, RepositorySchema} from "./schemas.js";
+import {GitHubIssueSchema, IssueResultSchema, LabelSchema, type GitHubIssue, type IssueResult} from "./schemas.js";
 
-export {LabelSchema as GitHubIssueLabelSchema};
-
-export const GitHubIssueSchema = z.object({
-	number: z.number().int().positive(),
-	title: z.string().min(1),
-	url: z.url(),
-	labels: z.array(LabelSchema),
-	repository: RepositorySchema,
-});
-export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
-
-export const IssueResultSchema = GitHubIssueSchema.pick({
-	number: true,
-	title: true,
-	url: true,
-	labels: true,
-	repository: true,
-}).extend({
-	planStatus: PlanStatusSchema.optional(),
-});
-export type IssueResult = z.infer<typeof IssueResultSchema>;
+export {
+	LabelSchema as GitHubIssueLabelSchema,
+	GitHubIssueSchema,
+	IssueResultSchema,
+	type GitHubIssue,
+	type IssueResult,
+};
 
 const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -61,7 +47,7 @@ export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
 
 const SEARCH_ISSUES_QUERY = `
   query {
-    search(query: "assignee:@me state:open", type: ISSUE, first: 100) {
+    search(query: "assignee:@me state:open is:issue", type: ISSUE, first: 100) {
       nodes {
         ... on Issue {
           number
@@ -96,10 +82,13 @@ const SearchIssueNodeSchema = z.object({
 	}),
 });
 
+// A search hit that is not an Issue (e.g. a pull request) matches no fragment and arrives as {}.
+const NonIssueSearchNodeSchema = z.object({}).strict();
+
 const SearchIssuesResponseSchema = z.object({
 	data: z.object({
 		search: z.object({
-			nodes: z.array(SearchIssueNodeSchema),
+			nodes: z.array(z.union([SearchIssueNodeSchema, NonIssueSearchNodeSchema])),
 		}),
 	}),
 });
@@ -109,19 +98,21 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
 		const raw = await getGitHubClient().graphql(SEARCH_ISSUES_QUERY);
 		const response = SearchIssuesResponseSchema.parse(raw);
 
-		const issues: GitHubIssue[] = response.data.search.nodes.map((node) => ({
-			number: node.number,
-			title: node.title,
-			url: node.url,
-			labels: node.labels.nodes,
-			repository: node.repository,
-		}));
+		const issues: GitHubIssue[] = response.data.search.nodes
+			.filter((node) => "number" in node)
+			.map((node) => ({
+				number: node.number,
+				title: node.title,
+				url: node.url,
+				labels: node.labels.nodes,
+				repository: node.repository,
+			}));
 
 		cacheIssues(issues);
 		return issues;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		log.subprocess.debug({error: message}, "GitHub issues GraphQL request failed");
+		log.subprocess.warn({error: message}, "GitHub issues GraphQL request failed");
 
 		if (detectRateLimitError(message)) {
 			markGitHubRateLimited();

@@ -2,7 +2,7 @@ import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 import {initDb, resetDb, type LadderResult, type ProjectInfo, type RunLadderOptions} from "@wip/shared";
 
 import type {AiRungDeps} from "./herdr/ai-rungs.js";
-import {resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
+import {focusHerdrPaneHandler, resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
 import {getLatestLadderResults, getAllTasks, resetQueue} from "./task-queue.js";
 
 type Runners = NonNullable<RunLadderOptions["runners"]>;
@@ -141,5 +141,52 @@ describe("ladder AI wiring", () => {
 		expect(alpha.stop).toBeUndefined();
 		expect(beta.stop).toStrictEqual({stop: "conflict", branches: ["feature"]});
 		expect(beta.needsAi).toBeUndefined();
+	});
+
+	it("reports the AI rung as running while the agent works, then done once the conflict is resolved", async () => {
+		const {ai} = makeAi(true);
+		const seen: (string | undefined)[] = [];
+		const gate = {open: false};
+		ai.overrides.wait = async () => {
+			seen.push(getLatestLadderResults().find((r) => r.project === "alpha")?.aiStatus);
+			await expect.poll(() => gate.open).toBe(true);
+			return "done";
+		};
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+		await expect.poll(() => seen.length).toBe(1);
+		gate.open = true;
+
+		const alpha = await latestFor("alpha");
+		expect(seen).toStrictEqual(["running"]);
+		expect(alpha.aiStatus).toBe("done");
+	});
+
+	it("reports the AI rung as stuck when the agent times out", async () => {
+		const {ai} = makeAi(true);
+		ai.overrides.wait = async () => Promise.resolve("timeout");
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+
+		const alpha = await latestFor("alpha");
+		expect(alpha.aiStatus).toBe("stuck");
+		expect(alpha.stop).toStrictEqual({stop: "conflict", branches: ["feature"]});
+	});
+});
+
+describe("focusHerdrPaneHandler", () => {
+	it("focuses the pane", async () => {
+		const focused: string[] = [];
+		await focusHerdrPaneHandler("pane-3", async (paneId) => {
+			focused.push(paneId);
+			return Promise.resolve({ok: true, value: undefined});
+		});
+		expect(focused).toStrictEqual(["pane-3"]);
+	});
+
+	it("throws the herdr message when focusing fails", async () => {
+		await expect(
+			focusHerdrPaneHandler("pane-3", async () =>
+				Promise.resolve({ok: false, code: "unavailable", message: "herdr is not running"}),
+			),
+		).rejects.toThrow("herdr is not running");
 	});
 });

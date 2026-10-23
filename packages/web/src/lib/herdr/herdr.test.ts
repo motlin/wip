@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {probeHerdr} from "./availability.js";
 import {herdrRequest} from "./client.js";
+import {focusHerdrPane} from "./focus.js";
 import {resolveHerdrSocketPath} from "./socket-path.js";
 
 let dir: string;
@@ -106,5 +107,24 @@ describe("probeHerdr", () => {
 		const socketPath = path.join(dir, "h.sock");
 		await listen(socketPath, () => {});
 		expect(await probeHerdr(socketPath, 50)).toEqual({available: false, socketPath, reason: "timeout"});
+	});
+});
+
+describe("focusHerdrPane", () => {
+	it("sends pane.focus for the pane", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		const requests: unknown[] = [];
+		await listen(socketPath, (line, socket) => {
+			const request = JSON.parse(line);
+			requests.push({method: request.method, params: request.params});
+			socket.write(`${JSON.stringify({id: request.id, result: {}})}\n`);
+		});
+		expect(await focusHerdrPane("pane-7", socketPath)).toEqual({ok: true, value: undefined});
+		expect(requests).toEqual([{method: "pane.focus", params: {pane_id: "pane-7"}}]);
+	});
+
+	it("reports an unavailable herdr", async () => {
+		const result = await focusHerdrPane("pane-7", path.join(dir, "none.sock"));
+		expect(result.ok).toBe(false);
 	});
 });

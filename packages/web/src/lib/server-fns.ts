@@ -92,6 +92,10 @@ export const runLadderAll = createServerFn({method: "POST"}).handler(async (): P
 	(await serverFns()).runLadderAllHandler(),
 );
 
+export const focusHerdrPaneFn = createServerFn({method: "POST"})
+	.validator((input: unknown) => z.object({paneId: z.string()}).parse(input))
+	.handler(async ({data}): Promise<void> => (await serverFns()).focusHerdrPaneHandler(data.paneId));
+
 export const getLadderResults = createServerFn({method: "GET"}).handler(async (): Promise<LadderResult[]> =>
 	(await serverFns()).getLadderResultsHandler(),
 );

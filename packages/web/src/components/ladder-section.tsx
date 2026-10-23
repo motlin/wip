@@ -1,5 +1,5 @@
 import {useState} from "react";
-import {CheckCircle, GitMerge, Loader2, OctagonAlert} from "lucide-react";
+import {Bot, CheckCircle, Copy, ExternalLink, GitMerge, Loader2, OctagonAlert} from "lucide-react";
 import type {LadderResult} from "@wip/shared";
 import {runPendingAction} from "../lib/pending-action.js";
 
@@ -10,9 +10,11 @@ import {runPendingAction} from "../lib/pending-action.js";
 export function LadderSection({
 	results,
 	runLadderAll,
+	focusPane,
 }: {
 	results: readonly LadderResult[];
 	runLadderAll: () => Promise<unknown>;
+	focusPane: (paneId: string) => Promise<unknown>;
 }) {
 	const [running, setRunning] = useState(false);
 
@@ -56,6 +58,50 @@ export function LadderSection({
 									{result.stop.branches.length > 0 && (
 										<span className="ml-2 font-mono">{result.stop.branches.join(", ")}</span>
 									)}
+								</div>
+							)}
+							{result.aiStatus && (
+								<div className="ml-6 flex items-center gap-1.5 text-xs text-text-400">
+									<Bot className="h-3.5 w-3.5" />
+									<span>AI {result.aiStatus}</span>
+								</div>
+							)}
+							{result.needsAi && (
+								<div className="ml-6 flex items-center gap-1.5 text-xs text-text-400">
+									<Bot className="h-3.5 w-3.5" />
+									<span>needs AI</span>
+									<code className="font-mono">{result.needsAi.command}</code>
+									<button
+										type="button"
+										title="Copy command"
+										aria-label="Copy command"
+										onClick={() => {
+											const {command} = result.needsAi ?? {command: ""};
+											void runPendingAction("Copy command", undefined, async () =>
+												navigator.clipboard.writeText(command),
+											);
+										}}
+										className="rounded-md border border-border-300/50 p-1 hover:bg-bg-200"
+									>
+										<Copy className="h-3 w-3" />
+									</button>
+								</div>
+							)}
+							{result.herdr && (
+								<div className="ml-6 text-xs">
+									<button
+										type="button"
+										onClick={() => {
+											const paneId = result.herdr?.paneId ?? "";
+											void runPendingAction("Focus pane", undefined, async () =>
+												focusPane(paneId),
+											);
+										}}
+										className="inline-flex items-center gap-1 rounded-md border border-border-300/50 px-2 py-0.5 text-text-200 hover:bg-bg-200"
+									>
+										<ExternalLink className="h-3 w-3" />
+										Focus pane
+									</button>
 								</div>
 							)}
 						</li>

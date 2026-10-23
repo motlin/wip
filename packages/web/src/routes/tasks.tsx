@@ -1,7 +1,7 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
-import {testAllChildren, cancelTestFn, pushChild, runLadderAll} from "../lib/server-fns.js";
+import {testAllChildren, cancelTestFn, pushChild, runLadderAll, focusHerdrPaneFn} from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
 import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context.js";
@@ -380,7 +380,11 @@ function Tasks() {
 
 			<RefreshSchedulerPanel />
 
-			<LadderSection results={ladderResults} runLadderAll={async () => runLadderAll()} />
+			<LadderSection
+				results={ladderResults}
+				runLadderAll={async () => runLadderAll()}
+				focusPane={async (paneId) => focusHerdrPaneFn({data: {paneId}})}
+			/>
 
 			{allJobs.length === 0 ? (
 				<div className="rounded-lg border border-border-300/50 bg-bg-100 p-8 text-center text-text-500">

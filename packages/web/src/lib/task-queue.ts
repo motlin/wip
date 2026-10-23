@@ -510,6 +510,8 @@ async function runLadderAiFollowUp(task: Task): Promise<void> {
 	}
 
 	let herdr: LadderResult["herdr"];
+	task.ladderResult = {...result, aiStatus: "queued"};
+	emit(task);
 	const next = await runAiConflictRung(
 		{
 			name: task.project,
@@ -526,11 +528,17 @@ async function runLadderAiFollowUp(task: Task): Promise<void> {
 			...ai.overrides,
 			onLaunched: (launched) => {
 				herdr = launched;
+				task.ladderResult = {...(task.ladderResult ?? result), herdr, aiStatus: "running"};
+				emit(task);
 			},
 		},
 	);
 	const final = next === "stuck" ? result : next;
-	task.ladderResult = {...final, ...(herdr ? {herdr} : {})};
+	task.ladderResult = {
+		...final,
+		...(herdr ? {herdr} : {}),
+		aiStatus: next === "stuck" || next.stop ? "stuck" : "done",
+	};
 	task.finishedAt = Date.now();
 	if (task.ladderResult.stop) {
 		const branches =

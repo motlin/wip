@@ -75,6 +75,8 @@ import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import {classifyGitChild} from "./classify.js";
 import type {EnqueueRebaseOptions, LadderAiOptions} from "./task-queue.js";
+import {focusHerdrPane} from "./herdr/focus.js";
+import type {HerdrResult} from "./herdr/client.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -1311,6 +1313,15 @@ export async function getLadderResultsHandler(): Promise<LadderResult[]> {
 		const {getLatestLadderResults} = await import("./task-queue.js");
 		return getLatestLadderResults();
 	});
+}
+
+/** Focus a herdr pane; throws with herdr's message so the caller can toast it. */
+export async function focusHerdrPaneHandler(
+	paneId: string,
+	focus: (paneId: string) => Promise<HerdrResult<undefined>> = focusHerdrPane,
+): Promise<void> {
+	const result = await focus(paneId);
+	if (!result.ok) throw new Error(result.message);
 }
 
 export type AdvancePlanAction = "rebase" | "test" | "resolve-conflicts" | "fix-failure";

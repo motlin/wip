@@ -46,7 +46,11 @@ export interface LadderResult {
 	needsAi?: {command: string};
 	/** The herdr tab and pane the AI rung ran in, so the UI can offer a focus link. */
 	herdr?: {tabId: string; paneId: string};
+	/** Progress of the AI rung that follows a conflict stop. */
+	aiStatus?: LadderAiStatus;
 }
+
+export type LadderAiStatus = "queued" | "running" | "done" | "stuck";
 
 export interface LadderProjectInfo {
 	project: string;
@@ -87,4 +91,5 @@ export const LadderResultSchema = z.object({
 		.optional(),
 	needsAi: z.object({command: z.string()}).optional(),
 	herdr: z.object({tabId: z.string(), paneId: z.string()}).optional(),
+	aiStatus: z.enum(["queued", "running", "done", "stuck"]).optional(),
 });

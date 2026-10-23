@@ -50,5 +50,10 @@
 			"file": "packages/web/src/lib/merge-queue.ts",
 			"exports": ["*"],
 		},
+		// Ladder model types; consumed by the ladder runner in later Phase 3 tasks.
+		{
+			"file": "packages/shared/src/lib/ladder.ts",
+			"exports": ["LadderStop", "LadderStopInfo", "LadderRungResult", "LadderResult"],
+		},
 	],
 }

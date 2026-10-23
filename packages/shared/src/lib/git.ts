@@ -15,7 +15,9 @@ import {
 	cacheUpstreamSha,
 } from "./db.js";
 import {mapWithConcurrency} from "./concurrency.js";
+import {getConfigValue} from "./config.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
+import {inventoryExists, loadInventory, type Inventory} from "./inventory.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
 import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
 
@@ -683,6 +685,54 @@ export async function testFix(
 	return {ok: false, message: `retest failed after fix (exit ${retest.exitCode})`};
 }
 
+async function gatherProjectInfo(
+	name: string,
+	dir: string,
+	override?: {upstreamRemote?: string; upstreamBranch?: string},
+): Promise<ProjectInfo | null> {
+	const envrc = parseEnvrc(dir);
+	const upstreamRemote = override?.upstreamRemote ?? envrc.upstreamRemote;
+	const upstreamBranch = override?.upstreamBranch ?? envrc.upstreamBranch;
+	const upstreamRef = `${upstreamRemote}/${upstreamBranch}`;
+
+	if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
+
+	const [canonicalRepo, originUrl, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
+		getCanonicalRepo(dir, upstreamRemote),
+		git(dir, "remote", "get-url", "origin"),
+		isDirty(dir),
+		isDetachedHead(dir),
+		git(dir, "branch", "--list"),
+		hasTestConfigured(dir),
+	]);
+
+	const ghRemote = `${canonicalRepo.owner}/${canonicalRepo.name}`;
+	const originParsed = parseRemoteUrl(originUrl);
+	const originRemote = originParsed ? `${originParsed.owner}/${originParsed.name}` : ghRemote;
+	const branchCount = branchList
+		.split("\n")
+		.filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
+		.filter(Boolean).length;
+
+	const rebaseInProgress =
+		fs.existsSync(path.join(dir, ".git", "rebase-merge")) || fs.existsSync(path.join(dir, ".git", "rebase-apply"));
+
+	return {
+		name,
+		dir,
+		remote: ghRemote,
+		originRemote,
+		upstreamRemote,
+		upstreamBranch,
+		upstreamRef,
+		dirty: dirtyFlag,
+		detachedHead: detached,
+		branchCount,
+		hasTestConfigured: hasTest,
+		rebaseInProgress,
+	} satisfies ProjectInfo;
+}
+
 export async function discoverProjects(projectsDir: string): Promise<ProjectInfo[]> {
 	const entries = fs.readdirSync(projectsDir, {withFileTypes: true});
 
@@ -701,52 +751,27 @@ export async function discoverProjects(projectsDir: string): Promise<ProjectInfo
 	// are independent, but an unbounded fan-out spawns hundreds of subprocesses
 	// at once on a large projects dir.
 	const results = await mapWithConcurrency(gitDirs, DISCOVERY_CONCURRENCY, async ({name, dir}) => {
-		const {upstreamRemote, upstreamBranch} = parseEnvrc(dir);
-		const upstreamRef = `${upstreamRemote}/${upstreamBranch}`;
-
-		if (!(await hasUpstreamRef(dir, upstreamRef))) return null;
-
-		const [canonicalRepo, originUrl, dirtyFlag, detached, branchList, hasTest] = await Promise.all([
-			getCanonicalRepo(dir, upstreamRemote),
-			git(dir, "remote", "get-url", "origin"),
-			isDirty(dir),
-			isDetachedHead(dir),
-			git(dir, "branch", "--list"),
-			hasTestConfigured(dir),
-		]);
-
-		const ghRemote = `${canonicalRepo.owner}/${canonicalRepo.name}`;
-		const originParsed = parseRemoteUrl(originUrl);
-		const originRemote = originParsed ? `${originParsed.owner}/${originParsed.name}` : ghRemote;
-		const branchCount = branchList
-			.split("\n")
-			.filter((b) => !b.trim().match(/^(\*?\s*)?(main|master)$/))
-			.filter(Boolean).length;
-
-		const rebaseInProgress =
-			fs.existsSync(path.join(dir, ".git", "rebase-merge")) ||
-			fs.existsSync(path.join(dir, ".git", "rebase-apply"));
-
-		return {
-			name,
-			dir,
-			remote: ghRemote,
-			originRemote,
-			upstreamRemote,
-			upstreamBranch,
-			upstreamRef,
-			dirty: dirtyFlag,
-			detachedHead: detached,
-			branchCount,
-			hasTestConfigured: hasTest,
-			rebaseInProgress,
-		} satisfies ProjectInfo;
+		return gatherProjectInfo(name, dir);
 	});
 
 	return results.filter((p): p is ProjectInfo => p !== null);
 }
 
+export async function discoverRegisteredProjects(inventory: Inventory): Promise<ProjectInfo[]> {
+	for (const error of inventory.errors) {
+		log.general.warn({index: error.index, message: error.message}, "invalid project inventory record");
+	}
+	const records = inventory.projects.filter((record) => record.kind !== "skip");
+	const results = await mapWithConcurrency(records, DISCOVERY_CONCURRENCY, async (record) =>
+		gatherProjectInfo(record.name, record.dir, record),
+	);
+	return results.filter((p): p is ProjectInfo => p !== null);
+}
+
 export async function discoverAllProjects(projectsDirs: string[]): Promise<ProjectInfo[]> {
+	if (getConfigValue("inventory.enabled") !== "false" && inventoryExists()) {
+		return discoverRegisteredProjects(loadInventory());
+	}
 	const results = await Promise.all(projectsDirs.map(async (dir) => discoverProjects(dir)));
 	return results.flat();
 }

@@ -27,7 +27,7 @@ export interface Inventory {
 	errors: InventoryError[];
 }
 
-function getInventoryPath(): string {
+export function getInventoryPath(): string {
 	return path.join(getConfigDir(), "projects.json5");
 }
 
@@ -61,4 +61,35 @@ export function saveInventory(projects: ProjectRecord[]): void {
 	validated.sort(byName);
 	fs.mkdirSync(getConfigDir(), {recursive: true});
 	fs.writeFileSync(getInventoryPath(), JSON5.stringify(validated, null, "\t") + "\n");
+}
+
+export function inventoryExists(): boolean {
+	return fs.existsSync(getInventoryPath());
+}
+
+export interface InventoryDiff {
+	added: ProjectRecord[];
+	removed: ProjectRecord[];
+	changed: {before: ProjectRecord; after: ProjectRecord}[];
+}
+
+/** Compares two inventories, matching entries by `dir`. */
+export function diffInventories(before: ProjectRecord[], after: ProjectRecord[]): InventoryDiff {
+	const beforeByDir = new Map(before.map((project) => [project.dir, project]));
+	const afterByDir = new Map(after.map((project) => [project.dir, project]));
+	const added = after.filter((project) => !beforeByDir.has(project.dir));
+	const removed = before.filter((project) => !afterByDir.has(project.dir));
+	const changed: InventoryDiff["changed"] = [];
+	for (const next of after) {
+		const previous = beforeByDir.get(next.dir);
+		if (previous && JSON.stringify(sortKeys(previous)) !== JSON.stringify(sortKeys(next))) {
+			changed.push({before: previous, after: next});
+		}
+	}
+	return {added, removed, changed};
+}
+
+function sortKeys(project: ProjectRecord): [string, unknown][] {
+	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.entries
+	return Object.entries(project).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
 }

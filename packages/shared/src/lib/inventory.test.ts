@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {loadInventory, saveInventory, type ProjectRecord} from "./inventory.js";
+import {diffInventories, inventoryExists, loadInventory, saveInventory, type ProjectRecord} from "./inventory.js";
 
 describe("inventory", () => {
 	let tmp: string;
@@ -53,5 +53,30 @@ describe("inventory", () => {
 		expect(result.projects).toEqual([beta]);
 		expect(result.errors).toHaveLength(1);
 		expect(result.errors[0]).toMatchObject({index: 1});
+	});
+
+	it("reports whether a registry file exists", () => {
+		expect(inventoryExists()).toBe(false);
+		saveInventory([]);
+		expect(inventoryExists()).toBe(true);
+	});
+});
+
+describe("diffInventories", () => {
+	const a: ProjectRecord = {name: "a", dir: "/p/a", template: "java", kind: "own"};
+	const b: ProjectRecord = {name: "b", dir: "/p/b", template: "rust", kind: "fork"};
+	const c: ProjectRecord = {name: "c", dir: "/p/c", template: "rust", kind: "own"};
+
+	it("splits added, removed, changed by dir", () => {
+		const bChanged: ProjectRecord = {...b, kind: "skip"};
+		expect(diffInventories([a, b], [bChanged, c])).toEqual({
+			added: [c],
+			removed: [a],
+			changed: [{before: b, after: bChanged}],
+		});
+	});
+
+	it("is empty for identical inventories", () => {
+		expect(diffInventories([a], [{...a}])).toEqual({added: [], removed: [], changed: []});
 	});
 });

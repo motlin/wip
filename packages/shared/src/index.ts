@@ -278,7 +278,11 @@ export {
 } from "./lib/work-queue.js";
 export {
 	type Inventory,
+	type InventoryDiff,
 	type InventoryError,
+	diffInventories,
+	getInventoryPath,
+	inventoryExists,
 	type ProjectRecord,
 	ProjectRecordSchema,
 	loadInventory,

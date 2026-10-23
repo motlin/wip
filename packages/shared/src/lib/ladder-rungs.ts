@@ -168,7 +168,7 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 }
 
 export async function runPruneRung(project: LadderRungProject): Promise<LadderResult> {
-	const result = await gitIn(project.path, ["worktree", "prune"], project.signal);
+	const result = await runRecipe(project, ["worktree-prune"]);
 	if (result.exitCode !== 0) return errorResult(project, "worktree-prune", result);
 	return {project: project.name, rungs: [{rung: "worktree-prune", status: "passed", detail: "pruned worktrees"}]};
 }
@@ -177,6 +177,10 @@ export async function runPruneRung(project: LadderRungProject): Promise<LadderRe
  * Deletes local branches merged into the upstream ref with `git branch -d` (never -D). Skips the
  * current branch, branches checked out in any worktree, and the upstream branch's own name.
  * Remote branches are never touched.
+ *
+ * Deliberately does not reuse the global `delete-merged-local` recipe: it uses `git branch -D`
+ * (force), does not skip the upstream-named branch (main) when it is not checked out, and runs a
+ * network `fetch` first.
  */
 export async function runDeleteMergedLocalRung(project: LadderRungProject): Promise<LadderResult> {
 	const upstream = `remotes/${project.upstreamRemote}/${project.upstreamBranch}`;

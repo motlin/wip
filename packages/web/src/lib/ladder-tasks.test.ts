@@ -11,6 +11,8 @@ import {
 import {getLadderResultsHandler, resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
 import {getAllTasks, reloadTasksFromDb, resetQueue} from "./task-queue.js";
 
+const noHerdr = {probe: async () => Promise.resolve(false)};
+
 type Runners = NonNullable<RunLadderOptions["runners"]>;
 
 function makeProject(name: string): ProjectInfo {
@@ -79,7 +81,7 @@ afterEach(async () => {
 describe("runLadderAllHandler", () => {
 	it("enqueues one ladder job per registered project and persists each result", async () => {
 		const calls: string[] = [];
-		const statuses = await runLadderAllHandler({runners: fakeRunners(calls)});
+		const statuses = await runLadderAllHandler({runners: fakeRunners(calls), ai: noHerdr});
 		expect(statuses.map((s) => s.status)).toStrictEqual(["queued", "queued"]);
 
 		await settled(2);
@@ -113,11 +115,11 @@ describe("runLadderAllHandler", () => {
 	});
 
 	it("keeps a stop reason across a task-queue reload and returns the latest result per project", async () => {
-		await runLadderAllHandler({runners: fakeRunners([], "beta")});
+		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr});
 		await settled(2);
-		await runLadderAllHandler({runners: fakeRunners([])});
+		await runLadderAllHandler({runners: fakeRunners([]), ai: noHerdr});
 		await settled(4);
-		await runLadderAllHandler({runners: fakeRunners([], "beta")});
+		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr});
 		await settled(6);
 
 		reloadTasksFromDb();

@@ -42,6 +42,10 @@ export interface LadderResult {
 	project: string;
 	rungs: LadderRungResult[];
 	stop?: LadderStopInfo;
+	/** Set when an AI rung is needed but herdr is unavailable: the exact command to run by hand. */
+	needsAi?: {command: string};
+	/** The herdr tab and pane the AI rung ran in, so the UI can offer a focus link. */
+	herdr?: {tabId: string; paneId: string};
 }
 
 export interface LadderProjectInfo {
@@ -81,4 +85,6 @@ export const LadderResultSchema = z.object({
 			branches: z.array(z.string()),
 		})
 		.optional(),
+	needsAi: z.object({command: z.string()}).optional(),
+	herdr: z.object({tabId: z.string(), paneId: z.string()}).optional(),
 });

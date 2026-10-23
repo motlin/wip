@@ -25,6 +25,8 @@ import {EventEmitter} from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type {Category} from "@wip/shared/schemas.js";
+import {probeHerdr} from "./herdr/availability.js";
+import {runAiConflictRung, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {stageRank} from "./stage-rank.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -60,9 +62,20 @@ export interface Task {
 	ladderProject?: LadderTaskProject;
 	/** Ladder tasks: override the rung implementations (tests). */
 	ladderRunners?: RunLadderOptions["runners"];
+	/** Ladder tasks: AI follow-up wiring; absent means no AI rung. */
+	ladderAi?: LadderAiOptions;
+	/** Ladder tasks: true while the AI follow-up is still running after the ladder job settled. */
+	aiPending?: boolean;
 	queuedAt: number;
 	startedAt?: number;
 	finishedAt?: number;
+}
+
+export interface LadderAiOptions {
+	/** Whether herdr is reachable (defaults to probing the herdr socket). */
+	probe?: () => Promise<boolean>;
+	/** Overrides for the AI conflict rung dependencies (tests). */
+	overrides?: Partial<AiRungDeps>;
 }
 
 export interface LadderTaskProject {
@@ -483,6 +496,53 @@ async function runLadderTask(task: Task, signal: AbortSignal): Promise<void> {
 	emit(task);
 }
 
+async function runLadderAiFollowUp(task: Task): Promise<void> {
+	const ai = task.ladderAi;
+	const info = task.ladderProject;
+	const result = task.ladderResult;
+	if (!ai || !info || result?.stop?.stop !== "conflict" || task.status !== "failed") return;
+
+	const available = await (ai.probe ?? (async () => (await probeHerdr()).available))();
+	if (!available) {
+		task.ladderResult = {...result, needsAi: {command: `cd ${task.projectDir} && claude "/git:conflicts"`}};
+		emit(task);
+		return;
+	}
+
+	let herdr: LadderResult["herdr"];
+	const next = await runAiConflictRung(
+		{
+			name: task.project,
+			path: task.projectDir,
+			upstreamRemote: info.upstreamRemote,
+			upstreamBranch: info.upstreamBranch,
+			dirty: info.dirty,
+			detached: info.detached,
+			rebaseInProgress: info.rebaseInProgress,
+			offline: false,
+		},
+		result.stop,
+		{
+			...ai.overrides,
+			onLaunched: (launched) => {
+				herdr = launched;
+			},
+		},
+	);
+	const final = next === "stuck" ? result : next;
+	task.ladderResult = {...final, ...(herdr ? {herdr} : {})};
+	task.finishedAt = Date.now();
+	if (task.ladderResult.stop) {
+		const branches =
+			task.ladderResult.stop.branches.length > 0 ? ` (${task.ladderResult.stop.branches.join(", ")})` : "";
+		task.message = `stopped: ${task.ladderResult.stop.stop}${branches}`;
+	} else {
+		task.status = "passed";
+		task.message = `${task.ladderResult.rungs.length} rung(s) passed`;
+	}
+	emit(task);
+}
+
 async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.branch) throw new Error("Push task requires a branch");
 	if (!task.upstreamRemote) throw new Error("Push task requires upstreamRemote");
@@ -579,6 +639,11 @@ function registerTask(task: Task): Task {
 	});
 	jobHandles.set(task.id, handle);
 	void handle.settled.finally(() => jobHandles.delete(task.id));
+	if (task.taskType === "ladder" && task.ladderAi) {
+		task.aiPending = true;
+		// The ladder job holds the repo resource, so the AI job can only be enqueued after it settles.
+		void handle.settled.then(async () => runLadderAiFollowUp(task)).finally(() => (task.aiPending = false));
+	}
 
 	return task;
 }
@@ -692,6 +757,7 @@ export interface EnqueueLadderOptions extends LadderTaskProject {
 	project: string;
 	projectDir: string;
 	runners?: RunLadderOptions["runners"];
+	ai?: LadderAiOptions;
 }
 
 export function enqueueLadder(opts: EnqueueLadderOptions): Task {
@@ -717,6 +783,7 @@ export function enqueueLadder(opts: EnqueueLadderOptions): Task {
 			rebaseInProgress: opts.rebaseInProgress,
 		},
 		ladderRunners: opts.runners,
+		ladderAi: opts.ai,
 		status: "queued",
 		queuedAt: Date.now(),
 	});

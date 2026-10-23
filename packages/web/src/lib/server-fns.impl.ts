@@ -74,7 +74,7 @@ import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import {classifyGitChild} from "./classify.js";
-import type {EnqueueRebaseOptions} from "./task-queue.js";
+import type {EnqueueRebaseOptions, LadderAiOptions} from "./task-queue.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -1274,6 +1274,10 @@ export async function runAllCountsHandler(): Promise<RunAllCounts> {
 export interface RunLadderAllOptions {
 	/** Override the rung implementations (tests). */
 	runners?: RunLadderOptions["runners"];
+	/** AI follow-up wiring override (tests); defaults to probing herdr. */
+	ai?: LadderAiOptions;
+	/** Project name patterns that never get an AI rung. */
+	exclude?: string[];
 }
 
 /**
@@ -1294,6 +1298,7 @@ export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Pr
 				detached: p.detachedHead,
 				rebaseInProgress: p.rebaseInProgress,
 				runners: options.runners,
+				ai: matchesFilters(p.name, [], options.exclude ?? []) ? (options.ai ?? {}) : undefined,
 			});
 			return {id: task.id, status: task.status, message: task.message};
 		});

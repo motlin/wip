@@ -29,6 +29,8 @@ export interface AiRungDeps {
 	/** Reads the stored `git test` results for a branch after the agent finished. */
 	results: (project: LadderRunProject, branch: string) => Promise<"green" | "red">;
 	timeoutMs: number;
+	/** Called with the herdr tab and pane once the agent tab is launched. */
+	onLaunched?: (launched: HerdrLaunchResult) => void;
 }
 
 const noop = async (project: {name: string}): Promise<LadderResult> =>
@@ -101,6 +103,7 @@ export async function runAiConflictRung(
 				focus: false,
 			});
 			if (!launched.ok) return;
+			deps.onLaunched?.(launched.value);
 			const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
 			if (waited !== "done") return;
 			const next = await deps.rerun(project, signal);

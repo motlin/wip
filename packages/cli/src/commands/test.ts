@@ -4,6 +4,7 @@ import {execa} from "execa";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import {runInRepoQueue} from "../lib/repo-queue.js";
 import {
 	createBranchForChild,
 	discoverAllProjects,
@@ -330,10 +331,12 @@ export default class Test extends Command {
 				process.stdout.write(chalk.dim(`  ${shortSha} `));
 
 				const testStart = performance.now();
-				const result = await execa("git", ["-C", p.dir, ...testArgs], {
-					reject: false,
-					env: miseEnv,
-				});
+				const result = await runInRepoQueue(p.name, "test", "build", async () =>
+					execa("git", ["-C", p.dir, ...testArgs], {
+						reject: false,
+						env: miseEnv,
+					}),
+				);
 				const testDuration = Math.round(performance.now() - testStart);
 				log.subprocess.debug(
 					{cmd: "git", args: ["-C", p.dir, ...testArgs], duration: testDuration},

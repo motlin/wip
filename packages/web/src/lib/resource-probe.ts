@@ -12,6 +12,7 @@ import type {WorkResourceProbe} from "./work-queue.js";
 export async function installResourceProbe(probe?: WorkResourceProbe): Promise<void> {
 	const shared = await import("@wip/shared");
 	workQueue.setProbe(probe ?? shared.createSystemProbe());
+	workQueue.setResourceLock(shared.createRepoResourceLock());
 	workQueue.setClassCaps(shared.getWorkQueueClassCaps());
 	const maxWait = shared.getActionMaxWaitMs();
 	if (maxWait !== undefined) setActionMaxWaitMs(maxWait);

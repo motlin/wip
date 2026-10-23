@@ -35,6 +35,13 @@ export type CostClass = "cheap" | "git-write" | "build" | "ai";
 
 const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
 
+/**
+ * Optional cross-process lock for a resource key. Resolves to a release function once the lock is
+ * held; rejects if the signal aborts first. Lets two queues in different processes (CLI and web
+ * server) exclude each other on the same `repo:<project>` resource.
+ */
+export type ResourceLock = (resource: string, signal: AbortSignal) => Promise<() => void>;
+
 export interface WorkJobSummary {
 	kind: string;
 	project: string;
@@ -85,6 +92,8 @@ export interface WorkQueueOptions {
 	/** Concurrent holders admitted per resource key (default 1, i.e. exclusive). */
 	resourceCapacity?: (key: string) => number;
 	probe?: WorkResourceProbe | null;
+	/** Held (in sorted resource order) around each job's run, in addition to the in-process resource count. */
+	resourceLock?: ResourceLock | null;
 	loadThreshold?: number;
 	memFloor?: number;
 	stateCoalesceMs?: number;
@@ -99,6 +108,8 @@ export interface WorkQueue {
 	cancel(id: string): boolean;
 	/** Install (or replace) the resource probe after creation — the shared instance is created in client-safe code, but createSystemProbe needs node:os, so the server bootstrap injects it late. */
 	setProbe(probe: WorkResourceProbe | null): void;
+	/** Install (or replace) the cross-process resource lock after creation (node-only, so injected late like the probe). */
+	setResourceLock(lock: ResourceLock | null): void;
 	/** Override per-class concurrency caps after creation (the server bootstrap applies config.json5 values). */
 	setClassCaps(caps: Partial<Record<CostClass, number>>): void;
 	getState(): WorkQueueState;
@@ -139,6 +150,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const globalConcurrency = options.globalConcurrency;
 	let classCaps: Record<CostClass, number> = {...DEFAULT_CLASS_CAPS, ...options.classCaps};
 	let probe = options.probe ?? null;
+	let resourceLock = options.resourceLock ?? null;
 	const loadThreshold = options.loadThreshold ?? DEFAULT_LOAD_THRESHOLD;
 	const memFloor = options.memFloor ?? DEFAULT_MEM_FLOOR;
 	const stateCoalesceMs = options.stateCoalesceMs ?? DEFAULT_STATE_COALESCE_MS;
@@ -271,7 +283,24 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 
 			// The async wrapper turns a synchronous throw from run() into a rejection,
 			// so it reaches the catch/finally release path instead of escaping pump().
-			const promise = (async () => job.run(job.controller.signal))()
+			const lock = resourceLock;
+			const promise = (async () => {
+				const releases: Array<() => void> = [];
+				try {
+					if (lock) {
+						// Sorted so two processes acquiring overlapping sets cannot deadlock.
+						// oxlint-disable-next-line unicorn/no-array-sort -- toSorted is not in the build lib target
+						for (const resource of [...job.resources].sort()) {
+							// eslint-disable-next-line no-await-in-loop
+							releases.push(await lock(resource, job.controller.signal));
+						}
+					}
+					await job.run(job.controller.signal);
+				} finally {
+					// oxlint-disable-next-line unicorn/no-array-reverse -- toReversed is not in the build lib target
+					for (const release of releases.reverse()) release();
+				}
+			})()
 				.catch((error: unknown) => {
 					const message = error instanceof Error ? error.message : String(error);
 					log.general.error({kind: job.kind, project: job.project, error}, "Background job failed");
@@ -391,6 +420,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		},
 		setProbe: (nextProbe) => {
 			probe = nextProbe;
+		},
+		setResourceLock: (nextLock) => {
+			resourceLock = nextLock;
 		},
 		getState,
 		onStateChange: (listener) => {

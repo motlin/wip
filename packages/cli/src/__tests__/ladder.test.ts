@@ -8,6 +8,7 @@ vi.mock("@wip/shared", () => ({
 	getProjectsDirs: vi.fn<Shared["getProjectsDirs"]>((flag?: string) => [flag ?? "/tmp/fake-projects"]),
 	discoverAllProjects: vi.fn<Shared["discoverAllProjects"]>(),
 	createSystemProbe: vi.fn<Shared["createSystemProbe"]>(() => ({loadPerCore: () => 0, freeMemRatio: () => 1})),
+	createRepoResourceLock: vi.fn<Shared["createRepoResourceLock"]>(() => async () => Promise.resolve(() => {})),
 	matchesFilters: vi.fn<Shared["matchesFilters"]>(() => true),
 	runLadderAcrossProjects: vi.fn<Shared["runLadderAcrossProjects"]>(),
 	ladderResultsToTree: vi.fn<Shared["ladderResultsToTree"]>(),

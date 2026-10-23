@@ -1,7 +1,7 @@
 import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";
 import {runAdvanceUnits} from "./advance-queue.js";
 import {createSystemProbe} from "./system-probe.js";
-import type {WorkResourceProbe} from "./work-queue.js";
+import type {ResourceLock, WorkResourceProbe} from "./work-queue.js";
 import {RunMemory, normalizeFailureSignature, type UnitRef} from "./advance-progress.js";
 import {type NodeStatus, type ReportNode} from "./advance-report.js";
 import {tracedExeca} from "../services/traced-execa.js";
@@ -54,6 +54,8 @@ export interface AdvanceProjectOptions {
 	memFloor?: number;
 	maxAttemptsPerUnit?: number;
 	probe?: WorkResourceProbe;
+	/** Cross-process repo lock; applied only when perRepoConcurrency is 1 (the lock is exclusive). */
+	resourceLock?: ResourceLock;
 	onEvent?: (event: AdvanceEvent) => void;
 }
 
@@ -298,6 +300,7 @@ export async function advanceProject(
 			memFloor: options.memFloor ?? 0.1,
 			perRepoConcurrency: () => perRepo,
 			probe: options.probe ?? createSystemProbe(),
+			...(options.resourceLock && perRepo <= 1 ? {resourceLock: options.resourceLock} : {}),
 		},
 	);
 

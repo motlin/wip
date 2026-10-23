@@ -299,11 +299,13 @@ export {
 	type WorkJobErrorEvent,
 	type WorkJobSummary,
 	type WorkPriority,
+	type ResourceLock,
 	type WorkQueue,
 	type WorkQueueOptions,
 	type WorkQueueState,
 	type WorkResourceProbe,
 } from "./lib/work-queue.js";
+export {createRepoResourceLock, isPidAlive, type RepoResourceLockOptions} from "./lib/repo-lock.js";
 export {
 	type Inventory,
 	type InventoryDiff,

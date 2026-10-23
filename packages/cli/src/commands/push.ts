@@ -2,6 +2,7 @@ import {Args, Command, Flags} from "@oclif/core";
 import chalk from "chalk";
 import {execa} from "execa";
 
+import {runInRepoQueue} from "../lib/repo-queue.js";
 import {discoverAllProjects, getChildCommits, getProjectsDirs, isDirty} from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 
@@ -99,7 +100,9 @@ export default class Push extends Command {
 
 				if (!child.branch) {
 					const branchStart = performance.now();
-					await execa("git", ["-C", p.dir, "branch", branchName, child.sha], {reject: false});
+					await runInRepoQueue(p.name, "branch", "git-write", async () =>
+						execa("git", ["-C", p.dir, "branch", branchName, child.sha], {reject: false}),
+					);
 					const branchDuration = Math.round(performance.now() - branchStart);
 					log.subprocess.debug(
 						{
@@ -112,12 +115,14 @@ export default class Push extends Command {
 				}
 
 				const pushStart = performance.now();
-				const pushResult = await execa(
-					"git",
-					["-C", p.dir, "push", "-u", p.upstreamRemote, `${child.sha}:refs/heads/${branchName}`],
-					{
-						reject: false,
-					},
+				const pushResult = await runInRepoQueue(p.name, "push", "git-write", async () =>
+					execa(
+						"git",
+						["-C", p.dir, "push", "-u", p.upstreamRemote, `${child.sha}:refs/heads/${branchName}`],
+						{
+							reject: false,
+						},
+					),
 				);
 				const pushDuration = Math.round(performance.now() - pushStart);
 				log.subprocess.debug(
@@ -140,7 +145,9 @@ export default class Push extends Command {
 					};
 
 					if (flags.pr) {
-						const prUrl = await this.createPR(p.dir, branchName, child, p.upstreamBranch);
+						const prUrl = await runInRepoQueue(p.name, "pr", "git-write", async () =>
+							this.createPR(p.dir, branchName, child, p.upstreamBranch),
+						);
 						if (prUrl) result.prUrl = prUrl;
 					}
 

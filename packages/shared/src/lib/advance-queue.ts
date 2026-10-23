@@ -8,7 +8,7 @@
  */
 
 import {runWorkGraph} from "./work-graph.js";
-import {createWorkQueue, type WorkResourceProbe} from "./work-queue.js";
+import {createWorkQueue, type ResourceLock, type WorkResourceProbe} from "./work-queue.js";
 
 export type UnitOutcome = "green" | "red" | "skipped";
 
@@ -24,6 +24,8 @@ export interface AdvanceQueueOptions {
 	memFloor: number;
 	perRepoConcurrency: (project: string) => number;
 	probe: WorkResourceProbe;
+	/** Cross-process repo lock; only valid when per-repo concurrency is 1 since the lock is exclusive. */
+	resourceLock?: ResourceLock;
 }
 
 const REPO_RESOURCE_PREFIX = "repo:";
@@ -50,6 +52,7 @@ export async function runAdvanceUnits(
 			return project === undefined ? 1 : options.perRepoConcurrency(project);
 		},
 		probe: options.probe,
+		resourceLock: options.resourceLock ?? null,
 		loadThreshold: options.loadThreshold,
 		memFloor: options.memFloor,
 	});

@@ -4,6 +4,7 @@ import chalk from "chalk";
 import {
 	advanceProject,
 	createGitActions,
+	createRepoResourceLock,
 	discoverAllProjects,
 	getProjectsDirs,
 	matchesFilters,
@@ -90,6 +91,7 @@ export default class Advance extends Command {
 				perRepoConcurrency: resolveAdvanceConcurrency(p.name, p.dir),
 				loadThreshold: Number.parseFloat(flags["load-threshold"]),
 				memFloor: Number.parseFloat(flags["mem-floor"]),
+				resourceLock: createRepoResourceLock(),
 				onEvent,
 			});
 			children.push(node);

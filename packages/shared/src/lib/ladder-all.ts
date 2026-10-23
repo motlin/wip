@@ -1,7 +1,7 @@
 import type {NodeStatus, ReportNode} from "./advance-report.js";
 import type {LadderResult} from "./ladder.js";
 import {runLadder, type LadderRunProject, type RunLadderOptions} from "./ladder-rungs.js";
-import {createWorkQueue, type WorkResourceProbe} from "./work-queue.js";
+import {createWorkQueue, type ResourceLock, type WorkResourceProbe} from "./work-queue.js";
 
 /**
  * Runs the ladder over many projects through a work queue of its own so projects proceed in bounded
@@ -20,6 +20,8 @@ export interface LadderAllProject {
 
 export interface LadderAllOptions {
 	probe: WorkResourceProbe;
+	/** Cross-process repo lock so the CLI and web server never ladder the same repo at once. */
+	resourceLock?: ResourceLock;
 	dryRun?: boolean;
 	globalConcurrency?: number;
 	loadThreshold?: number;
@@ -40,6 +42,7 @@ export async function runLadderAcrossProjects(
 		globalConcurrency: concurrency,
 		classCaps: {"git-write": concurrency},
 		probe: options.probe,
+		resourceLock: options.resourceLock ?? null,
 		...(options.loadThreshold === undefined ? {} : {loadThreshold: options.loadThreshold}),
 		...(options.memFloor === undefined ? {} : {memFloor: options.memFloor}),
 	});

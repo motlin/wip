@@ -2,6 +2,7 @@ import {Args, Command, Flags} from "@oclif/core";
 import chalk from "chalk";
 
 import {
+	createRepoResourceLock,
 	createSystemProbe,
 	discoverAllProjects,
 	getProjectsDirs,
@@ -68,6 +69,7 @@ export default class Ladder extends Command {
 		const dryRun = flags["dry-run"];
 		const results = await runLadderAcrossProjects(projects, {
 			probe: createSystemProbe(),
+			resourceLock: createRepoResourceLock(),
 			dryRun,
 			globalConcurrency: flags["global-concurrency"],
 			loadThreshold: Number.parseFloat(flags["load-threshold"]),

@@ -119,6 +119,7 @@ export {
 } from "./lib/advance-queue.js";
 export {
 	LADDER_RUNGS,
+	LadderResultSchema,
 	planLadder,
 	type LadderResult,
 	type LadderRung,

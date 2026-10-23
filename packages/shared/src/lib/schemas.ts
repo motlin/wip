@@ -491,7 +491,7 @@ export const RunClaudeCommandInputSchema = z.object({
 });
 export type RunClaudeCommandInput = z.infer<typeof RunClaudeCommandInputSchema>;
 
-export const TaskTypeSchema = z.enum(["test", "claude", "rebase", "push"]);
+export const TaskTypeSchema = z.enum(["test", "claude", "rebase", "push", "ladder"]);
 export type TaskType = z.infer<typeof TaskTypeSchema>;
 
 export const TaskQueueJobSchema = z.object({

@@ -44,6 +44,7 @@ const TASK_TYPE_ICONS: Record<TaskType, React.ReactElement> = {
 	claude: <Bot className="h-3.5 w-3.5 text-text-400" />,
 	rebase: <GitMerge className="h-3.5 w-3.5 text-text-400" />,
 	push: <ArrowRight className="h-3.5 w-3.5 text-text-400" />,
+	ladder: <GitMerge className="h-3.5 w-3.5 text-text-400" />,
 };
 
 function taskTypeIcon(taskType: TaskType) {
@@ -55,6 +56,7 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
 	claude: "Claude",
 	rebase: "Rebase",
 	push: "Push",
+	ladder: "Ladder",
 };
 
 function taskTypeLabel(taskType: TaskType): string {

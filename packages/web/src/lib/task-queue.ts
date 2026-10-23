@@ -9,9 +9,13 @@ import {
 	loadRecentTaskRecords,
 	rebaseBranchOntoUpstream,
 	recordTestResult,
+	runLadder,
 	upsertTaskRecord,
 	TaskTypeSchema,
+	LadderResultSchema,
 	type CostClass,
+	type LadderResult,
+	type RunLadderOptions,
 	type TaskType,
 	type TransitionOutcome,
 	type Transition,
@@ -51,9 +55,22 @@ export interface Task {
 	message?: string;
 	outcome?: TransitionOutcome;
 	compareUrl?: string;
+	/** Ladder tasks: the typed result, persisted as JSON in the task record's outcome column. */
+	ladderResult?: LadderResult;
+	ladderProject?: LadderTaskProject;
+	/** Ladder tasks: override the rung implementations (tests). */
+	ladderRunners?: RunLadderOptions["runners"];
 	queuedAt: number;
 	startedAt?: number;
 	finishedAt?: number;
+}
+
+export interface LadderTaskProject {
+	upstreamRemote: string;
+	upstreamBranch: string;
+	dirty: boolean;
+	detached: boolean;
+	rebaseInProgress: boolean;
 }
 
 let nextId = 1;
@@ -83,11 +100,20 @@ function persistTask(task: Task): void {
 		project: task.project,
 		sha: task.sha,
 		status: task.status,
-		outcome: task.outcome ?? null,
+		outcome: task.ladderResult ? JSON.stringify(task.ladderResult) : (task.outcome ?? null),
 		createdAt: new Date(task.queuedAt).toISOString(),
 		finishedAt: task.finishedAt === undefined ? null : new Date(task.finishedAt).toISOString(),
 		error: task.message ?? null,
 	});
+}
+
+function parseLadderResult(outcome: string | null): LadderResult | undefined {
+	if (outcome === null) return undefined;
+	try {
+		return LadderResultSchema.parse(JSON.parse(outcome));
+	} catch {
+		return undefined;
+	}
 }
 
 // Only the persisted columns survive a restart, so reloaded tasks carry a
@@ -101,6 +127,7 @@ function loadPersistedTasks(): void {
 		if (!parsedType.success) continue;
 		const stale = record.status === "queued" || record.status === "running";
 		const shortSha = record.sha.slice(0, 7);
+		const ladderResult = parsedType.data === "ladder" ? parseLadderResult(record.outcome) : undefined;
 		const task: Task = {
 			id: record.id,
 			taskType: parsedType.data,
@@ -112,6 +139,7 @@ function loadPersistedTasks(): void {
 			status: stale ? "cancelled" : record.status,
 			message: stale ? `${shortSha} cancelled by server restart` : (record.error ?? undefined),
 			outcome: record.outcome === "conflicts" ? "conflicts" : undefined,
+			ladderResult,
 			queuedAt: Date.parse(record.createdAt),
 			finishedAt: record.finishedAt === null ? undefined : Date.parse(record.finishedAt),
 		};
@@ -175,6 +203,7 @@ export function statusToTransition(
 				return undefined;
 		}
 	}
+	if (taskType === "ladder") return undefined;
 	if (taskType === "rebase") {
 		switch (status) {
 			case "queued":
@@ -237,6 +266,8 @@ async function runTask(task: Task, signal: AbortSignal): Promise<void> {
 			return runRebaseTask(task, signal);
 		case "push":
 			return runPushTask(task, signal);
+		case "ladder":
+			return runLadderTask(task, signal);
 		default: {
 			const unhandled: never = task.taskType;
 			throw new Error(`Task type "${String(unhandled)}" is not yet implemented`);
@@ -422,6 +453,36 @@ async function runRebaseTask(task: Task, signal: AbortSignal): Promise<void> {
 	finish("passed", result.message);
 }
 
+async function runLadderTask(task: Task, signal: AbortSignal): Promise<void> {
+	const info = task.ladderProject;
+	if (!info) throw new Error("Ladder task requires project info");
+	const result = await runLadder(
+		{
+			name: task.project,
+			path: task.projectDir,
+			upstreamRemote: info.upstreamRemote,
+			upstreamBranch: info.upstreamBranch,
+			dirty: info.dirty,
+			detached: info.detached,
+			rebaseInProgress: info.rebaseInProgress,
+			offline: false,
+		},
+		{signal, runners: task.ladderRunners},
+	);
+	if (signal.aborted || task.status === "cancelled") return;
+	task.ladderResult = result;
+	task.finishedAt = Date.now();
+	if (result.stop) {
+		const branches = result.stop.branches.length > 0 ? ` (${result.stop.branches.join(", ")})` : "";
+		task.status = "failed";
+		task.message = `stopped: ${result.stop.stop}${branches}`;
+	} else {
+		task.status = "passed";
+		task.message = `${result.rungs.length} rung(s) passed`;
+	}
+	emit(task);
+}
+
 async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.branch) throw new Error("Push task requires a branch");
 	if (!task.upstreamRemote) throw new Error("Push task requires upstreamRemote");
@@ -471,6 +532,7 @@ const TASK_STAGE: Record<TaskType, Category> = {
 	test: "ready_to_test",
 	rebase: "needs_rebase",
 	claude: "ready_to_test",
+	ladder: "needs_rebase",
 };
 
 const TASK_COST_CLASS: Record<TaskType, CostClass> = {
@@ -478,6 +540,7 @@ const TASK_COST_CLASS: Record<TaskType, CostClass> = {
 	claude: "ai",
 	rebase: "git-write",
 	push: "git-write",
+	ladder: "git-write",
 };
 
 function registerTask(task: Task): Task {
@@ -497,8 +560,8 @@ function registerTask(task: Task): Task {
 		project: task.project,
 		costClass: TASK_COST_CLASS[task.taskType],
 		rank: stageRank(TASK_STAGE[task.taskType]),
-		// Tasks are user clicks; they jump ahead of queued background refreshes.
-		priority: "foreground",
+		// Tasks are user clicks and jump ahead of queued background refreshes; ladder sweeps stay background.
+		priority: task.taskType === "ladder" ? "background" : "foreground",
 		run: async (signal) => {
 			if (task.status === "cancelled") return;
 			task.status = "running";
@@ -623,6 +686,52 @@ export function enqueueRebase(opts: EnqueueRebaseOptions): Task {
 		status: "queued",
 		queuedAt: Date.now(),
 	});
+}
+
+export interface EnqueueLadderOptions extends LadderTaskProject {
+	project: string;
+	projectDir: string;
+	runners?: RunLadderOptions["runners"];
+}
+
+export function enqueueLadder(opts: EnqueueLadderOptions): Task {
+	ensureLoaded();
+	const existing = findTask("", opts.project, "ladder");
+	if (existing && (existing.status === "queued" || existing.status === "running")) {
+		return existing;
+	}
+
+	return registerTask({
+		id: String(nextId++),
+		taskType: "ladder",
+		project: opts.project,
+		projectDir: opts.projectDir,
+		sha: "",
+		shortSha: "",
+		subject: "ladder",
+		ladderProject: {
+			upstreamRemote: opts.upstreamRemote,
+			upstreamBranch: opts.upstreamBranch,
+			dirty: opts.dirty,
+			detached: opts.detached,
+			rebaseInProgress: opts.rebaseInProgress,
+		},
+		ladderRunners: opts.runners,
+		status: "queued",
+		queuedAt: Date.now(),
+	});
+}
+
+/** The most recent finished ladder result per project, including ones reloaded from the database. */
+export function getLatestLadderResults(): LadderResult[] {
+	ensureLoaded();
+	const latest = new Map<string, Task>();
+	for (const task of tasks.values()) {
+		if (task.taskType !== "ladder" || !task.ladderResult) continue;
+		const current = latest.get(task.project);
+		if (!current || (task.finishedAt ?? 0) >= (current.finishedAt ?? 0)) latest.set(task.project, task);
+	}
+	return [...latest.values()].flatMap((t) => (t.ladderResult ? [t.ladderResult] : []));
 }
 
 function findTask(sha: string, project: string, taskType?: TaskType): Task | undefined {

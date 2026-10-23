@@ -35,7 +35,9 @@ import {
 	getGitHubRateLimitState,
 	getCachedTodos,
 	cacheTodos,
+	type LadderResult,
 	type ProjectInfo,
+	type RunLadderOptions,
 	type GitChildResult,
 	type TodoItem as SharedTodoItem,
 	type IssueResult,
@@ -1266,6 +1268,43 @@ export async function runAllCountsHandler(): Promise<RunAllCounts> {
 			planRebaseAll(readCachedChildren),
 		]);
 		return {readyToTest: tests.length, needsRebase: rebases.length};
+	});
+}
+
+export interface RunLadderAllOptions {
+	/** Override the rung implementations (tests). */
+	runners?: RunLadderOptions["runners"];
+}
+
+/**
+ * Enqueues one background ladder job per registered project on the shared work queue. Each job
+ * records its typed result as a task_records row of kind "ladder", so it survives a restart.
+ */
+export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Promise<TestJobStatus[]> {
+	return traced("runLadderAll", async () => {
+		const {enqueueLadder} = await import("./task-queue.js");
+		const projects = await ensureProjects();
+		return projects.map((p) => {
+			const task = enqueueLadder({
+				project: p.name,
+				projectDir: p.dir,
+				upstreamRemote: p.upstreamRemote,
+				upstreamBranch: p.upstreamBranch,
+				dirty: p.dirty,
+				detached: p.detachedHead,
+				rebaseInProgress: p.rebaseInProgress,
+				runners: options.runners,
+			});
+			return {id: task.id, status: task.status, message: task.message};
+		});
+	});
+}
+
+/** The latest persisted ladder result per project. */
+export async function getLadderResultsHandler(): Promise<LadderResult[]> {
+	return traced("getLadderResults", async () => {
+		const {getLatestLadderResults} = await import("./task-queue.js");
+		return getLatestLadderResults();
 	});
 }
 

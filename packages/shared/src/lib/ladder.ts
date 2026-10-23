@@ -3,6 +3,8 @@
  * Client-safe: types and pure logic only, no node builtins.
  */
 
+import {z} from "zod";
+
 export type LadderRungName = "fetch" | "replay" | "rebase-leftovers" | "worktree-prune" | "delete-merged-local";
 
 export type LadderCost = "cheap" | "network" | "expensive";
@@ -60,3 +62,23 @@ export function planLadder(info: LadderProjectInfo): LadderRung[] {
 		return true;
 	});
 }
+
+const LadderRungNameSchema = z.enum(["fetch", "replay", "rebase-leftovers", "worktree-prune", "delete-merged-local"]);
+
+/** Validates a persisted ladder result. */
+export const LadderResultSchema = z.object({
+	project: z.string(),
+	rungs: z.array(
+		z.object({
+			rung: LadderRungNameSchema,
+			status: z.enum(["passed", "skipped", "stopped"]),
+			detail: z.string(),
+		}),
+	),
+	stop: z
+		.object({
+			stop: z.enum(["conflict", "dirty", "detached", "rebase-in-progress", "offline", "error"]),
+			branches: z.array(z.string()),
+		})
+		.optional(),
+});

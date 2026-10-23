@@ -17,12 +17,13 @@ import {
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {
+	drainBackgroundEnqueues,
 	getManagedFailedBaseBranches,
 	launchBackgroundEnqueue,
 	seedProjectCache,
 	resetProjectCache,
 } from "./server-fns.impl.js";
-import {enqueueRefresh, onRefreshError} from "./refresh-scheduler.js";
+import {enqueueRefresh, onRefreshError, resetScheduler} from "./refresh-scheduler.js";
 import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
 import {repoResource} from "./repo-resource.js";
@@ -174,6 +175,8 @@ async function createBareRemote(prefix = "wip-remote-"): Promise<string> {
 
 let pollyStop: (() => Promise<void>) | undefined;
 
+const leakedWork = {refreshSettled: false, enqueueSettled: false};
+
 beforeEach(() => {
 	initDb(":memory:");
 	setGitHubClient(createTestClient());
@@ -184,9 +187,13 @@ afterEach(async () => {
 		await pollyStop();
 		pollyStop = undefined;
 	}
+	// Settle every background job before the DB goes away: a job still running after resetDb()
+	// would reopen the real on-disk database and make the next test's initDb() throw.
+	await drainBackgroundEnqueues();
+	await resetQueue();
+	await resetScheduler();
 	resetGitHubClient();
 	resetProjectCache();
-	await resetQueue();
 	resetDb();
 
 	// Clean up temporary git repos
@@ -235,6 +242,34 @@ describe("server-fns test harness", () => {
 		});
 		const json = await response.json();
 		expect(json).toStrictEqual({data: {viewer: {login: "test-user"}}});
+	});
+
+	// These two run in order: the first leaves a refresh job and a background enqueue in flight,
+	// the second checks that teardown waited for both before resetting the database.
+	it("leaves background work in flight for teardown to drain", () => {
+		leakedWork.refreshSettled = false;
+		leakedWork.enqueueSettled = false;
+		enqueueRefresh({
+			kind: "children",
+			project: "teardown-drain",
+			run: async () => {
+				await new Promise((resolve) => {
+					setTimeout(resolve, 50);
+				});
+				leakedWork.refreshSettled = true;
+			},
+		});
+		launchBackgroundEnqueue("teardownDrain", async () => {
+			await new Promise((resolve) => {
+				setTimeout(resolve, 50);
+			});
+			leakedWork.enqueueSettled = true;
+		});
+		expect(leakedWork).toStrictEqual({refreshSettled: false, enqueueSettled: false});
+	});
+
+	it("drains background work before the next test starts", () => {
+		expect(leakedWork).toStrictEqual({refreshSettled: true, enqueueSettled: true});
 	});
 
 	it("sets up the test GitHubClient without auth", () => {

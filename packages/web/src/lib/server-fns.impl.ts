@@ -699,6 +699,15 @@ export function launchBackgroundEnqueue(name: string, run: () => Promise<unknown
 	backgroundEnqueues.add(promise);
 }
 
+/** Test-only: wait until every launchBackgroundEnqueue routine, including ones launched meanwhile, has settled. */
+export async function drainBackgroundEnqueues(): Promise<void> {
+	while (backgroundEnqueues.size > 0) {
+		// Sequential on purpose: a draining routine can launch another, so re-check after each wait
+		// eslint-disable-next-line no-await-in-loop
+		await Promise.allSettled(backgroundEnqueues);
+	}
+}
+
 interface PlannedTest {
 	project: string;
 	projectDir: string;

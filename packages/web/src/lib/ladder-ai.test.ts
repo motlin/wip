@@ -60,6 +60,8 @@ function makeAi(available: boolean): {
 				return Promise.resolve(available);
 			},
 			overrides: {
+				prepare: async (project) =>
+					Promise.resolve({cwd: project.path, conflicted: true, finish: async () => Promise.resolve(true)}),
 				launch: async (request) => {
 					spies.launches.push(request);
 					const n = spies.launches.length;

@@ -60,6 +60,15 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 			calls.resultsCalls.push({project: p.name, branch});
 			return Promise.resolve("green");
 		},
+		prepare: async (p) =>
+			Promise.resolve({
+				cwd: p.path,
+				conflicted: true,
+				finish: async () => {
+					calls.order.push("finish");
+					return Promise.resolve(true);
+				},
+			}),
 		timeoutMs: 1234,
 		...overrides,
 	};
@@ -67,27 +76,22 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 }
 
 describe("runAiConflictRung", () => {
-	it("launches claude /git:conflicts in a labelled herdr tab, waits, then re-runs the ladder", async () => {
+	it("launches one agent per branch in its own worktree, cleaning up each, then re-runs the ladder", async () => {
 		const {deps, calls} = makeDeps();
 		const result = await runAiConflictRung(project, stop, deps);
 		expect(result).toEqual(clean);
 		expect(calls.launches).toEqual([
-			{
-				cwd: "/tmp/demo",
-				label: "wip:demo:conflicts",
-				command: `claude "/git:conflicts feat-a feat-b"`,
-				focus: false,
-			},
+			{cwd: "/tmp/demo", label: "wip:demo:conflicts", command: `claude "/git:conflicts feat-a"`, focus: false},
+			{cwd: "/tmp/demo", label: "wip:demo:conflicts", command: `claude "/git:conflicts feat-b"`, focus: false},
 		]);
-		expect(calls.waits).toEqual([{paneId: "p1", timeoutMs: 1234}]);
-		expect(calls.order).toEqual(["launch", "wait", "rerun"]);
+		expect(calls.order).toEqual(["launch", "wait", "finish", "launch", "wait", "finish", "rerun"]);
 	});
 
 	it("returns stuck when the same branch conflicts again after the AI ran", async () => {
 		const {deps, calls} = makeDeps({rerun: async () => Promise.resolve(conflicted(["feat-b", "other"]))});
 		const result = await runAiConflictRung(project, stop, deps);
 		expect(result).toBe("stuck");
-		expect(calls.launches).toHaveLength(1);
+		expect(calls.launches).toHaveLength(2);
 	});
 
 	it("returns the new result when a different branch conflicts", async () => {
@@ -100,6 +104,7 @@ describe("runAiConflictRung", () => {
 		const {deps, calls} = makeDeps({wait: async () => Promise.resolve("timeout")});
 		expect(await runAiConflictRung(project, stop, deps)).toBe("stuck");
 		expect(calls.reruns).toBe(0);
+		expect(calls.order).toEqual(["launch", "finish"]);
 	});
 
 	it("returns stuck when herdr cannot launch the tab", async () => {

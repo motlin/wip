@@ -5,7 +5,7 @@ import * as path from "node:path";
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 import {initDb, resetDb, type LadderResult, type ProjectInfo} from "@wip/shared";
 
-import type {AiRungDeps} from "./herdr/ai-rungs.js";
+import {runAiConflictRung, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
 import {getAllTasks, getLatestLadderResults, resetQueue} from "./task-queue.js";
 
@@ -101,26 +101,27 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 	it("replays the clean branch, hands the conflict to the AI job once, and ends green without touching the remote", async () => {
 		const remoteBefore = remoteRefs(origin);
 		const launches: {cwd: string; label: string; command: string}[] = [];
-		const stateAtLaunch: {conflicting: string; clean: string}[] = [];
+		const stateAtLaunch: {conflicting: string; clean: string; mainHead: string; mainStatus: string}[] = [];
+		const mainHeadBefore = git(clone, "rev-parse", "HEAD");
+		const mainStatusBefore = git(clone, "status", "--porcelain");
 		const overrides: Partial<AiRungDeps> = {
 			launch: async (request) => {
 				launches.push(request);
 				stateAtLaunch.push({
 					conflicting: git(clone, "rev-parse", "conflicting"),
 					clean: git(clone, "rev-parse", "clean~1"),
+					mainHead: git(clone, "rev-parse", "HEAD"),
+					mainStatus: git(clone, "status", "--porcelain"),
 				});
 				return Promise.resolve({ok: true, value: {tabId: "tab-1", paneId: "pane-1"}});
 			},
 			// The fake agent: resolve the rebase conflict with scripted git commands, then report done.
 			wait: async () => {
-				git(clone, "checkout", "-q", "conflicting");
-				try {
-					git(clone, "rebase", "upstream/main");
-				} catch {
-					fs.writeFileSync(path.join(clone, "shared.txt"), "two\nmine\n");
-					git(clone, "add", "shared.txt");
-					git(clone, "rebase", "--continue");
-				}
+				const wt = launches[0]?.cwd ?? "";
+				// The rebase is already stopped on the conflict in the throwaway worktree.
+				fs.writeFileSync(path.join(wt, "shared.txt"), "two\nmine\n");
+				git(wt, "add", "shared.txt");
+				git(wt, "rebase", "--continue");
 				return Promise.resolve("done");
 			},
 		};
@@ -143,12 +144,29 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		const upstream = git(clone, "rev-parse", "upstream/main");
 
 		// The clean branch was replayed before the ladder stopped on the conflict.
-		expect(stateAtLaunch).toStrictEqual([{conflicting: stateAtLaunch[0]?.conflicting, clean: upstream}]);
+		expect(stateAtLaunch).toStrictEqual([
+			{
+				conflicting: stateAtLaunch[0]?.conflicting,
+				clean: upstream,
+				mainHead: mainHeadBefore,
+				mainStatus: mainStatusBefore,
+			},
+		]);
 		expect(stateAtLaunch[0]?.conflicting).not.toBe(upstream);
 		// Exactly one AI job, for the conflicting branch only.
 		expect(launches).toStrictEqual([
-			{cwd: clone, label: "wip:clone:conflicts", command: 'claude "/git:conflicts conflicting"', focus: false},
+			{
+				cwd: launches[0]?.cwd ?? "",
+				label: "wip:clone:conflicts",
+				command: 'claude "/git:conflicts conflicting"',
+				focus: false,
+			},
 		]);
+		// The agent ran in a throwaway worktree under the cache dir, not the main checkout, and it is gone.
+		expect(launches[0]?.cwd.startsWith(path.join(root, "cache"))).toBe(true);
+		expect(fs.existsSync(launches[0]?.cwd ?? "")).toBe(false);
+		expect(git(clone, "rev-parse", "HEAD")).toBe(mainHeadBefore);
+		expect(git(clone, "status", "--porcelain")).toBe(mainStatusBefore);
 		// After the fake agent finished, the repo is rebased and the final result is green.
 		expect(git(clone, "rev-parse", "conflicting~1")).toBe(upstream);
 		expect(result?.stop).toBeUndefined();
@@ -161,5 +179,41 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		expect(fs.readdirSync(root).toSorted()).toStrictEqual(
 			["cache", "clone", "config", "origin.git", "seed"].filter((n) => fs.existsSync(path.join(root, n))),
 		);
+	}, 60_000);
+
+	it("leaves every ref unchanged and removes the worktree when the agent leaves the rebase unfinished", async () => {
+		git(clone, "fetch", "-q", "upstream");
+		const refsBefore = git(clone, "for-each-ref", "--format=%(refname) %(objectname)");
+		const launches: {cwd: string}[] = [];
+		const overrides: Partial<AiRungDeps> = {
+			launch: async (request) => {
+				launches.push(request);
+				return Promise.resolve({ok: true, value: {tabId: "tab-1", paneId: "pane-1"}});
+			},
+			wait: async () => Promise.resolve("done"),
+			// The cheap rungs would legitimately rebase "clean"; isolate the AI rung's own effect.
+			rerun: async () => Promise.resolve({project: "clone", rungs: []}),
+		};
+		const project = {
+			name: "clone",
+			path: clone,
+			upstreamRemote: "upstream",
+			upstreamBranch: "main",
+			dirty: false,
+			detached: false,
+			rebaseInProgress: false,
+			offline: false,
+		};
+		const outcome = await runAiConflictRung(project, {stop: "conflict", branches: ["conflicting"]}, overrides);
+
+		expect(outcome).toBe("stuck");
+		expect(launches).toHaveLength(1);
+		expect(fs.existsSync(launches[0]?.cwd ?? "")).toBe(false);
+		expect(
+			git(clone, "worktree", "list", "--porcelain")
+				.split("\n")
+				.filter((l) => l.startsWith("worktree ")),
+		).toHaveLength(1);
+		expect(git(clone, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(refsBefore);
 	}, 60_000);
 });

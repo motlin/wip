@@ -1,5 +1,8 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
 	getAiRungTimeoutMs,
+	getCacheDir,
 	runLadder,
 	runReplayRung,
 	runRebaseLeftoversRung,
@@ -29,8 +32,59 @@ export interface AiRungDeps {
 	/** Reads the stored `git test` results for a branch after the agent finished. */
 	results: (project: LadderRunProject, branch: string) => Promise<"green" | "red">;
 	timeoutMs: number;
+	/** Creates the throwaway worktree with the rebase stopped on its conflict; null when it cannot. */
+	prepare: (project: LadderRunProject, branch: string) => Promise<PreparedConflictWorktree | null>;
 	/** Called with the herdr tab and pane once the agent tab is launched. */
 	onLaunched?: (launched: HerdrLaunchResult) => void;
+}
+
+export interface PreparedConflictWorktree {
+	/** Worktree directory holding the stopped rebase; the agent's cwd. */
+	cwd: string;
+	/** False when the rebase finished without conflict, so no agent is needed. */
+	conflicted: boolean;
+	/** Aborts an unfinished rebase, detaches, removes the worktree (never --force); false when the rebase was unfinished. */
+	finish: () => Promise<boolean>;
+}
+
+async function git(dir: string, args: string[]) {
+	return tracedExeca("git", ["-C", dir, ...args], {reject: false});
+}
+
+/**
+ * Starts `git rebase --rebase-merges --update-refs <upstream> <branch>` in a throwaway worktree under
+ * the wip cache dir and leaves it stopped on the conflict. The branch ref only moves if the rebase
+ * completes; the main checkout is never touched.
+ */
+async function prepareConflictWorktree(
+	project: LadderRunProject,
+	branch: string,
+): Promise<PreparedConflictWorktree | null> {
+	const base = path.join(getCacheDir(), "conflict-worktrees", project.name);
+	fs.mkdirSync(base, {recursive: true});
+	const dir = fs.mkdtempSync(path.join(base, "wt-"));
+	const added = await git(project.path, ["worktree", "add", "--detach", dir, branch]);
+	if (added.exitCode !== 0) {
+		fs.rmSync(dir, {recursive: true, force: true});
+		return null;
+	}
+	const upstream = `${project.upstreamRemote}/${project.upstreamBranch}`;
+	const rebase = await git(dir, ["rebase", "--rebase-merges", "--update-refs", upstream, branch]);
+	const finish = async (): Promise<boolean> => {
+		const inProgress = await Promise.all(
+			["rebase-merge", "rebase-apply"].map(async (name) => {
+				const out = await git(dir, ["rev-parse", "--git-path", name]);
+				return fs.existsSync(path.resolve(dir, out.stdout.trim()));
+			}),
+		);
+		const unfinished = inProgress.some(Boolean);
+		if (unfinished) await git(dir, ["rebase", "--abort"]);
+		await git(dir, ["checkout", "--detach", "-q"]);
+		await git(project.path, ["worktree", "remove", dir]);
+		await git(project.path, ["worktree", "prune"]);
+		return !unfinished;
+	};
+	return {cwd: dir, conflicted: rebase.exitCode !== 0, finish};
 }
 
 const noop = async (project: {name: string}): Promise<LadderResult> =>
@@ -83,6 +137,7 @@ export async function runAiConflictRung(
 		wait: waitForHerdrAgent,
 		rerun: defaultRerun,
 		results: defaultResults,
+		prepare: prepareConflictWorktree,
 		timeoutMs: getAiRungTimeoutMs(),
 		...overrides,
 	};
@@ -95,17 +150,30 @@ export async function runAiConflictRung(
 		project: project.name,
 		costClass: "ai",
 		run: async (signal) => {
-			const prompt = ["/git:conflicts", ...stop.branches].join(" ");
-			const launched = await deps.launch({
-				cwd: project.path,
-				label: `wip:${project.name}:conflicts`,
-				command: `claude ${shellQuote(prompt)}`,
-				focus: false,
-			});
-			if (!launched.ok) return;
-			deps.onLaunched?.(launched.value);
-			const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
-			if (waited !== "done") return;
+			// One branch per launch, each in its own throwaway worktree stopped on the rebase conflict.
+			/* oxlint-disable no-await-in-loop -- one agent at a time per project */
+			for (const branch of stop.branches) {
+				const prepared = await deps.prepare(project, branch);
+				if (!prepared) return;
+				let completed = true;
+				try {
+					if (!prepared.conflicted) continue;
+					const launched = await deps.launch({
+						cwd: prepared.cwd,
+						label: `wip:${project.name}:conflicts`,
+						command: `claude ${shellQuote(`/git:conflicts ${branch}`)}`,
+						focus: false,
+					});
+					if (!launched.ok) return;
+					deps.onLaunched?.(launched.value);
+					const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
+					if (waited !== "done") return;
+				} finally {
+					completed = await prepared.finish();
+				}
+				if (!completed) return;
+			}
+			/* oxlint-enable no-await-in-loop */
 			const next = await deps.rerun(project, signal);
 			const again = next.stop?.stop === "conflict" && next.stop.branches.some((b) => stop.branches.includes(b));
 			outcome = again ? "stuck" : next;
@@ -131,6 +199,7 @@ export async function runAiTestFixRung(
 		wait: waitForHerdrAgent,
 		rerun: defaultRerun,
 		results: defaultResults,
+		prepare: prepareConflictWorktree,
 		timeoutMs: getAiRungTimeoutMs(),
 		...overrides,
 	};

@@ -26,6 +26,7 @@ describe("wip inventory check", () => {
 	let tmp: string;
 	let projectsDir: string;
 	let originalXdg: string | undefined;
+	let stdout: string[];
 
 	beforeEach(() => {
 		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wip-inv-check-"));
@@ -33,12 +34,16 @@ describe("wip inventory check", () => {
 		process.env.XDG_CONFIG_HOME = path.join(tmp, "config");
 		projectsDir = path.join(tmp, "projects");
 		fs.mkdirSync(projectsDir, {recursive: true});
-		vi.spyOn(console, "log").mockImplementation(() => {});
+		stdout = [];
+		vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+			stdout.push(`${String(line)}\n`);
+		});
 		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		process.exitCode = undefined;
 		if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
 		else process.env.XDG_CONFIG_HOME = originalXdg;
 		fs.rmSync(tmp, {recursive: true, force: true});
@@ -74,8 +79,67 @@ describe("wip inventory check", () => {
 			record("plain"),
 			record("absent-skip", "skip"),
 		]);
-		const {result, exitCode} = await runCheck(["--projects-dir", projectsDir, "--json"]);
+		const {result, exitCode} = await runCheck(["--projects-dir", projectsDir]);
 		expect(exitCode).toBe(1);
 		expect(result).toBeUndefined();
+	});
+
+	it("accepts nested entries inside a parent repo and reports the unregistered parent", async () => {
+		const parent = makeRepo("quarto");
+		fs.mkdirSync(path.join(parent, "solver"));
+		fs.mkdirSync(path.join(parent, "web"));
+		const deep = path.join(parent, "archetype", "src", "main", "resources");
+		fs.mkdirSync(deep, {recursive: true});
+		saveInventory([
+			record("quarto/solver", "nested"),
+			record("quarto/web", "nested"),
+			{
+				name: "quarto/archetype/src/main/resources",
+				dir: deep,
+				template: "java",
+				kind: "nested",
+			},
+		]);
+		const {result} = await runCheck(["--projects-dir", projectsDir]);
+		expect(result).toBeUndefined();
+		expect(stdout.join("")).toBe(`unregistered: ${parent}\n`);
+	});
+
+	it("reports a nested entry outside any git repo as not a git repo", async () => {
+		fs.mkdirSync(path.join(projectsDir, "loose", "child"), {recursive: true});
+		saveInventory([record("loose/child", "nested")]);
+		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
+		expect(JSON.parse(stdout.join(""))).toEqual({
+			consistent: false,
+			unregistered: [],
+			missing: [{name: "loose/child", dir: path.join(projectsDir, "loose", "child"), reason: "not-a-git-repo"}],
+			skippedButPresent: [],
+		});
+	});
+
+	it("reports a registered file as not a git repo and ignores unregistered files", async () => {
+		fs.writeFileSync(path.join(projectsDir, "Brewfile"), "brew 'git'\n");
+		fs.writeFileSync(path.join(projectsDir, "notes.txt"), "notes\n");
+		saveInventory([record("Brewfile")]);
+		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
+		expect(JSON.parse(stdout.join(""))).toEqual({
+			consistent: false,
+			unregistered: [],
+			missing: [{name: "Brewfile", dir: path.join(projectsDir, "Brewfile"), reason: "not-a-git-repo"}],
+			skippedButPresent: [],
+		});
+	});
+
+	it("prints exactly one JSON document and exits 1 when inconsistent with --json", async () => {
+		makeRepo("stray");
+		saveInventory([record("gone")]);
+		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
+		expect(process.exitCode).toBe(1);
+		expect(JSON.parse(stdout.join(""))).toEqual({
+			consistent: false,
+			unregistered: [path.join(projectsDir, "stray")],
+			missing: [{name: "gone", dir: path.join(projectsDir, "gone"), reason: "missing"}],
+			skippedButPresent: [],
+		});
 	});
 });

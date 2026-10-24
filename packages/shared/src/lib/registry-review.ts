@@ -27,6 +27,14 @@ function gitEntry(dir: string): fs.Stats | undefined {
 	return fs.statSync(path.join(dir, ".git"), {throwIfNoEntry: false});
 }
 
+/** Whether dir or one of its ancestors is a git repo, so a nested entry can live inside its parent repo. */
+function insideGitRepo(dir: string): boolean {
+	for (let current = dir; ; current = path.dirname(current)) {
+		if (gitEntry(current) !== undefined) return true;
+		if (path.dirname(current) === current) return false;
+	}
+}
+
 function listGitRepos(projectsDir: string): string[] {
 	if (!fs.existsSync(projectsDir)) return [];
 	return fs
@@ -49,7 +57,10 @@ export function checkInventory(projects: ProjectRecord[], projectsDirs: string[]
 		if (!fs.existsSync(dir)) {
 			// A skipped entry is allowed to be absent.
 			if (project.kind !== "skip") missing.push({name, dir, reason: "missing"});
-		} else if (gitEntry(dir) === undefined) {
+		} else if (
+			!fs.statSync(dir).isDirectory() ||
+			(project.kind === "nested" ? !insideGitRepo(dir) : gitEntry(dir) === undefined)
+		) {
 			if (project.kind !== "skip") missing.push({name, dir, reason: "not-a-git-repo"});
 		} else if (project.kind === "skip") {
 			skippedButPresent.push({name, dir});

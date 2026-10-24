@@ -26,10 +26,14 @@ export default class InventoryCheck extends Command {
 			this.log("Registry and disk are consistent");
 			return result;
 		}
+		if (this.jsonEnabled()) {
+			// oclif prints the returned result; exiting via this.exit would print a second, error document.
+			process.exitCode = 1;
+			return result;
+		}
 		for (const dir of result.unregistered) this.log(`unregistered: ${dir}`);
 		for (const entry of result.missing) this.log(`${entry.reason}: ${entry.name} (${entry.dir})`);
 		for (const entry of result.skippedButPresent) this.log(`skip but present: ${entry.name} (${entry.dir})`);
-		this.logJson(result);
 		return this.exit(1);
 	}
 }

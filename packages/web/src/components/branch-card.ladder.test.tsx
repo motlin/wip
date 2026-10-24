@@ -19,6 +19,7 @@ vi.mock("../lib/server-events-context.js", () => ({
 vi.mock("./commit-actions.js", () => ({BranchActions: () => <span />}));
 
 import {BranchCard} from "./branch-card.js";
+import {LadderResultsProvider} from "../lib/ladder-results-context.js";
 
 const result: LadderResult = {
 	project: "beta",
@@ -43,7 +44,9 @@ function renderCard(name: string) {
 	client.setQueryData(["ladderResults"], [result]);
 	return render(
 		<QueryClientProvider client={client}>
-			<BranchCard branch={branch(name)} category="untriaged" />
+			<LadderResultsProvider>
+				<BranchCard branch={branch(name)} category="untriaged" />
+			</LadderResultsProvider>
 		</QueryClientProvider>,
 	);
 }

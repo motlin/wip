@@ -18,6 +18,7 @@ import {
 	getInventoryStatus,
 	getLadderResults,
 } from "./server-fns.js";
+import {isStaleBundleError} from "./stale-bundle.js";
 
 export const projectsQueryOptions = () =>
 	queryOptions({
@@ -122,11 +123,16 @@ export const boardItemByNumberQueryOptions = (project: string, number: number) =
 		queryFn: async () => getProjectItemByNumber({data: {project, number}}),
 	});
 
+/** Poll every 5 s, but never against a server that no longer knows this bundle's function ids. */
+export function ladderRefetchInterval(query: {state: {error: unknown}}): number | false {
+	return isStaleBundleError(query.state.error) ? false : 5000;
+}
+
 export const ladderResultsQueryOptions = () =>
 	queryOptions({
 		queryKey: ["ladderResults"],
 		queryFn: async () => getLadderResults(),
-		refetchInterval: 5000,
+		refetchInterval: ladderRefetchInterval,
 	});
 
 export const inventoryStatusQueryOptions = () =>

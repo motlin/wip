@@ -1,14 +1,19 @@
-import {QueryClient} from "@tanstack/react-query";
+import {QueryCache, QueryClient} from "@tanstack/react-query";
 import {persistQueryClient} from "@tanstack/react-query-persist-client";
 import {createSyncStoragePersister} from "@tanstack/query-sync-storage-persister";
 import {createRouter as createTanStackRouter} from "@tanstack/react-router";
 import {setupRouterSsrQueryIntegration} from "@tanstack/react-router-ssr-query";
 import {routeTree} from "./routeTree.gen";
+import {isStaleBundleError, reportStaleBundle} from "./lib/stale-bundle.js";
 
 export function getRouter() {
 	const queryClient = new QueryClient({
+		// A tab from before a server rebuild calls unknown server function ids;
+		// prompt a reload instead of retrying and polling forever.
+		queryCache: new QueryCache({onError: reportStaleBundle}),
 		defaultOptions: {
 			queries: {
+				retry: (failureCount, error) => !isStaleBundleError(error) && failureCount < 3,
 				gcTime: 7 * 24 * 60 * 60 * 1000,
 				staleTime: 10 * 60 * 1000,
 				refetchOnMount: true,

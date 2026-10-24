@@ -3,6 +3,7 @@ import type {ProjectInfo} from "@wip/shared";
 import {projectsQueryOptions} from "../lib/queries.js";
 import {isQueueCacheWarm, loadQueueSnapshot} from "../lib/queue-snapshot.js";
 import {usePreserveScroll} from "../lib/use-preserve-scroll.js";
+import {LadderResultsProvider} from "../lib/ladder-results-context.js";
 
 export const Route = createFileRoute("/_dashboard")({
 	// Client-only: dehydrating the dashboard's cache and re-rendering its SSR
@@ -28,5 +29,9 @@ export const Route = createFileRoute("/_dashboard")({
 
 function DashboardLayout() {
 	usePreserveScroll();
-	return <Outlet />;
+	return (
+		<LadderResultsProvider>
+			<Outlet />
+		</LadderResultsProvider>
+	);
 }

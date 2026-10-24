@@ -13,11 +13,10 @@ import {
 } from "./icons.js";
 import {useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
-import {useQuery} from "@tanstack/react-query";
 import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
 import {cancelTestFn} from "../lib/server-fns.js";
-import {ladderResultsQueryOptions} from "../lib/queries.js";
+import {useLadderResults} from "../lib/ladder-results-context.js";
 import {ladderStateForBranch} from "../lib/ladder-card-state.js";
 import {LadderCardState} from "./ladder-card-state.js";
 import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
@@ -64,8 +63,14 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 	const commitsAhead = mergeStatus?.commitsAhead ?? branch.commitsAhead;
 	const rebaseable = mergeStatus?.rebaseable ?? branch.rebaseable;
 
-	const {data: ladderResults} = useQuery(ladderResultsQueryOptions());
-	const ladderState = ladderStateForBranch(ladderResults ?? [], branch.project, branch.branch ?? "");
+	const ladderState = ladderStateForBranch(useLadderResults(), branch.project, branch.branch ?? "");
+	// The action panel carries ~30 pieces of state per card; mount it only
+	// once the card is hovered or focused, or a test job has status to show.
+	const [actionsActivated, setActionsActivated] = useState(false);
+	const showActions = actionsActivated || testJob !== undefined;
+	const activateActions = () => {
+		setActionsActivated(true);
+	};
 
 	const ghBranchUrl = branchRemoteUrl(branch);
 
@@ -77,7 +82,12 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 	const blockCommand = branch.blockCommand;
 
 	return (
-		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
+		<div
+			data-testid={`branch-card-${branch.sha}`}
+			onMouseEnter={activateActions}
+			onFocus={activateActions}
+			className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow"
+		>
 			<div className="flex items-start justify-between gap-2">
 				<div className="flex items-center gap-1.5 min-w-0">
 					<a
@@ -268,7 +278,17 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 			</div>
 
 			<div className="mt-2 border-t border-border-300/20 pt-2">
-				<BranchActions item={branch} category={effectiveCategory} layout="row" />
+				{showActions ? (
+					<BranchActions item={branch} category={effectiveCategory} layout="row" />
+				) : (
+					<button
+						type="button"
+						onClick={activateActions}
+						className="rounded px-1.5 py-0.5 text-xs text-text-500 hover:bg-bg-200 hover:text-text-300"
+					>
+						Show actions
+					</button>
+				)}
 			</div>
 		</div>
 	);

@@ -2,7 +2,7 @@ import {useQueryClient} from "@tanstack/react-query";
 import {useState} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, Category} from "@wip/shared";
-import {Diff, GitBranch, Loader2, Info} from "lucide-react";
+import {Diff, GitBranch, Loader2, Info} from "./icons.js";
 import {createBranch} from "../lib/server-fns";
 import {AnsiText} from "./ansi-text";
 import {CategoryBadge} from "./category-badge";

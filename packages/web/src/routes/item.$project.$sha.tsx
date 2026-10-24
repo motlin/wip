@@ -17,10 +17,10 @@ import {
 	FileText,
 	Diff,
 	Eye,
-} from "lucide-react";
+	GitHubIcon,
+} from "../components/icons.js";
 import {BranchActions, PullRequestActions} from "../components/commit-actions.js";
 import {CategoryBadge} from "../components/category-badge.js";
-import {GitHubIcon} from "../components/github-icon.js";
 import {AnsiText} from "../components/ansi-text.js";
 import {
 	projectChildrenQueryOptions,

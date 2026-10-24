@@ -10,7 +10,7 @@ import {
 	Check,
 	Cloud,
 	HardDrive,
-} from "lucide-react";
+} from "./icons.js";
 import {useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
 import {useQuery} from "@tanstack/react-query";

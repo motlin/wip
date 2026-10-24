@@ -1,4 +1,4 @@
-import {ExternalLink} from "lucide-react";
+import {ExternalLink} from "./icons.js";
 import type {Category, GitChildResult} from "@wip/shared";
 import {CategoryBadge} from "./category-badge";
 

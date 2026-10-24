@@ -1,4 +1,4 @@
-import {Loader2, RefreshCw} from "lucide-react";
+import {Loader2, RefreshCw} from "./icons.js";
 import {useRefreshSchedulerState} from "../lib/server-events-context";
 
 /**

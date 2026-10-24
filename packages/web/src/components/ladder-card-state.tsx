@@ -1,4 +1,4 @@
-import {Bot, Copy, ExternalLink, OctagonAlert} from "lucide-react";
+import {Bot, Copy, ExternalLink, OctagonAlert} from "./icons.js";
 import type {LadderBranchState} from "../lib/ladder-card-state.js";
 import {focusHerdrPaneFn} from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";

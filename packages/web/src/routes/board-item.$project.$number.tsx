@@ -1,6 +1,6 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {ArrowLeft, ExternalLink, LayoutGrid} from "lucide-react";
+import {ArrowLeft, ExternalLink, LayoutGrid} from "../components/icons.js";
 import {LabelList} from "../components/label-list";
 import {boardItemByNumberQueryOptions} from "../lib/queries";
 

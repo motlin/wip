@@ -2,7 +2,7 @@ import {Outlet, createRootRouteWithContext, HeadContent, Scripts, Link} from "@t
 import {ReactQueryDevtools} from "@tanstack/react-query-devtools";
 import {useEffect, useState, type ReactNode} from "react";
 import type {QueryClient} from "@tanstack/react-query";
-import {Sun, Moon} from "lucide-react";
+import {IconSprite, Sun, Moon} from "../components/icons.js";
 import appCss from "../styles/globals.css?url";
 import {ServerEventsProvider} from "../lib/server-events-context";
 import {useTheme} from "../lib/use-theme";
@@ -156,6 +156,7 @@ function RootDocument({children}: Readonly<{children: ReactNode}>) {
 				<HeadContent />
 			</head>
 			<body>
+				<IconSprite />
 				{children}
 				<ReactQueryDevtools buttonPosition="bottom-left" />
 				<Scripts />

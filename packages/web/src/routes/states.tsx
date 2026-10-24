@@ -1,6 +1,6 @@
 import {createFileRoute, Link, useNavigate} from "@tanstack/react-router";
 import {z} from "zod";
-import {ArrowLeft} from "lucide-react";
+import {ArrowLeft} from "../components/icons.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../lib/category-actions";
 import {STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
 

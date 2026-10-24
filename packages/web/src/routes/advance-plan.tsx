@@ -1,7 +1,7 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
-import {ArrowLeft, Clock, RefreshCw} from "lucide-react";
+import {ArrowLeft, Clock, RefreshCw} from "../components/icons.js";
 import {advancePlanQueryOptions} from "../lib/queries.js";
 import {rebaseChild, runClaudeCommand, testChild} from "../lib/server-fns.js";
 import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary, TestJobStatus} from "../lib/server-fns.js";

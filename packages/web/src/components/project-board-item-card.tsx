@@ -1,4 +1,4 @@
-import {LayoutGrid} from "lucide-react";
+import {LayoutGrid} from "./icons.js";
 import {Link} from "@tanstack/react-router";
 import type {ProjectItemResult} from "@wip/shared";
 import {LabelList} from "./label-list";

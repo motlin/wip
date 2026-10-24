@@ -29,7 +29,7 @@ import {
 	Bot,
 	GitMerge,
 	ArrowRight,
-} from "lucide-react";
+} from "../components/icons.js";
 import {inventoryStatusQueryOptions, ladderResultsQueryOptions, taskQueueQueryOptions} from "../lib/queries.js";
 import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
 

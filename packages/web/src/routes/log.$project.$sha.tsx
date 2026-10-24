@@ -1,6 +1,6 @@
 import {createFileRoute} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {ArrowDown} from "lucide-react";
+import {ArrowDown} from "../components/icons.js";
 import {LineNumberedAnsiText} from "../components/line-numbered-ansi-text.js";
 import {testLogQueryOptions} from "../lib/queries.js";
 import {noLogMessage} from "../lib/no-log-message.js";

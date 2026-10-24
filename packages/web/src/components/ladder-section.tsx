@@ -1,5 +1,5 @@
 import {useState} from "react";
-import {Bot, CheckCircle, Copy, ExternalLink, GitMerge, Loader2, OctagonAlert} from "lucide-react";
+import {Bot, CheckCircle, Copy, ExternalLink, GitMerge, Loader2, OctagonAlert} from "./icons.js";
 import type {InventoryStatus, LadderResult} from "@wip/shared";
 import {runPendingAction} from "../lib/pending-action.js";
 

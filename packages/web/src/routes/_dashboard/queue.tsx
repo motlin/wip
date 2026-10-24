@@ -1,6 +1,6 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {Play, Loader2, GitBranch, ClipboardList} from "lucide-react";
+import {Play, Loader2, GitBranch, ClipboardList} from "../../components/icons.js";
 import {useState, useMemo, useCallback} from "react";
 import {testAllChildren, rebaseAllChildren} from "../../lib/server-fns";
 import {useHasActiveTests} from "../../lib/server-events-context";

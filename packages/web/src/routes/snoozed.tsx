@@ -1,6 +1,6 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery, useQueryClient} from "@tanstack/react-query";
-import {AlarmClockOff, Loader2} from "lucide-react";
+import {AlarmClockOff, Loader2} from "../components/icons.js";
 import {useState} from "react";
 import {unsnoozeChildFn, getProjectChildren} from "../lib/server-fns.js";
 import type {SnoozedChild} from "../lib/server-fns.js";

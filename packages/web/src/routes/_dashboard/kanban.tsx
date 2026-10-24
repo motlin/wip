@@ -1,6 +1,6 @@
 import {createFileRoute} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {RefreshCw} from "lucide-react";
+import {RefreshCw} from "../../components/icons.js";
 import {useState, useMemo} from "react";
 import {KanbanColumn} from "../../components/kanban-column.js";
 import type {ColumnItems} from "../../components/kanban-column.js";

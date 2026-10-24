@@ -1,6 +1,6 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {ArrowLeft, CircleDot, ExternalLink} from "lucide-react";
+import {ArrowLeft, CircleDot, ExternalLink} from "../components/icons.js";
 import {LabelList} from "../components/label-list";
 import {issueByNumberQueryOptions} from "../lib/queries";
 

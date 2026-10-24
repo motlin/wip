@@ -1,7 +1,11 @@
 import type {Preview} from "@storybook/react-vite";
+import {createElement, Fragment} from "react";
+import {IconSprite} from "../src/components/icons.js";
 import "./styles.css";
 
 const preview: Preview = {
+	// Icons are <use> references into the sprite the root document renders.
+	decorators: [(Story) => createElement(Fragment, null, createElement(IconSprite), createElement(Story))],
 	parameters: {
 		controls: {
 			matchers: {

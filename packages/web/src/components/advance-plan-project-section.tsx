@@ -1,4 +1,4 @@
-import {Bot, CheckCircle, Clock, FlaskConical, GitBranch, GitMerge, Loader2, Wrench, XCircle} from "lucide-react";
+import {Bot, CheckCircle, Clock, FlaskConical, GitBranch, GitMerge, Loader2, Wrench, XCircle} from "./icons.js";
 import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary} from "../lib/server-fns.js";
 import type {TaskEvent} from "../lib/server-events-context.js";
 

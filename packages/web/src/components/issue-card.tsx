@@ -1,4 +1,4 @@
-import {CircleDot} from "lucide-react";
+import {CircleDot} from "./icons.js";
 import {Link} from "@tanstack/react-router";
 import type {IssueResult, Category} from "@wip/shared";
 import {CategoryBadge} from "./category-badge";

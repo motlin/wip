@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {AlertCircle, CheckCircle2, Info, X, AlertTriangle} from "lucide-react";
+import {AlertCircle, CheckCircle2, Info, X, AlertTriangle} from "./icons.js";
 import {dismissToast, getToasts, subscribeToasts, type Toast, type ToastLevel} from "../lib/toast-store";
 
 const LEVEL_STYLES: Record<ToastLevel, string> = {

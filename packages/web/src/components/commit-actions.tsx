@@ -17,7 +17,8 @@ import {
 	Wrench,
 	Save,
 	Bot,
-} from "lucide-react";
+	GitHubIcon,
+} from "./icons.js";
 import {useState, useRef, useEffect} from "react";
 import {
 	pushChild,
@@ -45,7 +46,6 @@ import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns.js";
 import {CATEGORIES} from "../lib/category-actions.js";
-import {GitHubIcon} from "./github-icon.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
 import {runPendingAction} from "../lib/pending-action.js";
 

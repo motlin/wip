@@ -41,7 +41,7 @@ function renderReview(onSave = vi.fn<(projects: ProjectRecord[]) => void>()) {
 		<RegistryReview
 			candidates={candidates}
 			current={current}
-			saveLabel={(count) => `Save ${count} projects`}
+			saveLabel={(changes) => `Save ${changes} decisions`}
 			saving={false}
 			onSave={onSave}
 		/>,
@@ -55,7 +55,7 @@ function card(name: string): HTMLElement {
 
 function rowNames(group: HTMLElement): string[] {
 	return within(group)
-		.getAllByRole("listitem")
+		.queryAllByRole("listitem")
 		.map((item) => item.getAttribute("aria-label") ?? "");
 }
 
@@ -72,16 +72,20 @@ function labelOf(radio: HTMLElement): string | null | undefined {
 }
 
 function checkedIn(item: HTMLElement): string | null | undefined {
-	return labelOf(within(item).getByRole("radio", {checked: true}));
+	const checked = within(item).queryByRole("radio", {checked: true});
+	return checked ? labelOf(checked) : null;
 }
 
 function decision(name: string): string | null | undefined {
 	return checkedIn(row(name));
 }
 
-function saveAndCapture(onSave: ReturnType<typeof renderReview>["onSave"], count: number): ProjectRecord[] {
-	fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
-	fireEvent.click(screen.getByRole("button", {name: `Save ${count} projects`}));
+function saveBar(): HTMLElement {
+	return screen.getByRole("region", {name: "Save registry"});
+}
+
+function saveAndCapture(onSave: ReturnType<typeof renderReview>["onSave"], changes: number): ProjectRecord[] {
+	fireEvent.click(within(saveBar()).getByRole("button", {name: `Save ${changes} decisions`}));
 	return onSave.mock.calls[0]?.[0] ?? [];
 }
 
@@ -90,18 +94,32 @@ describe("RegistryReview", () => {
 		cleanup();
 	});
 
-	it("shows each group as its own card with every row visible and nothing collapsed", () => {
+	it("headlines the unregistered repos as a goal and puts the registry report in a lower section", () => {
 		const {container} = renderReview();
-		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
-		expect(rowNames(card("Missing (1)"))).toEqual(["gone"]);
-		expect(rowNames(card("Skipped (2)"))).toEqual(["chosen", "legacy"]);
-		expect(rowNames(card("Registered (1)"))).toEqual(["beta"]);
+		const inbox = card("Unregistered (4)");
+		expect(within(inbox).getByRole("heading").textContent).toBe(
+			"4 repos aren't tracked by the ladder: decide each one",
+		);
+		expect(inbox.textContent).toContain("The registry decides what wip ladder --all keeps up to date");
+		expect(rowNames(inbox)).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		const report = card("In the registry");
+		expect(
+			[...report.querySelectorAll("section")].map((section) => [
+				section.getAttribute("aria-label"),
+				section.querySelector("[data-explanation]")?.textContent,
+				rowNames(section),
+			]),
+		).toEqual([
+			["Registered (1)", "Kept up to date by wip ladder --all.", ["beta"]],
+			["Skipped (2)", "In the registry but left out of wip ladder --all.", ["chosen", "legacy"]],
+			["Missing (1)", "In the registry, but the directory is gone or isn't a git repo.", ["gone"]],
+		]);
 		expect(container.querySelectorAll("details")).toHaveLength(0);
 		expect(within(row("gone")).getByText("/p/gone")).toBeTruthy();
 		expect(within(row("gone")).getByText("directory missing")).toBeTruthy();
 	});
 
-	it("gives every row exactly one decision and no checkboxes", () => {
+	it("leaves inbox rows undecided, showing the suggestion, while registry rows show their saved kind", () => {
 		renderReview();
 		expect(screen.queryAllByRole("checkbox")).toEqual([]);
 		for (const item of screen.getAllByRole("listitem")) {
@@ -111,13 +129,76 @@ describe("RegistryReview", () => {
 					.map((radio) => labelOf(radio)),
 			).toEqual(["Own", "Fork", "Nested", "Skip"]);
 		}
+		expect(["herdr-web", "wip-pr125"].map(decision)).toEqual([null, null]);
+		expect(row("herdr-web").querySelector("[data-suggestion]")?.textContent).toBe("suggested: Own");
+		expect(row("wip-pr125").querySelector("[data-suggestion]")?.textContent).toBe("suggested: Skip");
 		expect(decision("beta")).toBe("Fork");
-		expect(decision("wip-pr125")).toBe("Skip");
-		expect(decision("herdr-web")).toBe("Own");
+	});
+
+	it("shows an always-visible save bar that does nothing until the first decision", () => {
+		renderReview();
+		const bar = saveBar();
+		expect(bar.className).toContain("sticky");
+		expect(within(bar).getByRole("button", {name: "No changes yet"})).toHaveProperty("disabled", true);
+		expect(within(bar).queryByRole("button", {name: "Discard"})).toBeNull();
+		expect(bar.querySelector("[data-remaining]")?.textContent).toBe("4 left to decide");
+	});
+
+	it("moves a decided row out of the inbox, counts it down, and offers to save it", () => {
+		renderReview();
+		decide("lift", "Fork");
+		expect(rowNames(card("Unregistered (3)"))).toEqual(["herdr-web", "wip-pr125", "wip-pr126"]);
+		const decided = card("Decided, not saved yet (1)");
+		expect(rowNames(decided)).toEqual(["lift"]);
+		expect(decision("lift")).toBe("Fork");
+		expect(saveBar().querySelector("[data-remaining]")?.textContent).toBe("3 left to decide");
+		expect(within(saveBar()).getByRole("button", {name: "Save 1 decisions"})).toHaveProperty("disabled", false);
+		expect(within(saveBar()).getByRole("button", {name: "Discard"})).toBeTruthy();
+	});
+
+	it("reaches zero left to decide once every inbox row is decided", () => {
+		renderReview();
+		fireEvent.click(within(card("Unregistered (4)")).getByRole("button", {name: "Skip all 2 PR worktrees"}));
+		decide("herdr-web", "Own");
+		decide("lift", "Own");
+		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
+		expect(within(card("Unregistered (0)")).getByRole("heading").textContent).toBe(
+			"Every repo is decided: save to finish",
+		);
+		expect(rowNames(card("Decided, not saved yet (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(saveBar().querySelector("[data-remaining]")?.textContent).toBe("0 left to decide");
+		expect(within(saveBar()).getByRole("button", {name: "Save 4 decisions"})).toBeTruthy();
+	});
+
+	it("returns an undone decision to the inbox with its suggestion", () => {
+		renderReview();
+		decide("herdr-web", "Skip");
+		fireEvent.click(within(row("herdr-web")).getByRole("button", {name: "Undo decision for herdr-web"}));
+		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(screen.queryByRole("region", {name: /^Decided/})).toBeNull();
+		expect(decision("herdr-web")).toBeNull();
+		expect(within(saveBar()).getByRole("button", {name: "No changes yet"})).toBeTruthy();
+	});
+
+	it("discards every pending decision", () => {
+		renderReview();
+		decide("lift", "Fork");
+		decide("beta", "Own");
+		fireEvent.click(within(saveBar()).getByRole("button", {name: "Discard"}));
+		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(decision("beta")).toBe("Fork");
+		expect(within(saveBar()).getByRole("button", {name: "No changes yet"})).toBeTruthy();
+	});
+
+	it("saves only the decided unregistered repos alongside the registry", () => {
+		const {onSave} = renderReview();
+		decide("lift", "Own");
+		expect(saveAndCapture(onSave, 1)).toEqual([beta, chosen, gone, legacy, lift]);
 	});
 
 	it("shows the reason on every skipped row, and the user's note on a hand-picked skip", () => {
 		renderReview();
+		decide("wip-pr125", "Skip");
 		const skipped = screen.getAllByRole("listitem").filter((item) => checkedIn(item) === "Skip");
 		expect(skipped.map((item) => item.querySelector("[data-skip-reason]")?.textContent)).toEqual([
 			"PR #125 worktree of wip",
@@ -140,15 +221,11 @@ describe("RegistryReview", () => {
 		});
 		decide("gone", "Skip");
 		expect(row("gone").querySelector("[data-skip-reason]")?.textContent).toBe("directory missing");
-		expect(saveAndCapture(onSave, 8)).toEqual([
+		expect(saveAndCapture(onSave, 2)).toEqual([
 			{...beta, kind: "skip", skipNote: "moved to work laptop"},
 			chosen,
 			{...gone, kind: "skip"},
-			herdrWeb,
 			legacy,
-			lift,
-			wipPr,
-			wipPr2,
 		]);
 	});
 
@@ -156,27 +233,26 @@ describe("RegistryReview", () => {
 		const {onSave} = renderReview();
 		decide("chosen", "Own");
 		expect(within(row("chosen")).queryByRole("textbox")).toBeNull();
-		expect(saveAndCapture(onSave, 8)[1]).toEqual({name: "chosen", dir: "/p/chosen", template: "java", kind: "own"});
+		expect(saveAndCapture(onSave, 1)[1]).toEqual({name: "chosen", dir: "/p/chosen", template: "java", kind: "own"});
 	});
 
-	it("skips every PR worktree in a group with one bulk action", () => {
+	it("skips every PR worktree in the inbox with one bulk action", () => {
 		renderReview();
-		decide("wip-pr125", "Own");
 		fireEvent.click(within(card("Unregistered (4)")).getByRole("button", {name: "Skip all 2 PR worktrees"}));
-		expect(decision("wip-pr125")).toBe("Skip");
-		expect(decision("wip-pr126")).toBe("Skip");
-		expect(decision("herdr-web")).toBe("Own");
+		expect(rowNames(card("Unregistered (2)"))).toEqual(["herdr-web", "lift"]);
+		expect(["wip-pr125", "wip-pr126"].map(decision)).toEqual(["Skip", "Skip"]);
+		expect(decision("herdr-web")).toBeNull();
 	});
 
-	it("marks every repo of one template in a group Own with one bulk action", () => {
+	it("marks every repo of one template in the inbox Own with one bulk action", () => {
 		renderReview();
-		decide("herdr-web", "Fork");
 		fireEvent.click(
 			within(card("Unregistered (4)")).getByRole("button", {
 				name: "Mark all 4 unregistered typescript repos Own",
 			}),
 		);
 		expect(["herdr-web", "lift", "wip-pr125", "wip-pr126"].map(decision)).toEqual(["Own", "Own", "Own", "Own"]);
+		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
 		expect(decision("beta")).toBe("Fork");
 	});
 
@@ -205,45 +281,29 @@ describe("RegistryReview", () => {
 		expect(within(registered).getAllByRole("listitem")).toHaveLength(30);
 	});
 
-	it("shows the diff of a changed decision and saves only after the user confirms it", () => {
+	it("shows the pending changes as a diff on request", () => {
 		const {onSave} = renderReview();
 		decide("beta", "Own");
 		decide("herdr-web", "Skip");
-		expect(screen.queryByRole("button", {name: "Save 8 projects"})).toBeNull();
-		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
+		fireEvent.click(within(saveBar()).getByRole("button", {name: "Show changes"}));
 		const diff = screen.getByRole("region", {name: "Registry changes"});
 		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
 			"+ herdr-web (typescript, skip) /p/herdr-web",
-			"+ lift (typescript, own) /p/lift",
-			"+ wip-pr125 (typescript, skip) /p/wip-pr125",
-			"+ wip-pr126 (typescript, own) /p/wip-pr126",
+			"~ beta: fork → own",
+		]);
+		decide("lift", "Fork");
+		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+			"+ herdr-web (typescript, skip) /p/herdr-web",
+			"+ lift (typescript, fork) /p/lift",
 			"~ beta: fork → own",
 		]);
 		expect(onSave).not.toHaveBeenCalled();
-		fireEvent.click(screen.getByRole("button", {name: "Save 8 projects"}));
-		expect(onSave).toHaveBeenCalledTimes(1);
 	});
 
-	it("hides the reviewed diff once the user edits again", () => {
+	it("counts a decision that matches the registry as no change", () => {
 		renderReview();
-		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
-		expect(screen.getByRole("region", {name: "Registry changes"})).toBeTruthy();
-		decide("lift", "Fork");
-		expect(screen.queryByRole("region", {name: "Registry changes"})).toBeNull();
-	});
-
-	it("disables saving when the review finds no changes", () => {
-		render(
-			<RegistryReview
-				candidates={[{project: beta, group: "registered"}]}
-				current={[beta]}
-				saveLabel={(count) => `Save ${count} projects`}
-				saving={false}
-				onSave={vi.fn<(projects: ProjectRecord[]) => void>()}
-			/>,
-		);
-		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
-		expect(screen.getByRole("region", {name: "Registry changes"}).textContent).toContain("No changes");
-		expect(screen.getByRole("button", {name: "Save 1 projects"})).toHaveProperty("disabled", true);
+		decide("beta", "Own");
+		decide("beta", "Fork");
+		expect(within(saveBar()).getByRole("button", {name: "No changes yet"})).toHaveProperty("disabled", true);
 	});
 });

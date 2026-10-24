@@ -202,16 +202,16 @@ describe("/tasks hydration", () => {
 			});
 		});
 
-		const cards = [...container.querySelectorAll("section[aria-labelledby^='registry-group-']")].map((card) => ({
-			heading: card.querySelector("h3")?.textContent,
+		const cards = [...container.querySelectorAll("section[data-registry-group]")].map((card) => ({
+			heading: card.getAttribute("aria-label"),
 			rows: [...card.querySelectorAll("li")].map((row) => row.getAttribute("aria-label")),
 		}));
 		expect(cards).toStrictEqual([
 			{heading: "Unregistered (1)", rows: ["new-one"]},
 			{heading: "Template conflicts (1)", rows: ["conflicted"]},
-			{heading: "Missing (1)", rows: ["gone"]},
-			{heading: "Skipped (1)", rows: ["pr-copy"]},
 			{heading: "Registered (1)", rows: ["wip"]},
+			{heading: "Skipped (1)", rows: ["pr-copy"]},
+			{heading: "Missing (1)", rows: ["gone"]},
 		]);
 	});
 });

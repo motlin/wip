@@ -102,10 +102,10 @@ export function RegistrySection({
 				<RegistryReview
 					candidates={candidates.candidates}
 					current={registry?.projects ?? []}
-					saveLabel={(count) =>
+					saveLabel={(changes, projects) =>
 						verb === "Saved"
-							? `Save ${count} projects to ${registryPath}`
-							: `Import ${count} projects into ${registryPath}`
+							? `Save ${changes} ${changes === 1 ? "decision" : "decisions"} to ${registryPath}`
+							: `Import ${projects} projects into ${registryPath}`
 					}
 					saving={saving}
 					onSave={(projects) => {

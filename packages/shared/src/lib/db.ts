@@ -112,6 +112,10 @@ function checkKey(checks: Array<{name: string; url: string | null}>): string {
 export function getDb(): BetterSQLite3Database<typeof schema> {
 	if (db) return db;
 
+	// A background job leaking past a test's resetDb() must not silently open the real wip.db.
+	if (customDbPath === undefined && process.env.VITEST !== undefined) {
+		throw new Error("getDb() called under vitest without initDb(); refusing to open the default wip.db");
+	}
 	const dbPath = customDbPath ?? resolveDbPath();
 	const sqlite = new DatabaseConstructor(dbPath);
 	sqlite.pragma("journal_mode = WAL");

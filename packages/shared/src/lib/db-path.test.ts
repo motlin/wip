@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {resolveDbPath} from "./db.js";
+import {getDb, initDb, resetDb, resolveDbPath} from "./db.js";
 
 describe("resolveDbPath", () => {
 	let tempDir: string;
@@ -39,5 +39,44 @@ describe("resolveDbPath", () => {
 		expect(resolveDbPath({WIP_DB_PATH: "", HOME: tempDir})).toBe(
 			path.join(tempDir, ".local", "share", "wip", "wip.db"),
 		);
+	});
+});
+
+describe("getDb under vitest", () => {
+	let tempDir: string;
+	let savedEnv: NodeJS.ProcessEnv;
+
+	beforeEach(() => {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-db-guard-"));
+		savedEnv = {...process.env};
+		process.env.HOME = tempDir;
+		delete process.env.XDG_DATA_HOME;
+		delete process.env.WIP_DB_PATH;
+		delete process.env.TEST_DB_FILE;
+	});
+
+	afterEach(() => {
+		resetDb();
+		process.env = savedEnv;
+		fs.rmSync(tempDir, {recursive: true, force: true});
+	});
+
+	it("throws after resetDb() instead of falling back to the default database path", () => {
+		initDb(":memory:");
+		getDb();
+		resetDb();
+
+		expect(() => getDb()).toThrow(
+			"getDb() called under vitest without initDb(); refusing to open the default wip.db",
+		);
+	});
+
+	it("never resolves the default home path under vitest, even with WIP_DB_PATH set", () => {
+		process.env.WIP_DB_PATH = path.join(tempDir, "override.db");
+
+		expect(() => getDb()).toThrow(
+			"getDb() called under vitest without initDb(); refusing to open the default wip.db",
+		);
+		expect(fs.readdirSync(tempDir)).toEqual([]);
 	});
 });

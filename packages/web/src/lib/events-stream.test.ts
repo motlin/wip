@@ -3,6 +3,8 @@ import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 vi.mock("./background-refresh.js", () => ({ensureBackgroundRefresh: () => {}}));
 vi.mock("./server-fns.js", () => ({getProjects: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([])}));
 
+import {initDb, resetDb} from "@wip/shared";
+
 import * as taskQueue from "./task-queue.js";
 import {emitter as taskEmitter} from "./task-queue.js";
 import {emitter as mergeEmitter} from "./merge-queue.js";
@@ -36,11 +38,13 @@ function listenerCounts(): ListenerCounts {
 
 describe("createEventsResponse", () => {
 	beforeEach(() => {
+		initDb(":memory:");
 		vi.useFakeTimers();
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
+		resetDb();
 	});
 
 	it("releases listeners and the keepalive timer when the client disconnects", async () => {

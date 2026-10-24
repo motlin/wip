@@ -181,7 +181,11 @@ let pollyStop: (() => Promise<void>) | undefined;
 
 const leakedWork = {refreshSettled: false, enqueueSettled: false};
 
-beforeEach(() => {
+beforeEach(async () => {
+	// Keep project discovery off the real ~/.config/wip/projects.json5 inventory.
+	const configHome = await mkdtemp(join(tmpdir(), "wip-config-"));
+	tmpDirs.push(configHome);
+	vi.stubEnv("XDG_CONFIG_HOME", configHome);
 	initDb(":memory:");
 	setGitHubClient(createTestClient());
 });
@@ -199,6 +203,7 @@ afterEach(async () => {
 	resetGitHubClient();
 	resetProjectCache();
 	resetDb();
+	vi.unstubAllEnvs();
 
 	// Clean up temporary git repos
 	await Promise.all(tmpDirs.map(async (dir) => rm(dir, {recursive: true, force: true})));

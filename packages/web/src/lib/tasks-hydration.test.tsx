@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it} from "vite-plus/test";
 import {act} from "@testing-library/react";
 import {renderToString} from "react-dom/server";
-import {hydrateRoot, type Root} from "react-dom/client";
+import {createRoot, hydrateRoot, type Root} from "react-dom/client";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {
 	Outlet,
@@ -12,7 +12,7 @@ import {
 	createRoute,
 	createRouter,
 } from "@tanstack/react-router";
-import type {InventoryStatus, LadderResult, RegistryCandidates, TaskQueueJob} from "@wip/shared";
+import type {InventoryStatus, LadderResult, ProjectRecord, RegistryCandidates, TaskQueueJob} from "@wip/shared";
 
 import {Route as TasksFile} from "../routes/tasks.js";
 import {
@@ -63,6 +63,10 @@ const candidates: RegistryCandidates = {
 };
 
 const ladderResults: LadderResult[] = [{project: "wip", rungs: [{rung: "fetch", status: "passed", detail: "fetched"}]}];
+
+function project(name: string, kind: ProjectRecord["kind"] = "own"): ProjectRecord {
+	return {name, dir: `/tmp/projects/${name}`, template: "typescript", kind};
+}
 
 function newClient(): QueryClient {
 	const queryClient = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}});
@@ -156,5 +160,58 @@ describe("/tasks hydration", () => {
 		expect(container.textContent).toContain("Background refresh");
 		expect(container.textContent).toContain("Live job");
 		expect(container.textContent).toContain("1 projects in");
+	});
+
+	it("fills every registry group card once the fetched candidates replace a stale persisted list from the same registry", async () => {
+		// The persister restored candidates saved before the group-card redesign: no group on any row.
+		const stale = {
+			registryPath: candidates.registryPath,
+			baseModifiedAt: candidates.baseModifiedAt,
+			candidates: [{project: project("wip"), included: true, flags: []}],
+		} as unknown as RegistryCandidates;
+		const fresh: RegistryCandidates = {
+			registryPath: candidates.registryPath,
+			baseModifiedAt: candidates.baseModifiedAt,
+			candidates: [
+				{project: project("new-one"), group: "unregistered"},
+				{project: project("conflicted"), group: "conflict", note: "listed by typescript, java"},
+				{project: project("gone"), group: "missing"},
+				{project: project("pr-copy", "skip"), group: "skipped", skipReason: {code: "pr", text: "PR worktree"}},
+				{project: project("wip"), group: "registered"},
+			],
+		};
+
+		const client = newClient();
+		client.setQueryData(inventoryStatusQueryOptions().queryKey, inventory);
+		client.setQueryData(registryCandidatesQueryOptions().queryKey, stale);
+		const router = buildRouter(client);
+		await router.load();
+
+		const container = document.createElement("div");
+		document.body.append(container);
+		await act(async () => {
+			root = createRoot(container);
+			root.render(app(client, router));
+			await Promise.resolve();
+		});
+		await act(async () => {
+			client.setQueryData(registryCandidatesQueryOptions().queryKey, fresh);
+			// The query notifier batches observer updates onto a timer.
+			await new Promise((resolve) => {
+				setTimeout(resolve, 0);
+			});
+		});
+
+		const cards = [...container.querySelectorAll("section[aria-labelledby^='registry-group-']")].map((card) => ({
+			heading: card.querySelector("h3")?.textContent,
+			rows: [...card.querySelectorAll("li")].map((row) => row.getAttribute("aria-label")),
+		}));
+		expect(cards).toStrictEqual([
+			{heading: "Unregistered (1)", rows: ["new-one"]},
+			{heading: "Template conflicts (1)", rows: ["conflicted"]},
+			{heading: "Missing (1)", rows: ["gone"]},
+			{heading: "Skipped (1)", rows: ["pr-copy"]},
+			{heading: "Registered (1)", rows: ["wip"]},
+		]);
 	});
 });

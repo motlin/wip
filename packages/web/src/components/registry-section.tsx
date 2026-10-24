@@ -70,8 +70,8 @@ function SaveConfirmation({
 /**
  * The project registry as its own cards on /tasks: a summary of the saved file (or an import
  * prompt before one exists), a confirmation right after a save from this page, and the review's
- * group cards. The review remounts with fresh rows whenever the registry the candidates came from
- * changes, so its pending save state lives here. Failures surface only as a toast.
+ * group cards. The review restarts with fresh rows whenever new candidates arrive, so its pending
+ * save state lives here. Failures surface only as a toast.
  */
 export function RegistrySection({
 	inventory,
@@ -100,7 +100,6 @@ export function RegistrySection({
 			)}
 			{candidates ? (
 				<RegistryReview
-					key={candidates.baseModifiedAt ?? "none"}
 					candidates={candidates.candidates}
 					current={registry?.projects ?? []}
 					saveLabel={(count) =>

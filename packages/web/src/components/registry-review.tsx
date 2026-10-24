@@ -316,6 +316,14 @@ export function RegistryReview({
 }) {
 	const [rows, setRows] = useState(candidates);
 	const [diff, setDiff] = useState<InventoryDiff | null>(null);
+	// New candidates (a fetch replacing a persisted list, or a save) restart the review; the
+	// query's structural sharing keeps the same array while the server's answer is unchanged.
+	const [shownCandidates, setShownCandidates] = useState(candidates);
+	if (shownCandidates !== candidates) {
+		setShownCandidates(candidates);
+		setRows(candidates);
+		setDiff(null);
+	}
 	const projects = rows.map((row) => row.project);
 
 	function edit(dirs: ReadonlySet<string>, change: (project: ProjectRecord) => ProjectRecord) {

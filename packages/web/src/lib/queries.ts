@@ -140,10 +140,14 @@ export const inventoryStatusQueryOptions = () =>
 	queryOptions({
 		queryKey: ["inventoryStatus"],
 		queryFn: async () => getInventoryStatus(),
+		// A save in another tab rewrites the registry; refetch on every mount and focus.
+		staleTime: 0,
 	});
 
 export const registryCandidatesQueryOptions = () =>
 	queryOptions({
 		queryKey: ["registryCandidates"],
 		queryFn: async () => getRegistryCandidates(),
+		// A save in another tab rewrites the registry; refetch on every mount and focus.
+		staleTime: 0,
 	});

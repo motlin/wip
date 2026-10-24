@@ -14,7 +14,12 @@ export const PERSIST_THROTTLE_MS = 30_000;
 
 // Polled or live-pushed state is refetched on load anyway, and diffs and test
 // logs are fetched on demand and pile up over a session; none of them help paint.
+// The registry status and review rows mirror projects.json5, which a save from any
+// tab rewrites; a restored copy painted pre-save decisions as still undecided, and a
+// stale tab's throttled write could overwrite the saving tab's fresh copy.
 const UNPERSISTED_KEYS: ReadonlySet<unknown> = new Set([
+	"inventoryStatus",
+	"registryCandidates",
 	"ladderResults",
 	"systemStatus",
 	"taskQueue",

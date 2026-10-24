@@ -1,5 +1,12 @@
 import {describe, it, expect} from "vite-plus/test";
-import {diffQueryOptions, issuesQueryOptions, projectItemsQueryOptions, testLogQueryOptions} from "./queries.js";
+import {
+	diffQueryOptions,
+	inventoryStatusQueryOptions,
+	issuesQueryOptions,
+	projectItemsQueryOptions,
+	registryCandidatesQueryOptions,
+	testLogQueryOptions,
+} from "./queries.js";
 
 // Refresh all no longer invalidates these caches, so they must go stale right away
 // and refetch on the next window focus instead of waiting out the 10 minute default.
@@ -17,6 +24,16 @@ describe("on-demand diff and test log caches", () => {
 		expect([diffQueryOptions("wip", "abc").gcTime, testLogQueryOptions("wip", "abc").gcTime]).toStrictEqual([
 			10 * 60 * 1000,
 			10 * 60 * 1000,
+		]);
+	});
+});
+
+// A save in another tab rewrites projects.json5, so a mounted or refocused /tasks
+// must refetch the registry rather than trust a copy from before that save.
+describe("registry freshness", () => {
+	it("marks registry status and candidates stale immediately", () => {
+		expect([inventoryStatusQueryOptions().staleTime, registryCandidatesQueryOptions().staleTime]).toStrictEqual([
+			0, 0,
 		]);
 	});
 });

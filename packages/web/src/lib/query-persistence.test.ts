@@ -134,7 +134,7 @@ describe("setupQueryPersistence", () => {
 });
 
 describe("shouldPersistQuery", () => {
-	it("persists successful view data and skips polled, on-demand and failed queries", async () => {
+	it("persists successful view data and skips polled, on-demand, registry and failed queries", async () => {
 		const queryClient = new QueryClient();
 		for (const key of [
 			["projects"],
@@ -148,6 +148,8 @@ describe("shouldPersistQuery", () => {
 			["diff", "wip", "abc"],
 			["testLog", "wip", "abc"],
 			["workingTreeDiff", "wip"],
+			["inventoryStatus"],
+			["registryCandidates"],
 		]) {
 			queryClient.setQueryData(key, {});
 		}

@@ -28,7 +28,7 @@ export default class Ladder extends Command {
 	};
 
 	static override description =
-		"Run the cross-repo ladder (fetch, replay, rebase leftovers, prune, delete merged) on one or all projects";
+		"Bring repos' branches up to date safely: fetch upstream, fast-forward and rebase local branches, delete merged branches, and prune stale worktrees. Stops at conflicts it can't resolve; never pushes.";
 
 	static enableJsonFlag = true;
 

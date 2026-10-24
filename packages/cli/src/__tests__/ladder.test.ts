@@ -65,6 +65,13 @@ describe("wip ladder", () => {
 		vi.clearAllMocks();
 	});
 
+	it("describes what the ladder does in plain words", async () => {
+		const {default: Ladder} = await import("../commands/ladder.js");
+		expect(Ladder.description).toBe(
+			"Bring repos' branches up to date safely: fetch upstream, fast-forward and rebase local branches, delete merged branches, and prune stale worktrees. Stops at conflicts it can't resolve; never pushes.",
+		);
+	});
+
 	it("runs the ladder for all projects with --all and returns JSON", async () => {
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b")]);
 		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("a"), okResult("b")]);

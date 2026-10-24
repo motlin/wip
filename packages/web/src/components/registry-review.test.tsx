@@ -98,7 +98,7 @@ describe("RegistryReview", () => {
 		const {container} = renderReview();
 		const inbox = card("Unregistered (4)");
 		expect(within(inbox).getByRole("heading").textContent).toBe(
-			"4 repos aren't tracked by the ladder: decide each one",
+			"4 repos aren't kept up to date by Update all yet: decide each one",
 		);
 		expect(inbox.textContent).toContain("The registry decides what wip ladder --all keeps up to date");
 		expect(rowNames(inbox)).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);

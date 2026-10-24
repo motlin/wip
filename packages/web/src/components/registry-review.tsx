@@ -365,9 +365,9 @@ function GroupCard({
 }
 
 function inboxHeading(remaining: number, decided: number): string {
-	if (remaining > 0) return `${remaining} repos aren't tracked by the ladder: decide each one`;
+	if (remaining > 0) return `${remaining} repos aren't kept up to date by Update all yet: decide each one`;
 	if (decided > 0) return "Every repo is decided: save to finish";
-	return "Every repo is tracked by the ladder";
+	return "Every repo is kept up to date by Update all";
 }
 
 /**

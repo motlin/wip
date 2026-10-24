@@ -4,7 +4,8 @@ import type {InventoryStatus, LadderResult} from "@wip/shared";
 import {runPendingAction} from "../lib/pending-action.js";
 
 /**
- * Ladder results per project with a button that queues the ladder for every project. Until a
+ * Ladder results per project with an "Update all N repos" button that queues the ladder for every
+ * registered project, explained in plain words above the results. Until a
  * project registry exists the button stays disabled and points at the registry import, so one
  * click can never fall back to scanning every directory. Failures surface only as a toast via
  * runPendingAction.
@@ -23,6 +24,9 @@ export function LadderSection({
 }) {
 	const [running, setRunning] = useState(false);
 	const registered = inventory?.exists === true;
+	const total = inventory?.registry?.total;
+	const repos = total === undefined ? "repos" : `${total} ${total === 1 ? "repo" : "repos"}`;
+	const scope = total === undefined ? "" : ` (${repos})`;
 
 	return (
 		<section className="mb-6 rounded-lg border border-border-300/50 bg-bg-100 p-4">
@@ -35,21 +39,29 @@ export function LadderSection({
 					type="button"
 					disabled={running || !registered}
 					onClick={() => {
-						void runPendingAction("Run ladder", setRunning, runLadderAll);
+						void runPendingAction("Update repos", setRunning, runLadderAll);
 					}}
 					className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 text-xs font-medium text-text-200 transition-colors hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-					Run ladder
+					Update all {repos}
 				</button>
 			</div>
+			<p data-testid="ladder-explanation" className="mb-3 text-xs text-text-400">
+				Brings every repo in the registry{scope} up to date: fetches upstream, fast-forwards and rebases local
+				branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to
+				AI in herdr. Nothing is pushed.
+			</p>
 			{inventory && !inventory.exists && (
 				<p className="mb-3 text-xs text-status-yellow">
 					Import the project registry below before running the ladder.
 				</p>
 			)}
 			{results.length === 0 ? (
-				<p className="text-xs text-text-500">No ladder results yet.</p>
+				<p data-testid="ladder-empty" className="text-xs text-text-500">
+					Not run yet. After you update, each repo shows here as passed or stopped, with the branches that
+					need attention.
+				</p>
 			) : (
 				<ul className="flex flex-col gap-1.5">
 					{results.map((result) => (

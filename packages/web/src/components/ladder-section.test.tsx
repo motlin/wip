@@ -52,10 +52,10 @@ describe("LadderSection", () => {
 		clearToasts();
 	});
 
-	it("calls runLadderAll when Run ladder is clicked", async () => {
+	it("calls runLadderAll when Update all is clicked", async () => {
 		const runLadderAll = vi.fn<() => Promise<unknown>>().mockResolvedValue([]);
 		render(<LadderSection inventory={registered} results={[]} runLadderAll={runLadderAll} focusPane={noFocus} />);
-		fireEvent.click(screen.getByRole("button", {name: /Run ladder/}));
+		fireEvent.click(screen.getByRole("button", {name: /Update all/}));
 		await waitFor(() => {
 			expect(runLadderAll).toHaveBeenCalledTimes(1);
 		});
@@ -106,7 +106,7 @@ describe("LadderSection", () => {
 		const {container} = render(
 			<LadderSection inventory={registered} results={[]} runLadderAll={runLadderAll} focusPane={noFocus} />,
 		);
-		fireEvent.click(screen.getByRole("button", {name: /Run ladder/}));
+		fireEvent.click(screen.getByRole("button", {name: /Update all/}));
 		await waitFor(() => {
 			expect(getToasts()).toHaveLength(1);
 		});
@@ -195,17 +195,17 @@ describe("LadderSection", () => {
 		expect(screen.queryByRole("button", {name: /Focus pane/})).toBeNull();
 	});
 
-	it("disables Run ladder and points at the registry import when no registry exists", () => {
+	it("disables Update all and points at the registry import when no registry exists", () => {
 		const runLadderAll = vi.fn<() => Promise<unknown>>().mockResolvedValue([]);
 		render(<LadderSection inventory={unregistered} results={[]} runLadderAll={runLadderAll} focusPane={noFocus} />);
-		const run = screen.getByRole("button", {name: /Run ladder/});
+		const run = screen.getByRole("button", {name: /Update all/});
 		expect(run).toHaveProperty("disabled", true);
 		fireEvent.click(run);
 		expect(runLadderAll).not.toHaveBeenCalled();
 		expect(screen.getByText("Import the project registry below before running the ladder.")).toBeTruthy();
 	});
 
-	it("enables Run ladder once a registry exists", () => {
+	it("enables Update all once a registry exists", () => {
 		render(
 			<LadderSection
 				inventory={registered}
@@ -214,11 +214,11 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		expect(screen.getByRole("button", {name: /Run ladder/})).toHaveProperty("disabled", false);
+		expect(screen.getByRole("button", {name: /Update all/})).toHaveProperty("disabled", false);
 		expect(screen.queryByText(/Import the project registry/)).toBeNull();
 	});
 
-	it("disables Run ladder while the registry status is still loading", () => {
+	it("disables Update all while the registry status is still loading", () => {
 		render(
 			<LadderSection
 				inventory={undefined}
@@ -227,6 +227,50 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		expect(screen.getByRole("button", {name: /Run ladder/})).toHaveProperty("disabled", true);
+		expect(screen.getByRole("button", {name: /Update all/})).toHaveProperty("disabled", true);
+	});
+
+	it("names the action and the number of registered repos it will update", () => {
+		render(
+			<LadderSection
+				inventory={registered}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		expect(screen.getByRole("button", {name: /Update all/}).textContent).toBe("Update all 2 repos");
+		expect(screen.getByTestId("ladder-explanation").textContent).toBe(
+			"Brings every repo in the registry (2 repos) up to date: fetches upstream, fast-forwards and rebases local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to AI in herdr. Nothing is pushed.",
+		);
+	});
+
+	it("explains the empty state in user terms", () => {
+		render(
+			<LadderSection
+				inventory={registered}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		expect(screen.getByTestId("ladder-empty").textContent).toBe(
+			"Not run yet. After you update, each repo shows here as passed or stopped, with the branches that need attention.",
+		);
+	});
+
+	it("omits the repo count until the registry exists", () => {
+		render(
+			<LadderSection
+				inventory={unregistered}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		expect(screen.getByRole("button", {name: /Update all/}).textContent).toBe("Update all repos");
+		expect(screen.getByTestId("ladder-explanation").textContent).toBe(
+			"Brings every repo in the registry up to date: fetches upstream, fast-forwards and rebases local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to AI in herdr. Nothing is pushed.",
+		);
 	});
 });

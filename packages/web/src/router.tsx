@@ -18,19 +18,23 @@ export function getRouter() {
 		},
 	});
 
-	// Persist query cache to localStorage (client-side only)
+	// Persist query cache to localStorage (client-side only). The dashboard is
+	// client-rendered (ssr: false), so its loader awaits cacheRestored and
+	// paints from the restored cache instead of refetching on every load.
+	let cacheRestored: Promise<void> = Promise.resolve();
 	if (typeof window !== "undefined") {
 		// @tanstack/query-async-storage-persister is not a dependency; the sync persister is the one backed by localStorage here
 		// eslint-disable-next-line typescript/no-deprecated
 		const persister = createSyncStoragePersister({storage: window.localStorage});
-		void persistQueryClient({queryClient, persister, buster: "v2-flat-children"});
+		const [, restored] = persistQueryClient({queryClient, persister, buster: "v2-flat-children"});
+		cacheRestored = restored;
 	}
 
 	const router = createTanStackRouter({
 		routeTree,
 		scrollRestoration: true,
 		defaultPreload: "intent",
-		context: {queryClient},
+		context: {queryClient, cacheRestored},
 	});
 
 	setupRouterSsrQueryIntegration({router, queryClient});

@@ -14,7 +14,11 @@ import {usePreserveScroll} from "../lib/use-preserve-scroll.js";
 const PREFETCH_CONCURRENCY = 4;
 
 export const Route = createFileRoute("/_dashboard")({
-	loader: async ({context: {queryClient}}) => {
+	// Client-only: dehydrating the dashboard's cache and re-rendering its SSR
+	// markup to hydrate cost ~1.7 MB per load; the persisted cache paints faster.
+	ssr: false,
+	loader: async ({context: {queryClient, cacheRestored}}) => {
+		await cacheRestored;
 		const projects =
 			queryClient.getQueryData<ProjectInfo[]>(["projects"]) ??
 			(await queryClient.query({...projectsQueryOptions(), staleTime: "static"}));

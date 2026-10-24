@@ -132,7 +132,7 @@ describe("registry candidates", () => {
 		expect(detectTemplate(repo("other"))).toBe("unknown");
 	});
 
-	it("reports unregistered, missing, and skipped-but-present entries", () => {
+	it("reports unregistered and missing entries, including missing skips, and lists present skips", async () => {
 		const present = repo("present");
 		const skipped = repo("skipped");
 		const stray = repo("stray");
@@ -141,16 +141,43 @@ describe("registry candidates", () => {
 			{name: "present", dir: present, template: "java", kind: "own"},
 			{name: "skipped", dir: skipped, template: "project", kind: "skip"},
 			{name: "gone", dir: path.join(root, "gone"), template: "rust", kind: "own"},
+			{name: "gone-skip", dir: path.join(root, "gone-skip"), template: "rust", kind: "skip"},
 			{name: "plain", dir: path.join(root, "plain"), template: "rust", kind: "own"},
 		];
-		expect(checkInventory(projects, [root])).toEqual({
+		expect(await checkInventory(projects, [root])).toEqual({
 			consistent: false,
 			unregistered: [stray],
 			missing: [
 				{name: "gone", dir: path.join(root, "gone"), reason: "missing"},
+				{name: "gone-skip", dir: path.join(root, "gone-skip"), reason: "missing"},
 				{name: "plain", dir: path.join(root, "plain"), reason: "not-a-git-repo"},
 			],
-			skippedButPresent: [{name: "skipped", dir: skipped}],
+			skipped: [
+				{
+					name: "skipped",
+					dir: skipped,
+					reason: {code: "listed", text: "listed under skip in project-template"},
+				},
+			],
+		});
+	});
+
+	it("is consistent when every skip entry exists on disk", async () => {
+		const skipped = repo("skipped");
+		const plain = path.join(root, "plain");
+		fs.mkdirSync(plain);
+		const projects: ProjectRecord[] = [
+			{name: "skipped", dir: skipped, template: "java", kind: "skip", skipNote: "archived"},
+			{name: "plain", dir: plain, template: "unknown", kind: "skip"},
+		];
+		expect(await checkInventory(projects, [root])).toEqual({
+			consistent: true,
+			unregistered: [],
+			missing: [],
+			skipped: [
+				{name: "skipped", dir: skipped, reason: {code: "user", text: "skipped by you"}, note: "archived"},
+				{name: "plain", dir: plain, reason: {code: "not-a-repo", text: "not a git repo"}},
+			],
 		});
 	});
 
@@ -169,6 +196,7 @@ describe("registry candidates", () => {
 			{name: "legacy", dir: legacy, template: "project", kind: "skip"},
 			{name: "chosen", dir: chosen, template: "java", kind: "skip", skipNote: "archived"},
 			{name: "gone", dir: path.join(root, "gone"), template: "rust", kind: "own"},
+			{name: "gone-pr7", dir: path.join(root, "gone-pr7"), template: "rust", kind: "skip"},
 		];
 		expect(
 			await buildRegistryCandidates(projects, [{dir: conflicted, templates: ["typescript", "java"]}], [root]),
@@ -193,6 +221,12 @@ describe("registry candidates", () => {
 				project: {name: "gone", dir: path.join(root, "gone"), template: "rust", kind: "own"},
 				group: "missing",
 				skipReason: {code: "missing", text: "directory missing"},
+				note: "directory missing",
+			},
+			{
+				project: {name: "gone-pr7", dir: path.join(root, "gone-pr7"), template: "rust", kind: "skip"},
+				group: "missing",
+				skipReason: {code: "pr", text: "PR #7 worktree of gone"},
 				note: "directory missing",
 			},
 			{

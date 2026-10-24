@@ -11,16 +11,26 @@ export interface InventoryMissingEntry {
 	reason: "missing" | "not-a-git-repo";
 }
 
+/** A skip entry whose directory exists, listed informationally with why it is skipped. */
 export interface InventorySkippedEntry {
 	name: string;
 	dir: string;
+	reason: SkipReason;
+	note?: string;
 }
 
 export interface InventoryCheckResult {
+	/** False when a repo is unregistered or an entry (skip or not) is missing; present skips never count. */
 	consistent: boolean;
 	unregistered: string[];
 	missing: InventoryMissingEntry[];
-	skippedButPresent: InventorySkippedEntry[];
+	skipped: InventorySkippedEntry[];
+}
+
+interface InventoryComparison {
+	unregistered: string[];
+	missing: InventoryMissingEntry[];
+	presentSkips: ProjectRecord[];
 }
 
 function gitEntry(dir: string): fs.Stats | undefined {
@@ -45,34 +55,49 @@ function listGitRepos(projectsDir: string): string[] {
 		.filter((dir) => gitEntry(dir) !== undefined);
 }
 
-/** Compares registry entries with the git repos found directly under the projects dirs. */
-export function checkInventory(projects: ProjectRecord[], projectsDirs: string[]): InventoryCheckResult {
+/**
+ * Compares registry entries with the git repos found directly under the projects dirs. A skip
+ * entry only needs its directory to exist, whatever is there; recording it is the point.
+ */
+function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): InventoryComparison {
 	const registered = new Set(projects.map((project) => path.resolve(project.dir)));
 	const unregistered = [...new Set(projectsDirs.flatMap((dir) => listGitRepos(path.resolve(dir))))].filter(
 		(dir) => !registered.has(dir),
 	);
 	const missing: InventoryMissingEntry[] = [];
-	const skippedButPresent: InventorySkippedEntry[] = [];
+	const presentSkips: ProjectRecord[] = [];
 	for (const project of projects) {
 		const {name, dir} = project;
 		if (!fs.existsSync(dir)) {
-			// A skipped entry is allowed to be absent.
-			if (project.kind !== "skip") missing.push({name, dir, reason: "missing"});
+			missing.push({name, dir, reason: "missing"});
+		} else if (project.kind === "skip") {
+			presentSkips.push(project);
 		} else if (
 			!fs.statSync(dir).isDirectory() ||
 			(project.kind === "nested" ? !insideGitRepo(dir) : gitEntry(dir) === undefined)
 		) {
-			if (project.kind !== "skip") missing.push({name, dir, reason: "not-a-git-repo"});
-		} else if (project.kind === "skip") {
-			skippedButPresent.push({name, dir});
+			missing.push({name, dir, reason: "not-a-git-repo"});
 		}
 	}
-	return {
-		consistent: unregistered.length === 0 && missing.length === 0 && skippedButPresent.length === 0,
-		unregistered,
-		missing,
-		skippedButPresent,
-	};
+	return {unregistered, missing, presentSkips};
+}
+
+/**
+ * Compares the registry with the disk. Skip entries that exist are consistent and listed with
+ * their reason; reasons resolve one entry at a time so many worktree skips never fan out into
+ * parallel git processes.
+ */
+export async function checkInventory(projects: ProjectRecord[], projectsDirs: string[]): Promise<InventoryCheckResult> {
+	const {unregistered, missing, presentSkips} = compareInventory(projects, projectsDirs);
+	const skipped: InventorySkippedEntry[] = [];
+	for (const project of presentSkips) {
+		const {name, dir, skipNote} = project;
+		// skipReason always finds a reason for a skip entry.
+		// oxlint-disable-next-line no-await-in-loop -- one git process at a time
+		const reason = (await skipReason(project)) ?? {code: "user", text: "skipped by you"};
+		skipped.push(skipNote === undefined ? {name, dir, reason} : {name, dir, reason, note: skipNote});
+	}
+	return {consistent: unregistered.length === 0 && missing.length === 0, unregistered, missing, skipped};
 }
 
 const SKIP_PATTERNS: [RegExp, (match: RegExpExecArray) => SkipReason][] = [
@@ -159,7 +184,7 @@ export async function buildRegistryCandidates(
 		group: "conflict",
 		note: `listed by ${templates.join(", ")}`,
 	}));
-	const check = checkInventory(
+	const check = compareInventory(
 		[...projects, ...conflictCandidates.map((candidate) => candidate.project)],
 		projectsDirs,
 	);
@@ -172,11 +197,11 @@ export async function buildRegistryCandidates(
 	for (const project of projects) {
 		const reason = await skipReason(project);
 		const missingReason = missing.get(project.dir);
-		if (project.kind === "skip") {
-			candidates.push(withReason({project, group: "skipped"}, reason));
-		} else if (missingReason) {
+		if (missingReason) {
 			const note = missingReason === "missing" ? "directory missing" : "not a git repo";
 			candidates.push(withReason({project, group: "missing", note}, reason));
+		} else if (project.kind === "skip") {
+			candidates.push(withReason({project, group: "skipped"}, reason));
 		} else {
 			candidates.push(withReason({project, group: "registered"}, reason));
 		}

@@ -202,7 +202,8 @@ describe("saveRegistryHandler", () => {
 					},
 					{
 						project: gamma,
-						group: "skipped",
+						group: "missing",
+						note: "directory missing",
 						skipReason: {code: "missing", text: "directory missing"},
 					},
 				],

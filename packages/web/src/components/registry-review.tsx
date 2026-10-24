@@ -56,13 +56,21 @@ const REPORT: GroupSpec[] = [
 
 const INBOX_GROUPS: ReadonlySet<RegistryGroup> = new Set(INBOX.map((spec) => spec.group));
 
-/** Plural nouns for the bulk skip buttons; reasons that only describe an existing skip have none. */
-const SKIP_PLURALS: Partial<Record<SkipReasonCode, string>> = {
+/**
+ * Plural nouns for the skip reasons that mark a copy of another repo. Many copies are git worktrees
+ * under another name (a Maven copy, a PR worktree), so one bulk action skips every copy and its
+ * label counts each kind.
+ */
+const COPY_PLURALS: Partial<Record<SkipReasonCode, string>> = {
 	pr: "PR worktrees",
 	maven: "Maven copies",
 	template: "template repos",
 	parallel: "parallel worktrees",
 	worktree: "git worktrees",
+};
+
+/** Plural nouns for the other bulk skip buttons; reasons that only describe an existing skip have none. */
+const SKIP_PLURALS: Partial<Record<SkipReasonCode, string>> = {
 	"not-a-repo": "non-git directories",
 	missing: "missing directories",
 };
@@ -241,7 +249,19 @@ interface BulkAction {
 	done: boolean;
 }
 
-/** One skip action per reason and one Own action per template, wherever at least two rows share it. */
+/** "Skip all N copies (a PR worktrees, b git worktrees)", or the one kind's own label when only one is present. */
+function copiesLabel(copies: RegistryCandidate[]): string {
+	const kinds = Object.entries(COPY_PLURALS)
+		.map(([code, plural]) => [copies.filter((row) => row.skipReason?.code === code).length, plural] as const)
+		.filter(([count]) => count > 0);
+	if (kinds.length === 1) return `Skip all ${copies.length} ${kinds[0]?.[1]}`;
+	return `Skip all ${copies.length} copies (${kinds.map(([count, plural]) => `${count} ${plural}`).join(", ")})`;
+}
+
+/**
+ * One skip action for every copy, one per other skip reason, and one Own action per template,
+ * wherever at least two rows share it. Each label counts exactly the rows it decides.
+ */
 function bulkActions(rows: RegistryCandidate[], word: string, undecided: boolean): BulkAction[] {
 	const actions: BulkAction[] = [];
 	const add = (label: string, targets: RegistryCandidate[], kind: Kind) => {
@@ -250,6 +270,9 @@ function bulkActions(rows: RegistryCandidate[], word: string, undecided: boolean
 		const done = !undecided && targets.every((row) => row.project.kind === kind);
 		actions.push({label, dirs, kind, done});
 	};
+	const copyCodes = new Set(Object.keys(COPY_PLURALS));
+	const copies = rows.filter((row) => row.skipReason !== undefined && copyCodes.has(row.skipReason.code));
+	add(copiesLabel(copies), copies, "skip");
 	for (const [code, plural] of Object.entries(SKIP_PLURALS)) {
 		const targets = rows.filter((row) => row.skipReason?.code === code);
 		add(`Skip all ${targets.length} ${plural}`, targets, "skip");

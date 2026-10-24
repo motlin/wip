@@ -4,6 +4,7 @@ import {cleanup, fireEvent, render, screen, within} from "@testing-library/react
 import type {ProjectRecord, RegistryCandidate} from "@wip/shared";
 
 import {RegistryReview} from "./registry-review.js";
+import {realUnregistered} from "./registry-review.fixture.js";
 
 const beta: ProjectRecord = {name: "beta", dir: "/p/beta", template: "typescript", kind: "fork"};
 const gone: ProjectRecord = {name: "gone", dir: "/p/gone", template: "rust", kind: "own"};
@@ -87,6 +88,25 @@ function saveBar(): HTMLElement {
 function saveAndCapture(onSave: ReturnType<typeof renderReview>["onSave"], changes: number): ProjectRecord[] {
 	fireEvent.click(within(saveBar()).getByRole("button", {name: `Save ${changes} decisions`}));
 	return onSave.mock.calls[0]?.[0] ?? [];
+}
+
+function renderReal(): void {
+	render(
+		<RegistryReview
+			candidates={realUnregistered}
+			current={[]}
+			saveLabel={(changes) => `Save ${changes} decisions`}
+			saving={false}
+			onSave={vi.fn<(projects: ProjectRecord[]) => void>()}
+		/>,
+	);
+}
+
+function bulkLabels(): string[] {
+	return within(card("Unregistered (105)"))
+		.getAllByRole("button")
+		.map((button) => button.textContent)
+		.filter((label) => /^(?:Skip|Mark) all /.test(label));
 }
 
 describe("RegistryReview", () => {
@@ -254,6 +274,44 @@ describe("RegistryReview", () => {
 		expect(["herdr-web", "lift", "wip-pr125", "wip-pr126"].map(decision)).toEqual(["Own", "Own", "Own", "Own"]);
 		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
 		expect(decision("beta")).toBe("Fork");
+	});
+
+	describe("with the real unregistered list", () => {
+		it("labels each bulk action with exactly which rows it covers, every copy in one Skip action", () => {
+			renderReal();
+			expect(bulkLabels()).toEqual([
+				"Skip all 57 copies (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 40 git worktrees)",
+				"Mark all 46 unregistered typescript repos Own",
+				"Mark all 15 unregistered java repos Own",
+				"Mark all 43 unregistered unknown repos Own",
+			]);
+		});
+
+		it("skips every copy, the Maven copy of Factorio-FBSR included, with the copies action", () => {
+			renderReal();
+			fireEvent.click(screen.getByRole("button", {name: /^Skip all 57 copies/}));
+			for (const button of screen.getAllByRole("button", {name: /^Show all/})) fireEvent.click(button);
+			const left = card("Unregistered (48)");
+			expect(rowNames(left).filter((name) => name.includes("FBSR"))).toEqual(["Factorio-FBSR"]);
+			expect(rowNames(card("Decided, not saved yet (57)"))).toContain("Factorio-FBSR-maven-3.10.0");
+			expect(realUnregistered.filter((r) => r.skipReason).map((r) => decision(r.project.name))).toEqual(
+				Array.from({length: 57}, () => "Skip"),
+			);
+		});
+
+		it("removes from the inbox every row each bulk action counts in its label", () => {
+			renderReal();
+			const labels = bulkLabels();
+			cleanup();
+			for (const label of labels) {
+				renderReal();
+				const count = Number(/all (\d+)/.exec(label)?.[1]);
+				fireEvent.click(screen.getByRole("button", {name: label}));
+				const inbox = screen.getAllByRole("region", {name: /^Unregistered \(/})[0]?.getAttribute("aria-label");
+				expect([label, inbox]).toEqual([label, `Unregistered (${105 - count})`]);
+				cleanup();
+			}
+		});
 	});
 
 	it("shows the first rows of a long group with a show-all button inside the card", () => {

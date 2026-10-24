@@ -392,7 +392,9 @@ function Tasks() {
 			<LadderSection
 				inventory={inventory}
 				importInventory={async () => {
-					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, await importInventory());
+					const status = await importInventory();
+					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, status);
+					return status;
 				}}
 				results={ladderResults}
 				runLadderAll={async () => runLadderAll()}

@@ -80,27 +80,49 @@ describe("getInventoryStatusHandler", () => {
 				conflicts: [{dir: `${templatesDir}/alpha`, templates: ["typescript", "java"]}],
 				skipped: 1,
 			},
+			registry: null,
 		});
 	});
 
-	it("reports an existing registry without a preview", async () => {
+	it("summarizes an existing registry instead of previewing an import", async () => {
 		saveInventory([{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}]);
+		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
 		expect(await getInventoryStatusHandler({templatesDir, homeDir: temp.dir})).toEqual({
 			exists: true,
-			registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
+			registryPath,
 			templatesDir,
 			preview: null,
+			registry: {
+				total: 1,
+				byTemplate: {rust: 1},
+				byKind: {own: 1},
+				modifiedAt: fs.statSync(registryPath).mtime.toISOString(),
+				projects: [{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}],
+			},
 		});
 	});
 });
 
 describe("importInventoryHandler", () => {
-	it("writes the registry when none exists and reports it as existing", async () => {
-		expect(await importInventoryHandler({templatesDir, homeDir: temp.dir})).toEqual({
+	it("writes the registry when none exists and reports what it wrote", async () => {
+		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
+		const status = await importInventoryHandler({templatesDir, homeDir: temp.dir});
+		expect(status).toEqual({
 			exists: true,
-			registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
+			registryPath,
 			templatesDir,
 			preview: null,
+			registry: {
+				total: 3,
+				byTemplate: {java: 1, project: 1, typescript: 1},
+				byKind: {fork: 1, own: 1, skip: 1},
+				modifiedAt: fs.statSync(registryPath).mtime.toISOString(),
+				projects: [
+					{name: "beta", dir: `${templatesDir}/beta`, template: "typescript", kind: "fork"},
+					{name: "gamma", dir: `${templatesDir}/gamma`, template: "java", kind: "own"},
+					{name: "skipped", dir: `${templatesDir}/skipped`, template: "project", kind: "skip"},
+				],
+			},
 		});
 		expect(loadInventory().projects.map((p) => p.name)).toEqual(["beta", "gamma", "skipped"]);
 	});

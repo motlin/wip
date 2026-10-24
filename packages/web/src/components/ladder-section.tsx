@@ -1,17 +1,28 @@
 import {useState} from "react";
 import {Bot, CheckCircle, Copy, ExternalLink, GitMerge, Loader2, OctagonAlert} from "./icons.js";
-import type {InventoryStatus, LadderResult} from "@wip/shared";
+import type {InventoryStatus, LadderResult, RegistrySummary} from "@wip/shared";
 import {runPendingAction} from "../lib/pending-action.js";
+
+function formatCounts(counts: Record<string, number>): string {
+	return Object.keys(counts)
+		.toSorted()
+		.map((key) => `${key} ${counts[key]}`)
+		.join(", ");
+}
 
 function ImportStep({
 	inventory,
-	importInventory,
+	importing,
+	onImport,
 }: {
 	inventory: InventoryStatus;
-	importInventory: () => Promise<unknown>;
+	importing: boolean;
+	onImport: () => void;
 }) {
-	const [importing, setImporting] = useState(false);
 	const {preview} = inventory;
+	const label = preview
+		? `Import ${preview.total} projects into ${inventory.registryPath}`
+		: `Import projects into ${inventory.registryPath}`;
 	return (
 		<section
 			aria-label="Import project registry"
@@ -49,14 +60,48 @@ function ImportStep({
 			<button
 				type="button"
 				disabled={importing}
-				onClick={() => {
-					void runPendingAction("Import", setImporting, importInventory);
-				}}
-				className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 font-medium text-text-200 transition-colors hover:bg-bg-100"
+				onClick={onImport}
+				className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
 			>
-				{importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-				Import
+				{importing && <Loader2 className="h-4 w-4 animate-spin" />}
+				{label}
 			</button>
+		</section>
+	);
+}
+
+function ImportConfirmation({registryPath, registry}: {registryPath: string; registry: RegistrySummary}) {
+	return (
+		<output
+			aria-label="Import complete"
+			className="mb-3 block rounded-md border border-status-green/50 bg-bg-200 p-3 text-xs text-text-300"
+		>
+			<p className="flex items-center gap-1.5 font-medium text-text-100">
+				<CheckCircle className="h-4 w-4 text-status-green" />
+				Imported {registry.total} projects into <code className="font-mono">{registryPath}</code>
+			</p>
+			<p>Kind: {formatCounts(registry.byKind)}</p>
+			<p>Template: {formatCounts(registry.byTemplate)}</p>
+		</output>
+	);
+}
+
+function RegistryOverview({registryPath, registry}: {registryPath: string; registry: RegistrySummary}) {
+	return (
+		<section aria-label="Project registry" className="mb-3 text-xs text-text-400">
+			<details>
+				<summary className="cursor-pointer">
+					{registry.total} projects in <code className="font-mono">{registryPath}</code>, modified{" "}
+					<time dateTime={registry.modifiedAt}>{new Date(registry.modifiedAt).toLocaleString()}</time>
+				</summary>
+				<ul className="mt-1 ml-4 list-disc font-mono">
+					{registry.projects.map((project) => (
+						<li key={project.dir}>
+							{project.name} ({project.template}, {project.kind})
+						</li>
+					))}
+				</ul>
+			</details>
 		</section>
 	);
 }
@@ -64,8 +109,10 @@ function ImportStep({
 /**
  * Ladder results per project with a button that queues the ladder for every project. Until a
  * project registry exists the button stays disabled and an import step takes its place, so one
- * click can never fall back to scanning every directory. Failures surface only as a toast via
- * runPendingAction.
+ * click can never fall back to scanning every directory. Once it exists a compact summary shows
+ * what wip will act on, preceded by a confirmation right after an import from this page. The
+ * import's pending state lives here rather than in the import step, which unmounts on success.
+ * Failures surface only as a toast via runPendingAction.
  */
 export function LadderSection({
 	inventory,
@@ -76,13 +123,17 @@ export function LadderSection({
 }: {
 	/** Registry status; undefined while loading. */
 	inventory: InventoryStatus | undefined;
-	importInventory: () => Promise<unknown>;
+	/** Writes the registry and resolves to the new status. */
+	importInventory: () => Promise<InventoryStatus>;
 	results: readonly LadderResult[];
 	runLadderAll: () => Promise<unknown>;
 	focusPane: (paneId: string) => Promise<unknown>;
 }) {
 	const [running, setRunning] = useState(false);
+	const [importing, setImporting] = useState(false);
+	const [imported, setImported] = useState<RegistrySummary | null>(null);
 	const registered = inventory?.exists === true;
+	const registry = inventory?.registry ?? null;
 
 	return (
 		<section className="mb-6 rounded-lg border border-border-300/50 bg-bg-100 p-4">
@@ -103,7 +154,21 @@ export function LadderSection({
 					Run ladder
 				</button>
 			</div>
-			{inventory && !inventory.exists && <ImportStep inventory={inventory} importInventory={importInventory} />}
+			{inventory && !inventory.exists && (
+				<ImportStep
+					inventory={inventory}
+					importing={importing}
+					onImport={() => {
+						void runPendingAction("Import", setImporting, async () => {
+							setImported((await importInventory()).registry);
+						});
+					}}
+				/>
+			)}
+			{inventory && registered && imported && (
+				<ImportConfirmation registryPath={inventory.registryPath} registry={imported} />
+			)}
+			{inventory && registry && <RegistryOverview registryPath={inventory.registryPath} registry={registry} />}
 			{results.length === 0 ? (
 				<p className="text-xs text-text-500">No ladder results yet.</p>
 			) : (

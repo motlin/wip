@@ -70,9 +70,11 @@ import {
 	buildInventoryFromTemplates,
 	getInventoryPath,
 	inventoryExists,
+	loadInventory,
 	readTemplateTexts,
 	saveInventory,
 	summarizeInventoryImport,
+	summarizeRegistry,
 	type InventoryStatus,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
@@ -1466,12 +1468,16 @@ function templateInventory(templatesDir: string, options: InventoryImportOptions
 function inventoryStatus(options: InventoryImportOptions): InventoryStatus {
 	const registryPath = getInventoryPath();
 	const templatesDir = resolveTemplatesDir(options);
-	if (inventoryExists()) return {exists: true, registryPath, templatesDir, preview: null};
+	if (inventoryExists()) {
+		const modifiedAt = fs.statSync(registryPath).mtime.toISOString();
+		const registry = summarizeRegistry(loadInventory().projects, modifiedAt);
+		return {exists: true, registryPath, templatesDir, preview: null, registry};
+	}
 	const preview = summarizeInventoryImport(templateInventory(templatesDir, options));
-	return {exists: false, registryPath, templatesDir, preview};
+	return {exists: false, registryPath, templatesDir, preview, registry: null};
 }
 
-/** Whether the project registry exists; when it does not, previews what `wip inventory import` would write. */
+/** Summarizes the project registry when it exists; when it does not, previews what `wip inventory import` would write. */
 export async function getInventoryStatusHandler(options: InventoryImportOptions = {}): Promise<InventoryStatus> {
 	return traced("getInventoryStatus", async () => Promise.resolve(inventoryStatus(options)));
 }

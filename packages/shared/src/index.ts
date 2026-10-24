@@ -330,9 +330,11 @@ export {
 	type InventoryStatus,
 	type LanguageTemplate,
 	type ParsedProjectsYaml,
+	type RegistrySummary,
 	type TemplateInventory,
 	type TemplateTexts,
 	buildInventoryFromTemplates,
 	parseProjectsYaml,
 	summarizeInventoryImport,
+	summarizeRegistry,
 } from "./lib/inventory-import.js";

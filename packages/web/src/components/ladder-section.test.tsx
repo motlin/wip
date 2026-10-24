@@ -24,6 +24,16 @@ const registered: InventoryStatus = {
 	registryPath: "/tmp/config/wip/projects.json5",
 	templatesDir: "/tmp/projects",
 	preview: null,
+	registry: {
+		total: 2,
+		byTemplate: {typescript: 1, java: 1},
+		byKind: {own: 1, fork: 1},
+		modifiedAt: "2026-10-23T12:00:00.000Z",
+		projects: [
+			{name: "beta", dir: "/tmp/projects/beta", template: "typescript", kind: "fork"},
+			{name: "gamma", dir: "/tmp/projects/gamma", template: "java", kind: "own"},
+		],
+	},
 };
 
 const unregistered: InventoryStatus = {
@@ -37,9 +47,25 @@ const unregistered: InventoryStatus = {
 		conflicts: [{dir: "/tmp/projects/alpha", templates: ["typescript", "java"]}],
 		skipped: 1,
 	},
+	registry: null,
 };
 
-const noImport = async () => Promise.resolve();
+const noImport = async () => Promise.resolve(registered);
+
+class Deferred<T> {
+	resolve: (value: T) => void = () => undefined;
+	reject: (error: Error) => void = () => undefined;
+	readonly promise = new Promise<T>((resolve, reject) => {
+		this.resolve = resolve;
+		this.reject = reject;
+	});
+}
+
+const importLabel = "Import 3 projects into /tmp/config/wip/projects.json5";
+
+function spinnerIn(element: HTMLElement): Element | null {
+	return element.querySelector(".animate-spin");
+}
 
 function ai(status: LadderResult["aiStatus"], extra: Partial<LadderResult> = {}): LadderResult {
 	return {...stopped, aiStatus: status, herdr: {tabId: "tab-1", paneId: "pane-1"}, ...extra};
@@ -242,7 +268,7 @@ describe("LadderSection", () => {
 	});
 
 	it("imports the registry when Import is clicked", async () => {
-		const importInventory = vi.fn<() => Promise<unknown>>().mockResolvedValue(registered);
+		const importInventory = vi.fn<() => Promise<InventoryStatus>>().mockResolvedValue(registered);
 		render(
 			<LadderSection
 				inventory={unregistered}
@@ -252,10 +278,115 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		fireEvent.click(screen.getByRole("button", {name: "Import"}));
+		fireEvent.click(screen.getByRole("button", {name: importLabel}));
 		await waitFor(() => {
 			expect(importInventory).toHaveBeenCalledTimes(1);
 		});
+	});
+
+	it("spins only inside the import button and stops once the import resolves", async () => {
+		const pending = new Deferred<InventoryStatus>();
+		const {container, rerender} = render(
+			<LadderSection
+				inventory={unregistered}
+				importInventory={async () => pending.promise}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		const button = screen.getByRole("button", {name: importLabel});
+		fireEvent.click(button);
+		await waitFor(() => {
+			expect(spinnerIn(button)).not.toBeNull();
+		});
+		expect(container.querySelectorAll(".animate-spin")).toHaveLength(1);
+		expect(button).toHaveProperty("disabled", true);
+		pending.resolve(registered);
+		rerender(
+			<LadderSection
+				inventory={registered}
+				importInventory={async () => pending.promise}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		await waitFor(() => {
+			expect(container.querySelectorAll(".animate-spin")).toHaveLength(0);
+		});
+	});
+
+	it("stops the import spinner, keeps the button usable, and toasts when the import rejects", async () => {
+		const pending = new Deferred<InventoryStatus>();
+		const {container} = render(
+			<LadderSection
+				inventory={unregistered}
+				importInventory={async () => pending.promise}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		const button = screen.getByRole("button", {name: importLabel});
+		fireEvent.click(button);
+		await waitFor(() => {
+			expect(spinnerIn(button)).not.toBeNull();
+		});
+		pending.reject(new Error("disk full"));
+		await waitFor(() => {
+			expect(getToasts()).toHaveLength(1);
+		});
+		expect(container.querySelectorAll(".animate-spin")).toHaveLength(0);
+		expect(screen.getByRole("button", {name: importLabel})).toHaveProperty("disabled", false);
+		expect(screen.queryByRole("status", {name: "Import complete"})).toBeNull();
+	});
+
+	it("confirms a finished import with the path and counts per kind and template", async () => {
+		const {rerender} = render(
+			<LadderSection
+				inventory={unregistered}
+				importInventory={async () => Promise.resolve(registered)}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", {name: importLabel}));
+		rerender(
+			<LadderSection
+				inventory={registered}
+				importInventory={async () => Promise.resolve(registered)}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		const confirmation = await screen.findByRole("status", {name: "Import complete"});
+		expect(confirmation.textContent).toBe(
+			"Imported 2 projects into /tmp/config/wip/projects.json5Kind: fork 1, own 1Template: java 1, typescript 1",
+		);
+		expect(getToasts()).toHaveLength(0);
+	});
+
+	it("summarizes an existing registry with its count, modification time, and project list", () => {
+		render(
+			<LadderSection
+				inventory={registered}
+				importInventory={noImport}
+				results={[]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		const summary = screen.getByRole("region", {name: "Project registry"});
+		expect(summary.textContent).toContain("2 projects in /tmp/config/wip/projects.json5");
+		expect(summary.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-23T12:00:00.000Z");
+		expect([...summary.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+			"beta (typescript, fork)",
+			"gamma (java, own)",
+		]);
+		expect(screen.queryByRole("status", {name: "Import complete"})).toBeNull();
 	});
 
 	it("enables Run ladder and hides the import step once a registry exists", () => {

@@ -169,18 +169,42 @@ export interface InventoryImportSummary {
 	skipped: number;
 }
 
-/** Whether the project registry exists, plus a preview of what an import would write when it does not. */
+/** What an existing project registry holds, so the UI can always show what wip will act on. */
+export interface RegistrySummary {
+	total: number;
+	byTemplate: Record<string, number>;
+	byKind: Record<string, number>;
+	/** ISO timestamp of the registry file's last modification. */
+	modifiedAt: string;
+	projects: ProjectRecord[];
+}
+
+/**
+ * Whether the project registry exists: a summary of it when it does, and a preview of what an
+ * import would write when it does not.
+ */
 export interface InventoryStatus {
 	exists: boolean;
 	registryPath: string;
 	templatesDir: string;
 	preview: InventoryImportSummary | null;
+	registry: RegistrySummary | null;
 }
 
 function countBy(projects: ProjectRecord[], key: "template" | "kind"): Record<string, number> {
 	const counts: Record<string, number> = {};
 	for (const project of projects) counts[project[key]] = (counts[project[key]] ?? 0) + 1;
 	return counts;
+}
+
+export function summarizeRegistry(projects: ProjectRecord[], modifiedAt: string): RegistrySummary {
+	return {
+		total: projects.length,
+		byTemplate: countBy(projects, "template"),
+		byKind: countBy(projects, "kind"),
+		modifiedAt,
+		projects,
+	};
 }
 
 export function summarizeInventoryImport({projects, conflicts}: TemplateInventory): InventoryImportSummary {

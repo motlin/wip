@@ -21,6 +21,7 @@ import type {
 	AdvancePlanSummary,
 	FileDiff,
 	ProjectChildrenResult,
+	QueueSnapshot,
 	RunAllCounts,
 	SystemStatus,
 	TestJobStatus,
@@ -33,6 +34,7 @@ export type {
 	AdvancePlanProjectSummary,
 	FileDiff,
 	ProjectChildrenResult,
+	QueueSnapshot,
 	TestJobStatus,
 } from "./server-fns.impl.js";
 export type {SnoozedChild} from "@wip/shared/schemas.js";
@@ -54,6 +56,10 @@ export const getProjectChildren = createServerFn({method: "GET"})
 export const getProjectTodos = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
 	.handler(async ({data}) => (await serverFns()).getProjectTodosHandler(data.project));
+
+export const getQueueSnapshot = createServerFn({method: "GET"}).handler(async (): Promise<QueueSnapshot> =>
+	(await serverFns()).getQueueSnapshotHandler(),
+);
 
 export const getIssues = createServerFn({method: "GET"}).handler(async () => (await serverFns()).getIssuesHandler());
 

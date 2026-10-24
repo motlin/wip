@@ -37,6 +37,7 @@ import {
 	cacheTodos,
 	getCachedIssues,
 	getCachedProjectItems,
+	getDb,
 	type LadderResult,
 	type ProjectInfo,
 	type RunLadderOptions,
@@ -378,17 +379,20 @@ export async function getProjectChildrenHandler(project: string): Promise<Projec
 	return traced("getProjectChildren", async () => {
 		const cached = getCachedChildren(project);
 		if (cached) {
-			if (isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS)) return cached;
-			enqueueRefresh({
-				kind: "children",
-				project,
-				run: async () => {
-					await refreshProjectChildren(project);
-				},
-			});
+			if (!isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS)) enqueueChildrenRefresh(project);
 			return cached;
 		}
 		return refreshChildrenThroughQueue(project);
+	});
+}
+
+function enqueueChildrenRefresh(project: string): void {
+	enqueueRefresh({
+		kind: "children",
+		project,
+		run: async () => {
+			await refreshProjectChildren(project);
+		},
 	});
 }
 
@@ -460,17 +464,20 @@ export async function getProjectTodosHandler(project: string): Promise<SharedTod
 	return traced("getProjectTodos", async () => {
 		const cached = getCachedTodos(project);
 		if (cached) {
-			if (isCacheFresh(`todos:${project}`, TODOS_CACHE_TTL_MS)) return cached;
-			enqueueRefresh({
-				kind: "todos",
-				project,
-				run: async () => {
-					await refreshProjectTodos(project);
-				},
-			});
+			if (!isCacheFresh(`todos:${project}`, TODOS_CACHE_TTL_MS)) enqueueTodosRefresh(project);
 			return cached;
 		}
 		return refreshProjectTodos(project);
+	});
+}
+
+function enqueueTodosRefresh(project: string): void {
+	enqueueRefresh({
+		kind: "todos",
+		project,
+		run: async () => {
+			await refreshProjectTodos(project);
+		},
 	});
 }
 
@@ -528,6 +535,66 @@ export async function getProjectItemsHandler(): Promise<GitHubProjectItem[]> {
 			fetch: fetchAllProjectItems,
 		}),
 	);
+}
+
+export interface QueueSnapshot {
+	/** Keyed by project; a project whose cold refresh failed is absent. */
+	children: Record<string, ProjectChildrenResult>;
+	todos: Record<string, SharedTodoItem[]>;
+	/** Null when the GitHub list could not be served, so the client falls back to its own query. */
+	issues: IssueResult[] | null;
+	projectItems: GitHubProjectItem[] | null;
+	snoozed: SnoozedChild[];
+}
+
+/**
+ * Everything the queue views read, in one request: every project's children and
+ * todos come from a single read transaction instead of one request per project.
+ * Stale entries are served and refreshed in the background; only a project with
+ * no cache row waits on its cold refresh.
+ */
+export async function getQueueSnapshotHandler(): Promise<QueueSnapshot> {
+	return traced("getQueueSnapshot", async () => {
+		const projects = await ensureProjects();
+		clearExpiredSnoozes();
+		const read = getDb().transaction(() => ({
+			entries: projects.map((p) => ({
+				project: p.name,
+				children: getCachedChildren(p.name),
+				childrenFresh: isCacheFresh(`children:${p.name}`, CHILDREN_CACHE_TTL_MS),
+				todos: getCachedTodos(p.name),
+				todosFresh: isCacheFresh(`todos:${p.name}`, TODOS_CACHE_TTL_MS),
+			})),
+			snoozed: getAllSnoozedForDisplay(),
+		}));
+
+		const [entries, issues, projectItems] = await Promise.all([
+			Promise.all(
+				read.entries.map(async (entry) => {
+					if (entry.children && !entry.childrenFresh) enqueueChildrenRefresh(entry.project);
+					if (entry.todos && !entry.todosFresh) enqueueTodosRefresh(entry.project);
+					const [children, todos] = await Promise.all([
+						entry.children ?? refreshChildrenThroughQueue(entry.project).catch(() => undefined),
+						entry.todos ?? refreshProjectTodos(entry.project),
+					]);
+					return {project: entry.project, children, todos};
+				}),
+			),
+			getIssuesHandler().catch(() => null),
+			getProjectItemsHandler().catch(() => null),
+		]);
+
+		return {
+			// A failed cold refresh leaves the project out, so its own query surfaces the error.
+			children: Object.fromEntries(
+				entries.flatMap((e) => (e.children === undefined ? [] : [[e.project, e.children] as const])),
+			),
+			todos: Object.fromEntries(entries.map((e) => [e.project, e.todos])),
+			issues,
+			projectItems,
+			snoozed: read.snoozed,
+		};
+	});
 }
 
 export async function getIssueByNumberHandler(data: {project: string; number: number}): Promise<IssueResult | null> {

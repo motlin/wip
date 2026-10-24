@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {afterEach, describe, expect, it} from "vite-plus/test";
+import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {act, cleanup, render, screen} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {
@@ -22,6 +22,16 @@ import {
 	projectsQueryOptions,
 	snoozedQueryOptions,
 } from "./queries.js";
+import type {QueueSnapshot} from "./server-fns.js";
+
+const snapshotCalls = vi.hoisted(() => ({count: 0, snapshot: undefined as unknown}));
+vi.mock("./server-fns.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./server-fns.js")>()),
+	getQueueSnapshot: async () => {
+		snapshotCalls.count++;
+		return Promise.resolve(snapshotCalls.snapshot);
+	},
+}));
 
 const project: ProjectInfo = {
 	name: "wip",
@@ -53,6 +63,12 @@ function seededClient() {
 	queryClient.setQueryData(issuesQueryOptions().queryKey, []);
 	queryClient.setQueryData(projectItemsQueryOptions().queryKey, []);
 	queryClient.setQueryData(snoozedQueryOptions().queryKey, []);
+	return queryClient;
+}
+
+function coldClient() {
+	const queryClient = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}});
+	queryClient.setQueryData(projectsQueryOptions().queryKey, [project]);
 	return queryClient;
 }
 
@@ -101,5 +117,35 @@ describe("dashboard client-only rendering", () => {
 		expect(screen.getByText("1 projects, 1 items").textContent).toBe("1 projects, 1 items");
 		expect(screen.getByText(todo.title).textContent).toBe(todo.title);
 		expect(queryClient.isFetching()).toBe(0);
+	});
+
+	it("fills a cold cache from one queue snapshot before painting", async () => {
+		const snapshot: QueueSnapshot = {
+			children: {wip: []},
+			todos: {wip: [todo]},
+			issues: [],
+			projectItems: [],
+			snoozed: [],
+		};
+		snapshotCalls.count = 0;
+		snapshotCalls.snapshot = snapshot;
+		const queryClient = coldClient();
+		const router = buildRouter(queryClient);
+
+		await router.load();
+		await act(async () => {
+			render(
+				<QueryClientProvider client={queryClient}>
+					<RouterProvider router={router} />
+				</QueryClientProvider>,
+			);
+			await router.load();
+		});
+
+		expect({
+			snapshotCalls: snapshotCalls.count,
+			todo: screen.getByText(todo.title).textContent,
+			fetching: queryClient.isFetching(),
+		}).toStrictEqual({snapshotCalls: 1, todo: todo.title, fetching: 0});
 	});
 });

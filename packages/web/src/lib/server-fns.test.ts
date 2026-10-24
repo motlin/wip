@@ -30,6 +30,7 @@ import {enqueueRefresh, onRefreshError, resetScheduler} from "./refresh-schedule
 import {resetQueue} from "./task-queue.js";
 import {workQueue} from "./shared-work-queue.js";
 import {repoResource} from "./repo-resource.js";
+import {makeChild} from "./test-factories.js";
 
 const forcedRefreshSpy = vi.hoisted(() => vi.fn<(project: string, options: {force?: boolean}) => void>());
 vi.mock("./background-refresh.js", async (importOriginal) => ({
@@ -2245,5 +2246,90 @@ describe("queued git actions", () => {
 		);
 		expect(whileHeld).toEqual([]);
 		expect(afterRelease.map((c) => [c.command, c.args])).toContainEqual(["claude", ["-p", "/git:commit"]]);
+	});
+});
+
+// -- getQueueSnapshotHandler --
+
+describe("getQueueSnapshotHandler", () => {
+	it("returns every project's cached children and todos plus issues, project items, and snoozed in one call", async () => {
+		const {cacheChildren, cacheTodos, snoozeItem} = await import("@wip/shared");
+		seedProjectCache([
+			makeProject({name: "alpha", dir: "/tmp/alpha"}),
+			makeProject({name: "beta", dir: "/tmp/beta"}),
+		]);
+		const alphaChild = makeChild({project: "alpha", sha: "a".repeat(40), shortSha: "aaaaaaa", subject: "Alpha"});
+		const alphaTodo = {
+			project: "alpha",
+			title: "Alpha todo",
+			sourceFile: "/tmp/alpha/.llm/todo.md",
+			sourceLabel: ".llm/todo.md",
+		};
+		const projectItem = {
+			id: "PVTI_snapshot",
+			title: "Board item",
+			status: "Todo",
+			type: "ISSUE" as const,
+			url: "https://github.com/owner/repo/issues/9",
+			number: 9,
+			repository: "owner/repo",
+			labels: [],
+		};
+		cacheChildren("alpha", [alphaChild]);
+		cacheChildren("beta", []);
+		cacheTodos("alpha", [alphaTodo]);
+		cacheTodos("beta", []);
+		cacheIssues([makeIssue(3, "Snapshot issue")]);
+		cacheProjectItems([projectItem]);
+		snoozeItem("b".repeat(40), "beta", "bbbbbbb", "Snoozed one", null);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+
+		const {getQueueSnapshotHandler} = await import("./server-fns.impl.js");
+		const result = await getQueueSnapshotHandler();
+
+		expect({result, enqueued: enqueueSpy.mock.calls.length}).toStrictEqual({
+			result: {
+				children: {alpha: [alphaChild], beta: []},
+				todos: {alpha: [alphaTodo], beta: []},
+				issues: [makeIssue(3, "Snapshot issue")],
+				projectItems: [projectItem],
+				snoozed: [
+					{sha: "b".repeat(40), project: "beta", shortSha: "bbbbbbb", subject: "Snoozed one", until: null},
+				],
+			},
+			enqueued: 0,
+		});
+		enqueueSpy.mockRestore();
+	});
+
+	it("serves stale cached children and enqueues their background refresh", async () => {
+		const {cacheChildren, cacheTodos} = await import("@wip/shared");
+		seedProjectCache([makeProject({name: "alpha", dir: "/tmp/alpha"})]);
+		const staleChild = makeChild({project: "alpha", subject: "Stale"});
+		atTime(Date.now() - STALE_MS, () => {
+			cacheChildren("alpha", [staleChild]);
+		});
+		cacheTodos("alpha", []);
+		cacheIssues([]);
+		cacheProjectItems([]);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue").mockImplementation(
+			() =>
+				({
+					settled: Promise.resolve(),
+					coalesced: false,
+				}) as unknown as ReturnType<typeof workQueue.enqueue>,
+		);
+
+		const {getQueueSnapshotHandler} = await import("./server-fns.impl.js");
+		const result = await getQueueSnapshotHandler();
+
+		expect({
+			children: result.children,
+			enqueued: enqueueSpy.mock.calls.map(([job]) => job.coalesceKey),
+		}).toStrictEqual({
+			children: {alpha: [staleChild]},
+			enqueued: ["children:alpha"],
+		});
+		enqueueSpy.mockRestore();
 	});
 });

@@ -102,11 +102,33 @@ function renderReal(): void {
 	);
 }
 
+function question(): HTMLElement {
+	return screen.getByRole("region", {name: "Quick question"});
+}
+
+/** The primary button of the question on screen: the bulk action it offers. */
+function questionAction(): string {
+	return within(question()).getAllByRole("button")[0]?.getAttribute("aria-label") ?? "";
+}
+
+/** Keeps every question until the one offering label, then answers it. */
+function answer(label: string): void {
+	while (questionAction() !== label) fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
+	fireEvent.click(within(question()).getByRole("button", {name: label}));
+}
+
+/** Every quick question's bulk action, in order, keeping each one. */
 function bulkLabels(): string[] {
-	return within(card("Unregistered (105)"))
-		.getAllByRole("button")
-		.map((button) => button.textContent)
-		.filter((label) => /^(?:Skip|Mark) all /.test(label));
+	const labels: string[] = [];
+	while (screen.queryByRole("region", {name: "Quick question"})) {
+		labels.push(questionAction());
+		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
+	}
+	return labels;
+}
+
+function progress(): string | null | undefined {
+	return screen.getByRole("navigation", {name: "Review progress"}).querySelector("[data-progress]")?.textContent;
 }
 
 describe("RegistryReview", () => {
@@ -142,7 +164,7 @@ describe("RegistryReview", () => {
 	it("leaves inbox rows undecided, showing the suggestion, while registry rows show their saved kind", () => {
 		renderReview();
 		expect(screen.queryAllByRole("checkbox")).toEqual([]);
-		for (const item of screen.getAllByRole("listitem")) {
+		for (const item of document.querySelectorAll<HTMLElement>("section[data-registry-group] li")) {
 			expect(
 				within(item)
 					.getAllByRole("radio")
@@ -178,7 +200,7 @@ describe("RegistryReview", () => {
 
 	it("reaches zero left to decide once every inbox row is decided", () => {
 		renderReview();
-		fireEvent.click(within(card("Unregistered (4)")).getByRole("button", {name: "Skip all 2 PR worktrees"}));
+		answer("Skip all 2 PR worktrees");
 		decide("herdr-web", "Own");
 		decide("lift", "Own");
 		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
@@ -258,7 +280,7 @@ describe("RegistryReview", () => {
 
 	it("skips every PR worktree in the inbox with one bulk action", () => {
 		renderReview();
-		fireEvent.click(within(card("Unregistered (4)")).getByRole("button", {name: "Skip all 2 PR worktrees"}));
+		answer("Skip all 2 PR worktrees");
 		expect(rowNames(card("Unregistered (2)"))).toEqual(["herdr-web", "lift"]);
 		expect(["wip-pr125", "wip-pr126"].map(decision)).toEqual(["Skip", "Skip"]);
 		expect(decision("herdr-web")).toBeNull();
@@ -266,11 +288,7 @@ describe("RegistryReview", () => {
 
 	it("marks every repo of one template in the inbox Own with one bulk action", () => {
 		renderReview();
-		fireEvent.click(
-			within(card("Unregistered (4)")).getByRole("button", {
-				name: "Mark all 4 unregistered typescript repos Own",
-			}),
-		);
+		answer("Mark all 4 unregistered typescript repos Own");
 		expect(["herdr-web", "lift", "wip-pr125", "wip-pr126"].map(decision)).toEqual(["Own", "Own", "Own", "Own"]);
 		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
 		expect(decision("beta")).toBe("Fork");
@@ -289,7 +307,7 @@ describe("RegistryReview", () => {
 
 		it("skips every copy, the Maven copy of Factorio-FBSR included, with the copies action", () => {
 			renderReal();
-			fireEvent.click(screen.getByRole("button", {name: /^Skip all 57 copies/}));
+			fireEvent.click(within(question()).getByRole("button", {name: /^Skip all 57 copies/}));
 			for (const button of screen.getAllByRole("button", {name: /^Show all/})) fireEvent.click(button);
 			const left = card("Unregistered (48)");
 			expect(rowNames(left).filter((name) => name.includes("FBSR"))).toEqual(["Factorio-FBSR"]);
@@ -306,12 +324,109 @@ describe("RegistryReview", () => {
 			for (const label of labels) {
 				renderReal();
 				const count = Number(/all (\d+)/.exec(label)?.[1]);
-				fireEvent.click(screen.getByRole("button", {name: label}));
+				answer(label);
 				const inbox = screen.getAllByRole("region", {name: /^Unregistered \(/})[0]?.getAttribute("aria-label");
 				expect([label, inbox]).toEqual([label, `Unregistered (${105 - count})`]);
 				cleanup();
 			}
 		});
+	});
+
+	it("asks the bulk questions one at a time, saying what each covers, how many, and which repos", () => {
+		renderReview();
+		const first = question();
+		expect([
+			first.querySelector("[data-question-count]")?.textContent,
+			within(first).getByRole("heading").textContent,
+			first.querySelector("[data-covers]")?.textContent,
+			[...first.querySelectorAll("[data-sample] li")].map((li) => li.textContent),
+			within(first)
+				.getAllByRole("button")
+				.map((button) => [button.textContent, button.getAttribute("aria-label")]),
+		]).toEqual([
+			"Question 1 of 2",
+			"Skip the 2 PR worktrees?",
+			"Copies of another repo (2 PR worktrees). wip ladder --all already updates the original, so a copy only adds work.",
+			["wip-pr125", "wip-pr126"],
+			[
+				["Skip all 2 PR worktrees", "Skip all 2 PR worktrees"],
+				["Keep", null],
+			],
+		]);
+		fireEvent.click(within(first).getByRole("button", {name: "Keep"}));
+		expect([
+			question().querySelector("[data-question-count]")?.textContent,
+			within(question()).getByRole("heading").textContent,
+			question().querySelector("[data-covers]")?.textContent,
+			[...question().querySelectorAll("[data-sample] li")].map((li) => li.textContent),
+		]).toEqual([
+			"Question 2 of 2",
+			"Mark the 4 unregistered typescript repos Own?",
+			"Every unregistered repo on the typescript template. Own means wip ladder --all keeps it up to date.",
+			["herdr-web", "lift", "wip-pr125", "wip-pr126"],
+		]);
+		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
+		expect(screen.queryByRole("region", {name: "Quick question"})).toBeNull();
+		expect(screen.getByRole("region", {name: "Step 1: Quick questions"}).textContent).toContain(
+			"No quick questions left",
+		);
+	});
+
+	it("samples a few repos of a long question and counts the rest", () => {
+		renderReal();
+		expect([
+			within(question()).getByRole("heading").textContent,
+			question().querySelector("[data-covers]")?.textContent,
+			within(question()).getAllByRole("button")[0]?.textContent,
+			[...question().querySelectorAll("[data-sample] li")].map((li) => li.textContent),
+			question().querySelector("[data-sample-more]")?.textContent,
+		]).toEqual([
+			"Skip the 57 copies of other repos?",
+			"Copies of another repo (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 40 git worktrees). wip ladder --all already updates the original, so a copy only adds work.",
+			"Skip all 57 copies",
+			[
+				"Factorio-FBSR-maven-3.10.0",
+				"avalon-online-logs-pr125",
+				"ccp-par-1",
+				"ccp-par-2",
+				"ccp-par-3",
+				"data-converter",
+			],
+			"and 51 more",
+		]);
+	});
+
+	it("walks the progress through questions, the rest, and saving", () => {
+		renderReview();
+		const nav = screen.getByRole("navigation", {name: "Review progress"});
+		expect(
+			within(nav)
+				.getAllByRole("listitem")
+				.map((step) => step.textContent),
+		).toEqual(["1Quick questions", "2Decide the rest", "3Save"]);
+		expect(progress()).toBe("Step 1 of 3 · 4 left");
+		expect(nav.querySelector("[aria-current=step]")?.textContent).toBe("1Quick questions");
+		answer("Skip all 2 PR worktrees");
+		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
+		expect(progress()).toBe("Step 2 of 3 · 2 left");
+		decide("herdr-web", "Own");
+		decide("lift", "Fork");
+		expect(progress()).toBe("Step 3 of 3 · 0 left");
+		expect(nav.querySelector("[aria-current=step]")?.textContent).toBe("3Save");
+	});
+
+	it("colors each checked decision by its kind", () => {
+		renderReview();
+		decide("herdr-web", "Own");
+		decide("lift", "Fork");
+		decide("wip-pr125", "Nested");
+		decide("wip-pr126", "Skip");
+		expect(
+			["herdr-web", "lift", "wip-pr125", "wip-pr126"].map((name) =>
+				within(row(name)).getByRole("radio", {checked: true}).nextElementSibling?.getAttribute("data-kind"),
+			),
+		).toEqual(["own", "fork", "nested", "skip"]);
 	});
 
 	it("shows the first rows of a long group with a show-all button inside the card", () => {

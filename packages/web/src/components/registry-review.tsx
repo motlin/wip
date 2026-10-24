@@ -9,9 +9,17 @@ import {
 	type SkipReason,
 	type SkipReasonCode,
 } from "@wip/shared/inventory-import.js";
-import {Loader2} from "./icons.js";
+import {CheckCircle, Loader2} from "./icons.js";
 
 type Kind = ProjectRecord["kind"];
+
+/** Each decision's chip color once chosen: kept kinds in green, blue, and purple, a skip in muted gray. */
+const DECISION_COLORS: Record<Kind, string> = {
+	own: "peer-checked:bg-btn-success-bg peer-checked:text-btn-success-text",
+	fork: "peer-checked:bg-blue-column peer-checked:text-blue-700 dark:peer-checked:text-blue-300",
+	nested: "peer-checked:bg-purple-column peer-checked:text-purple-700 dark:peer-checked:text-purple-300",
+	skip: "peer-checked:bg-bg-300 peer-checked:text-text-300",
+};
 
 const DECISIONS: [Kind, string][] = [
 	["own", "Own"],
@@ -129,8 +137,10 @@ function DiffView({diff}: {diff: InventoryDiff}) {
 
 const cardClass = "mb-3 rounded-lg border border-border-300/50 bg-bg-100 p-3 text-xs text-text-300";
 const buttonClass =
-	"rounded-md border border-border-300/50 px-2 py-0.5 text-xs text-text-200 hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-50";
-const selectClass = "rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-200";
+	"rounded-md border border-border-300/50 bg-bg-000 px-2 py-0.5 text-xs text-text-100 hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-50";
+const primaryClass =
+	"inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70";
+const selectClass = "rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-100";
 
 function CandidateRow({
 	row,
@@ -154,41 +164,68 @@ function CandidateRow({
 	const reason = row.skipReason ?? BY_YOU;
 	const suggestion = DECISIONS.find(([value]) => value === kind)?.[1];
 	return (
-		<li aria-label={name} className="border-t border-border-300/30 py-1.5 first:border-t-0">
-			<div className="flex flex-wrap items-center gap-2">
-				<span className="font-medium text-text-100">{name}</span>
-				<span className="font-mono break-all text-text-400">{dir}</span>
-				{row.group === "conflict" ? (
-					<select
-						aria-label={`Template for ${name}`}
-						value={template}
-						onChange={(event) => {
-							const next = parseTemplate(event.target.value);
-							if (next) onTemplate(next);
-						}}
-						className={selectClass}
-					>
-						{TEMPLATES.map((value) => (
-							<option key={value} value={value}>
-								{value}
-							</option>
-						))}
-					</select>
-				) : (
-					<span className="text-text-400">{template}</span>
+		<li
+			aria-label={name}
+			className="flex flex-col gap-1.5 border-t border-border-300/30 py-2 first:border-t-0 sm:flex-row sm:items-center sm:gap-3"
+		>
+			<div className="min-w-0 flex-1">
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+					<span className="text-sm font-medium text-text-100">{name}</span>
+					{row.group === "conflict" ? (
+						<select
+							aria-label={`Template for ${name}`}
+							value={template}
+							onChange={(event) => {
+								const next = parseTemplate(event.target.value);
+								if (next) onTemplate(next);
+							}}
+							className={selectClass}
+						>
+							{TEMPLATES.map((value) => (
+								<option key={value} value={value}>
+									{value}
+								</option>
+							))}
+						</select>
+					) : (
+						<span className="rounded bg-bg-200 px-1.5 text-[11px] text-text-300">{template}</span>
+					)}
+				</div>
+				<span className="block truncate font-mono text-[11px] text-text-500" title={dir}>
+					{dir}
+				</span>
+				{row.note && !(skipped && row.note === reason.text) && <p className="text-text-500">{row.note}</p>}
+				{skipped && (
+					<p className="mt-0.5 flex flex-wrap items-center gap-2 text-text-500">
+						<span data-skip-reason>{reason.text}</span>
+						{reason.code === "user" && !undecided && (
+							<input
+								type="text"
+								aria-label={`Skip note for ${name}`}
+								placeholder="optional note"
+								value={skipNote ?? ""}
+								onChange={(event) => {
+									onNote(event.target.value);
+								}}
+								className={selectClass}
+							/>
+						)}
+					</p>
 				)}
+			</div>
+			<div className="flex shrink-0 flex-wrap items-center gap-2">
 				{undecided && (
-					<span data-suggestion className="ml-auto text-text-400">
+					<span data-suggestion className="text-text-500">
 						suggested: {suggestion}
 					</span>
 				)}
 				<div
 					role="radiogroup"
 					aria-label={`Decision for ${name}`}
-					className={`${undecided ? "" : "ml-auto "}inline-flex overflow-hidden rounded-md border border-border-300/50`}
+					className="inline-flex overflow-hidden rounded-md border border-border-300/60 bg-bg-000"
 				>
 					{DECISIONS.map(([value, label]) => (
-						<label key={value} className="cursor-pointer">
+						<label key={value} className="cursor-pointer border-l border-border-300/40 first:border-l-0">
 							<input
 								type="radio"
 								name={`decision-${dir}`}
@@ -199,8 +236,9 @@ function CandidateRow({
 								className="peer sr-only"
 							/>
 							<span
-								className={`block px-2 py-0.5 text-text-200 peer-checked:bg-bg-300 peer-checked:text-text-100 peer-focus-visible:ring-1 hover:bg-bg-200 ${
-									undecided && kind === value ? "underline decoration-dotted" : ""
+								data-kind={value}
+								className={`block px-2.5 py-1 text-text-300 peer-checked:font-semibold peer-focus-visible:ring-1 hover:bg-bg-200 ${DECISION_COLORS[value]} ${
+									undecided && kind === value ? "underline decoration-dotted underline-offset-2" : ""
 								}`}
 							>
 								{label}
@@ -219,41 +257,37 @@ function CandidateRow({
 					</button>
 				)}
 			</div>
-			{row.note && !(skipped && row.note === reason.text) && <p className="text-text-400">{row.note}</p>}
-			{skipped && (
-				<p className="mt-0.5 flex flex-wrap items-center gap-2 text-text-400">
-					<span data-skip-reason>{reason.text}</span>
-					{reason.code === "user" && !undecided && (
-						<input
-							type="text"
-							aria-label={`Skip note for ${name}`}
-							placeholder="optional note"
-							value={skipNote ?? ""}
-							onChange={(event) => {
-								onNote(event.target.value);
-							}}
-							className="rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-200"
-						/>
-					)}
-				</p>
-			)}
 		</li>
 	);
 }
 
 interface BulkAction {
+	/** Stable across counts, so a kept question stays answered as rows change. */
+	key: string;
 	label: string;
+	/** The visible start of the label on a question's button, short enough for one line. */
+	short: string;
+	/** The action asked as a yes-or-no question. */
+	question: string;
+	/** What the rows it targets have in common, and why the decision fits them. */
+	covers: string;
+	names: string[];
 	dirs: ReadonlySet<string>;
 	kind: Kind;
 	/** Whether every row it targets already has that decision. */
 	done: boolean;
 }
 
-/** "Skip all N copies (a PR worktrees, b git worktrees)", or the one kind's own label when only one is present. */
-function copiesLabel(copies: RegistryCandidate[]): string {
-	const kinds = Object.entries(COPY_PLURALS)
+/** How many copies of each kind, in COPY_PLURALS order. */
+function copyKinds(copies: RegistryCandidate[]): (readonly [number, string])[] {
+	return Object.entries(COPY_PLURALS)
 		.map(([code, plural]) => [copies.filter((row) => row.skipReason?.code === code).length, plural] as const)
 		.filter(([count]) => count > 0);
+}
+
+/** "Skip all N copies (a PR worktrees, b git worktrees)", or the one kind's own label when only one is present. */
+function copiesLabel(copies: RegistryCandidate[]): string {
+	const kinds = copyKinds(copies);
 	if (kinds.length === 1) return `Skip all ${copies.length} ${kinds[0]?.[1]}`;
 	return `Skip all ${copies.length} copies (${kinds.map(([count, plural]) => `${count} ${plural}`).join(", ")})`;
 }
@@ -264,22 +298,48 @@ function copiesLabel(copies: RegistryCandidate[]): string {
  */
 function bulkActions(rows: RegistryCandidate[], word: string, undecided: boolean): BulkAction[] {
 	const actions: BulkAction[] = [];
-	const add = (label: string, targets: RegistryCandidate[], kind: Kind) => {
+	const add = (
+		key: string,
+		targets: RegistryCandidate[],
+		kind: Kind,
+		text: {label: string; short: string; question: string; covers: string},
+	) => {
 		if (targets.length < 2) return;
 		const dirs = new Set(targets.map((row) => row.project.dir));
 		const done = !undecided && targets.every((row) => row.project.kind === kind);
-		actions.push({label, dirs, kind, done});
+		actions.push({key, ...text, names: targets.map((row) => row.project.name), dirs, kind, done});
 	};
 	const copyCodes = new Set(Object.keys(COPY_PLURALS));
 	const copies = rows.filter((row) => row.skipReason !== undefined && copyCodes.has(row.skipReason.code));
-	add(copiesLabel(copies), copies, "skip");
+	const kinds = copyKinds(copies);
+	const [onlyKind] = kinds;
+	const copyNoun = kinds.length === 1 && onlyKind ? onlyKind[1] : "copies";
+	add("copies", copies, "skip", {
+		label: copiesLabel(copies),
+		short: `Skip all ${copies.length} ${copyNoun}`,
+		question: `Skip the ${copies.length} ${kinds.length === 1 ? copyNoun : "copies of other repos"}?`,
+		covers: `Copies of another repo (${kinds.map(([count, plural]) => `${count} ${plural}`).join(", ")}). wip ladder --all already updates the original, so a copy only adds work.`,
+	});
 	for (const [code, plural] of Object.entries(SKIP_PLURALS)) {
 		const targets = rows.filter((row) => row.skipReason?.code === code);
-		add(`Skip all ${targets.length} ${plural}`, targets, "skip");
+		add(`skip:${code}`, targets, "skip", {
+			label: `Skip all ${targets.length} ${plural}`,
+			short: `Skip all ${targets.length} ${plural}`,
+			question: `Skip the ${targets.length} ${plural}?`,
+			covers:
+				code === "missing"
+					? "The directory is gone, so wip ladder --all has nothing to update."
+					: "Directories without a git repo, so wip ladder --all has nothing to update.",
+		});
 	}
 	for (const template of TEMPLATES) {
 		const targets = rows.filter((row) => row.project.template === template);
-		add(`Mark all ${targets.length} ${word} ${template} repos Own`, targets, "own");
+		add(`own:${template}`, targets, "own", {
+			label: `Mark all ${targets.length} ${word} ${template} repos Own`,
+			short: `Mark all ${targets.length} Own`,
+			question: `Mark the ${targets.length} ${word} ${template} repos Own?`,
+			covers: `Every ${word} repo on the ${template} template. Own means wip ladder --all keeps it up to date.`,
+		});
 	}
 	return actions;
 }
@@ -297,6 +357,7 @@ function GroupCard({
 	undecided,
 	edit,
 	onUndo,
+	askedAbove = false,
 	children,
 }: {
 	/** The card's accessible name, before its count. */
@@ -310,19 +371,25 @@ function GroupCard({
 	undecided: boolean;
 	edit: Edit;
 	onUndo?: (dir: string) => void;
+	/** Its bulk actions are asked as quick questions above, so the card leaves them out. */
+	askedAbove?: boolean;
 	children?: ReactNode;
 }) {
 	const [showAll, setShowAll] = useState(false);
 	const shown = showAll ? rows : rows.slice(0, FIRST_ROWS);
-	const actions = bulkActions(rows, word, undecided);
+	const actions = askedAbove ? [] : bulkActions(rows, word, undecided);
 	const name = `${label} (${rows.length})`;
 	return (
 		<section aria-label={name} data-registry-group={group} className={cardClass}>
-			<h3 className="mb-1 text-sm font-semibold text-text-200">{heading ?? name}</h3>
-			{explanation && <p data-explanation>{explanation}</p>}
+			<h3 className="mb-1 text-sm font-semibold text-text-100">{heading ?? name}</h3>
+			{explanation && (
+				<p data-explanation className="text-text-500">
+					{explanation}
+				</p>
+			)}
 			{children}
 			{actions.length > 0 && (
-				<div className="mb-1 flex flex-wrap gap-1">
+				<div className="my-2 flex flex-wrap gap-1">
 					{actions.map((action) => (
 						<button
 							key={action.label}
@@ -387,6 +454,134 @@ function GroupCard({
 	);
 }
 
+/** Repos a question names before counting the rest. */
+const SAMPLE = 6;
+
+type Step = 1 | 2 | 3;
+
+const STEPS: [Step, string][] = [
+	[1, "Quick questions"],
+	[2, "Decide the rest"],
+	[3, "Save"],
+];
+
+function StepBadge({number, step}: {number: Step; step: Step}) {
+	const tone =
+		number < step
+			? "bg-status-green text-white"
+			: number === step
+				? "bg-blue-600 text-white"
+				: "bg-bg-300 text-text-500";
+	return (
+		<span
+			className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${tone}`}
+		>
+			{number}
+		</span>
+	);
+}
+
+/** The three steps, the current one highlighted, with how many repos are left to decide. */
+function Progress({step, remaining}: {step: Step; remaining: number}) {
+	return (
+		<nav
+			aria-label="Review progress"
+			className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border-300/50 bg-bg-100 px-3 py-2"
+		>
+			<ol className="flex flex-wrap items-center gap-x-4 gap-y-1">
+				{STEPS.map(([number, title]) => (
+					<li
+						key={title}
+						aria-current={number === step ? "step" : undefined}
+						className={`flex items-center gap-1.5 text-sm ${
+							number === step ? "font-semibold text-text-100" : "text-text-500"
+						}`}
+					>
+						<StepBadge number={number} step={step} />
+						{title}
+					</li>
+				))}
+			</ol>
+			<span data-progress className="text-xs text-text-500 tabular-nums">
+				Step {step} of 3 · {remaining} left
+			</span>
+		</nav>
+	);
+}
+
+function StepHeading({number, step, title, children}: {number: Step; step: Step; title: string; children: ReactNode}) {
+	return (
+		<div className="mb-3 flex items-start gap-2.5">
+			<StepBadge number={number} step={step} />
+			<div>
+				<h2 className="text-base font-semibold text-text-100">{title}</h2>
+				<p className="text-xs text-text-500">{children}</p>
+			</div>
+		</div>
+	);
+}
+
+/** One bulk action asked as a question: what it covers, how many, a sample of the repos, and Keep to pass. */
+function QuestionCard({
+	action,
+	position,
+	total,
+	onAnswer,
+	onKeep,
+}: {
+	action: BulkAction;
+	position: number;
+	total: number;
+	onAnswer: () => void;
+	onKeep: () => void;
+}) {
+	const sample = action.names.slice(0, SAMPLE);
+	return (
+		<section
+			aria-label="Quick question"
+			className="rounded-xl border border-blue-500/40 bg-bg-000 p-4 text-xs text-text-300 shadow-sm"
+		>
+			<p
+				data-question-count
+				className="mb-1 text-[11px] font-medium tracking-wide text-blue-600 uppercase dark:text-blue-400"
+			>
+				Question {position} of {total}
+			</p>
+			<h3 className="text-base font-semibold text-text-100">{action.question}</h3>
+			<p data-covers className="mt-1 text-text-300">
+				{action.covers}
+			</p>
+			<div className="mt-3 flex flex-wrap items-center gap-1.5">
+				<ul data-sample className="contents">
+					{sample.map((name) => (
+						<li
+							key={name}
+							className="rounded-md bg-bg-200 px-1.5 py-0.5 font-mono text-[11px] text-text-300"
+						>
+							{name}
+						</li>
+					))}
+				</ul>
+				{action.names.length > sample.length && (
+					<span data-sample-more className="text-text-500">
+						and {action.names.length - sample.length} more
+					</span>
+				)}
+			</div>
+			<div className="mt-4 flex flex-wrap items-center gap-2">
+				{/* The visible text starts the accessible name, which spells out every row it decides. */}
+				<button type="button" aria-label={action.label} onClick={onAnswer} className={primaryClass}>
+					{action.short}
+				</button>
+				<button type="button" onClick={onKeep} className={`${buttonClass} px-3 py-1.5 text-sm`}>
+					Keep
+				</button>
+				<span className="text-text-500">Keep leaves them to decide one by one.</span>
+			</div>
+		</section>
+	);
+}
+
 function inboxHeading(remaining: number, decided: number): string {
 	if (remaining > 0) return `${remaining} repos aren't kept up to date by Update all yet: decide each one`;
 	if (decided > 0) return "Every repo is decided: save to finish";
@@ -422,9 +617,13 @@ export function RegistryReview({
 	const [decided, setDecided] = useState<ReadonlySet<string>>(new Set());
 	const [showDiff, setShowDiff] = useState(false);
 
+	/** Questions answered or kept; neither is asked again until a discard. */
+	const [asked, setAsked] = useState<ReadonlySet<string>>(new Set());
+
 	function discard() {
 		setRows(candidates);
 		setDecided(new Set());
+		setAsked(new Set());
 		setShowDiff(false);
 	}
 
@@ -459,47 +658,86 @@ export function RegistryReview({
 	}
 
 	const groupRows = (group: RegistryGroup) => rows.filter((row) => row.group === group);
+	const waitingUnregistered = groupRows("unregistered").filter((row) => !decided.has(row.project.dir));
+	const questions = bulkActions(waitingUnregistered, "unregistered", true).filter((action) => !asked.has(action.key));
+	const [question] = questions;
+	const step: Step = question ? 1 : remaining > 0 ? 2 : 3;
+	const ask = (key: string) => {
+		setAsked((previous) => new Set([...previous, key]));
+	};
 
 	return (
 		<>
-			{INBOX.map(({group, label, word, hideWhenEmpty}) => {
-				const all = groupRows(group);
-				if (hideWhenEmpty && all.length === 0) return null;
-				const waiting = all.filter((row) => !decided.has(row.project.dir));
-				const unregistered = group === "unregistered";
-				return (
+			<Progress step={step} remaining={remaining} />
+			<section aria-label="Step 1: Quick questions" className="mb-6">
+				<StepHeading number={1} step={step} title="Quick questions">
+					Decide whole groups of repos at once. Keep leaves a group for step 2.
+				</StepHeading>
+				{question ? (
+					<QuestionCard
+						key={question.key}
+						action={question}
+						position={asked.size + 1}
+						total={asked.size + questions.length}
+						onAnswer={() => {
+							edit(question.dirs, (project) => decide(project, question.kind), true);
+							ask(question.key);
+						}}
+						onKeep={() => {
+							ask(question.key);
+						}}
+					/>
+				) : (
+					<p className="flex items-center gap-1.5 rounded-lg border border-border-300/50 bg-bg-100 px-3 py-2 text-xs text-text-500">
+						<CheckCircle className="h-4 w-4 text-status-green" />
+						No quick questions left.
+					</p>
+				)}
+			</section>
+			<section aria-label="Step 2: Decide the rest" className="mb-6">
+				<StepHeading number={2} step={step} title="Decide the rest">
+					Pick Own, Fork, Nested, or Skip for each repo. Decided repos move to their own card until you save.
+				</StepHeading>
+				{INBOX.map(({group, label, word, hideWhenEmpty}) => {
+					const all = groupRows(group);
+					if (hideWhenEmpty && all.length === 0) return null;
+					const waiting = all.filter((row) => !decided.has(row.project.dir));
+					const unregistered = group === "unregistered";
+					return (
+						<GroupCard
+							key={group}
+							group={group}
+							label={label}
+							word={word}
+							heading={unregistered ? inboxHeading(remaining, decidedRows.length) : undefined}
+							rows={waiting}
+							undecided
+							askedAbove={unregistered}
+							edit={edit}
+						>
+							{unregistered && (
+								<p className="mb-1 text-text-500">
+									The registry decides what wip ladder --all keeps up to date: it keeps Own, Fork, and
+									Nested repos and leaves out Skip. Decided repos move below until you save.
+								</p>
+							)}
+						</GroupCard>
+					);
+				})}
+				{decidedRows.length > 0 && (
 					<GroupCard
-						key={group}
-						group={group}
-						label={label}
-						word={word}
-						heading={unregistered ? inboxHeading(remaining, decidedRows.length) : undefined}
-						rows={waiting}
-						undecided
+						label="Decided, not saved yet"
+						word="decided"
+						rows={decidedRows}
+						undecided={false}
 						edit={edit}
-					>
-						{unregistered && (
-							<p className="mb-1">
-								The registry decides what wip ladder --all keeps up to date: it keeps Own, Fork, and
-								Nested repos and leaves out Skip. Decided repos move below until you save.
-							</p>
-						)}
-					</GroupCard>
-				);
-			})}
-			{decidedRows.length > 0 && (
-				<GroupCard
-					label="Decided, not saved yet"
-					word="decided"
-					rows={decidedRows}
-					undecided={false}
-					edit={edit}
-					onUndo={undo}
-				/>
-			)}
-			<section aria-label="In the registry" className="mt-4">
-				<h3 className="mb-1 text-sm font-semibold text-text-300">In the registry</h3>
-				<p className="mb-2 text-xs text-text-400">
+						onUndo={undo}
+					/>
+				)}
+			</section>
+			<section aria-label="In the registry" className="mt-8 border-t border-border-300/50 pt-4">
+				<h3 className="mb-1 text-sm font-semibold text-text-100">In the registry</h3>
+				<p className="mb-3 text-xs text-text-500">
 					What the saved registry already says; change a row here to correct it.
 				</p>
 				{REPORT.map(({group, label, word, explanation}) => (
@@ -517,8 +755,11 @@ export function RegistryReview({
 			</section>
 			<section aria-label="Save registry" className={`${cardClass} sticky bottom-2 z-10 shadow-lg`}>
 				<div className="flex flex-wrap items-center gap-2">
-					<span data-remaining className="mr-auto text-text-200">
-						{remaining} left to decide
+					<span className="mr-auto flex items-center gap-2">
+						<StepBadge number={3} step={step} />
+						<span data-remaining className="text-sm text-text-100 tabular-nums">
+							{remaining} left to decide
+						</span>
 					</span>
 					{changes > 0 && (
 						<>
@@ -542,7 +783,7 @@ export function RegistryReview({
 						onClick={() => {
 							onSave(projects);
 						}}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+						className={primaryClass}
 					>
 						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
 						{changes === 0 ? "No changes yet" : saveLabel(changes, projects.length)}

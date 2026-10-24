@@ -1,10 +1,9 @@
 import {QueryCache, QueryClient} from "@tanstack/react-query";
-import {persistQueryClient} from "@tanstack/react-query-persist-client";
-import {createSyncStoragePersister} from "@tanstack/query-sync-storage-persister";
 import {createRouter as createTanStackRouter} from "@tanstack/react-router";
 import {setupRouterSsrQueryIntegration} from "@tanstack/react-router-ssr-query";
 import {routeTree} from "./routeTree.gen";
 import {isStaleBundleError, reportStaleBundle} from "./lib/stale-bundle.js";
+import {setupQueryPersistence} from "./lib/query-persistence.js";
 
 export function getRouter() {
 	const queryClient = new QueryClient({
@@ -28,11 +27,12 @@ export function getRouter() {
 	// paints from the restored cache instead of refetching on every load.
 	let cacheRestored: Promise<void> = Promise.resolve();
 	if (typeof window !== "undefined") {
-		// @tanstack/query-async-storage-persister is not a dependency; the sync persister is the one backed by localStorage here
-		// eslint-disable-next-line typescript/no-deprecated
-		const persister = createSyncStoragePersister({storage: window.localStorage});
-		const [, restored] = persistQueryClient({queryClient, persister, buster: "v2-flat-children"});
-		cacheRestored = restored;
+		cacheRestored = setupQueryPersistence({
+			queryClient,
+			storage: window.localStorage,
+			page: window,
+			buster: "v2-flat-children",
+		});
 	}
 
 	const router = createTanStackRouter({

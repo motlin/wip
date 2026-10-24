@@ -74,7 +74,6 @@ export default defineConfig({
 			"@tanstack/react-query",
 			"@tanstack/react-query-devtools",
 			"@tanstack/react-query-persist-client",
-			"@tanstack/query-sync-storage-persister",
 			"@tanstack/react-router-ssr-query",
 			"@tanstack/react-virtual",
 			"@git-diff-view/react",

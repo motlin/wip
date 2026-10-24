@@ -101,7 +101,7 @@ export const diffQueryOptions = (project: string, sha: string) =>
 		queryKey: ["diff", project, sha],
 		queryFn: async () => getCommitDiff({data: {project, sha}}),
 		staleTime: Infinity,
-		gcTime: Infinity,
+		gcTime: 10 * 60 * 1000,
 	});
 
 export const testLogQueryOptions = (project: string, sha: string) =>
@@ -109,7 +109,7 @@ export const testLogQueryOptions = (project: string, sha: string) =>
 		queryKey: ["testLog", project, sha],
 		queryFn: async () => getTestLog({data: {project, sha}}),
 		staleTime: Infinity,
-		gcTime: Infinity,
+		gcTime: 10 * 60 * 1000,
 	});
 
 export const issueByNumberQueryOptions = (project: string, number: number) =>

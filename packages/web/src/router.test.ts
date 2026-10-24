@@ -4,9 +4,6 @@ import {describe, it, expect, vi} from "vite-plus/test";
 vi.mock("@tanstack/react-query-persist-client", () => ({
 	persistQueryClient: vi.fn<() => void>(),
 }));
-vi.mock("@tanstack/query-sync-storage-persister", () => ({
-	createSyncStoragePersister: vi.fn<() => void>(),
-}));
 vi.mock("@tanstack/react-router", () => ({
 	createRouter: vi.fn<(opts: unknown) => unknown>((opts) => opts),
 }));

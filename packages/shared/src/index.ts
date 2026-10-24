@@ -330,8 +330,10 @@ export {
 	type InventoryImportSummary,
 	type InventoryStatus,
 	type RegistryCandidate,
-	type RegistryCandidateFlag,
 	type RegistryCandidates,
+	type RegistryGroup,
+	type SkipReason,
+	type SkipReasonCode,
 	type SaveRegistryInput,
 	type LanguageTemplate,
 	type ParsedProjectsYaml,
@@ -350,5 +352,5 @@ export {
 	buildRegistryCandidates,
 	checkInventory,
 	detectTemplate,
-	suggestSkip,
+	skipReason,
 } from "./lib/registry-review.js";

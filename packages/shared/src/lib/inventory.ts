@@ -17,6 +17,8 @@ export const ProjectRecordSchema = z.object({
 	upstreamRemote: z.string().optional(),
 	upstreamBranch: z.string().optional(),
 	notes: z.string().optional(),
+	/** The user's own words for why they skipped this project by hand. */
+	skipNote: z.string().optional(),
 });
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
 

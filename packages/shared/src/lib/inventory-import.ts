@@ -240,17 +240,35 @@ export function diffInventories(before: ProjectRecord[], after: ProjectRecord[])
 	return {added, removed, changed};
 }
 
-/** Why a candidate needs the user's attention in the registry review. */
-export type RegistryCandidateFlag = "unregistered" | "missing" | "skipped" | "conflict";
+/** Which card of the registry review a candidate belongs to. */
+export type RegistryGroup = "unregistered" | "conflict" | "missing" | "skipped" | "registered";
 
-/** One row of the registry review: a project the user can include, exclude, or re-kind. */
+/** What kind of evidence explains a skip; bulk actions in the review act on one code at a time. */
+export type SkipReasonCode =
+	| "pr"
+	| "maven"
+	| "template"
+	| "parallel"
+	| "worktree"
+	| "not-a-repo"
+	| "missing"
+	| "listed"
+	| "user";
+
+/** Why a repo is, or would be, left out of the registry, in plain words from the server. */
+export interface SkipReason {
+	code: SkipReasonCode;
+	text: string;
+}
+
+/** One row of the registry review: a project the user decides to own, fork, nest, or skip. */
 export interface RegistryCandidate {
 	project: ProjectRecord;
-	/** Whether saving keeps this project in the registry. */
-	included: boolean;
-	flags: RegistryCandidateFlag[];
-	/** Why the row is flagged or what kind is suggested, for the user to judge. */
-	hint?: string;
+	group: RegistryGroup;
+	/** Why skipping fits this repo; always present when the project is a skip. */
+	skipReason?: SkipReason;
+	/** Context that is not a skip reason, such as which templates conflict. */
+	note?: string;
 }
 
 /** Everything the registry review lists, and the registry state the list was built from. */

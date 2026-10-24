@@ -7,38 +7,82 @@ import {RegistryReview} from "./registry-review.js";
 
 const beta: ProjectRecord = {name: "beta", dir: "/p/beta", template: "typescript", kind: "fork"};
 const gone: ProjectRecord = {name: "gone", dir: "/p/gone", template: "rust", kind: "own"};
-const skipped: ProjectRecord = {name: "skipped", dir: "/p/skipped", template: "project", kind: "skip"};
+const legacy: ProjectRecord = {name: "legacy", dir: "/p/legacy", template: "project", kind: "skip"};
+const chosen: ProjectRecord = {name: "chosen", dir: "/p/chosen", template: "java", kind: "skip", skipNote: "archived"};
 const herdrWeb: ProjectRecord = {name: "herdr-web", dir: "/p/herdr-web", template: "typescript", kind: "own"};
+const lift: ProjectRecord = {name: "lift", dir: "/p/lift", template: "typescript", kind: "own"};
 const wipPr: ProjectRecord = {name: "wip-pr125", dir: "/p/wip-pr125", template: "typescript", kind: "skip"};
+const wipPr2: ProjectRecord = {name: "wip-pr126", dir: "/p/wip-pr126", template: "typescript", kind: "own"};
 
 const candidates: RegistryCandidate[] = [
-	{project: beta, included: true, flags: []},
-	{project: gone, included: true, flags: ["missing"], hint: "directory missing"},
-	{project: herdrWeb, included: false, flags: ["unregistered"]},
-	{project: skipped, included: true, flags: ["skipped"], hint: "skipped but present on disk"},
-	{project: wipPr, included: false, flags: ["unregistered"], hint: "PR worktree"},
+	{project: beta, group: "registered"},
+	{project: chosen, group: "skipped", skipReason: {code: "user", text: "skipped by you"}},
+	{
+		project: gone,
+		group: "missing",
+		note: "directory missing",
+		skipReason: {code: "missing", text: "directory missing"},
+	},
+	{project: herdrWeb, group: "unregistered"},
+	{
+		project: legacy,
+		group: "skipped",
+		skipReason: {code: "listed", text: "listed under skip in project-template"},
+	},
+	{project: lift, group: "unregistered"},
+	{project: wipPr, group: "unregistered", skipReason: {code: "pr", text: "PR #125 worktree of wip"}},
+	{project: wipPr2, group: "unregistered", skipReason: {code: "pr", text: "PR #126 worktree of wip"}},
 ];
 
-const current = [beta, gone, skipped];
+const current = [beta, chosen, gone, legacy];
 
-function renderReview(onSave = vi.fn<(projects: ProjectRecord[]) => void>(), saving = false) {
-	render(
+function renderReview(onSave = vi.fn<(projects: ProjectRecord[]) => void>()) {
+	const {container} = render(
 		<RegistryReview
 			candidates={candidates}
 			current={current}
 			saveLabel={(count) => `Save ${count} projects`}
-			saving={saving}
+			saving={false}
 			onSave={onSave}
 		/>,
 	);
-	return onSave;
+	return {onSave, container};
 }
 
-function rowNames(): string[] {
-	return screen
-		.getAllByRole("row")
-		.slice(1)
-		.map((row) => row.dataset.name ?? "");
+function card(name: string): HTMLElement {
+	return screen.getByRole("region", {name});
+}
+
+function rowNames(group: HTMLElement): string[] {
+	return within(group)
+		.getAllByRole("listitem")
+		.map((item) => item.getAttribute("aria-label") ?? "");
+}
+
+function row(name: string): HTMLElement {
+	return screen.getByRole("listitem", {name});
+}
+
+function decide(name: string, choice: "Own" | "Fork" | "Nested" | "Skip"): void {
+	fireEvent.click(within(row(name)).getByRole("radio", {name: choice}));
+}
+
+function labelOf(radio: HTMLElement): string | null | undefined {
+	return radio.closest("label")?.textContent;
+}
+
+function checkedIn(item: HTMLElement): string | null | undefined {
+	return labelOf(within(item).getByRole("radio", {checked: true}));
+}
+
+function decision(name: string): string | null | undefined {
+	return checkedIn(row(name));
+}
+
+function saveAndCapture(onSave: ReturnType<typeof renderReview>["onSave"], count: number): ProjectRecord[] {
+	fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
+	fireEvent.click(screen.getByRole("button", {name: `Save ${count} projects`}));
+	return onSave.mock.calls[0]?.[0] ?? [];
 }
 
 describe("RegistryReview", () => {
@@ -46,80 +90,160 @@ describe("RegistryReview", () => {
 		cleanup();
 	});
 
-	it("lists every candidate with its dir, template, kind, inclusion, and hint", () => {
+	it("shows each group as its own card with every row visible and nothing collapsed", () => {
+		const {container} = renderReview();
+		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(card("Missing (1)"))).toEqual(["gone"]);
+		expect(rowNames(card("Skipped (2)"))).toEqual(["chosen", "legacy"]);
+		expect(rowNames(card("Registered (1)"))).toEqual(["beta"]);
+		expect(container.querySelectorAll("details")).toHaveLength(0);
+		expect(within(row("gone")).getByText("/p/gone")).toBeTruthy();
+		expect(within(row("gone")).getByText("directory missing")).toBeTruthy();
+	});
+
+	it("gives every row exactly one decision and no checkboxes", () => {
 		renderReview();
-		expect(rowNames()).toEqual(["beta", "gone", "herdr-web", "skipped", "wip-pr125"]);
-		const pr = screen.getByRole("row", {name: /wip-pr125/});
-		expect(within(pr).getByText("/p/wip-pr125")).toBeTruthy();
-		expect(within(pr).getByText("PR worktree")).toBeTruthy();
-		expect(within(pr).getByRole("combobox", {name: "Kind for wip-pr125"})).toHaveProperty("value", "skip");
-		expect(within(pr).getByRole("combobox", {name: "Template for wip-pr125"})).toHaveProperty(
+		expect(screen.queryAllByRole("checkbox")).toEqual([]);
+		for (const item of screen.getAllByRole("listitem")) {
+			expect(
+				within(item)
+					.getAllByRole("radio")
+					.map((radio) => labelOf(radio)),
+			).toEqual(["Own", "Fork", "Nested", "Skip"]);
+		}
+		expect(decision("beta")).toBe("Fork");
+		expect(decision("wip-pr125")).toBe("Skip");
+		expect(decision("herdr-web")).toBe("Own");
+	});
+
+	it("shows the reason on every skipped row, and the user's note on a hand-picked skip", () => {
+		renderReview();
+		const skipped = screen.getAllByRole("listitem").filter((item) => checkedIn(item) === "Skip");
+		expect(skipped.map((item) => item.querySelector("[data-skip-reason]")?.textContent)).toEqual([
+			"PR #125 worktree of wip",
+			"skipped by you",
+			"listed under skip in project-template",
+		]);
+		expect(within(row("chosen")).getByRole("textbox", {name: "Skip note for chosen"})).toHaveProperty(
 			"value",
-			"typescript",
+			"archived",
 		);
-		expect(within(pr).getByRole("checkbox", {name: "Include wip-pr125"})).toHaveProperty("checked", false);
-		expect(screen.getByRole("checkbox", {name: "Include beta"})).toHaveProperty("checked", true);
+		expect(within(row("wip-pr125")).queryByRole("textbox")).toBeNull();
 	});
 
-	it.each([
-		["Unregistered (2)", ["herdr-web", "wip-pr125"]],
-		["Missing (1)", ["gone"]],
-		["Skipped (1)", ["skipped"]],
-		["All (5)", ["beta", "gone", "herdr-web", "skipped", "wip-pr125"]],
-	])("filters to %s", (filter, names) => {
+	it("says a skip is the user's own when nothing else explains it, and saves the note", () => {
+		const {onSave} = renderReview();
+		decide("beta", "Skip");
+		expect(within(row("beta")).getByText("skipped by you")).toBeTruthy();
+		fireEvent.change(within(row("beta")).getByRole("textbox", {name: "Skip note for beta"}), {
+			target: {value: "moved to work laptop"},
+		});
+		decide("gone", "Skip");
+		expect(row("gone").querySelector("[data-skip-reason]")?.textContent).toBe("directory missing");
+		expect(saveAndCapture(onSave, 8)).toEqual([
+			{...beta, kind: "skip", skipNote: "moved to work laptop"},
+			chosen,
+			{...gone, kind: "skip"},
+			herdrWeb,
+			legacy,
+			lift,
+			wipPr,
+			wipPr2,
+		]);
+	});
+
+	it("drops the skip note when a skip becomes a kept project", () => {
+		const {onSave} = renderReview();
+		decide("chosen", "Own");
+		expect(within(row("chosen")).queryByRole("textbox")).toBeNull();
+		expect(saveAndCapture(onSave, 8)[1]).toEqual({name: "chosen", dir: "/p/chosen", template: "java", kind: "own"});
+	});
+
+	it("skips every PR worktree in a group with one bulk action", () => {
 		renderReview();
-		fireEvent.click(screen.getByRole("button", {name: filter}));
-		expect(rowNames()).toEqual(names);
+		decide("wip-pr125", "Own");
+		fireEvent.click(within(card("Unregistered (4)")).getByRole("button", {name: "Skip all 2 PR worktrees"}));
+		expect(decision("wip-pr125")).toBe("Skip");
+		expect(decision("wip-pr126")).toBe("Skip");
+		expect(decision("herdr-web")).toBe("Own");
 	});
 
-	it("shows the diff of a changed kind and saves only after the user confirms it", () => {
-		const onSave = renderReview();
-		fireEvent.change(screen.getByRole("combobox", {name: "Kind for beta"}), {target: {value: "own"}});
-		fireEvent.click(screen.getByRole("checkbox", {name: "Include gone"}));
-		fireEvent.click(screen.getByRole("checkbox", {name: "Include herdr-web"}));
-		expect(screen.queryByRole("button", {name: "Save 3 projects"})).toBeNull();
+	it("marks every repo of one template in a group Own with one bulk action", () => {
+		renderReview();
+		decide("herdr-web", "Fork");
+		fireEvent.click(
+			within(card("Unregistered (4)")).getByRole("button", {
+				name: "Mark all 4 unregistered typescript repos Own",
+			}),
+		);
+		expect(["herdr-web", "lift", "wip-pr125", "wip-pr126"].map(decision)).toEqual(["Own", "Own", "Own", "Own"]);
+		expect(decision("beta")).toBe("Fork");
+	});
+
+	it("shows the first rows of a long group with a show-all button inside the card", () => {
+		const many: RegistryCandidate[] = Array.from({length: 30}, (_, index) => ({
+			project: {
+				name: `repo-${String(index).padStart(2, "0")}`,
+				dir: `/p/repo-${index}`,
+				template: "rust",
+				kind: "own",
+			},
+			group: "registered",
+		}));
+		render(
+			<RegistryReview
+				candidates={many}
+				current={[]}
+				saveLabel={() => "Save"}
+				saving={false}
+				onSave={vi.fn<(projects: ProjectRecord[]) => void>()}
+			/>,
+		);
+		const registered = card("Registered (30)");
+		expect(within(registered).getAllByRole("listitem")).toHaveLength(25);
+		fireEvent.click(within(registered).getByRole("button", {name: "Show all 30"}));
+		expect(within(registered).getAllByRole("listitem")).toHaveLength(30);
+	});
+
+	it("shows the diff of a changed decision and saves only after the user confirms it", () => {
+		const {onSave} = renderReview();
+		decide("beta", "Own");
+		decide("herdr-web", "Skip");
+		expect(screen.queryByRole("button", {name: "Save 8 projects"})).toBeNull();
 		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
 		const diff = screen.getByRole("region", {name: "Registry changes"});
 		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
-			"+ herdr-web (typescript, own) /p/herdr-web",
-			"- gone (rust, own) /p/gone",
+			"+ herdr-web (typescript, skip) /p/herdr-web",
+			"+ lift (typescript, own) /p/lift",
+			"+ wip-pr125 (typescript, skip) /p/wip-pr125",
+			"+ wip-pr126 (typescript, own) /p/wip-pr126",
 			"~ beta: fork → own",
 		]);
 		expect(onSave).not.toHaveBeenCalled();
-		fireEvent.click(screen.getByRole("button", {name: "Save 3 projects"}));
-		expect(onSave).toHaveBeenCalledWith([{...beta, kind: "own"}, herdrWeb, skipped]);
-	});
-
-	it("applies bulk include and kind changes to the selected rows", () => {
-		const onSave = renderReview();
-		fireEvent.click(screen.getByRole("button", {name: "Unregistered (2)"}));
-		fireEvent.click(screen.getByRole("checkbox", {name: "Select all shown"}));
-		fireEvent.click(screen.getByRole("button", {name: "Include selected"}));
-		fireEvent.change(screen.getByRole("combobox", {name: "Kind for selected"}), {target: {value: "nested"}});
-		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
-		fireEvent.click(screen.getByRole("button", {name: "Save 5 projects"}));
-		expect(onSave).toHaveBeenCalledWith([
-			beta,
-			gone,
-			{...herdrWeb, kind: "nested"},
-			skipped,
-			{...wipPr, kind: "nested"},
-		]);
+		fireEvent.click(screen.getByRole("button", {name: "Save 8 projects"}));
+		expect(onSave).toHaveBeenCalledTimes(1);
 	});
 
 	it("hides the reviewed diff once the user edits again", () => {
 		renderReview();
-		fireEvent.click(screen.getByRole("checkbox", {name: "Include herdr-web"}));
 		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
 		expect(screen.getByRole("region", {name: "Registry changes"})).toBeTruthy();
-		fireEvent.click(screen.getByRole("checkbox", {name: "Include wip-pr125"}));
+		decide("lift", "Fork");
 		expect(screen.queryByRole("region", {name: "Registry changes"})).toBeNull();
 	});
 
 	it("disables saving when the review finds no changes", () => {
-		renderReview();
+		render(
+			<RegistryReview
+				candidates={[{project: beta, group: "registered"}]}
+				current={[beta]}
+				saveLabel={(count) => `Save ${count} projects`}
+				saving={false}
+				onSave={vi.fn<(projects: ProjectRecord[]) => void>()}
+			/>,
+		);
 		fireEvent.click(screen.getByRole("button", {name: "Review changes"}));
 		expect(screen.getByRole("region", {name: "Registry changes"}).textContent).toContain("No changes");
-		expect(screen.getByRole("button", {name: "Save 3 projects"})).toHaveProperty("disabled", true);
+		expect(screen.getByRole("button", {name: "Save 1 projects"})).toHaveProperty("disabled", true);
 	});
 });

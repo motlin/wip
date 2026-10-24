@@ -1,28 +1,60 @@
 import {useState} from "react";
 import type {ProjectRecord} from "@wip/shared";
 // The client-safe module, so the browser bundle never pulls the node-only registry code.
-import {diffInventories, type InventoryDiff, type RegistryCandidate} from "@wip/shared/inventory-import.js";
+import {
+	diffInventories,
+	type InventoryDiff,
+	type RegistryCandidate,
+	type RegistryGroup,
+	type SkipReason,
+	type SkipReasonCode,
+} from "@wip/shared/inventory-import.js";
 import {Loader2} from "./icons.js";
 
-type Filter = "all" | "unregistered" | "missing" | "skipped" | "conflict";
+type Kind = ProjectRecord["kind"];
 
-const FILTERS: [Filter, string][] = [
-	["all", "All"],
-	["unregistered", "Unregistered"],
-	["missing", "Missing"],
-	["skipped", "Skipped"],
-	["conflict", "Conflicts"],
+const DECISIONS: [Kind, string][] = [
+	["own", "Own"],
+	["fork", "Fork"],
+	["nested", "Nested"],
+	["skip", "Skip"],
 ];
 
-const KINDS: ProjectRecord["kind"][] = ["own", "fork", "nested", "skip"];
 const TEMPLATES: ProjectRecord["template"][] = ["project", "typescript", "java", "rust", "playdate", "unknown"];
 
-function parseKind(value: string): ProjectRecord["kind"] | undefined {
-	return KINDS.find((kind) => kind === value);
-}
+const GROUPS: {group: RegistryGroup; label: string; word: string; hideWhenEmpty?: boolean}[] = [
+	{group: "unregistered", label: "Unregistered", word: "unregistered"},
+	{group: "conflict", label: "Template conflicts", word: "conflicting", hideWhenEmpty: true},
+	{group: "missing", label: "Missing", word: "missing"},
+	{group: "skipped", label: "Skipped", word: "skipped"},
+	{group: "registered", label: "Registered", word: "registered"},
+];
+
+/** Plural nouns for the bulk skip buttons; reasons that only describe an existing skip have none. */
+const SKIP_PLURALS: Partial<Record<SkipReasonCode, string>> = {
+	pr: "PR worktrees",
+	maven: "Maven copies",
+	template: "template repos",
+	parallel: "parallel worktrees",
+	worktree: "git worktrees",
+	"not-a-repo": "non-git directories",
+	missing: "missing directories",
+};
+
+/** Rows a group card shows before its show-all button. */
+const FIRST_ROWS = 25;
+
+const BY_YOU: SkipReason = {code: "user", text: "skipped by you"};
 
 function parseTemplate(value: string): ProjectRecord["template"] | undefined {
 	return TEMPLATES.find((template) => template === value);
+}
+
+/** The project with a new decision; a note only explains a skip, so other kinds drop it. */
+function decide(project: ProjectRecord, kind: Kind): ProjectRecord {
+	if (kind === "skip") return {...project, kind};
+	const {skipNote: _dropped, ...rest} = project;
+	return {...rest, kind};
 }
 
 function describe(project: ProjectRecord): string {
@@ -33,6 +65,7 @@ function describeChange({before, after}: InventoryDiff["changed"][number]): stri
 	const changes = (["name", "template", "kind"] as const)
 		.filter((key) => before[key] !== after[key])
 		.map((key) => `${before[key]} → ${after[key]}`);
+	if (before.skipNote !== after.skipNote) changes.push(`note "${before.skipNote ?? ""}" → "${after.skipNote ?? ""}"`);
 	return `${before.name}: ${changes.join(", ")}`;
 }
 
@@ -65,14 +98,207 @@ function DiffView({diff}: {diff: InventoryDiff}) {
 	);
 }
 
-const selectClass = "rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-200";
+const cardClass = "mb-3 rounded-lg border border-border-300/50 bg-bg-100 p-3 text-xs text-text-300";
 const buttonClass =
 	"rounded-md border border-border-300/50 px-2 py-0.5 text-xs text-text-200 hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-50";
+const selectClass = "rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-200";
+
+function CandidateRow({
+	row,
+	onDecide,
+	onTemplate,
+	onNote,
+}: {
+	row: RegistryCandidate;
+	onDecide: (kind: Kind) => void;
+	onTemplate: (template: ProjectRecord["template"]) => void;
+	onNote: (note: string) => void;
+}) {
+	const {name, dir, template, kind, skipNote} = row.project;
+	const skipped = kind === "skip";
+	const reason = row.skipReason ?? BY_YOU;
+	return (
+		<li aria-label={name} className="border-t border-border-300/30 py-1.5 first:border-t-0">
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="font-medium text-text-100">{name}</span>
+				<span className="font-mono break-all text-text-400">{dir}</span>
+				{row.group === "conflict" ? (
+					<select
+						aria-label={`Template for ${name}`}
+						value={template}
+						onChange={(event) => {
+							const next = parseTemplate(event.target.value);
+							if (next) onTemplate(next);
+						}}
+						className={selectClass}
+					>
+						{TEMPLATES.map((value) => (
+							<option key={value} value={value}>
+								{value}
+							</option>
+						))}
+					</select>
+				) : (
+					<span className="text-text-400">{template}</span>
+				)}
+				<div
+					role="radiogroup"
+					aria-label={`Decision for ${name}`}
+					className="ml-auto inline-flex overflow-hidden rounded-md border border-border-300/50"
+				>
+					{DECISIONS.map(([value, label]) => (
+						<label key={value} className="cursor-pointer">
+							<input
+								type="radio"
+								name={`decision-${dir}`}
+								checked={kind === value}
+								onChange={() => {
+									onDecide(value);
+								}}
+								className="peer sr-only"
+							/>
+							<span className="block px-2 py-0.5 text-text-200 peer-checked:bg-bg-300 peer-checked:text-text-100 peer-focus-visible:ring-1 hover:bg-bg-200">
+								{label}
+							</span>
+						</label>
+					))}
+				</div>
+			</div>
+			{row.note && !(skipped && row.note === reason.text) && <p className="text-text-400">{row.note}</p>}
+			{skipped && (
+				<p className="mt-0.5 flex flex-wrap items-center gap-2 text-text-400">
+					<span data-skip-reason>{reason.text}</span>
+					{reason.code === "user" && (
+						<input
+							type="text"
+							aria-label={`Skip note for ${name}`}
+							placeholder="optional note"
+							value={skipNote ?? ""}
+							onChange={(event) => {
+								onNote(event.target.value);
+							}}
+							className="rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-200"
+						/>
+					)}
+				</p>
+			)}
+		</li>
+	);
+}
+
+interface BulkAction {
+	label: string;
+	dirs: ReadonlySet<string>;
+	kind: Kind;
+	/** Whether every row it targets already has that decision. */
+	done: boolean;
+}
+
+/** One skip action per reason and one Own action per template, wherever at least two rows share it. */
+function bulkActions(rows: RegistryCandidate[], word: string): BulkAction[] {
+	const actions: BulkAction[] = [];
+	const add = (label: string, targets: RegistryCandidate[], kind: Kind) => {
+		if (targets.length < 2) return;
+		const dirs = new Set(targets.map((row) => row.project.dir));
+		actions.push({label, dirs, kind, done: targets.every((row) => row.project.kind === kind)});
+	};
+	for (const [code, plural] of Object.entries(SKIP_PLURALS)) {
+		const targets = rows.filter((row) => row.skipReason?.code === code);
+		add(`Skip all ${targets.length} ${plural}`, targets, "skip");
+	}
+	for (const template of TEMPLATES) {
+		const targets = rows.filter((row) => row.project.template === template);
+		add(`Mark all ${targets.length} ${word} ${template} repos Own`, targets, "own");
+	}
+	return actions;
+}
+
+function GroupCard({
+	label,
+	word,
+	rows,
+	edit,
+}: {
+	label: string;
+	word: string;
+	rows: RegistryCandidate[];
+	edit: (dirs: ReadonlySet<string>, change: (project: ProjectRecord) => ProjectRecord) => void;
+}) {
+	const [showAll, setShowAll] = useState(false);
+	const id = `registry-group-${word}`;
+	const shown = showAll ? rows : rows.slice(0, FIRST_ROWS);
+	const actions = bulkActions(rows, word);
+	return (
+		<section aria-labelledby={id} className={cardClass}>
+			<h3 id={id} className="mb-1 text-sm font-semibold text-text-200">
+				{label} ({rows.length})
+			</h3>
+			{actions.length > 0 && (
+				<div className="mb-1 flex flex-wrap gap-1">
+					{actions.map((action) => (
+						<button
+							key={action.label}
+							type="button"
+							disabled={action.done}
+							onClick={() => {
+								edit(action.dirs, (project) => decide(project, action.kind));
+							}}
+							className={buttonClass}
+						>
+							{action.label}
+						</button>
+					))}
+				</div>
+			)}
+			{rows.length === 0 ? (
+				<p className="text-text-500">None</p>
+			) : (
+				<ul>
+					{shown.map((row) => {
+						const only = new Set([row.project.dir]);
+						return (
+							<CandidateRow
+								key={row.project.dir}
+								row={row}
+								onDecide={(kind) => {
+									edit(only, (project) => decide(project, kind));
+								}}
+								onTemplate={(template) => {
+									edit(only, (project) => ({...project, template}));
+								}}
+								onNote={(note) => {
+									edit(only, (project) => {
+										const {skipNote: _old, ...rest} = project;
+										return note === "" ? rest : {...rest, skipNote: note};
+									});
+								}}
+							/>
+						);
+					})}
+				</ul>
+			)}
+			{rows.length > shown.length && (
+				<button
+					type="button"
+					onClick={() => {
+						setShowAll(true);
+					}}
+					className={`${buttonClass} mt-1`}
+				>
+					Show all {rows.length}
+				</button>
+			)}
+		</section>
+	);
+}
 
 /**
- * Every registry candidate in an editable table: include or exclude each row, change its kind or
- * template, filter by flag, and apply bulk edits to selected rows. Saving is two steps: Review
- * changes shows the diff against the current registry, and only then does the save button appear.
+ * Every registry candidate as visible group cards (Unregistered, Missing, Skipped, Registered,
+ * plus template conflicts when there are any). Each row has one decision, Own, Fork, Nested, or
+ * Skip, and every skip shows the server's reason for it, or the user's own note when they chose it
+ * by hand. Bulk actions apply one decision to a group's rows sharing a skip reason or template.
+ * Saving is two steps: Review changes shows the diff against the current registry, and only then
+ * does the save button appear.
  */
 export function RegistryReview({
 	candidates,
@@ -89,227 +315,53 @@ export function RegistryReview({
 	onSave: (projects: ProjectRecord[]) => void;
 }) {
 	const [rows, setRows] = useState(candidates);
-	const [filter, setFilter] = useState<Filter>("all");
-	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
 	const [diff, setDiff] = useState<InventoryDiff | null>(null);
+	const projects = rows.map((row) => row.project);
 
-	const shown = filter === "all" ? rows : rows.filter((row) => row.flags.includes(filter));
-	const included = rows.filter((row) => row.included).map((row) => row.project);
-	const allShownSelected = shown.length > 0 && shown.every((row) => selected.has(row.project.dir));
-
-	function edit(dirs: ReadonlySet<string>, change: (row: RegistryCandidate) => RegistryCandidate) {
-		setRows((previous) => previous.map((row) => (dirs.has(row.project.dir) ? change(row) : row)));
+	function edit(dirs: ReadonlySet<string>, change: (project: ProjectRecord) => ProjectRecord) {
+		setRows((previous) =>
+			previous.map((row) => (dirs.has(row.project.dir) ? {...row, project: change(row.project)} : row)),
+		);
 		setDiff(null);
 	}
 
-	function toggleSelected(dir: string) {
-		setSelected((previous) => {
-			const next = new Set(previous);
-			if (next.has(dir)) next.delete(dir);
-			else next.add(dir);
-			return next;
-		});
-	}
-
 	return (
-		<div className="text-xs text-text-300">
-			<div className="mb-2 flex flex-wrap gap-1">
-				{FILTERS.map(([value, label]) => {
-					const count =
-						value === "all" ? rows.length : rows.filter((row) => row.flags.includes(value)).length;
-					return (
-						<button
-							key={value}
-							type="button"
-							aria-pressed={filter === value}
-							onClick={() => {
-								setFilter(value);
-							}}
-							className={`${buttonClass} aria-pressed:bg-bg-300 aria-pressed:text-text-100`}
-						>
-							{label} ({count})
-						</button>
-					);
-				})}
-			</div>
-			<div className="mb-2 flex flex-wrap items-center gap-1">
-				<span>{selected.size} selected</span>
-				<button
-					type="button"
-					disabled={selected.size === 0}
-					onClick={() => {
-						edit(selected, (row) => ({...row, included: true}));
-					}}
-					className={buttonClass}
-				>
-					Include selected
-				</button>
-				<button
-					type="button"
-					disabled={selected.size === 0}
-					onClick={() => {
-						edit(selected, (row) => ({...row, included: false}));
-					}}
-					className={buttonClass}
-				>
-					Exclude selected
-				</button>
-				<select
-					aria-label="Kind for selected"
-					value=""
-					disabled={selected.size === 0}
-					onChange={(event) => {
-						const kind = parseKind(event.target.value);
-						if (kind) edit(selected, (row) => ({...row, project: {...row.project, kind}}));
-					}}
-					className={selectClass}
-				>
-					<option value="" disabled>
-						Set kind…
-					</option>
-					{KINDS.map((kind) => (
-						<option key={kind} value={kind}>
-							{kind}
-						</option>
-					))}
-				</select>
-			</div>
-			<div className="max-h-96 overflow-auto rounded-md border border-border-300/50">
-				<table className="w-full text-left">
-					<thead className="sticky top-0 bg-bg-200 text-text-400">
-						<tr>
-							<th className="p-1">
-								<input
-									type="checkbox"
-									aria-label="Select all shown"
-									checked={allShownSelected}
-									onChange={() => {
-										const dirs = shown.map((row) => row.project.dir);
-										setSelected((previous) => {
-											const next = new Set(previous);
-											for (const dir of dirs) {
-												if (allShownSelected) next.delete(dir);
-												else next.add(dir);
-											}
-											return next;
-										});
-									}}
-								/>
-							</th>
-							<th className="p-1">Include</th>
-							<th className="p-1">Name</th>
-							<th className="p-1">Dir</th>
-							<th className="p-1">Template</th>
-							<th className="p-1">Kind</th>
-							<th className="p-1">Note</th>
-						</tr>
-					</thead>
-					<tbody>
-						{shown.map((row) => {
-							const {name, dir, template, kind} = row.project;
-							const only = new Set([dir]);
-							return (
-								<tr
-									key={dir}
-									data-name={name}
-									className={`border-t border-border-300/30 ${row.included ? "" : "opacity-60"}`}
-								>
-									<td className="p-1">
-										<input
-											type="checkbox"
-											aria-label={`Select ${name}`}
-											checked={selected.has(dir)}
-											onChange={() => {
-												toggleSelected(dir);
-											}}
-										/>
-									</td>
-									<td className="p-1">
-										<input
-											type="checkbox"
-											aria-label={`Include ${name}`}
-											checked={row.included}
-											onChange={() => {
-												edit(only, (r) => ({...r, included: !r.included}));
-											}}
-										/>
-									</td>
-									<td className="p-1 font-medium text-text-100">{name}</td>
-									<td className="p-1 font-mono break-all">{dir}</td>
-									<td className="p-1">
-										<select
-											aria-label={`Template for ${name}`}
-											value={template}
-											onChange={(event) => {
-												const next = parseTemplate(event.target.value);
-												if (next)
-													edit(only, (r) => ({
-														...r,
-														project: {...r.project, template: next},
-													}));
-											}}
-											className={selectClass}
-										>
-											{TEMPLATES.map((value) => (
-												<option key={value} value={value}>
-													{value}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="p-1">
-										<select
-											aria-label={`Kind for ${name}`}
-											value={kind}
-											onChange={(event) => {
-												const next = parseKind(event.target.value);
-												if (next)
-													edit(only, (r) => ({...r, project: {...r.project, kind: next}}));
-											}}
-											className={selectClass}
-										>
-											{KINDS.map((value) => (
-												<option key={value} value={value}>
-													{value}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="p-1 text-text-400">{row.hint}</td>
-								</tr>
-							);
-						})}
-					</tbody>
-				</table>
-			</div>
-			<div className="mt-2 flex flex-wrap items-center gap-2">
-				<button
-					type="button"
-					onClick={() => {
-						setDiff(diffInventories(current, included));
-					}}
-					className={buttonClass}
-				>
-					Review changes
-				</button>
-				{diff && (
+		<>
+			{GROUPS.map(({group, label, word, hideWhenEmpty}) => {
+				const groupRows = rows.filter((row) => row.group === group);
+				if (hideWhenEmpty && groupRows.length === 0) return null;
+				return <GroupCard key={group} label={label} word={word} rows={groupRows} edit={edit} />;
+			})}
+			<section aria-label="Save registry" className={cardClass}>
+				<div className="flex flex-wrap items-center gap-2">
 					<button
 						type="button"
-						disabled={
-							saving ||
-							(diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0)
-						}
 						onClick={() => {
-							onSave(included);
+							setDiff(diffInventories(current, projects));
 						}}
-						className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+						className={buttonClass}
 					>
-						{saving && <Loader2 className="h-4 w-4 animate-spin" />}
-						{saveLabel(included.length)}
+						Review changes
 					</button>
-				)}
-			</div>
-			{diff && <DiffView diff={diff} />}
-		</div>
+					{diff && (
+						<button
+							type="button"
+							disabled={
+								saving ||
+								(diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0)
+							}
+							onClick={() => {
+								onSave(projects);
+							}}
+							className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+						>
+							{saving && <Loader2 className="h-4 w-4 animate-spin" />}
+							{saveLabel(projects.length)}
+						</button>
+					)}
+				</div>
+				{diff && <DiffView diff={diff} />}
+			</section>
+		</>
 	);
 }

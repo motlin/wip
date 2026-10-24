@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import {tracedExeca} from "../services/traced-execa.js";
 import type {ProjectRecord} from "./inventory.js";
-import type {InventoryConflict, RegistryCandidate} from "./inventory-import.js";
+import type {InventoryConflict, RegistryCandidate, SkipReason} from "./inventory-import.js";
 
 export interface InventoryMissingEntry {
 	name: string;
@@ -74,18 +75,50 @@ export function checkInventory(projects: ProjectRecord[], projectsDirs: string[]
 	};
 }
 
-const SKIP_PATTERNS: [RegExp, string][] = [
-	[/-pr\d+$/, "PR worktree"],
-	[/-maven-\d+(?:\.\d+)*$/, "Maven version copy"],
-	[/-template$/, "template repo"],
-	[/-par-\d+$/, "parallel worktree"],
+const SKIP_PATTERNS: [RegExp, (match: RegExpExecArray) => SkipReason][] = [
+	[/^(.+)-pr(\d+)$/, (m) => ({code: "pr", text: `PR #${m[2]} worktree of ${m[1]}`})],
+	[/^(.+)-maven-(\d+(?:\.\d+)*)$/, (m) => ({code: "maven", text: `Maven ${m[2]} copy of ${m[1]}`})],
+	[/-template$/, () => ({code: "template", text: "template repo"})],
+	[/^(.+)-par-\d+$/, (m) => ({code: "parallel", text: `parallel worktree of ${m[1]}`})],
 ];
 
-/** Why a directory is probably not a project of its own, or undefined when nothing suggests skipping it. */
-export function suggestSkip(name: string, isWorktree: boolean): string | undefined {
-	const match = SKIP_PATTERNS.find(([pattern]) => pattern.test(name));
-	if (match) return match[1];
-	return isWorktree ? "git worktree" : undefined;
+/** The main repo a linked worktree belongs to, by name, from git's common dir. */
+async function worktreeMainRepo(dir: string): Promise<string | undefined> {
+	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+		reject: false,
+	});
+	if (result.exitCode !== 0) return undefined;
+	const commonDir = result.stdout.trim();
+	// A worktree of a normal clone shares <main>/.git; a bare repo's common dir is the repo itself.
+	const mainDir = path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
+	return path.basename(mainDir).replace(/\.git$/, "");
+}
+
+/**
+ * Why a project is, or would be, skipped, in plain words: a name pattern (PR worktree, Maven copy,
+ * template, parallel worktree), a git worktree naming its main repo, a directory that is missing or
+ * not a git repo, or for an existing skip, the project-template skip list or the user's own choice.
+ * Undefined when nothing suggests skipping a project that is not a skip.
+ */
+export async function skipReason(project: ProjectRecord): Promise<SkipReason | undefined> {
+	const name = path.basename(project.name);
+	for (const [pattern, reason] of SKIP_PATTERNS) {
+		const match = pattern.exec(name);
+		if (match) return reason(match);
+	}
+	const {dir, kind} = project;
+	if (!fs.existsSync(dir)) return {code: "missing", text: "directory missing"};
+	const entry = gitEntry(dir);
+	if (!fs.statSync(dir).isDirectory() || (kind === "nested" ? !insideGitRepo(dir) : entry === undefined)) {
+		return {code: "not-a-repo", text: "not a git repo"};
+	}
+	if (entry?.isFile() === true) {
+		const main = await worktreeMainRepo(dir);
+		return {code: "worktree", text: main === undefined ? "git worktree" : `git worktree of ${main}`};
+	}
+	if (kind !== "skip") return undefined;
+	if (project.template === "project") return {code: "listed", text: "listed under skip in project-template"};
+	return {code: "user", text: "skipped by you"};
 }
 
 const TEMPLATE_MARKERS: [string, ProjectRecord["template"]][] = [
@@ -105,50 +138,58 @@ function byName(a: RegistryCandidate, b: RegistryCandidate): number {
 	return a.project.name < b.project.name ? -1 : a.project.name > b.project.name ? 1 : 0;
 }
 
+function withReason(candidate: RegistryCandidate, reason: SkipReason | undefined): RegistryCandidate {
+	return reason ? {...candidate, skipReason: reason} : candidate;
+}
+
 /**
- * Every project the user might want in the registry: the given entries (included, flagged when
- * missing or skipped but present), template conflicts, and unregistered git repos under the
- * projects dirs (both excluded until the user includes them, with a suggested kind).
+ * Every project the user might want in the registry, each in one review group: the given entries
+ * (registered, skipped, or missing), template conflicts, and unregistered git repos under the
+ * projects dirs. Every row carries the skip reason that applies to it, and unregistered repos
+ * with one default to skip. Reasons are resolved one repo at a time so a large projects dir never
+ * fans out into parallel git processes.
  */
-export function buildRegistryCandidates(
+export async function buildRegistryCandidates(
 	projects: ProjectRecord[],
 	conflicts: InventoryConflict[],
 	projectsDirs: string[],
-): RegistryCandidate[] {
+): Promise<RegistryCandidate[]> {
 	const conflictCandidates: RegistryCandidate[] = conflicts.map(({dir, templates}) => ({
 		project: {name: path.basename(dir), dir, template: templates[0] ?? "unknown", kind: "own"},
-		included: false,
-		flags: ["conflict"],
-		hint: `listed by ${templates.join(", ")}`,
+		group: "conflict",
+		note: `listed by ${templates.join(", ")}`,
 	}));
 	const check = checkInventory(
 		[...projects, ...conflictCandidates.map((candidate) => candidate.project)],
 		projectsDirs,
 	);
 	const missing = new Map(check.missing.map((entry) => [entry.dir, entry.reason]));
-	const skipped = new Set(check.skippedButPresent.map((entry) => entry.dir));
 
-	const registered = projects.map((project): RegistryCandidate => {
-		const reason = missing.get(project.dir);
-		if (reason) {
-			const hint = reason === "missing" ? "directory missing" : "not a git repo";
-			return {project, included: true, flags: ["missing"], hint};
+	const candidates: RegistryCandidate[] = [];
+	/* oxlint-disable no-await-in-loop -- reasons resolve one repo at a time to bound git subprocess load */
+	for (const candidate of conflictCandidates)
+		candidates.push(withReason(candidate, await skipReason(candidate.project)));
+	for (const project of projects) {
+		const reason = await skipReason(project);
+		const missingReason = missing.get(project.dir);
+		if (project.kind === "skip") {
+			candidates.push(withReason({project, group: "skipped"}, reason));
+		} else if (missingReason) {
+			const note = missingReason === "missing" ? "directory missing" : "not a git repo";
+			candidates.push(withReason({project, group: "missing", note}, reason));
+		} else {
+			candidates.push(withReason({project, group: "registered"}, reason));
 		}
-		if (skipped.has(project.dir)) {
-			return {project, included: true, flags: ["skipped"], hint: "skipped but present on disk"};
-		}
-		return {project, included: true, flags: []};
-	});
-
-	const unregistered = check.unregistered.map((dir): RegistryCandidate => {
+	}
+	for (const dir of check.unregistered) {
 		const name = path.basename(dir);
-		const hint = suggestSkip(name, gitEntry(dir)?.isFile() === true);
-		const project: ProjectRecord = {name, dir, template: detectTemplate(dir), kind: hint ? "skip" : "own"};
-		return hint
-			? {project, included: false, flags: ["unregistered"], hint}
-			: {project, included: false, flags: ["unregistered"]};
-	});
+		const own: ProjectRecord = {name, dir, template: detectTemplate(dir), kind: "own"};
+		const reason = await skipReason(own);
+		const project: ProjectRecord = reason ? {...own, kind: "skip"} : own;
+		candidates.push(withReason({project, group: "unregistered"}, reason));
+	}
+	/* oxlint-enable no-await-in-loop */
 
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array
-	return [...registered, ...conflictCandidates, ...unregistered].sort(byName);
+	return candidates.sort(byName);
 }

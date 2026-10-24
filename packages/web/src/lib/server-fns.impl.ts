@@ -1489,7 +1489,7 @@ export async function getInventoryStatusHandler(options: InventoryImportOptions 
 	return traced("getInventoryStatus", async () => Promise.resolve(inventoryStatus(options)));
 }
 
-function registryCandidates(options: InventoryImportOptions): RegistryCandidates {
+async function registryCandidates(options: InventoryImportOptions): Promise<RegistryCandidates> {
 	const baseModifiedAt = registryModifiedAt();
 	const projectsDirs = options.projectsDirs ?? getProjectsDirs();
 	const {projects, conflicts} =
@@ -1499,7 +1499,7 @@ function registryCandidates(options: InventoryImportOptions): RegistryCandidates
 	return {
 		registryPath: getInventoryPath(),
 		baseModifiedAt,
-		candidates: buildRegistryCandidates(projects, conflicts, projectsDirs),
+		candidates: await buildRegistryCandidates(projects, conflicts, projectsDirs),
 	};
 }
 
@@ -1508,7 +1508,7 @@ function registryCandidates(options: InventoryImportOptions): RegistryCandidates
  * the templates would import) plus template conflicts and unregistered git repos on disk.
  */
 export async function getRegistryCandidatesHandler(options: InventoryImportOptions = {}): Promise<RegistryCandidates> {
-	return traced("getRegistryCandidates", async () => Promise.resolve(registryCandidates(options)));
+	return traced("getRegistryCandidates", async () => registryCandidates(options));
 }
 
 export interface SaveRegistryResult {
@@ -1516,12 +1516,12 @@ export interface SaveRegistryResult {
 	candidates: RegistryCandidates;
 }
 
-function saveRegistry(input: SaveRegistryInput, options: InventoryImportOptions): SaveRegistryResult {
+async function saveRegistry(input: SaveRegistryInput, options: InventoryImportOptions): Promise<SaveRegistryResult> {
 	if (registryModifiedAt() !== input.baseModifiedAt) {
 		throw new Error(`Registry at ${getInventoryPath()} changed since it was reviewed; reload and try again`);
 	}
 	saveInventory(input.projects);
-	return {status: inventoryStatus(options), candidates: registryCandidates(options)};
+	return {status: inventoryStatus(options), candidates: await registryCandidates(options)};
 }
 
 /**
@@ -1532,7 +1532,7 @@ export async function saveRegistryHandler(
 	input: SaveRegistryInput,
 	options: InventoryImportOptions = {},
 ): Promise<SaveRegistryResult> {
-	return traced("saveRegistry", async () => Promise.resolve(saveRegistry(input, options)));
+	return traced("saveRegistry", async () => saveRegistry(input, options));
 }
 
 /** The latest persisted ladder result per project. */

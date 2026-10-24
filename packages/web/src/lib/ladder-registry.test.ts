@@ -118,32 +118,29 @@ describe("getRegistryCandidatesHandler", () => {
 			candidates: [
 				{
 					project: {name: "alpha", dir: `${templatesDir}/alpha`, template: "typescript", kind: "own"},
-					included: false,
-					flags: ["conflict"],
-					hint: "listed by typescript, java",
+					group: "conflict",
+					note: "listed by typescript, java",
+					skipReason: {code: "missing", text: "directory missing"},
 				},
 				{
 					project: {name: "beta", dir: `${templatesDir}/beta`, template: "typescript", kind: "fork"},
-					included: true,
-					flags: [],
+					group: "registered",
 				},
 				{
 					project: {name: "gamma", dir: `${templatesDir}/gamma`, template: "java", kind: "own"},
-					included: true,
-					flags: ["missing"],
-					hint: "directory missing",
+					group: "missing",
+					note: "directory missing",
+					skipReason: {code: "missing", text: "directory missing"},
 				},
 				{
 					project: {name: "skipped", dir: `${templatesDir}/skipped`, template: "project", kind: "skip"},
-					included: true,
-					flags: ["skipped"],
-					hint: "skipped but present on disk",
+					group: "skipped",
+					skipReason: {code: "listed", text: "listed under skip in project-template"},
 				},
 				{
 					project: {name: "stray-pr7", dir: `${templatesDir}/stray-pr7`, template: "unknown", kind: "skip"},
-					included: false,
-					flags: ["unregistered"],
-					hint: "PR worktree",
+					group: "unregistered",
+					skipReason: {code: "pr", text: "PR #7 worktree of stray"},
 				},
 			],
 		});
@@ -161,13 +158,11 @@ describe("getRegistryCandidatesHandler", () => {
 			candidates: [
 				{
 					project: {name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"},
-					included: true,
-					flags: [],
+					group: "registered",
 				},
 				{
 					project: {name: "stray", dir: `${templatesDir}/stray`, template: "unknown", kind: "own"},
-					included: false,
-					flags: ["unregistered"],
+					group: "unregistered",
 				},
 			],
 		});
@@ -199,8 +194,17 @@ describe("saveRegistryHandler", () => {
 				registryPath: registryFile(),
 				baseModifiedAt: modifiedAt,
 				candidates: [
-					{project: beta, included: true, flags: ["missing"], hint: "directory missing"},
-					{project: gamma, included: true, flags: []},
+					{
+						project: beta,
+						group: "missing",
+						note: "directory missing",
+						skipReason: {code: "missing", text: "directory missing"},
+					},
+					{
+						project: gamma,
+						group: "skipped",
+						skipReason: {code: "missing", text: "directory missing"},
+					},
 				],
 			},
 		});

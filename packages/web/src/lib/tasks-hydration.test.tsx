@@ -57,8 +57,7 @@ const candidates: RegistryCandidates = {
 	candidates: [
 		{
 			project: {name: "wip", dir: "/tmp/projects/wip", template: "typescript", kind: "own"},
-			included: true,
-			flags: [],
+			group: "registered",
 		},
 	],
 };

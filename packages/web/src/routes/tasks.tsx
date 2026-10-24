@@ -13,6 +13,7 @@ import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
 import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context.js";
 import {LadderSection} from "../components/ladder-section.js";
+import {RegistrySection} from "../components/registry-section.js";
 import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel.js";
 import {
 	Clock,
@@ -402,6 +403,13 @@ function Tasks() {
 
 			<LadderSection
 				inventory={hydrated ? inventory : undefined}
+				results={hydrated ? ladderResults : []}
+				runLadderAll={async () => runLadderAll()}
+				focusPane={async (paneId) => focusHerdrPaneFn({data: {paneId}})}
+			/>
+
+			<RegistrySection
+				inventory={hydrated ? inventory : undefined}
 				candidates={hydrated ? registryCandidates : undefined}
 				saveRegistry={async (input) => {
 					const saved = await saveRegistry({data: input});
@@ -409,9 +417,6 @@ function Tasks() {
 					queryClient.setQueryData(registryCandidatesQueryOptions().queryKey, saved.candidates);
 					return saved.status;
 				}}
-				results={hydrated ? ladderResults : []}
-				runLadderAll={async () => runLadderAll()}
-				focusPane={async (paneId) => focusHerdrPaneFn({data: {paneId}})}
 			/>
 
 			{allJobs.length === 0 ? (

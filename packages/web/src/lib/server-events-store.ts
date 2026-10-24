@@ -123,6 +123,21 @@ export function getSchedulerStateSnapshot(): RefreshSchedulerState {
 	return schedulerState;
 }
 
+const EMPTY_TASKS: ReadonlyMap<string, TaskEvent> = new Map();
+
+/**
+ * Server snapshots: SSE state only exists on the client, and the stream can
+ * deliver it before a lazily loaded route hydrates. Hydration must render what
+ * the server rendered, so these never reflect live state.
+ */
+export function getServerTasksSnapshot(): ReadonlyMap<string, TaskEvent> {
+	return EMPTY_TASKS;
+}
+
+export function getServerSchedulerStateSnapshot(): RefreshSchedulerState {
+	return EMPTY_SCHEDULER_STATE;
+}
+
 /** Test-only: clear all state and listeners. */
 export function resetServerEventsStore(): void {
 	tasks.clear();

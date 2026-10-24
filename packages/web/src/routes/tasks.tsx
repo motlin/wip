@@ -37,6 +37,7 @@ import {
 	taskQueueQueryOptions,
 } from "../lib/queries.js";
 import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
+import {useHydrated} from "../lib/use-hydrated.js";
 
 export const Route = createFileRoute("/tasks")({
 	loader: async ({context: {queryClient}}) => queryClient.query({...taskQueueQueryOptions(), staleTime: "static"}),
@@ -109,7 +110,7 @@ function formatDuration(ms: number): string {
 	return `${minutes}m ${remaining}s`;
 }
 
-function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: Map<string, TaskEvent>): TaskQueueJob[] {
+function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: ReadonlyMap<string, TaskEvent>): TaskQueueJob[] {
 	const merged = new Map<string, TaskQueueJob>();
 
 	for (const job of serverJobs) {
@@ -279,6 +280,10 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 
 function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
+	// These queries are client-only (never fetched during SSR) but the localStorage
+	// persister restores them before hydration; hide them until hydrated so the
+	// hydration render matches the server HTML.
+	const hydrated = useHydrated();
 	const {data: ladderResults = []} = useQuery(ladderResultsQueryOptions());
 	const {data: inventory} = useQuery(inventoryStatusQueryOptions());
 	const {data: registryCandidates} = useQuery(registryCandidatesQueryOptions());
@@ -396,15 +401,15 @@ function Tasks() {
 			<RefreshSchedulerPanel />
 
 			<LadderSection
-				inventory={inventory}
-				candidates={registryCandidates}
+				inventory={hydrated ? inventory : undefined}
+				candidates={hydrated ? registryCandidates : undefined}
 				saveRegistry={async (input) => {
 					const saved = await saveRegistry({data: input});
 					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, saved.status);
 					queryClient.setQueryData(registryCandidatesQueryOptions().queryKey, saved.candidates);
 					return saved.status;
 				}}
-				results={ladderResults}
+				results={hydrated ? ladderResults : []}
 				runLadderAll={async () => runLadderAll()}
 				focusPane={async (paneId) => focusHerdrPaneFn({data: {paneId}})}
 			/>

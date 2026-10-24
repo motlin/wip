@@ -8,6 +8,8 @@ import {
 	getAllTasksSnapshot,
 	getMergeStatusSnapshot,
 	getSchedulerStateSnapshot,
+	getServerSchedulerStateSnapshot,
+	getServerTasksSnapshot,
 	getTaskLogSnapshot,
 	getTaskSnapshot,
 	hasActiveTasksSnapshot,
@@ -111,18 +113,22 @@ export function useMergeStatus(sha: string, project: string): MergeStatusEvent |
 /** Live background-work queue state, for the Tasks page's scheduler panel. */
 export function useRefreshSchedulerState(): RefreshSchedulerState {
 	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("scheduler", listener), []);
-	return useSyncExternalStore(subscribe, getSchedulerStateSnapshot, getSchedulerStateSnapshot);
+	return useSyncExternalStore(subscribe, getSchedulerStateSnapshot, getServerSchedulerStateSnapshot);
 }
 
 /** Full live task map plus lookups, for the Tasks and Advance Plan pages. */
 export function useAllTasks(): {
-	tasks: Map<string, TaskEvent>;
+	tasks: ReadonlyMap<string, TaskEvent>;
 	getTask: (sha: string, project: string) => TaskEvent | undefined;
 	getLog: (sha: string, project: string) => string | undefined;
 	hasActiveTasks: boolean;
 } {
 	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("tasks", listener), []);
-	const tasks = useSyncExternalStore(subscribe, getAllTasksSnapshot, getAllTasksSnapshot);
+	const tasks = useSyncExternalStore<ReadonlyMap<string, TaskEvent>>(
+		subscribe,
+		getAllTasksSnapshot,
+		getServerTasksSnapshot,
+	);
 	const hasActiveTasks = useSyncExternalStore(subscribe, hasActiveTasksSnapshot, () => false);
 	return {tasks, getTask: getTaskSnapshot, getLog: getTaskLogSnapshot, hasActiveTasks};
 }

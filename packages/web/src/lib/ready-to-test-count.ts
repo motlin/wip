@@ -1,11 +1,7 @@
-import {useSyncExternalStore} from "react";
 import {useQuery} from "@tanstack/react-query";
 
 import {runAllCountsQueryOptions} from "./queries.js";
-
-const noopSubscribe = () => () => {};
-const isClient = () => true;
-const isServer = () => false;
+import {useHydrated} from "./use-hydrated.js";
 
 /**
  * Number of branches ready to test, for the "Run All Tests (N)" label.
@@ -17,7 +13,7 @@ const isServer = () => false;
  */
 export function useReadyToTestCount(): number {
 	const {data} = useQuery(runAllCountsQueryOptions());
-	const mounted = useSyncExternalStore(noopSubscribe, isClient, isServer);
+	const hydrated = useHydrated();
 
-	return mounted ? (data?.readyToTest ?? 0) : 0;
+	return hydrated ? (data?.readyToTest ?? 0) : 0;
 }

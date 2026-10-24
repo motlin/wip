@@ -13,6 +13,7 @@
 		"build-storybook": "storybook build"
 	},
 	"dependencies": {
+		"@fontsource-variable/inter": "^5.3.0",
 		"@git-diff-view/core": "^0.1.7",
 		"@git-diff-view/react": "^0.1.7",
 		"@tanstack/query-sync-storage-persister": "^5.104.3",

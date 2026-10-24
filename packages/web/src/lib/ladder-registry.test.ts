@@ -200,16 +200,29 @@ describe("saveRegistryHandler", () => {
 						note: "directory missing",
 						skipReason: {code: "missing", text: "directory missing"},
 					},
-					{
-						project: gamma,
-						group: "missing",
-						note: "directory missing",
-						skipReason: {code: "missing", text: "directory missing"},
-					},
 				],
 			},
 		});
 		expect(loadInventory().projects).toEqual([beta, gamma]);
+	});
+
+	it("drops skip entries whose directory is gone when the reviewed candidates are saved", async () => {
+		saveInventory([beta, gamma]);
+		const options = {templatesDir, homeDir: temp.dir, projectsDirs: []};
+		const review = await getRegistryCandidatesHandler(options);
+		expect(review.candidates).toEqual([
+			{
+				project: beta,
+				group: "missing",
+				note: "directory missing",
+				skipReason: {code: "missing", text: "directory missing"},
+			},
+		]);
+		await saveRegistryHandler(
+			{projects: review.candidates.map((candidate) => candidate.project), baseModifiedAt: review.baseModifiedAt},
+			options,
+		);
+		expect(loadInventory().projects).toEqual([beta]);
 	});
 
 	it("overwrites the registry it was reviewed against", async () => {

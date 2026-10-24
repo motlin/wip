@@ -64,7 +64,7 @@ describe("wip inventory check", () => {
 		fs.mkdirSync(path.join(projectsDir, "not-a-repo"));
 		saveInventory([record("alpha")]);
 		const {result} = await runCheck(["--projects-dir", projectsDir, "--json"]);
-		expect(result).toEqual({consistent: true, unregistered: [], missing: [], skipped: []});
+		expect(result).toEqual({consistent: true, unregistered: [], missing: [], skipped: [], removableSkips: []});
 	});
 
 	it("is consistent with skip entries for existing worktrees and copies, and lists them with their reasons", async () => {
@@ -101,6 +101,7 @@ describe("wip inventory check", () => {
 				},
 				{name: "feature", dir: worktree, reason: {code: "worktree", text: "git worktree of nowhere"}},
 			],
+			removableSkips: [],
 		});
 	});
 
@@ -120,16 +121,31 @@ describe("wip inventory check", () => {
 		);
 	});
 
-	it("reports a skip entry whose directory is missing and exits 1", async () => {
+	it("notes a skip entry whose directory is gone as removable without failing", async () => {
 		saveInventory([record("absent-skip", "skip")]);
-		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
-		expect(process.exitCode).toBe(1);
-		expect(JSON.parse(stdout.join(""))).toEqual({
-			consistent: false,
+		const {result, exitCode} = await runCheck(["--projects-dir", projectsDir, "--json"]);
+		expect(exitCode).toBeUndefined();
+		expect(process.exitCode).toBeUndefined();
+		expect(result).toEqual({
+			consistent: true,
 			unregistered: [],
-			missing: [{name: "absent-skip", dir: path.join(projectsDir, "absent-skip"), reason: "missing"}],
+			missing: [],
 			skipped: [],
+			removableSkips: [{name: "absent-skip", dir: path.join(projectsDir, "absent-skip")}],
 		});
+	});
+
+	it("prints a gone skip entry as a removable note under a consistent text report", async () => {
+		saveInventory([record("absent-skip", "skip")]);
+		const {exitCode} = await runCheck(["--projects-dir", projectsDir]);
+		expect(exitCode).toBeUndefined();
+		expect(stdout.join("")).toBe(
+			[
+				"Registry and disk are consistent",
+				`removable skip: absent-skip (${path.join(projectsDir, "absent-skip")}): directory gone, safe to remove from the registry`,
+				"",
+			].join("\n"),
+		);
 	});
 
 	it("reports unregistered, missing and not-a-repo entries, lists present skips, and exits 1", async () => {
@@ -182,6 +198,7 @@ describe("wip inventory check", () => {
 			unregistered: [],
 			missing: [{name: "loose/child", dir: path.join(projectsDir, "loose", "child"), reason: "not-a-git-repo"}],
 			skipped: [],
+			removableSkips: [],
 		});
 	});
 
@@ -195,6 +212,7 @@ describe("wip inventory check", () => {
 			unregistered: [],
 			missing: [{name: "Brewfile", dir: path.join(projectsDir, "Brewfile"), reason: "not-a-git-repo"}],
 			skipped: [],
+			removableSkips: [],
 		});
 	});
 
@@ -208,6 +226,7 @@ describe("wip inventory check", () => {
 			unregistered: [path.join(projectsDir, "stray")],
 			missing: [{name: "gone", dir: path.join(projectsDir, "gone"), reason: "missing"}],
 			skipped: [],
+			removableSkips: [],
 		});
 	});
 });

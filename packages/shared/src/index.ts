@@ -348,6 +348,7 @@ export {
 export {
 	type InventoryCheckResult,
 	type InventoryMissingEntry,
+	type InventoryRemovableSkip,
 	type InventorySkippedEntry,
 	buildRegistryCandidates,
 	checkInventory,

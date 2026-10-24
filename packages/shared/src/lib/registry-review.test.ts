@@ -156,7 +156,7 @@ describe("registry candidates", () => {
 		expect(detectTemplate(repo("other"))).toBe("unknown");
 	});
 
-	it("reports unregistered and missing entries, including missing skips, and lists present skips", () => {
+	it("reports unregistered and missing entries, lists present skips, and notes gone skips as removable", () => {
 		const present = repo("present");
 		const skipped = repo("skipped");
 		const stray = repo("stray");
@@ -173,7 +173,6 @@ describe("registry candidates", () => {
 			unregistered: [stray],
 			missing: [
 				{name: "gone", dir: path.join(root, "gone"), reason: "missing"},
-				{name: "gone-skip", dir: path.join(root, "gone-skip"), reason: "missing"},
 				{name: "plain", dir: path.join(root, "plain"), reason: "not-a-git-repo"},
 			],
 			skipped: [
@@ -183,6 +182,20 @@ describe("registry candidates", () => {
 					reason: {code: "listed", text: "listed under skip in project-template"},
 				},
 			],
+			removableSkips: [{name: "gone-skip", dir: path.join(root, "gone-skip")}],
+		});
+	});
+
+	it("is consistent when the only drift is skip entries whose directory is gone", () => {
+		const projects: ProjectRecord[] = [
+			{name: "gone-pr574", dir: path.join(root, "gone-pr574"), template: "typescript", kind: "skip"},
+		];
+		expect(checkInventory(projects, [root])).toEqual({
+			consistent: true,
+			unregistered: [],
+			missing: [],
+			skipped: [],
+			removableSkips: [{name: "gone-pr574", dir: path.join(root, "gone-pr574")}],
 		});
 	});
 
@@ -202,10 +215,11 @@ describe("registry candidates", () => {
 				{name: "skipped", dir: skipped, reason: {code: "user", text: "skipped by you"}, note: "archived"},
 				{name: "plain", dir: plain, reason: {code: "not-a-repo", text: "not a git repo"}},
 			],
+			removableSkips: [],
 		});
 	});
 
-	it("groups registered entries, conflicts, and unregistered repos, with a skip reason on every skip", () => {
+	it("groups registered entries, conflicts, and unregistered repos, with a skip reason on every skip, and leaves out gone skips", () => {
 		const present = repo("present");
 		const legacy = repo("legacy");
 		const chosen = repo("chosen");
@@ -245,12 +259,6 @@ describe("registry candidates", () => {
 				project: {name: "gone", dir: path.join(root, "gone"), template: "rust", kind: "own"},
 				group: "missing",
 				skipReason: {code: "missing", text: "directory missing"},
-				note: "directory missing",
-			},
-			{
-				project: {name: "gone-pr7", dir: path.join(root, "gone-pr7"), template: "rust", kind: "skip"},
-				group: "missing",
-				skipReason: {code: "pr", text: "PR #7 worktree of gone"},
 				note: "directory missing",
 			},
 			{

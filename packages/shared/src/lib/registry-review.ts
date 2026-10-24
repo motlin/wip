@@ -18,18 +18,26 @@ export interface InventorySkippedEntry {
 	note?: string;
 }
 
+/** A skip entry whose directory is gone, such as a deleted worktree: noise the registry can drop. */
+export interface InventoryRemovableSkip {
+	name: string;
+	dir: string;
+}
+
 export interface InventoryCheckResult {
-	/** False when a repo is unregistered or an entry (skip or not) is missing; present skips never count. */
+	/** False when a repo is unregistered or a non-skip entry is missing; skips never count. */
 	consistent: boolean;
 	unregistered: string[];
 	missing: InventoryMissingEntry[];
 	skipped: InventorySkippedEntry[];
+	removableSkips: InventoryRemovableSkip[];
 }
 
 interface InventoryComparison {
 	unregistered: string[];
 	missing: InventoryMissingEntry[];
 	presentSkips: ProjectRecord[];
+	goneSkips: ProjectRecord[];
 }
 
 function gitEntry(dir: string): fs.Stats | undefined {
@@ -56,7 +64,8 @@ function listGitRepos(projectsDir: string): string[] {
 
 /**
  * Compares registry entries with the git repos found directly under the projects dirs. A skip
- * entry only needs its directory to exist, whatever is there; recording it is the point.
+ * entry only needs its directory to exist, whatever is there; recording it is the point. A skip
+ * entry whose directory is gone is not missing, just stale.
  */
 function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): InventoryComparison {
 	const registered = new Set(projects.map((project) => path.resolve(project.dir)));
@@ -65,10 +74,12 @@ function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): In
 	);
 	const missing: InventoryMissingEntry[] = [];
 	const presentSkips: ProjectRecord[] = [];
+	const goneSkips: ProjectRecord[] = [];
 	for (const project of projects) {
 		const {name, dir} = project;
 		if (!fs.existsSync(dir)) {
-			missing.push({name, dir, reason: "missing"});
+			if (project.kind === "skip") goneSkips.push(project);
+			else missing.push({name, dir, reason: "missing"});
 		} else if (project.kind === "skip") {
 			presentSkips.push(project);
 		} else if (
@@ -78,15 +89,15 @@ function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): In
 			missing.push({name, dir, reason: "not-a-git-repo"});
 		}
 	}
-	return {unregistered, missing, presentSkips};
+	return {unregistered, missing, presentSkips, goneSkips};
 }
 
 /**
  * Compares the registry with the disk. Skip entries that exist are consistent and listed with
- * their reason.
+ * their reason; skip entries whose directory is gone are noted as removable, never a failure.
  */
 export function checkInventory(projects: ProjectRecord[], projectsDirs: string[]): InventoryCheckResult {
-	const {unregistered, missing, presentSkips} = compareInventory(projects, projectsDirs);
+	const {unregistered, missing, presentSkips, goneSkips} = compareInventory(projects, projectsDirs);
 	const skipped: InventorySkippedEntry[] = [];
 	for (const project of presentSkips) {
 		const {name, dir, skipNote} = project;
@@ -94,7 +105,13 @@ export function checkInventory(projects: ProjectRecord[], projectsDirs: string[]
 		const reason = skipReason(project) ?? {code: "user", text: "skipped by you"};
 		skipped.push(skipNote === undefined ? {name, dir, reason} : {name, dir, reason, note: skipNote});
 	}
-	return {consistent: unregistered.length === 0 && missing.length === 0, unregistered, missing, skipped};
+	return {
+		consistent: unregistered.length === 0 && missing.length === 0,
+		unregistered,
+		missing,
+		skipped,
+		removableSkips: goneSkips.map(({name, dir}) => ({name, dir})),
+	};
 }
 
 const SKIP_PATTERNS: [RegExp, (match: RegExpExecArray) => SkipReason][] = [
@@ -179,7 +196,7 @@ function withReason(candidate: RegistryCandidate, reason: SkipReason | undefined
 /**
  * Every project the user might want in the registry, each in one review group: the given entries
  * (registered, skipped, or missing), template conflicts, and unregistered git repos under the
- * projects dirs. Every row carries the skip reason that applies to it, and unregistered repos
+ * projects dirs. Skip entries whose directory is gone are left out, so saving the review drops them. Every row carries the skip reason that applies to it, and unregistered repos
  * with one default to skip. Reasons come from the filesystem alone, never a git subprocess, so the
  * same disk always yields the same candidates whatever the load.
  */
@@ -198,10 +215,11 @@ export function buildRegistryCandidates(
 		projectsDirs,
 	);
 	const missing = new Map(check.missing.map((entry) => [entry.dir, entry.reason]));
+	const goneSkips = new Set(check.goneSkips);
 
 	const candidates: RegistryCandidate[] = [];
 	for (const candidate of conflictCandidates) candidates.push(withReason(candidate, skipReason(candidate.project)));
-	for (const project of projects) {
+	for (const project of projects.filter((entry) => !goneSkips.has(entry))) {
 		const reason = skipReason(project);
 		const missingReason = missing.get(project.dir);
 		if (missingReason) {

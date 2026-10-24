@@ -6,7 +6,7 @@ export type {InventoryCheckResult} from "@wip/shared";
 
 /**
  * Reports drift between the project registry and the directories on disk, listing present skip
- * entries informationally. Exits 1 when inconsistent.
+ * entries informationally and gone skip entries as removable. Exits 1 when inconsistent.
  */
 export default class InventoryCheck extends Command {
 	static override description = "Compare the wip project registry with the git repos on disk";
@@ -35,6 +35,9 @@ export default class InventoryCheck extends Command {
 		for (const entry of result.missing) this.log(`${entry.reason}: ${entry.name} (${entry.dir})`);
 		for (const {name, dir, reason, note} of result.skipped) {
 			this.log(`skipped: ${name} (${dir}): ${reason.text}${note === undefined ? "" : ` (${note})`}`);
+		}
+		for (const {name, dir} of result.removableSkips) {
+			this.log(`removable skip: ${name} (${dir}): directory gone, safe to remove from the registry`);
 		}
 		if (result.consistent) return result;
 		return this.exit(1);

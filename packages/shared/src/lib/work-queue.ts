@@ -43,6 +43,8 @@ const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2,
 export type ResourceLock = (resource: string, signal: AbortSignal) => Promise<() => void>;
 
 export interface WorkJobSummary {
+	/** Unique per enqueued job; distinct jobs can share a kind and project (e.g. branch-name per sha). */
+	id: string;
 	kind: string;
 	project: string;
 	costClass: CostClass;
@@ -183,11 +185,12 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		return {
 			slots: globalConcurrency,
 			running: [...running.values()].map((job) => ({
+				id: job.id,
 				kind: job.kind,
 				project: job.project,
 				costClass: job.costClass,
 			})),
-			queued: queued.map((job) => ({kind: job.kind, project: job.project, costClass: job.costClass})),
+			queued: queued.map((job) => ({id: job.id, kind: job.kind, project: job.project, costClass: job.costClass})),
 			runningByClass: {
 				cheap: runningInClass("cheap"),
 				"git-write": runningInClass("git-write"),

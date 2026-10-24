@@ -635,10 +635,10 @@ describe("state", () => {
 		expect(queue.getState()).toStrictEqual({
 			slots: 2,
 			running: [
-				{kind: "children", project: "project-0", costClass: "cheap"},
-				{kind: "children", project: "project-1", costClass: "cheap"},
+				{id: "1", kind: "children", project: "project-0", costClass: "cheap"},
+				{id: "2", kind: "children", project: "project-1", costClass: "cheap"},
 			],
-			queued: [{kind: "children", project: "project-2", costClass: "cheap"}],
+			queued: [{id: "3", kind: "children", project: "project-2", costClass: "cheap"}],
 			runningByClass: {cheap: 2, "git-write": 0, build: 0, ai: 0},
 		});
 

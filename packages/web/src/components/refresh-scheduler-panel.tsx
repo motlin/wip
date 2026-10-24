@@ -48,7 +48,7 @@ export function RefreshSchedulerPanel() {
 			{state.queued.length > 0 && (
 				<div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-500">
 					{state.queued.slice(0, 12).map((job) => (
-						<span key={`${job.kind}:${job.project}`} className="rounded bg-bg-200 px-1.5 py-0.5">
+						<span key={job.id} className="rounded bg-bg-200 px-1.5 py-0.5">
 							{job.project || "all"} · {job.kind}
 						</span>
 					))}

@@ -125,7 +125,7 @@ describe("/tasks hydration", () => {
 		clientClient.setQueryData(runAllCountsQueryOptions().queryKey, {readyToTest: 3, needsRebase: 0});
 		applySchedulerState({
 			slots: 2,
-			running: [{kind: "children", project: "wip", costClass: "cheap"}],
+			running: [{id: "1", kind: "children", project: "wip", costClass: "cheap"}],
 			queued: [],
 			runningByClass: {cheap: 1, "git-write": 0, build: 0, ai: 0},
 		});

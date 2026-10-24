@@ -53,8 +53,8 @@ const CostClassSchema = z.enum(["cheap", "git-write", "build", "ai"]);
 
 const WorkQueueStateEventSchema = z.object({
 	slots: z.number(),
-	running: z.array(z.object({kind: z.string(), project: z.string(), costClass: CostClassSchema})),
-	queued: z.array(z.object({kind: z.string(), project: z.string(), costClass: CostClassSchema})),
+	running: z.array(z.object({id: z.string(), kind: z.string(), project: z.string(), costClass: CostClassSchema})),
+	queued: z.array(z.object({id: z.string(), kind: z.string(), project: z.string(), costClass: CostClassSchema})),
 	runningByClass: z.object({cheap: z.number(), "git-write": z.number(), build: z.number(), ai: z.number()}),
 });
 

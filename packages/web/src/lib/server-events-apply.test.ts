@@ -257,7 +257,7 @@ describe("other channels", () => {
 			channel: "refresh-state",
 			data: {
 				slots: 4,
-				running: [{kind: "children", project: "wip", costClass: "cheap"}],
+				running: [{id: "1", kind: "children", project: "wip", costClass: "cheap"}],
 				queued: [],
 				runningByClass: {cheap: 1, "git-write": 0, build: 0, ai: 0},
 			},

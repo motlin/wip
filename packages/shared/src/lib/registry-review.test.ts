@@ -71,55 +71,79 @@ describe("skipReason", () => {
 		["liftwizard-maven-3.10.0", {code: "maven", text: "Maven 3.10.0 copy of liftwizard"}],
 		["java-template", {code: "template", text: "template repo"}],
 		["ccp-par-2", {code: "parallel", text: "parallel worktree of ccp"}],
-	])("names the pattern behind %s", async (name, reason) => {
-		expect(await skipReason(record(name, repo(name)))).toEqual(reason);
+	])("names the pattern behind %s", (name, reason) => {
+		expect(skipReason(record(name, repo(name)))).toEqual(reason);
 	});
 
-	it("names the main repo of a git worktree", async () => {
+	it("names the main repo of a git worktree", () => {
 		const main = realRepo("herdr");
 		const feature = worktree(main, "feature-x");
-		expect(await skipReason(record("feature-x", feature))).toEqual({
+		expect(skipReason(record("feature-x", feature))).toEqual({
 			code: "worktree",
 			text: "git worktree of herdr",
 		});
 	});
 
-	it("prefers the PR pattern over the plain worktree reason", async () => {
+	it("names the main repo of a git worktree even when git cannot run, as under heavy load", () => {
+		const main = realRepo("herdr");
+		const feature = worktree(main, "feature-x");
+		const savedPath = process.env.PATH;
+		process.env.PATH = "";
+		try {
+			expect(skipReason(record("feature-x", feature))).toEqual({
+				code: "worktree",
+				text: "git worktree of herdr",
+			});
+		} finally {
+			process.env.PATH = savedPath;
+		}
+	});
+
+	it("fails with the directory named when a worktree's .git file is unreadable, instead of reclassifying it", () => {
+		const dir = path.join(root, "broken");
+		fs.mkdirSync(dir);
+		fs.writeFileSync(path.join(dir, ".git"), "not a gitdir line\n");
+		expect(() => skipReason(record("broken", dir))).toThrow(
+			`Cannot tell which repo the git worktree at ${dir} belongs to: its .git file has no gitdir line`,
+		);
+	});
+
+	it("prefers the PR pattern over the plain worktree reason", () => {
 		const main = realRepo("wip");
 		const pr = worktree(main, "wip-pr7");
-		expect(await skipReason(record("wip-pr7", pr))).toEqual({code: "pr", text: "PR #7 worktree of wip"});
+		expect(skipReason(record("wip-pr7", pr))).toEqual({code: "pr", text: "PR #7 worktree of wip"});
 	});
 
-	it("reports a directory that is not a git repo", async () => {
+	it("reports a directory that is not a git repo", () => {
 		const dir = path.join(root, "plain");
 		fs.mkdirSync(dir);
-		expect(await skipReason(record("plain", dir))).toEqual({code: "not-a-repo", text: "not a git repo"});
+		expect(skipReason(record("plain", dir))).toEqual({code: "not-a-repo", text: "not a git repo"});
 	});
 
-	it("reports a directory that no longer exists", async () => {
-		expect(await skipReason(record("gone", path.join(root, "gone")))).toEqual({
+	it("reports a directory that no longer exists", () => {
+		expect(skipReason(record("gone", path.join(root, "gone")))).toEqual({
 			code: "missing",
 			text: "directory missing",
 		});
 	});
 
-	it("says a skip from the project-template skip list came from there", async () => {
+	it("says a skip from the project-template skip list came from there", () => {
 		const dir = repo("legacy");
-		expect(await skipReason({name: "legacy", dir, template: "project", kind: "skip"})).toEqual({
+		expect(skipReason({name: "legacy", dir, template: "project", kind: "skip"})).toEqual({
 			code: "listed",
 			text: "listed under skip in project-template",
 		});
 	});
 
-	it("says a skip with no other explanation was chosen by the user", async () => {
-		expect(await skipReason(record("chosen", repo("chosen"), "skip"))).toEqual({
+	it("says a skip with no other explanation was chosen by the user", () => {
+		expect(skipReason(record("chosen", repo("chosen"), "skip"))).toEqual({
 			code: "user",
 			text: "skipped by you",
 		});
 	});
 
-	it("finds no reason for an ordinary repo", async () => {
-		expect(await skipReason(record("git-test", repo("git-test")))).toBeUndefined();
+	it("finds no reason for an ordinary repo", () => {
+		expect(skipReason(record("git-test", repo("git-test")))).toBeUndefined();
 	});
 });
 
@@ -132,7 +156,7 @@ describe("registry candidates", () => {
 		expect(detectTemplate(repo("other"))).toBe("unknown");
 	});
 
-	it("reports unregistered and missing entries, including missing skips, and lists present skips", async () => {
+	it("reports unregistered and missing entries, including missing skips, and lists present skips", () => {
 		const present = repo("present");
 		const skipped = repo("skipped");
 		const stray = repo("stray");
@@ -144,7 +168,7 @@ describe("registry candidates", () => {
 			{name: "gone-skip", dir: path.join(root, "gone-skip"), template: "rust", kind: "skip"},
 			{name: "plain", dir: path.join(root, "plain"), template: "rust", kind: "own"},
 		];
-		expect(await checkInventory(projects, [root])).toEqual({
+		expect(checkInventory(projects, [root])).toEqual({
 			consistent: false,
 			unregistered: [stray],
 			missing: [
@@ -162,7 +186,7 @@ describe("registry candidates", () => {
 		});
 	});
 
-	it("is consistent when every skip entry exists on disk", async () => {
+	it("is consistent when every skip entry exists on disk", () => {
 		const skipped = repo("skipped");
 		const plain = path.join(root, "plain");
 		fs.mkdirSync(plain);
@@ -170,7 +194,7 @@ describe("registry candidates", () => {
 			{name: "skipped", dir: skipped, template: "java", kind: "skip", skipNote: "archived"},
 			{name: "plain", dir: plain, template: "unknown", kind: "skip"},
 		];
-		expect(await checkInventory(projects, [root])).toEqual({
+		expect(checkInventory(projects, [root])).toEqual({
 			consistent: true,
 			unregistered: [],
 			missing: [],
@@ -181,7 +205,7 @@ describe("registry candidates", () => {
 		});
 	});
 
-	it("groups registered entries, conflicts, and unregistered repos, with a skip reason on every skip", async () => {
+	it("groups registered entries, conflicts, and unregistered repos, with a skip reason on every skip", () => {
 		const present = repo("present");
 		const legacy = repo("legacy");
 		const chosen = repo("chosen");
@@ -199,7 +223,7 @@ describe("registry candidates", () => {
 			{name: "gone-pr7", dir: path.join(root, "gone-pr7"), template: "rust", kind: "skip"},
 		];
 		expect(
-			await buildRegistryCandidates(projects, [{dir: conflicted, templates: ["typescript", "java"]}], [root]),
+			buildRegistryCandidates(projects, [{dir: conflicted, templates: ["typescript", "java"]}], [root]),
 		).toEqual([
 			{
 				project: {name: "chosen", dir: chosen, template: "java", kind: "skip", skipNote: "archived"},

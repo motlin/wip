@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import {tracedExeca} from "../services/traced-execa.js";
 import type {ProjectRecord} from "./inventory.js";
 import type {InventoryConflict, RegistryCandidate, SkipReason} from "./inventory-import.js";
 
@@ -84,17 +83,15 @@ function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): In
 
 /**
  * Compares the registry with the disk. Skip entries that exist are consistent and listed with
- * their reason; reasons resolve one entry at a time so many worktree skips never fan out into
- * parallel git processes.
+ * their reason.
  */
-export async function checkInventory(projects: ProjectRecord[], projectsDirs: string[]): Promise<InventoryCheckResult> {
+export function checkInventory(projects: ProjectRecord[], projectsDirs: string[]): InventoryCheckResult {
 	const {unregistered, missing, presentSkips} = compareInventory(projects, projectsDirs);
 	const skipped: InventorySkippedEntry[] = [];
 	for (const project of presentSkips) {
 		const {name, dir, skipNote} = project;
 		// skipReason always finds a reason for a skip entry.
-		// oxlint-disable-next-line no-await-in-loop -- one git process at a time
-		const reason = (await skipReason(project)) ?? {code: "user", text: "skipped by you"};
+		const reason = skipReason(project) ?? {code: "user", text: "skipped by you"};
 		skipped.push(skipNote === undefined ? {name, dir, reason} : {name, dir, reason, note: skipNote});
 	}
 	return {consistent: unregistered.length === 0 && missing.length === 0, unregistered, missing, skipped};
@@ -107,13 +104,26 @@ const SKIP_PATTERNS: [RegExp, (match: RegExpExecArray) => SkipReason][] = [
 	[/^(.+)-par-\d+$/, (m) => ({code: "parallel", text: `parallel worktree of ${m[1]}`})],
 ];
 
-/** The main repo a linked worktree belongs to, by name, from git's common dir. */
-async function worktreeMainRepo(dir: string): Promise<string | undefined> {
-	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-		reject: false,
-	});
-	if (result.exitCode !== 0) return undefined;
-	const commonDir = result.stdout.trim();
+/**
+ * The main repo a linked worktree belongs to, by name, read from its `.git` file the way git finds
+ * the common dir: `gitdir:` names the worktree's admin dir, whose `commondir` file points at the
+ * shared repo (a submodule's admin dir has none and is its own). Reading files instead of running
+ * git keeps the answer the same under any load. Throws, naming the directory, when the `.git` file
+ * cannot be resolved, so a scan reports the problem rather than reclassifying the repo.
+ */
+function worktreeMainRepo(dir: string): string {
+	const failure = (why: string) => new Error(`Cannot tell which repo the git worktree at ${dir} belongs to: ${why}`);
+	const match = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(path.join(dir, ".git"), "utf8"));
+	if (!match?.[1]) throw failure("its .git file has no gitdir line");
+	const adminDir = path.resolve(dir, match[1].trim());
+	const commonDirFile = path.join(adminDir, "commondir");
+	// Without a commondir file, a worktree's admin dir still sits at <common>/worktrees/<name>, even
+	// after its main repo is gone; anything else is a submodule whose admin dir is its own.
+	const commonDir = fs.existsSync(commonDirFile)
+		? path.resolve(adminDir, fs.readFileSync(commonDirFile, "utf8").trim())
+		: path.basename(path.dirname(adminDir)) === "worktrees"
+			? path.dirname(path.dirname(adminDir))
+			: adminDir;
 	// A worktree of a normal clone shares <main>/.git; a bare repo's common dir is the repo itself.
 	const mainDir = path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
 	return path.basename(mainDir).replace(/\.git$/, "");
@@ -125,7 +135,7 @@ async function worktreeMainRepo(dir: string): Promise<string | undefined> {
  * not a git repo, or for an existing skip, the project-template skip list or the user's own choice.
  * Undefined when nothing suggests skipping a project that is not a skip.
  */
-export async function skipReason(project: ProjectRecord): Promise<SkipReason | undefined> {
+export function skipReason(project: ProjectRecord): SkipReason | undefined {
 	const name = path.basename(project.name);
 	for (const [pattern, reason] of SKIP_PATTERNS) {
 		const match = pattern.exec(name);
@@ -138,8 +148,7 @@ export async function skipReason(project: ProjectRecord): Promise<SkipReason | u
 		return {code: "not-a-repo", text: "not a git repo"};
 	}
 	if (entry?.isFile() === true) {
-		const main = await worktreeMainRepo(dir);
-		return {code: "worktree", text: main === undefined ? "git worktree" : `git worktree of ${main}`};
+		return {code: "worktree", text: `git worktree of ${worktreeMainRepo(dir)}`};
 	}
 	if (kind !== "skip") return undefined;
 	if (project.template === "project") return {code: "listed", text: "listed under skip in project-template"};
@@ -171,14 +180,14 @@ function withReason(candidate: RegistryCandidate, reason: SkipReason | undefined
  * Every project the user might want in the registry, each in one review group: the given entries
  * (registered, skipped, or missing), template conflicts, and unregistered git repos under the
  * projects dirs. Every row carries the skip reason that applies to it, and unregistered repos
- * with one default to skip. Reasons are resolved one repo at a time so a large projects dir never
- * fans out into parallel git processes.
+ * with one default to skip. Reasons come from the filesystem alone, never a git subprocess, so the
+ * same disk always yields the same candidates whatever the load.
  */
-export async function buildRegistryCandidates(
+export function buildRegistryCandidates(
 	projects: ProjectRecord[],
 	conflicts: InventoryConflict[],
 	projectsDirs: string[],
-): Promise<RegistryCandidate[]> {
+): RegistryCandidate[] {
 	const conflictCandidates: RegistryCandidate[] = conflicts.map(({dir, templates}) => ({
 		project: {name: path.basename(dir), dir, template: templates[0] ?? "unknown", kind: "own"},
 		group: "conflict",
@@ -191,11 +200,9 @@ export async function buildRegistryCandidates(
 	const missing = new Map(check.missing.map((entry) => [entry.dir, entry.reason]));
 
 	const candidates: RegistryCandidate[] = [];
-	/* oxlint-disable no-await-in-loop -- reasons resolve one repo at a time to bound git subprocess load */
-	for (const candidate of conflictCandidates)
-		candidates.push(withReason(candidate, await skipReason(candidate.project)));
+	for (const candidate of conflictCandidates) candidates.push(withReason(candidate, skipReason(candidate.project)));
 	for (const project of projects) {
-		const reason = await skipReason(project);
+		const reason = skipReason(project);
 		const missingReason = missing.get(project.dir);
 		if (missingReason) {
 			const note = missingReason === "missing" ? "directory missing" : "not a git repo";
@@ -209,11 +216,10 @@ export async function buildRegistryCandidates(
 	for (const dir of check.unregistered) {
 		const name = path.basename(dir);
 		const own: ProjectRecord = {name, dir, template: detectTemplate(dir), kind: "own"};
-		const reason = await skipReason(own);
+		const reason = skipReason(own);
 		const project: ProjectRecord = reason ? {...own, kind: "skip"} : own;
 		candidates.push(withReason({project, group: "unregistered"}, reason));
 	}
-	/* oxlint-enable no-await-in-loop */
 
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array
 	return candidates.sort(byName);

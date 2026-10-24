@@ -23,7 +23,7 @@ export default class InventoryCheck extends Command {
 
 	async run(): Promise<InventoryCheckResult> {
 		const {flags} = await this.parse(InventoryCheck);
-		const result = await checkInventory(loadInventory().projects, getProjectsDirs(flags["projects-dir"]));
+		const result = checkInventory(loadInventory().projects, getProjectsDirs(flags["projects-dir"]));
 
 		if (this.jsonEnabled()) {
 			// oclif prints the returned result; exiting via this.exit would print a second, error document.

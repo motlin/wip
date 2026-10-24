@@ -99,7 +99,7 @@ describe("wip inventory check", () => {
 					reason: {code: "user", text: "skipped by you"},
 					note: "old experiment",
 				},
-				{name: "feature", dir: worktree, reason: {code: "worktree", text: "git worktree"}},
+				{name: "feature", dir: worktree, reason: {code: "worktree", text: "git worktree of nowhere"}},
 			],
 		});
 	});

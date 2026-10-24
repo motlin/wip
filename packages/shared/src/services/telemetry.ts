@@ -73,9 +73,32 @@ async function initTracing(): Promise<void> {
 	globalThis.wipOtelInitialized = true;
 
 	const tracing = await startTracing(process.env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] ?? DEFAULT_TRACES_URL);
-	process.on("SIGTERM", () => {
-		void tracing.shutdown();
+	exitAfterShutdownOnSignals(tracing);
+}
+
+const SHUTDOWN_TIMEOUT_MS = 2000;
+const SIGNAL_NUMBERS = {SIGINT: 2, SIGTERM: 15} as const;
+
+// Listening for a signal disables Node's default exit on it, so this handler
+// must exit itself: flush spans for at most SHUTDOWN_TIMEOUT_MS, then exit with
+// the conventional 128+signal code. When another listener owns the signal it
+// is responsible for exiting, so this one only flushes.
+function exitAfterShutdownOnSignals(tracing: Tracing): void {
+	for (const [signal, number] of Object.entries(SIGNAL_NUMBERS)) {
+		process.once(signal, () => {
+			void shutdownThenExit(tracing, process.listenerCount(signal) === 0 ? 128 + number : undefined);
+		});
+	}
+}
+
+async function shutdownThenExit(tracing: Tracing, exitCode: number | undefined): Promise<void> {
+	const timeout = new Promise<void>((resolve) => {
+		setTimeout(resolve, SHUTDOWN_TIMEOUT_MS).unref();
 	});
+	await Promise.race([tracing.shutdown(), timeout]);
+	if (exitCode !== undefined) {
+		process.exit(exitCode);
+	}
 }
 
 void initTracing().catch((error: unknown) => {

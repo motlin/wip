@@ -78,28 +78,4 @@ describe("wip inventory check", () => {
 		expect(exitCode).toBe(1);
 		expect(result).toBeUndefined();
 	});
-
-	it("exposes the findings through the exported check function", async () => {
-		const {checkInventory} = await import("../commands/inventory/check.js");
-		makeRepo("alpha");
-		makeRepo("stray");
-		makeRepo("skipped");
-		fs.mkdirSync(path.join(projectsDir, "plain"));
-		const projects = [
-			record("alpha"),
-			record("skipped", "skip"),
-			record("gone"),
-			record("plain"),
-			record("absent-skip", "skip"),
-		];
-		expect(checkInventory(projects, [projectsDir])).toEqual({
-			consistent: false,
-			unregistered: [path.join(projectsDir, "stray")],
-			missing: [
-				{name: "gone", dir: path.join(projectsDir, "gone"), reason: "missing"},
-				{name: "plain", dir: path.join(projectsDir, "plain"), reason: "not-a-git-repo"},
-			],
-			skippedButPresent: [{name: "skipped", dir: path.join(projectsDir, "skipped")}],
-		});
-	});
 });

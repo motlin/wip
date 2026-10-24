@@ -7,6 +7,8 @@ import {z} from "zod";
 import {getConfigDir} from "./config.js";
 import type {TemplateTexts} from "./inventory-import.js";
 
+export {diffInventories, type InventoryDiff} from "./inventory-import.js";
+
 export const ProjectRecordSchema = z.object({
 	name: z.string().min(1),
 	dir: z.string().refine((dir) => path.isAbsolute(dir), "dir must be an absolute path"),
@@ -66,33 +68,6 @@ export function saveInventory(projects: ProjectRecord[]): void {
 
 export function inventoryExists(): boolean {
 	return fs.existsSync(getInventoryPath());
-}
-
-export interface InventoryDiff {
-	added: ProjectRecord[];
-	removed: ProjectRecord[];
-	changed: {before: ProjectRecord; after: ProjectRecord}[];
-}
-
-/** Compares two inventories, matching entries by `dir`. */
-export function diffInventories(before: ProjectRecord[], after: ProjectRecord[]): InventoryDiff {
-	const beforeByDir = new Map(before.map((project) => [project.dir, project]));
-	const afterByDir = new Map(after.map((project) => [project.dir, project]));
-	const added = after.filter((project) => !beforeByDir.has(project.dir));
-	const removed = before.filter((project) => !afterByDir.has(project.dir));
-	const changed: InventoryDiff["changed"] = [];
-	for (const next of after) {
-		const previous = beforeByDir.get(next.dir);
-		if (previous && JSON.stringify(sortKeys(previous)) !== JSON.stringify(sortKeys(next))) {
-			changed.push({before: previous, after: next});
-		}
-	}
-	return {added, removed, changed};
-}
-
-function sortKeys(project: ProjectRecord): [string, unknown][] {
-	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.entries
-	return Object.entries(project).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
 }
 
 const TEMPLATE_NAMES = ["project", "typescript", "java", "rust", "playdate"] as const;

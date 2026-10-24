@@ -23,10 +23,19 @@ import type {
 	ProjectChildrenResult,
 	QueueSnapshot,
 	RunAllCounts,
+	SaveRegistryResult,
 	SystemStatus,
 	TestJobStatus,
 } from "./server-fns.impl.js";
-import type {GitHubProjectItem, InventoryStatus, IssueResult, LadderResult, ProjectItemResult} from "@wip/shared";
+import type {
+	GitHubProjectItem,
+	InventoryStatus,
+	IssueResult,
+	LadderResult,
+	ProjectItemResult,
+	ProjectRecord,
+	RegistryCandidates,
+} from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
 
 export type {
@@ -35,6 +44,7 @@ export type {
 	FileDiff,
 	ProjectChildrenResult,
 	QueueSnapshot,
+	SaveRegistryResult,
 	TestJobStatus,
 } from "./server-fns.impl.js";
 export type {SnoozedChild} from "@wip/shared/schemas.js";
@@ -102,9 +112,19 @@ export const getInventoryStatus = createServerFn({method: "GET"}).handler(async 
 	(await serverFns()).getInventoryStatusHandler(),
 );
 
-export const importInventory = createServerFn({method: "POST"}).handler(async (): Promise<InventoryStatus> =>
-	(await serverFns()).importInventoryHandler(),
+export const getRegistryCandidates = createServerFn({method: "GET"}).handler(async (): Promise<RegistryCandidates> =>
+	(await serverFns()).getRegistryCandidatesHandler(),
 );
+
+// Each record is validated against ProjectRecordSchema by saveInventory on the server.
+const SaveRegistryInputSchema = z.object({
+	projects: z.array(z.custom<ProjectRecord>((value) => typeof value === "object" && value !== null)),
+	baseModifiedAt: z.string().nullable(),
+});
+
+export const saveRegistry = createServerFn({method: "POST"})
+	.validator((input: unknown) => SaveRegistryInputSchema.parse(input))
+	.handler(async ({data}): Promise<SaveRegistryResult> => (await serverFns()).saveRegistryHandler(data));
 
 export const focusHerdrPaneFn = createServerFn({method: "POST"})
 	.validator((input: unknown) => z.object({paneId: z.string()}).parse(input))

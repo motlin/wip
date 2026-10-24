@@ -2,13 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
-import {initDb, loadInventory, resetDb, saveInventory, type ProjectInfo} from "@wip/shared";
+import {initDb, loadInventory, resetDb, saveInventory, type ProjectInfo, type ProjectRecord} from "@wip/shared";
 
 import {
 	getInventoryStatusHandler,
-	importInventoryHandler,
+	getRegistryCandidatesHandler,
 	resetProjectCache,
 	runLadderAllHandler,
+	saveRegistryHandler,
 	seedProjectCache,
 } from "./server-fns.impl.js";
 import {getAllTasks, resetQueue} from "./task-queue.js";
@@ -68,30 +69,22 @@ describe("runLadderAllHandler without a registry", () => {
 });
 
 describe("getInventoryStatusHandler", () => {
-	it("previews the import when no registry exists", async () => {
+	it("reports a missing registry", async () => {
 		expect(await getInventoryStatusHandler({templatesDir, homeDir: temp.dir})).toEqual({
 			exists: false,
 			registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
 			templatesDir,
-			preview: {
-				total: 3,
-				byTemplate: {java: 1, project: 1, typescript: 1},
-				byKind: {fork: 1, own: 1, skip: 1},
-				conflicts: [{dir: `${templatesDir}/alpha`, templates: ["typescript", "java"]}],
-				skipped: 1,
-			},
 			registry: null,
 		});
 	});
 
-	it("summarizes an existing registry instead of previewing an import", async () => {
+	it("summarizes an existing registry", async () => {
 		saveInventory([{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}]);
 		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
 		expect(await getInventoryStatusHandler({templatesDir, homeDir: temp.dir})).toEqual({
 			exists: true,
 			registryPath,
 			templatesDir,
-			preview: null,
 			registry: {
 				total: 1,
 				byTemplate: {rust: 1},
@@ -103,35 +96,135 @@ describe("getInventoryStatusHandler", () => {
 	});
 });
 
-describe("importInventoryHandler", () => {
-	it("writes the registry when none exists and reports what it wrote", async () => {
+function registryFile(): string {
+	return path.join(temp.dir, "config", "wip", "projects.json5");
+}
+
+function gitRepo(name: string): string {
+	const dir = path.join(templatesDir, name);
+	fs.mkdirSync(path.join(dir, ".git"), {recursive: true});
+	return dir;
+}
+
+describe("getRegistryCandidatesHandler", () => {
+	it("lists the template entries, conflicts, and unregistered repos before the first import", async () => {
+		gitRepo("beta");
+		gitRepo("skipped");
+		gitRepo("stray-pr7");
+		const options = {templatesDir, homeDir: temp.dir, projectsDirs: [templatesDir]};
+		expect(await getRegistryCandidatesHandler(options)).toEqual({
+			registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
+			baseModifiedAt: null,
+			candidates: [
+				{
+					project: {name: "alpha", dir: `${templatesDir}/alpha`, template: "typescript", kind: "own"},
+					included: false,
+					flags: ["conflict"],
+					hint: "listed by typescript, java",
+				},
+				{
+					project: {name: "beta", dir: `${templatesDir}/beta`, template: "typescript", kind: "fork"},
+					included: true,
+					flags: [],
+				},
+				{
+					project: {name: "gamma", dir: `${templatesDir}/gamma`, template: "java", kind: "own"},
+					included: true,
+					flags: ["missing"],
+					hint: "directory missing",
+				},
+				{
+					project: {name: "skipped", dir: `${templatesDir}/skipped`, template: "project", kind: "skip"},
+					included: true,
+					flags: ["skipped"],
+					hint: "skipped but present on disk",
+				},
+				{
+					project: {name: "stray-pr7", dir: `${templatesDir}/stray-pr7`, template: "unknown", kind: "skip"},
+					included: false,
+					flags: ["unregistered"],
+					hint: "PR worktree",
+				},
+			],
+		});
+	});
+
+	it("lists the saved registry instead of the templates once it exists", async () => {
+		gitRepo("old");
+		gitRepo("stray");
+		saveInventory([{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}]);
 		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
-		const status = await importInventoryHandler({templatesDir, homeDir: temp.dir});
-		expect(status).toEqual({
-			exists: true,
+		const options = {templatesDir, homeDir: temp.dir, projectsDirs: [templatesDir]};
+		expect(await getRegistryCandidatesHandler(options)).toEqual({
 			registryPath,
-			templatesDir,
-			preview: null,
-			registry: {
-				total: 3,
-				byTemplate: {java: 1, project: 1, typescript: 1},
-				byKind: {fork: 1, own: 1, skip: 1},
-				modifiedAt: fs.statSync(registryPath).mtime.toISOString(),
-				projects: [
-					{name: "beta", dir: `${templatesDir}/beta`, template: "typescript", kind: "fork"},
-					{name: "gamma", dir: `${templatesDir}/gamma`, template: "java", kind: "own"},
-					{name: "skipped", dir: `${templatesDir}/skipped`, template: "project", kind: "skip"},
+			baseModifiedAt: fs.statSync(registryPath).mtime.toISOString(),
+			candidates: [
+				{
+					project: {name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"},
+					included: true,
+					flags: [],
+				},
+				{
+					project: {name: "stray", dir: `${templatesDir}/stray`, template: "unknown", kind: "own"},
+					included: false,
+					flags: ["unregistered"],
+				},
+			],
+		});
+	});
+});
+
+describe("saveRegistryHandler", () => {
+	const beta: ProjectRecord = {name: "beta", dir: "/p/beta", template: "typescript", kind: "fork"};
+	const gamma: ProjectRecord = {name: "gamma", dir: "/p/gamma", template: "java", kind: "skip"};
+
+	it("writes the first registry and returns its status and fresh candidates", async () => {
+		const options = {templatesDir, homeDir: temp.dir, projectsDirs: [templatesDir]};
+		const saved = await saveRegistryHandler({projects: [gamma, beta], baseModifiedAt: null}, options);
+		const modifiedAt = fs.statSync(registryFile()).mtime.toISOString();
+		expect(saved).toEqual({
+			status: {
+				exists: true,
+				registryPath: registryFile(),
+				templatesDir,
+				registry: {
+					total: 2,
+					byTemplate: {java: 1, typescript: 1},
+					byKind: {fork: 1, skip: 1},
+					modifiedAt,
+					projects: [beta, gamma],
+				},
+			},
+			candidates: {
+				registryPath: registryFile(),
+				baseModifiedAt: modifiedAt,
+				candidates: [
+					{project: beta, included: true, flags: ["missing"], hint: "directory missing"},
+					{project: gamma, included: true, flags: []},
 				],
 			},
 		});
-		expect(loadInventory().projects.map((p) => p.name)).toEqual(["beta", "gamma", "skipped"]);
+		expect(loadInventory().projects).toEqual([beta, gamma]);
 	});
 
-	it("never overwrites an existing registry", async () => {
-		saveInventory([{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}]);
-		await expect(importInventoryHandler({templatesDir, homeDir: temp.dir})).rejects.toThrow(
-			`Registry already exists at ${path.join(temp.dir, "config", "wip", "projects.json5")}`,
-		);
-		expect(loadInventory().projects.map((p) => p.name)).toEqual(["old"]);
+	it("overwrites the registry it was reviewed against", async () => {
+		saveInventory([beta]);
+		const baseModifiedAt = fs.statSync(registryFile()).mtime.toISOString();
+		await saveRegistryHandler({projects: [gamma], baseModifiedAt}, {templatesDir, projectsDirs: []});
+		expect(loadInventory().projects).toEqual([gamma]);
+	});
+
+	it("refuses to replace a registry that appeared or changed after the review loaded", async () => {
+		saveInventory([beta]);
+		await expect(
+			saveRegistryHandler({projects: [gamma], baseModifiedAt: null}, {templatesDir, projectsDirs: []}),
+		).rejects.toThrow(`Registry at ${registryFile()} changed since it was reviewed; reload and try again`);
+		await expect(
+			saveRegistryHandler(
+				{projects: [gamma], baseModifiedAt: "2000-01-01T00:00:00.000Z"},
+				{templatesDir, projectsDirs: []},
+			),
+		).rejects.toThrow(`Registry at ${registryFile()} changed since it was reviewed; reload and try again`);
+		expect(loadInventory().projects).toEqual([beta]);
 	});
 });

@@ -179,15 +179,11 @@ export interface RegistrySummary {
 	projects: ProjectRecord[];
 }
 
-/**
- * Whether the project registry exists: a summary of it when it does, and a preview of what an
- * import would write when it does not.
- */
+/** Whether the project registry exists, and a summary of it when it does. */
 export interface InventoryStatus {
 	exists: boolean;
 	registryPath: string;
 	templatesDir: string;
-	preview: InventoryImportSummary | null;
 	registry: RegistrySummary | null;
 }
 
@@ -215,4 +211,59 @@ export function summarizeInventoryImport({projects, conflicts}: TemplateInventor
 		conflicts,
 		skipped: projects.filter((project) => project.kind === "skip").length,
 	};
+}
+
+export interface InventoryDiff {
+	added: ProjectRecord[];
+	removed: ProjectRecord[];
+	changed: {before: ProjectRecord; after: ProjectRecord}[];
+}
+
+function sortKeys(project: ProjectRecord): [string, unknown][] {
+	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.entries
+	return Object.entries(project).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+}
+
+/** Compares two inventories, matching entries by `dir`. */
+export function diffInventories(before: ProjectRecord[], after: ProjectRecord[]): InventoryDiff {
+	const beforeByDir = new Map(before.map((project) => [project.dir, project]));
+	const afterByDir = new Map(after.map((project) => [project.dir, project]));
+	const added = after.filter((project) => !beforeByDir.has(project.dir));
+	const removed = before.filter((project) => !afterByDir.has(project.dir));
+	const changed: InventoryDiff["changed"] = [];
+	for (const next of after) {
+		const previous = beforeByDir.get(next.dir);
+		if (previous && JSON.stringify(sortKeys(previous)) !== JSON.stringify(sortKeys(next))) {
+			changed.push({before: previous, after: next});
+		}
+	}
+	return {added, removed, changed};
+}
+
+/** Why a candidate needs the user's attention in the registry review. */
+export type RegistryCandidateFlag = "unregistered" | "missing" | "skipped" | "conflict";
+
+/** One row of the registry review: a project the user can include, exclude, or re-kind. */
+export interface RegistryCandidate {
+	project: ProjectRecord;
+	/** Whether saving keeps this project in the registry. */
+	included: boolean;
+	flags: RegistryCandidateFlag[];
+	/** Why the row is flagged or what kind is suggested, for the user to judge. */
+	hint?: string;
+}
+
+/** Everything the registry review lists, and the registry state the list was built from. */
+export interface RegistryCandidates {
+	registryPath: string;
+	/** Modification time of the registry the candidates came from; null when none exists yet. */
+	baseModifiedAt: string | null;
+	candidates: RegistryCandidate[];
+}
+
+/** A reviewed project list to write as the registry. */
+export interface SaveRegistryInput {
+	projects: ProjectRecord[];
+	/** The registry modification time the user reviewed against; null when none existed. */
+	baseModifiedAt: string | null;
 }

@@ -10,6 +10,10 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
+		"./inventory-import.js": {
+			"types": "./src/lib/inventory-import.ts",
+			"import": "./src/lib/inventory-import.ts"
+		},
 		"./schemas.js": {
 			"types": "./src/lib/schemas.ts",
 			"import": "./src/lib/schemas.ts"

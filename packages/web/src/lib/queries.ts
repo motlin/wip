@@ -16,6 +16,7 @@ import {
 	runAllCounts,
 	getSystemStatus,
 	getInventoryStatus,
+	getRegistryCandidates,
 	getLadderResults,
 } from "./server-fns.js";
 import {isStaleBundleError} from "./stale-bundle.js";
@@ -139,4 +140,10 @@ export const inventoryStatusQueryOptions = () =>
 	queryOptions({
 		queryKey: ["inventoryStatus"],
 		queryFn: async () => getInventoryStatus(),
+	});
+
+export const registryCandidatesQueryOptions = () =>
+	queryOptions({
+		queryKey: ["registryCandidates"],
+		queryFn: async () => getRegistryCandidates(),
 	});

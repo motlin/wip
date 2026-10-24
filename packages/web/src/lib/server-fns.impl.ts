@@ -73,9 +73,11 @@ import {
 	loadInventory,
 	readTemplateTexts,
 	saveInventory,
-	summarizeInventoryImport,
 	summarizeRegistry,
+	buildRegistryCandidates,
 	type InventoryStatus,
+	type RegistryCandidates,
+	type SaveRegistryInput,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
@@ -1453,6 +1455,8 @@ export interface InventoryImportOptions {
 	templatesDir?: string;
 	/** Home directory used to expand `~` in the templates (default os.homedir()). */
 	homeDir?: string;
+	/** Directories scanned for unregistered git repos (default: configured projectsDirs). */
+	projectsDirs?: string[];
 }
 
 function resolveTemplatesDir(options: InventoryImportOptions): string {
@@ -1465,32 +1469,70 @@ function templateInventory(templatesDir: string, options: InventoryImportOptions
 	});
 }
 
+function registryModifiedAt(): string | null {
+	return inventoryExists() ? fs.statSync(getInventoryPath()).mtime.toISOString() : null;
+}
+
 function inventoryStatus(options: InventoryImportOptions): InventoryStatus {
 	const registryPath = getInventoryPath();
 	const templatesDir = resolveTemplatesDir(options);
-	if (inventoryExists()) {
-		const modifiedAt = fs.statSync(registryPath).mtime.toISOString();
+	const modifiedAt = registryModifiedAt();
+	if (modifiedAt !== null) {
 		const registry = summarizeRegistry(loadInventory().projects, modifiedAt);
-		return {exists: true, registryPath, templatesDir, preview: null, registry};
+		return {exists: true, registryPath, templatesDir, registry};
 	}
-	const preview = summarizeInventoryImport(templateInventory(templatesDir, options));
-	return {exists: false, registryPath, templatesDir, preview, registry: null};
+	return {exists: false, registryPath, templatesDir, registry: null};
 }
 
-/** Summarizes the project registry when it exists; when it does not, previews what `wip inventory import` would write. */
+/** Whether the project registry exists, with a summary of it when it does. */
 export async function getInventoryStatusHandler(options: InventoryImportOptions = {}): Promise<InventoryStatus> {
 	return traced("getInventoryStatus", async () => Promise.resolve(inventoryStatus(options)));
 }
 
-function importRegistry(options: InventoryImportOptions): InventoryStatus {
-	if (inventoryExists()) throw new Error(`Registry already exists at ${getInventoryPath()}`);
-	saveInventory(templateInventory(resolveTemplatesDir(options), options).projects);
-	return inventoryStatus(options);
+function registryCandidates(options: InventoryImportOptions): RegistryCandidates {
+	const baseModifiedAt = registryModifiedAt();
+	const projectsDirs = options.projectsDirs ?? getProjectsDirs();
+	const {projects, conflicts} =
+		baseModifiedAt === null
+			? templateInventory(resolveTemplatesDir(options), options)
+			: {projects: loadInventory().projects, conflicts: []};
+	return {
+		registryPath: getInventoryPath(),
+		baseModifiedAt,
+		candidates: buildRegistryCandidates(projects, conflicts, projectsDirs),
+	};
 }
 
-/** Writes the project registry from the template projects.yaml files. Never overwrites an existing one. */
-export async function importInventoryHandler(options: InventoryImportOptions = {}): Promise<InventoryStatus> {
-	return traced("importInventory", async () => Promise.resolve(importRegistry(options)));
+/**
+ * Every project the registry review lists: the saved registry (or, before the first import, what
+ * the templates would import) plus template conflicts and unregistered git repos on disk.
+ */
+export async function getRegistryCandidatesHandler(options: InventoryImportOptions = {}): Promise<RegistryCandidates> {
+	return traced("getRegistryCandidates", async () => Promise.resolve(registryCandidates(options)));
+}
+
+export interface SaveRegistryResult {
+	status: InventoryStatus;
+	candidates: RegistryCandidates;
+}
+
+function saveRegistry(input: SaveRegistryInput, options: InventoryImportOptions): SaveRegistryResult {
+	if (registryModifiedAt() !== input.baseModifiedAt) {
+		throw new Error(`Registry at ${getInventoryPath()} changed since it was reviewed; reload and try again`);
+	}
+	saveInventory(input.projects);
+	return {status: inventoryStatus(options), candidates: registryCandidates(options)};
+}
+
+/**
+ * Writes the reviewed project list as the registry. Refuses when the registry appeared or changed
+ * since the review loaded, so a stale page never overwrites someone else's edit.
+ */
+export async function saveRegistryHandler(
+	input: SaveRegistryInput,
+	options: InventoryImportOptions = {},
+): Promise<SaveRegistryResult> {
+	return traced("saveRegistry", async () => Promise.resolve(saveRegistry(input, options)));
 }
 
 /** The latest persisted ladder result per project. */

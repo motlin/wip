@@ -1,7 +1,15 @@
-import {useState} from "react";
+import {useState, type ReactNode} from "react";
 import {Bot, CheckCircle, Copy, ExternalLink, GitMerge, Loader2, OctagonAlert} from "./icons.js";
-import type {InventoryStatus, LadderResult, RegistrySummary} from "@wip/shared";
+import type {
+	InventoryStatus,
+	LadderResult,
+	RegistryCandidateFlag,
+	RegistryCandidates,
+	RegistrySummary,
+	SaveRegistryInput,
+} from "@wip/shared";
 import {runPendingAction} from "../lib/pending-action.js";
+import {RegistryReview} from "./registry-review.js";
 
 function formatCounts(counts: Record<string, number>): string {
 	return Object.keys(counts)
@@ -10,80 +18,48 @@ function formatCounts(counts: Record<string, number>): string {
 		.join(", ");
 }
 
-function ImportStep({
-	inventory,
-	importing,
-	onImport,
-}: {
-	inventory: InventoryStatus;
-	importing: boolean;
-	onImport: () => void;
-}) {
-	const {preview} = inventory;
-	const label = preview
-		? `Import ${preview.total} projects into ${inventory.registryPath}`
-		: `Import projects into ${inventory.registryPath}`;
+function ImportStep({inventory, children}: {inventory: InventoryStatus; children: ReactNode}) {
 	return (
 		<section
 			aria-label="Import project registry"
 			className="mb-3 rounded-md border border-status-yellow/50 bg-bg-200 p-3 text-xs text-text-300"
 		>
 			<p className="mb-2">
-				No project registry at <code className="font-mono">{inventory.registryPath}</code>. Import one before
-				running the ladder on every project.
+				No project registry at <code className="font-mono">{inventory.registryPath}</code>. Review what the
+				templates in <code className="font-mono">{inventory.templatesDir}</code> list plus the repos on disk,
+				then import before running the ladder on every project.
 			</p>
-			{preview && (
-				<div className="mb-2 flex flex-col gap-1">
-					<p className="font-medium text-text-200">
-						{preview.total} projects from <code className="font-mono">{inventory.templatesDir}</code>
-					</p>
-					<ul className="ml-4 list-disc">
-						{Object.entries(preview.byTemplate).map(([template, count]) => (
-							<li key={template}>
-								{template}: {count}
-							</li>
-						))}
-					</ul>
-					<p>Skipped: {preview.skipped}</p>
-					<p>Conflicts: {preview.conflicts.length}</p>
-					{preview.conflicts.length > 0 && (
-						<ul className="ml-4 list-disc font-mono">
-							{preview.conflicts.map((conflict) => (
-								<li key={conflict.dir}>
-									{conflict.dir} ({conflict.templates.join(", ")})
-								</li>
-							))}
-						</ul>
-					)}
-				</div>
-			)}
-			<button
-				type="button"
-				disabled={importing}
-				onClick={onImport}
-				className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-			>
-				{importing && <Loader2 className="h-4 w-4 animate-spin" />}
-				{label}
-			</button>
+			{children}
 		</section>
 	);
 }
 
-function ImportConfirmation({registryPath, registry}: {registryPath: string; registry: RegistrySummary}) {
+function SaveConfirmation({
+	verb,
+	registryPath,
+	registry,
+}: {
+	verb: "Imported" | "Saved";
+	registryPath: string;
+	registry: RegistrySummary;
+}) {
 	return (
 		<output
-			aria-label="Import complete"
+			aria-label="Registry saved"
 			className="mb-3 block rounded-md border border-status-green/50 bg-bg-200 p-3 text-xs text-text-300"
 		>
 			<p className="flex items-center gap-1.5 font-medium text-text-100">
 				<CheckCircle className="h-4 w-4 text-status-green" />
-				Imported {registry.total} projects into <code className="font-mono">{registryPath}</code>
+				{verb} {registry.total} projects into <code className="font-mono">{registryPath}</code>
 			</p>
 			<p>Kind: {formatCounts(registry.byKind)}</p>
 			<p>Template: {formatCounts(registry.byTemplate)}</p>
 		</output>
 	);
+}
+
+function flagCount(candidates: RegistryCandidates, flag: RegistryCandidateFlag): number {
+	return candidates.candidates.filter((candidate) => candidate.flags.includes(flag)).length;
 }
 
 function RegistryOverview({registryPath, registry}: {registryPath: string; registry: RegistrySummary}) {
@@ -108,32 +84,57 @@ function RegistryOverview({registryPath, registry}: {registryPath: string; regis
 
 /**
  * Ladder results per project with a button that queues the ladder for every project. Until a
- * project registry exists the button stays disabled and an import step takes its place, so one
- * click can never fall back to scanning every directory. Once it exists a compact summary shows
- * what wip will act on, preceded by a confirmation right after an import from this page. The
- * import's pending state lives here rather than in the import step, which unmounts on success.
- * Failures surface only as a toast via runPendingAction.
+ * project registry exists the button stays disabled and an import step takes its place, where the
+ * user reviews every candidate and confirms the diff before importing, so one click can never fall
+ * back to scanning every directory. Once it exists a compact summary shows what wip will act on,
+ * with the same review available to correct it, preceded by a confirmation right after a save from
+ * this page. The save's pending state lives here rather than in the review, which remounts on
+ * success. Failures surface only as a toast via runPendingAction.
  */
 export function LadderSection({
 	inventory,
-	importInventory,
+	candidates,
+	saveRegistry,
 	results,
 	runLadderAll,
 	focusPane,
 }: {
 	/** Registry status; undefined while loading. */
 	inventory: InventoryStatus | undefined;
-	/** Writes the registry and resolves to the new status. */
-	importInventory: () => Promise<InventoryStatus>;
+	/** Registry review rows; undefined while loading. */
+	candidates: RegistryCandidates | undefined;
+	/** Writes the reviewed registry and resolves to the new status. */
+	saveRegistry: (input: SaveRegistryInput) => Promise<InventoryStatus>;
 	results: readonly LadderResult[];
 	runLadderAll: () => Promise<unknown>;
 	focusPane: (paneId: string) => Promise<unknown>;
 }) {
 	const [running, setRunning] = useState(false);
-	const [importing, setImporting] = useState(false);
-	const [imported, setImported] = useState<RegistrySummary | null>(null);
+	const [saving, setSaving] = useState(false);
+	const [saved, setSaved] = useState<{verb: "Imported" | "Saved"; registry: RegistrySummary} | null>(null);
 	const registered = inventory?.exists === true;
 	const registry = inventory?.registry ?? null;
+
+	const review = (saveLabel: (count: number) => string) =>
+		candidates ? (
+			<RegistryReview
+				// Remount with fresh rows whenever the registry the candidates came from changes.
+				key={candidates.baseModifiedAt ?? "none"}
+				candidates={candidates.candidates}
+				current={registry?.projects ?? []}
+				saveLabel={saveLabel}
+				saving={saving}
+				onSave={(projects) => {
+					const verb = registered ? "Saved" : "Imported";
+					void runPendingAction(verb === "Saved" ? "Save registry" : "Import", setSaving, async () => {
+						const status = await saveRegistry({projects, baseModifiedAt: candidates.baseModifiedAt});
+						if (status.registry) setSaved({verb, registry: status.registry});
+					});
+				}}
+			/>
+		) : (
+			<p className="text-xs text-text-500">Loading registry candidates…</p>
+		);
 
 	return (
 		<section className="mb-6 rounded-lg border border-border-300/50 bg-bg-100 p-4">
@@ -155,20 +156,26 @@ export function LadderSection({
 				</button>
 			</div>
 			{inventory && !inventory.exists && (
-				<ImportStep
-					inventory={inventory}
-					importing={importing}
-					onImport={() => {
-						void runPendingAction("Import", setImporting, async () => {
-							setImported((await importInventory()).registry);
-						});
-					}}
-				/>
+				<ImportStep inventory={inventory}>
+					{review((count) => `Import ${count} projects into ${inventory.registryPath}`)}
+				</ImportStep>
 			)}
-			{inventory && registered && imported && (
-				<ImportConfirmation registryPath={inventory.registryPath} registry={imported} />
+			{inventory && registered && saved && (
+				<SaveConfirmation verb={saved.verb} registryPath={inventory.registryPath} registry={saved.registry} />
 			)}
 			{inventory && registry && <RegistryOverview registryPath={inventory.registryPath} registry={registry} />}
+			{inventory && registered && (
+				<details className="mb-3 text-xs text-text-400">
+					<summary className="cursor-pointer">
+						Review registry
+						{candidates &&
+							` (${flagCount(candidates, "unregistered")} unregistered, ${flagCount(candidates, "missing")} missing, ${flagCount(candidates, "skipped")} skipped)`}
+					</summary>
+					<div className="mt-2">
+						{review((count) => `Save ${count} projects to ${inventory.registryPath}`)}
+					</div>
+				</details>
+			)}
 			{results.length === 0 ? (
 				<p className="text-xs text-text-500">No ladder results yet.</p>
 			) : (

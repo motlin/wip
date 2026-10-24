@@ -7,7 +7,7 @@ import {
 	pushChild,
 	runLadderAll,
 	focusHerdrPaneFn,
-	importInventory,
+	saveRegistry,
 } from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
@@ -30,7 +30,12 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "../components/icons.js";
-import {inventoryStatusQueryOptions, ladderResultsQueryOptions, taskQueueQueryOptions} from "../lib/queries.js";
+import {
+	inventoryStatusQueryOptions,
+	ladderResultsQueryOptions,
+	registryCandidatesQueryOptions,
+	taskQueueQueryOptions,
+} from "../lib/queries.js";
 import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
 
 export const Route = createFileRoute("/tasks")({
@@ -276,6 +281,7 @@ function Tasks() {
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
 	const {data: ladderResults = []} = useQuery(ladderResultsQueryOptions());
 	const {data: inventory} = useQuery(inventoryStatusQueryOptions());
+	const {data: registryCandidates} = useQuery(registryCandidatesQueryOptions());
 	const queryClient = useQueryClient();
 	const {tasks: liveJobs} = useAllTasks();
 	const [testingAll, setTestingAll] = useState(false);
@@ -391,10 +397,12 @@ function Tasks() {
 
 			<LadderSection
 				inventory={inventory}
-				importInventory={async () => {
-					const status = await importInventory();
-					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, status);
-					return status;
+				candidates={registryCandidates}
+				saveRegistry={async (input) => {
+					const saved = await saveRegistry({data: input});
+					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, saved.status);
+					queryClient.setQueryData(registryCandidatesQueryOptions().queryKey, saved.candidates);
+					return saved.status;
 				}}
 				results={ladderResults}
 				runLadderAll={async () => runLadderAll()}

@@ -328,6 +328,10 @@ export {
 	type InventoryConflict,
 	type InventoryImportSummary,
 	type InventoryStatus,
+	type RegistryCandidate,
+	type RegistryCandidateFlag,
+	type RegistryCandidates,
+	type SaveRegistryInput,
 	type LanguageTemplate,
 	type ParsedProjectsYaml,
 	type RegistrySummary,
@@ -338,3 +342,12 @@ export {
 	summarizeInventoryImport,
 	summarizeRegistry,
 } from "./lib/inventory-import.js";
+export {
+	type InventoryCheckResult,
+	type InventoryMissingEntry,
+	type InventorySkippedEntry,
+	buildRegistryCandidates,
+	checkInventory,
+	detectTemplate,
+	suggestSkip,
+} from "./lib/registry-review.js";

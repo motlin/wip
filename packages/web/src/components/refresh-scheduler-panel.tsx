@@ -5,6 +5,9 @@ import {useRefreshSchedulerState} from "../lib/server-events-context";
  * Live view of the background refresh scheduler: one box per concurrency
  * slot showing the running job, plus the queue waiting behind them. Driven by
  * refresh-state events on the shared SSE stream.
+ *
+ * Every box has a fixed height and the count uses tabular figures, so the
+ * card never changes size as the queue drains and the page below never shifts.
  */
 export function RefreshSchedulerPanel() {
 	const state = useRefreshSchedulerState();
@@ -17,7 +20,10 @@ export function RefreshSchedulerPanel() {
 			<h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-200">
 				<RefreshCw className="h-4 w-4" />
 				Background refresh
-				<span className="font-normal text-text-500">
+				<span
+					data-testid="refresh-queue-count"
+					className="inline-block min-w-[11ch] font-normal tabular-nums text-text-500"
+				>
 					{state.queued.length > 0 ? `${state.queued.length} queued` : "queue empty"}
 				</span>
 			</h2>
@@ -25,14 +31,15 @@ export function RefreshSchedulerPanel() {
 				{slots.map(({slot, job}) => (
 					<div
 						key={slot}
-						className={`min-w-0 flex-1 rounded-md border px-3 py-2 text-sm ${
+						data-testid="refresh-slot"
+						className={`flex h-9 min-w-0 flex-1 items-center rounded-md border px-3 text-sm ${
 							job
 								? "border-status-yellow/40 bg-bg-200 text-text-100"
 								: "border-dashed border-border-300/50 text-text-500"
 						}`}
 					>
 						{job ? (
-							<span className="flex items-center gap-2">
+							<span className="flex min-w-0 flex-1 items-center gap-2">
 								<Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-status-yellow" />
 								<span className="truncate">{job.project === "" ? "all projects" : job.project}</span>
 								<span className="ml-auto shrink-0 rounded bg-bg-300 px-1.5 py-0.5 text-xs text-text-400">
@@ -45,16 +52,21 @@ export function RefreshSchedulerPanel() {
 					</div>
 				))}
 			</div>
-			{state.queued.length > 0 && (
-				<div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-500">
+			<div
+				data-testid="refresh-queue-row"
+				className="mt-2 flex h-5 items-center gap-1.5 overflow-hidden text-xs text-text-500"
+			>
+				<div className="flex min-w-0 flex-1 gap-1.5 overflow-hidden">
 					{state.queued.slice(0, 12).map((job) => (
-						<span key={job.id} className="rounded bg-bg-200 px-1.5 py-0.5">
+						<span key={job.id} className="shrink-0 whitespace-nowrap rounded bg-bg-200 px-1.5 py-0.5">
 							{job.project || "all"} · {job.kind}
 						</span>
 					))}
-					{state.queued.length > 12 && <span>+{state.queued.length - 12} more</span>}
 				</div>
-			)}
+				{state.queued.length > 12 && (
+					<span className="shrink-0 tabular-nums">+{state.queued.length - 12} more</span>
+				)}
+			</div>
 		</section>
 	);
 }

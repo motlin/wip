@@ -59,6 +59,7 @@ export {
 	type CachedPrStatus,
 	initDb,
 	resetDb,
+	resolveDbPath,
 	getDb,
 	snoozeItem,
 	unsnoozeItem,

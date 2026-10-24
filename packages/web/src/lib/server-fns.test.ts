@@ -181,11 +181,7 @@ let pollyStop: (() => Promise<void>) | undefined;
 
 const leakedWork = {refreshSettled: false, enqueueSettled: false};
 
-beforeEach(async () => {
-	// Keep project discovery off the real ~/.config/wip/projects.json5 inventory.
-	const configHome = await mkdtemp(join(tmpdir(), "wip-config-"));
-	tmpDirs.push(configHome);
-	vi.stubEnv("XDG_CONFIG_HOME", configHome);
+beforeEach(() => {
 	initDb(":memory:");
 	setGitHubClient(createTestClient());
 });

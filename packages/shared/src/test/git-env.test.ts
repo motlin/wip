@@ -1,9 +1,13 @@
 import {describe, it, expect, afterEach} from "vite-plus/test";
 import {mkdtempSync, readFileSync, rmSync} from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {execFileSync} from "node:child_process";
 
+import {resolveDbPath} from "../lib/db.js";
+import {getInventoryPath} from "../lib/inventory.js";
 import {sanitizeGitEnv} from "./git-env.js";
 
 describe("sanitizeGitEnv", () => {
@@ -75,6 +79,14 @@ describe("sanitizeGitEnv", () => {
 	});
 });
 
+function underTmp(p: string): boolean {
+	return p.startsWith(os.tmpdir() + path.sep);
+}
+
+function underHome(p: string): boolean {
+	return p.startsWith(os.homedir() + path.sep);
+}
+
 describe("test worker environment", () => {
 	it("carries no GIT_* variable that could point child git processes at another repo", () => {
 		const gitVariables = Object.fromEntries(
@@ -84,6 +96,28 @@ describe("test worker environment", () => {
 			GIT_CONFIG_GLOBAL: "/dev/null",
 			GIT_CONFIG_NOSYSTEM: "1",
 			GIT_TERMINAL_PROMPT: "0",
+		});
+	});
+
+	it("points XDG_CONFIG_HOME and XDG_DATA_HOME at a temp dir so the real ~/.config/wip and ~/.local/share/wip stay untouched", () => {
+		const dbPath = resolveDbPath();
+		const inventoryPath = getInventoryPath();
+		expect({
+			WIP_DB_PATH: process.env.WIP_DB_PATH,
+			configHomeUnderTmp: underTmp(process.env.XDG_CONFIG_HOME ?? ""),
+			dataHomeUnderTmp: underTmp(process.env.XDG_DATA_HOME ?? ""),
+			dbPathUnderTmp: underTmp(dbPath),
+			dbPathUnderHome: underHome(dbPath),
+			inventoryPathUnderTmp: underTmp(inventoryPath),
+			inventoryPathUnderHome: underHome(inventoryPath),
+		}).toStrictEqual({
+			WIP_DB_PATH: undefined,
+			configHomeUnderTmp: true,
+			dataHomeUnderTmp: true,
+			dbPathUnderTmp: true,
+			dbPathUnderHome: false,
+			inventoryPathUnderTmp: true,
+			inventoryPathUnderHome: false,
 		});
 	});
 });

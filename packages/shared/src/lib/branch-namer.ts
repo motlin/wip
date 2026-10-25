@@ -2,6 +2,8 @@ import {execa} from "execa";
 import {z} from "zod";
 
 import {log} from "../services/logger-pino.js";
+import {withSubprocessSlot} from "../services/subprocess-gate.js";
+import {tracedExeca} from "../services/traced-execa.js";
 import {createGate} from "./concurrency.js";
 import {getBranchNames, setBranchName} from "./db.js";
 
@@ -39,7 +41,7 @@ const NAMING_GATE_LIMIT = 1;
 const namingGate = createGate(NAMING_GATE_LIMIT);
 
 export async function nameBranch(req: NamingRequest): Promise<string | null> {
-	const commit = await execa("git", ["-C", req.dir, "show", "--stat", "--format=fuller", req.sha], {
+	const commit = await tracedExeca("git", ["-C", req.dir, "show", "--stat", "--format=fuller", req.sha], {
 		reject: false,
 		timeout: 10_000,
 	});
@@ -56,33 +58,35 @@ ${commit.stdout}
 
 	const start = performance.now();
 	const result = await namingGate(async () =>
-		execa(
-			"claude",
-			[
-				"--print",
-				"--no-session-persistence",
-				"--safe-mode",
-				"--no-chrome",
-				"--tools",
-				"",
-				"--strict-mcp-config",
-				"--mcp-config",
-				'{"mcpServers":{}}',
-				"--effort",
-				"low",
-				"--system-prompt",
-				"Return only the branch-name JSON object required by the response schema.",
-				"--output-format",
-				"json",
-				"--json-schema",
-				JSON.stringify(BRANCH_NAMING_JSON_SCHEMA),
-				prompt,
-			],
-			{
-				reject: false,
-				timeout: 60_000,
-				input: "",
-			},
+		withSubprocessSlot(async () =>
+			execa(
+				"claude",
+				[
+					"--print",
+					"--no-session-persistence",
+					"--safe-mode",
+					"--no-chrome",
+					"--tools",
+					"",
+					"--strict-mcp-config",
+					"--mcp-config",
+					'{"mcpServers":{}}',
+					"--effort",
+					"low",
+					"--system-prompt",
+					"Return only the branch-name JSON object required by the response schema.",
+					"--output-format",
+					"json",
+					"--json-schema",
+					JSON.stringify(BRANCH_NAMING_JSON_SCHEMA),
+					prompt,
+				],
+				{
+					reject: false,
+					timeout: 60_000,
+					input: "",
+				},
+			),
 		),
 	);
 	const duration = Math.round(performance.now() - start);

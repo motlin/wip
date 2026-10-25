@@ -23,6 +23,8 @@ import {
 	type Transition,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
+import {withSubprocessSlot} from "@wip/shared/services/subprocess-gate.js";
+import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {EventEmitter} from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -312,25 +314,32 @@ async function runProcess({
 	if (signal.aborted) return undefined;
 	fs.mkdirSync(logDir, {recursive: true});
 
-	const start = performance.now();
-	const childProcess = execa(cmd, args, {
-		reject: false,
-		env: {...env, FORCE_COLOR: "1", CLICOLOR_FORCE: "1"},
-		cwd,
-		buffer: true,
-	});
-	const onAbort = () => childProcess.kill("SIGTERM");
-	signal.addEventListener("abort", onAbort, {once: true});
+	// Counted against the process-wide subprocess cap like every other spawn.
+	const gated = await withSubprocessSlot(async () => {
+		if (signal.aborted) return undefined;
+		const start = performance.now();
+		const childProcess = execa(cmd, args, {
+			reject: false,
+			env: {...env, FORCE_COLOR: "1", CLICOLOR_FORCE: "1"},
+			cwd,
+			buffer: true,
+		});
+		const onAbort = () => childProcess.kill("SIGTERM");
+		signal.addEventListener("abort", onAbort, {once: true});
 
-	childProcess.stdout.on("data", (chunk: Buffer) => {
-		emitLog(task, chunk.toString());
-	});
-	childProcess.stderr.on("data", (chunk: Buffer) => {
-		emitLog(task, chunk.toString());
-	});
+		childProcess.stdout.on("data", (chunk: Buffer) => {
+			emitLog(task, chunk.toString());
+		});
+		childProcess.stderr.on("data", (chunk: Buffer) => {
+			emitLog(task, chunk.toString());
+		});
 
-	const result = await childProcess;
-	signal.removeEventListener("abort", onAbort);
+		const finished = await childProcess;
+		signal.removeEventListener("abort", onAbort);
+		return {result: finished, start};
+	});
+	if (!gated) return undefined;
+	const {result, start} = gated;
 
 	if (task.status === "cancelled") return undefined;
 
@@ -372,7 +381,7 @@ async function runClaudeTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.command) throw new Error("Claude task requires a command");
 	if (!task.branch) throw new Error("Claude task requires a branch");
 
-	const checkoutResult = await execa("git", ["-C", task.projectDir, "checkout", task.branch], {
+	const checkoutResult = await tracedExeca("git", ["-C", task.projectDir, "checkout", task.branch], {
 		reject: false,
 	});
 	if (checkoutResult.exitCode !== 0) {
@@ -622,7 +631,7 @@ async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 	if (!task.upstreamRemote) throw new Error("Push task requires upstreamRemote");
 
 	if (task.createBranch) {
-		const branchResult = await execa("git", ["-C", task.projectDir, "branch", task.branch, task.sha], {
+		const branchResult = await tracedExeca("git", ["-C", task.projectDir, "branch", task.branch, task.sha], {
 			reject: false,
 		});
 		if (branchResult.exitCode !== 0) {

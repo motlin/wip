@@ -3,6 +3,7 @@ import {z} from "zod";
 
 import {markGitHubRateLimited} from "../lib/rate-limit.js";
 import {log} from "./logger-pino.js";
+import {withSubprocessSlot} from "./subprocess-gate.js";
 
 const graphqlErrorsSchema = z.object({
 	errors: z.array(z.object({type: z.string().optional(), message: z.string().optional()})).optional(),
@@ -18,7 +19,7 @@ let inflightTokenRefresh: Promise<string> | undefined;
 const TOKEN_CACHE_TTL_MS = 60_000;
 
 async function refreshToken(): Promise<string> {
-	inflightTokenRefresh ??= execa("gh", ["auth", "token"])
+	inflightTokenRefresh ??= withSubprocessSlot(async () => execa("gh", ["auth", "token"]))
 		.then((result) => {
 			cachedToken = result.stdout.trim();
 			tokenCachedAt = Date.now();

@@ -22,6 +22,10 @@
 			"types": "./src/services/telemetry.ts",
 			"import": "./src/services/telemetry.ts"
 		},
+		"./services/subprocess-gate.js": {
+			"types": "./src/services/subprocess-gate.ts",
+			"import": "./src/services/subprocess-gate.ts"
+		},
 		"./services/traced-execa.js": {
 			"types": "./src/services/traced-execa.ts",
 			"import": "./src/services/traced-execa.ts"

@@ -1,6 +1,7 @@
 import {ExecaError, execa, type Options} from "execa";
 import {SpanStatusCode} from "@opentelemetry/api";
 
+import {withSubprocessSlot} from "./subprocess-gate.js";
 import {getTracer} from "./telemetry.js";
 
 export interface ExecaResult {
@@ -12,6 +13,11 @@ export interface ExecaResult {
 }
 
 export async function tracedExeca(command: string, args: string[], options?: Options): Promise<ExecaResult> {
+	// The slot is taken before the span starts, so subprocess.duration_ms measures the run, not the wait.
+	return withSubprocessSlot(async () => runTraced(command, args, options));
+}
+
+async function runTraced(command: string, args: string[], options?: Options): Promise<ExecaResult> {
 	const tracer = getTracer();
 	return tracer.startActiveSpan(`subprocess: ${command}`, async (span) => {
 		span.setAttributes({

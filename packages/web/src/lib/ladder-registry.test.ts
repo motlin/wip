@@ -2,7 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
-import {initDb, loadInventory, resetDb, saveInventory, type ProjectInfo, type ProjectRecord} from "@wip/shared";
+import {
+	initDb,
+	loadInventory,
+	resetDb,
+	saveInventory,
+	type LadderResult,
+	type ProjectInfo,
+	type ProjectRecord,
+} from "@wip/shared";
 
 import {
 	getInventoryStatusHandler,
@@ -65,6 +73,35 @@ describe("runLadderAllHandler without a registry", () => {
 			`No project registry at ${registryPath}; import one with \`wip inventory import\` before running the ladder on every project`,
 		);
 		expect([...getAllTasks().values()].filter((t) => t.taskType === "ladder")).toEqual([]);
+	});
+});
+
+function pass(rung: LadderResult["rungs"][number]["rung"]) {
+	return async (p: {name: string}) =>
+		Promise.resolve({project: p.name, rungs: [{rung, status: "passed" as const, detail: "ok"}]});
+}
+
+describe("runLadderAllHandler with a registry", () => {
+	it("queues the ladder only for registered projects that are not skipped", async () => {
+		seedProjectCache([makeProject("alpha"), makeProject("beta"), makeProject("stray")]);
+		saveInventory([
+			{name: "alpha", dir: "/nonexistent/alpha", template: "typescript", kind: "own"},
+			{name: "beta", dir: "/nonexistent/beta", template: "typescript", kind: "skip"},
+		]);
+		const jobs = await runLadderAllHandler({
+			runners: {
+				fetch: pass("fetch"),
+				replay: pass("replay"),
+				"rebase-leftovers": pass("rebase-leftovers"),
+				"worktree-prune": pass("worktree-prune"),
+				"delete-merged-local": pass("delete-merged-local"),
+			},
+			ai: {probe: async () => Promise.resolve(false)},
+		});
+		expect(jobs.length).toBe(1);
+		expect([...getAllTasks().values()].filter((t) => t.taskType === "ladder").map((t) => t.project)).toEqual([
+			"alpha",
+		]);
 	});
 });
 

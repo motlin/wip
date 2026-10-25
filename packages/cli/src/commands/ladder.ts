@@ -8,6 +8,8 @@ import {
 	getInventoryPath,
 	getProjectsDirs,
 	inventoryExists,
+	loadInventory,
+	selectTrackedProjects,
 	ladderResultsToTree,
 	matchesFilters,
 	renderTree,
@@ -39,7 +41,7 @@ export default class Ladder extends Command {
 	];
 
 	static override flags = {
-		all: Flags.boolean({default: false, description: "Run on every discovered project"}),
+		all: Flags.boolean({default: false, description: "Run on every tracked (non-skip) project in the registry"}),
 		"dry-run": Flags.boolean({
 			char: "n",
 			default: false,
@@ -66,9 +68,11 @@ export default class Ladder extends Command {
 		const include = flags.include ?? [];
 		const exclude = flags.exclude ?? [];
 		const discovered = await discoverAllProjects(getProjectsDirs(flags["projects-dir"]));
-		const projects = discovered.filter((p) =>
-			args.project ? p.name === args.project : matchesFilters(p.name, include, exclude),
-		);
+		const projects = args.project
+			? discovered.filter((p) => p.name === args.project)
+			: selectTrackedProjects(discovered, loadInventory().projects).filter((p) =>
+					matchesFilters(p.name, include, exclude),
+				);
 		if (args.project && projects.length === 0) {
 			this.error(`Unknown project: ${args.project}`);
 		}

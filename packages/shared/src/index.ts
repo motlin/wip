@@ -323,6 +323,7 @@ export {
 	loadInventory,
 	readTemplateTexts,
 	saveInventory,
+	selectTrackedProjects,
 } from "./lib/inventory.js";
 export {
 	type BuildInventoryOptions,

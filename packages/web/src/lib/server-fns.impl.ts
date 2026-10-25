@@ -71,6 +71,7 @@ import {
 	getInventoryPath,
 	inventoryExists,
 	loadInventory,
+	selectTrackedProjects,
 	readTemplateTexts,
 	saveInventory,
 	summarizeRegistry,
@@ -1421,7 +1422,7 @@ export interface RunLadderAllOptions {
 }
 
 /**
- * Enqueues one background ladder job per registered project on the shared work queue. Each job
+ * Enqueues one background ladder job per tracked (own, fork, or nested) registered project on the shared work queue. Each job
  * records its typed result as a task_records row of kind "ladder", so it survives a restart.
  */
 export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Promise<TestJobStatus[]> {
@@ -1432,7 +1433,7 @@ export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Pr
 			);
 		}
 		const {enqueueLadder} = await import("./task-queue.js");
-		const projects = await ensureProjects();
+		const projects = selectTrackedProjects(await ensureProjects(), loadInventory().projects);
 		return projects.map((p) => {
 			const task = enqueueLadder({
 				project: p.name,

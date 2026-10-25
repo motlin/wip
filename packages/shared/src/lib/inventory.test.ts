@@ -4,7 +4,14 @@ import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {diffInventories, inventoryExists, loadInventory, saveInventory, type ProjectRecord} from "./inventory.js";
+import {
+	diffInventories,
+	inventoryExists,
+	loadInventory,
+	saveInventory,
+	selectTrackedProjects,
+	type ProjectRecord,
+} from "./inventory.js";
 
 describe("inventory", () => {
 	let tmp: string;
@@ -78,5 +85,30 @@ describe("diffInventories", () => {
 
 	it("is empty for identical inventories", () => {
 		expect(diffInventories([a], [{...a}])).toEqual({added: [], removed: [], changed: []});
+	});
+});
+
+describe("selectTrackedProjects", () => {
+	const records: ProjectRecord[] = [
+		{name: "own", dir: "/p/own", template: "typescript", kind: "own"},
+		{name: "fork", dir: "/p/fork/", template: "typescript", kind: "fork"},
+		{name: "nested", dir: "/p/nested", template: "java", kind: "nested"},
+		{name: "skipped", dir: "/p/skipped", template: "project", kind: "skip"},
+		{name: "missing", dir: "/p/missing", template: "rust", kind: "own"},
+	];
+
+	it("keeps only discovered projects whose directory the registry tracks as own, fork, or nested", () => {
+		const discovered = [
+			{name: "fork", dir: "/p/fork"},
+			{name: "nested", dir: "/p/nested"},
+			{name: "own", dir: "/p/own"},
+			{name: "skipped", dir: "/p/skipped"},
+			{name: "stray", dir: "/p/stray"},
+		];
+		expect(selectTrackedProjects(discovered, records)).toEqual([
+			{name: "fork", dir: "/p/fork"},
+			{name: "nested", dir: "/p/nested"},
+			{name: "own", dir: "/p/own"},
+		]);
 	});
 });

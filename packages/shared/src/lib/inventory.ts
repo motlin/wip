@@ -68,6 +68,24 @@ export function saveInventory(projects: ProjectRecord[]): void {
 	fs.writeFileSync(getInventoryPath(), JSON5.stringify(validated, null, "\t") + "\n");
 }
 
+function normalizeDir(dir: string): string {
+	return path.resolve(dir);
+}
+
+/**
+ * The discovered projects the registry tracks: those whose directory has an own, fork, or nested
+ * entry. Skip entries and directories missing from the registry are never acted on in bulk.
+ */
+export function selectTrackedProjects<T extends {dir: string}>(
+	discovered: readonly T[],
+	records: readonly ProjectRecord[],
+): T[] {
+	const tracked = new Set(
+		records.filter((record) => record.kind !== "skip").map((record) => normalizeDir(record.dir)),
+	);
+	return discovered.filter((project) => tracked.has(normalizeDir(project.dir)));
+}
+
 export function inventoryExists(): boolean {
 	return fs.existsSync(getInventoryPath());
 }

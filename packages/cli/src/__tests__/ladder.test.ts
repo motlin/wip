@@ -15,6 +15,15 @@ vi.mock("@wip/shared", () => ({
 	renderTree: vi.fn<Shared["renderTree"]>(() => "TREE"),
 	inventoryExists: vi.fn<Shared["inventoryExists"]>(() => true),
 	getInventoryPath: vi.fn<Shared["getInventoryPath"]>(() => "/tmp/fake-config/wip/projects.json5"),
+	loadInventory: vi.fn<Shared["loadInventory"]>(() => ({
+		projects: [
+			{name: "a", dir: "/tmp/fake-projects/a", template: "typescript", kind: "own"},
+			{name: "b", dir: "/tmp/fake-projects/b", template: "typescript", kind: "fork"},
+			{name: "s", dir: "/tmp/fake-projects/s", template: "project", kind: "skip"},
+		],
+		errors: [],
+	})),
+	selectTrackedProjects: vi.fn<Shared["selectTrackedProjects"]>(),
 }));
 
 import {
@@ -23,7 +32,12 @@ import {
 	ladderResultsToTree,
 	matchesFilters,
 	runLadderAcrossProjects,
+	selectTrackedProjects,
 } from "@wip/shared";
+
+type SharedActual = typeof import("@wip/shared");
+const actual = await vi.importActual<SharedActual>("@wip/shared");
+vi.mocked(selectTrackedProjects).mockImplementation(actual.selectTrackedProjects);
 
 function proj(name: string): ProjectInfo {
 	return {
@@ -92,6 +106,20 @@ describe("wip ladder", () => {
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[1].dryRun).toBe(false);
 		// --json means stdout holds only the JSON document
 		expect(JSON.parse(c.lines.join("\n"))).toEqual(result);
+	});
+
+	it("runs --all only on registered projects that are not skipped, never on strays", async () => {
+		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b"), proj("s"), proj("stray")]);
+		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("a"), okResult("b")]);
+		vi.mocked(ladderResultsToTree).mockReturnValue(tree);
+		const c = capture();
+		restores.push(c.restore);
+
+		const {default: Ladder} = await import("../commands/ladder.js");
+		await Ladder.run(["--all", "--json"]);
+		c.restore();
+
+		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[0].map((p) => p.name)).toEqual(["a", "b"]);
 	});
 
 	it("limits to a named project and passes --dry-run", async () => {

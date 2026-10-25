@@ -5,7 +5,7 @@ import {runPendingAction} from "../lib/pending-action.js";
 
 /**
  * Ladder results per project with an "Update all N repos" button that queues the ladder for every
- * registered project, explained in plain words above the results. Until a
+ * tracked (non-skip) registered project, explained in plain words above the results. Until a
  * project registry exists the button stays disabled and points at the registry import, so one
  * click can never fall back to scanning every directory. Failures surface only as a toast via
  * runPendingAction.
@@ -24,7 +24,8 @@ export function LadderSection({
 }) {
 	const [running, setRunning] = useState(false);
 	const registered = inventory?.exists === true;
-	const total = inventory?.registry?.total;
+	// Skip entries are never updated, so the count names only the repos the ladder will touch.
+	const total = inventory?.registry?.projects.filter((project) => project.kind !== "skip").length;
 	const repos = total === undefined ? "repos" : `${total} ${total === 1 ? "repo" : "repos"}`;
 	const scope = total === undefined ? "" : ` (${repos})`;
 
@@ -48,9 +49,9 @@ export function LadderSection({
 				</button>
 			</div>
 			<p data-testid="ladder-explanation" className="mb-3 text-xs text-text-400">
-				Brings every repo in the registry{scope} up to date: fetches upstream, fast-forwards and rebases local
-				branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to
-				AI in herdr. Nothing is pushed.
+				Brings every tracked repo in the registry{scope} up to date: fetches upstream, fast-forwards and rebases
+				local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are
+				handed to AI in herdr. Nothing is pushed.
 			</p>
 			{inventory && !inventory.exists && (
 				<p className="mb-3 text-xs text-status-yellow">

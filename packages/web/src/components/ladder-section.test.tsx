@@ -22,16 +22,18 @@ const noFocus = async () => Promise.resolve();
 const beta: ProjectRecord = {name: "beta", dir: "/tmp/projects/beta", template: "typescript", kind: "fork"};
 const gamma: ProjectRecord = {name: "gamma", dir: "/tmp/projects/gamma", template: "java", kind: "own"};
 
+const skipped: ProjectRecord = {name: "skipped", dir: "/tmp/projects/skipped", template: "project", kind: "skip"};
+
 const registered: InventoryStatus = {
 	exists: true,
 	registryPath: "/tmp/config/wip/projects.json5",
 	templatesDir: "/tmp/projects",
 	registry: {
-		total: 2,
-		byTemplate: {typescript: 1, java: 1},
-		byKind: {own: 1, fork: 1},
+		total: 3,
+		byTemplate: {typescript: 1, java: 1, project: 1},
+		byKind: {own: 1, fork: 1, skip: 1},
 		modifiedAt: "2026-10-23T12:00:00.000Z",
-		projects: [beta, gamma],
+		projects: [beta, gamma, skipped],
 	},
 };
 
@@ -230,7 +232,7 @@ describe("LadderSection", () => {
 		expect(screen.getByRole("button", {name: /Update all/})).toHaveProperty("disabled", true);
 	});
 
-	it("names the action and the number of registered repos it will update", () => {
+	it("counts only the tracked repos it will update, leaving skip entries out", () => {
 		render(
 			<LadderSection
 				inventory={registered}
@@ -241,7 +243,7 @@ describe("LadderSection", () => {
 		);
 		expect(screen.getByRole("button", {name: /Update all/}).textContent).toBe("Update all 2 repos");
 		expect(screen.getByTestId("ladder-explanation").textContent).toBe(
-			"Brings every repo in the registry (2 repos) up to date: fetches upstream, fast-forwards and rebases local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to AI in herdr. Nothing is pushed.",
+			"Brings every tracked repo in the registry (2 repos) up to date: fetches upstream, fast-forwards and rebases local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to AI in herdr. Nothing is pushed.",
 		);
 	});
 
@@ -270,7 +272,7 @@ describe("LadderSection", () => {
 		);
 		expect(screen.getByRole("button", {name: /Update all/}).textContent).toBe("Update all repos");
 		expect(screen.getByTestId("ladder-explanation").textContent).toBe(
-			"Brings every repo in the registry up to date: fetches upstream, fast-forwards and rebases local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to AI in herdr. Nothing is pushed.",
+			"Brings every tracked repo in the registry up to date: fetches upstream, fast-forwards and rebases local branches, deletes merged branches, and prunes stale worktrees. Conflicts it can't resolve are handed to AI in herdr. Nothing is pushed.",
 		);
 	});
 });

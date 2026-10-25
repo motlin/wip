@@ -262,6 +262,8 @@ describe("RegistrySection", () => {
 		expect(summary.textContent).toContain("2 projects in /tmp/config/wip/projects.json5");
 		expect(summary.textContent).toContain("Kind: fork 1, own 1");
 		expect(summary.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-23T12:00:00.000Z");
+		// A header line over the review, not one more card stacked above the step bar.
+		expect(summary.className.split(" ")).not.toContain("border");
 		expect(container.querySelectorAll("details")).toHaveLength(0);
 		expect(screen.getByText("Loading registry candidates…")).toBeTruthy();
 		expect(screen.queryByRole("status", {name: "Registry saved"})).toBeNull();

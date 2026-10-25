@@ -127,8 +127,8 @@ function bulkLabels(): string[] {
 	return labels;
 }
 
-function progress(): string | null | undefined {
-	return screen.getByRole("navigation", {name: "Review progress"}).querySelector("[data-progress]")?.textContent;
+function currentStep(): string | null | undefined {
+	return screen.getByRole("navigation", {name: "Review progress"}).querySelector("[aria-current=step]")?.textContent;
 }
 
 describe("RegistryReview", () => {
@@ -366,11 +366,20 @@ describe("RegistryReview", () => {
 			["herdr-web", "lift", "wip-pr125", "wip-pr126"],
 		]);
 		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		const lastCard = question().outerHTML.replace(/>[^<]*</g, "><");
 		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
 		expect(screen.queryByRole("region", {name: "Quick question"})).toBeNull();
-		expect(screen.getByRole("region", {name: "Step 1: Quick questions"}).textContent).toContain(
-			"No quick questions left",
-		);
+		const section = screen.getByRole("region", {name: "Quick questions"});
+		expect(section.textContent).toContain("No quick questions left");
+		// An invisible card of the same shape holds the area's height, so nothing below it moves.
+		const placeholder = section.querySelector("[data-question-placeholder]");
+		expect([
+			placeholder?.getAttribute("aria-hidden"),
+			placeholder?.className.split(" ").includes("invisible"),
+			placeholder?.firstElementChild?.outerHTML
+				.replace(/>[^<]*</g, "><")
+				.replace(/ (aria-label|title)="[^"]*"/g, ""),
+		]).toEqual(["true", true, lastCard.replace(/ (aria-label|title)="[^"]*"/g, "")]);
 	});
 
 	it("samples a few repos of a long question and counts the rest", () => {
@@ -385,15 +394,8 @@ describe("RegistryReview", () => {
 			"Skip the 57 copies of other repos?",
 			"Copies of another repo (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 40 git worktrees). wip ladder --all already updates the original, so a copy only adds work.",
 			"Skip all 57 copies",
-			[
-				"Factorio-FBSR-maven-3.10.0",
-				"avalon-online-logs-pr125",
-				"ccp-par-1",
-				"ccp-par-2",
-				"ccp-par-3",
-				"data-converter",
-			],
-			"and 51 more",
+			["Factorio-FBSR-maven-3.10.0", "avalon-online-logs-pr125", "ccp-par-1", "ccp-par-2"],
+			"and 53 more",
 		]);
 	});
 
@@ -405,15 +407,33 @@ describe("RegistryReview", () => {
 				.getAllByRole("listitem")
 				.map((step) => step.textContent),
 		).toEqual(["1Quick questions", "2Decide the rest", "3Save"]);
-		expect(progress()).toBe("Step 1 of 3 · 4 left");
-		expect(nav.querySelector("[aria-current=step]")?.textContent).toBe("1Quick questions");
+		expect(currentStep()).toBe("1Quick questions");
 		answer("Skip all 2 PR worktrees");
 		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
-		expect(progress()).toBe("Step 2 of 3 · 2 left");
+		expect(currentStep()).toBe("2Decide the rest");
 		decide("herdr-web", "Own");
 		decide("lift", "Fork");
-		expect(progress()).toBe("Step 3 of 3 · 0 left");
-		expect(nav.querySelector("[aria-current=step]")?.textContent).toBe("3Save");
+		expect(currentStep()).toBe("3Save");
+	});
+
+	it("shows each step title and the left-to-decide count once", () => {
+		renderReview();
+		const nav = screen.getByRole("navigation", {name: "Review progress"});
+		expect([
+			nav.textContent,
+			screen.getAllByText("Quick questions").map((element) => element.closest("nav") === nav),
+			screen.getAllByText("Decide the rest").map((element) => element.closest("nav") === nav),
+			screen
+				.getAllByText(/\d+ left/)
+				.map((element) => element.closest("[aria-label]")?.getAttribute("aria-label")),
+			saveBar().textContent,
+		]).toEqual([
+			"1Quick questions2Decide the rest3Save",
+			[true],
+			[true],
+			["Save registry"],
+			"4 left to decideNo changes yet",
+		]);
 	});
 
 	it("colors each checked decision by its kind", () => {

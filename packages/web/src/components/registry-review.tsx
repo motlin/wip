@@ -142,6 +142,9 @@ const primaryClass =
 	"inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70";
 const selectClass = "rounded border border-border-300/50 bg-bg-100 px-1 py-0.5 text-xs text-text-100";
 
+/** Keyboard focus scrolls a control clear of the sticky save bar, which covers the viewport's bottom 6rem at most. */
+const clearOfSaveBar = "[&_:is(button,input,select)]:scroll-mb-24";
+
 function CandidateRow({
 	row,
 	undecided,
@@ -454,8 +457,11 @@ function GroupCard({
 	);
 }
 
-/** Repos a question names before counting the rest. */
-const SAMPLE = 6;
+/**
+ * Repos a question names before counting the rest: at most two truncated chips per line, so the
+ * sample fills at most two lines even at phone width.
+ */
+const SAMPLE = 4;
 
 type Step = 1 | 2 | 3;
 
@@ -481,13 +487,13 @@ function StepBadge({number, step}: {number: Step; step: Step}) {
 	);
 }
 
-/** The three steps, the current one highlighted, with how many repos are left to decide. */
-function Progress({step, remaining}: {step: Step; remaining: number}) {
+/**
+ * The three steps, the current one highlighted: the page's only step navigation, so the sections
+ * below carry no numbered headings and the save bar alone counts what is left to decide.
+ */
+function Progress({step}: {step: Step}) {
 	return (
-		<nav
-			aria-label="Review progress"
-			className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border-300/50 bg-bg-100 px-3 py-2"
-		>
+		<nav aria-label="Review progress" className="mb-4 rounded-lg border border-border-300/50 bg-bg-100 px-3 py-2">
 			<ol className="flex flex-wrap items-center gap-x-4 gap-y-1">
 				{STEPS.map(([number, title]) => (
 					<li
@@ -502,26 +508,20 @@ function Progress({step, remaining}: {step: Step; remaining: number}) {
 					</li>
 				))}
 			</ol>
-			<span data-progress className="text-xs text-text-500 tabular-nums">
-				Step {step} of 3 · {remaining} left
-			</span>
 		</nav>
 	);
 }
 
-function StepHeading({number, step, title, children}: {number: Step; step: Step; title: string; children: ReactNode}) {
-	return (
-		<div className="mb-3 flex items-start gap-2.5">
-			<StepBadge number={number} step={step} />
-			<div>
-				<h2 className="text-base font-semibold text-text-100">{title}</h2>
-				<p className="text-xs text-text-500">{children}</p>
-			</div>
-		</div>
-	);
+/** What a step's section asks for; the step bar above names it. */
+function StepHint({children}: {children: ReactNode}) {
+	return <p className="mb-2 text-xs text-text-500">{children}</p>;
 }
 
-/** One bulk action asked as a question: what it covers, how many, a sample of the repos, and Keep to pass. */
+/**
+ * One bulk action asked as a question: what it covers, how many, a sample of the repos, and Keep to
+ * pass. Every part has a fixed height (long text clamps, its full text in a tooltip), so the card
+ * keeps one size as questions advance and nothing below it reflows.
+ */
 function QuestionCard({
 	action,
 	position,
@@ -536,6 +536,7 @@ function QuestionCard({
 	onKeep: () => void;
 }) {
 	const sample = action.names.slice(0, SAMPLE);
+	const more = action.names.length - sample.length;
 	return (
 		<section
 			aria-label="Quick question"
@@ -543,44 +544,65 @@ function QuestionCard({
 		>
 			<p
 				data-question-count
-				className="mb-1 text-[11px] font-medium tracking-wide text-blue-600 uppercase dark:text-blue-400"
+				className="mb-1 h-4 text-[11px] leading-4 font-medium tracking-wide text-blue-600 uppercase dark:text-blue-400"
 			>
 				Question {position} of {total}
 			</p>
-			<h3 className="text-base font-semibold text-text-100">{action.question}</h3>
-			<p data-covers className="mt-1 text-text-300">
+			<h3 title={action.question} className="line-clamp-2 h-12 text-base leading-6 font-semibold text-text-100">
+				{action.question}
+			</h3>
+			<p
+				data-covers
+				title={action.covers}
+				className="mt-1 line-clamp-4 h-16 leading-4 text-text-300 md:line-clamp-3 md:h-12"
+			>
 				{action.covers}
 			</p>
-			<div className="mt-3 flex flex-wrap items-center gap-1.5">
-				<ul data-sample className="contents">
-					{sample.map((name) => (
-						<li
-							key={name}
-							className="rounded-md bg-bg-200 px-1.5 py-0.5 font-mono text-[11px] text-text-300"
-						>
-							{name}
-						</li>
-					))}
-				</ul>
-				{action.names.length > sample.length && (
-					<span data-sample-more className="text-text-500">
-						and {action.names.length - sample.length} more
-					</span>
-				)}
-			</div>
-			<div className="mt-4 flex flex-wrap items-center gap-2">
+			<ul data-sample className="mt-3 flex h-[2.875rem] flex-wrap content-start gap-1.5 overflow-hidden">
+				{sample.map((name) => (
+					<li
+						key={name}
+						className="h-5 max-w-36 truncate rounded-md bg-bg-200 px-1.5 font-mono text-[11px] leading-5 text-text-300"
+					>
+						{name}
+					</li>
+				))}
+			</ul>
+			<p data-sample-more className="mt-1 h-4 leading-4 text-text-500">
+				{more > 0 && `and ${more} more`}
+			</p>
+			<div className="mt-3 flex flex-nowrap items-center gap-2">
 				{/* The visible text starts the accessible name, which spells out every row it decides. */}
-				<button type="button" aria-label={action.label} onClick={onAnswer} className={primaryClass}>
+				<button
+					type="button"
+					aria-label={action.label}
+					onClick={onAnswer}
+					className={`${primaryClass} whitespace-nowrap`}
+				>
 					{action.short}
 				</button>
 				<button type="button" onClick={onKeep} className={`${buttonClass} px-3 py-1.5 text-sm`}>
 					Keep
 				</button>
-				<span className="text-text-500">Keep leaves them to decide one by one.</span>
 			</div>
 		</section>
 	);
 }
+
+/** A question the card can take the shape of once none are left, holding the area's height. */
+const PLACEHOLDER: BulkAction = {
+	key: "placeholder",
+	label: "",
+	short: "Skip all",
+	question: "",
+	covers: "",
+	names: Array.from({length: SAMPLE}, (_, index) => `repo-${index}`),
+	dirs: new Set(),
+	kind: "skip",
+	done: true,
+};
+
+const noop = () => {};
 
 function inboxHeading(remaining: number, decided: number): string {
 	if (remaining > 0) return `${remaining} repos aren't kept up to date by Update all yet: decide each one`;
@@ -668,11 +690,9 @@ export function RegistryReview({
 
 	return (
 		<>
-			<Progress step={step} remaining={remaining} />
-			<section aria-label="Step 1: Quick questions" className="mb-6">
-				<StepHeading number={1} step={step} title="Quick questions">
-					Decide whole groups of repos at once. Keep leaves a group for step 2.
-				</StepHeading>
+			<Progress step={step} />
+			<section aria-label="Quick questions" className={`mb-6 ${clearOfSaveBar}`}>
+				<StepHint>Decide whole groups of repos at once. Keep leaves a group to decide one by one.</StepHint>
 				{question ? (
 					<QuestionCard
 						key={question.key}
@@ -688,16 +708,22 @@ export function RegistryReview({
 						}}
 					/>
 				) : (
-					<p className="flex items-center gap-1.5 rounded-lg border border-border-300/50 bg-bg-100 px-3 py-2 text-xs text-text-500">
-						<CheckCircle className="h-4 w-4 text-status-green" />
-						No quick questions left.
-					</p>
+					// The done message over an invisible card of the same shape, so the area keeps its height.
+					<div className="grid">
+						<div data-question-placeholder aria-hidden="true" className="invisible col-start-1 row-start-1">
+							<QuestionCard action={PLACEHOLDER} position={1} total={1} onAnswer={noop} onKeep={noop} />
+						</div>
+						<p className="col-start-1 row-start-1 flex items-center justify-center gap-1.5 rounded-xl border border-border-300/50 bg-bg-100 text-xs text-text-500">
+							<CheckCircle className="h-4 w-4 text-status-green" />
+							No quick questions left.
+						</p>
+					</div>
 				)}
 			</section>
-			<section aria-label="Step 2: Decide the rest" className="mb-6">
-				<StepHeading number={2} step={step} title="Decide the rest">
+			<section aria-label="Decide the rest" className={`mb-6 ${clearOfSaveBar}`}>
+				<StepHint>
 					Pick Own, Fork, Nested, or Skip for each repo. Decided repos move to their own card until you save.
-				</StepHeading>
+				</StepHint>
 				{INBOX.map(({group, label, word, hideWhenEmpty}) => {
 					const all = groupRows(group);
 					if (hideWhenEmpty && all.length === 0) return null;
@@ -735,7 +761,10 @@ export function RegistryReview({
 					/>
 				)}
 			</section>
-			<section aria-label="In the registry" className="mt-8 border-t border-border-300/50 pt-4">
+			<section
+				aria-label="In the registry"
+				className={`mt-8 border-t border-border-300/50 pt-4 ${clearOfSaveBar}`}
+			>
 				<h3 className="mb-1 text-sm font-semibold text-text-100">In the registry</h3>
 				<p className="mb-3 text-xs text-text-500">
 					What the saved registry already says; change a row here to correct it.
@@ -755,11 +784,8 @@ export function RegistryReview({
 			</section>
 			<section aria-label="Save registry" className={`${cardClass} sticky bottom-2 z-10 shadow-lg`}>
 				<div className="flex flex-wrap items-center gap-2">
-					<span className="mr-auto flex items-center gap-2">
-						<StepBadge number={3} step={step} />
-						<span data-remaining className="text-sm text-text-100 tabular-nums">
-							{remaining} left to decide
-						</span>
+					<span data-remaining className="mr-auto text-sm text-text-100 tabular-nums">
+						{remaining} left to decide
 					</span>
 					{changes > 0 && (
 						<>

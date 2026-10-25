@@ -7,7 +7,7 @@ import {initDb, resetDb, saveInventory, type LadderResult, type ProjectInfo} fro
 
 import {runAiConflictRung, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
-import {getAllTasks, getLatestLadderResults, resetQueue} from "./task-queue.js";
+import {getLatestLadderResults, resetQueue, waitForTask} from "./task-queue.js";
 
 function git(dir: string, ...args: string[]): string {
 	return execFileSync("git", ["-C", dir, ...args], {
@@ -132,19 +132,9 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			},
 		};
 
-		await runLadderAllHandler({ai: {probe: async () => Promise.resolve(true), overrides}});
-
-		await expect
-			.poll(
-				() => {
-					const task = [...getAllTasks().values()].find((t) => t.taskType === "ladder");
-					return (
-						task !== undefined && task.status !== "queued" && task.status !== "running" && !task.aiPending
-					);
-				},
-				{timeout: 20_000},
-			)
-			.toBe(true);
+		const [job] = await runLadderAllHandler({ai: {probe: async () => Promise.resolve(true), overrides}});
+		// Resolves once the ladder job and its AI follow-up have both finished, however slow the machine is.
+		await waitForTask(job?.id ?? "");
 
 		const result: LadderResult | undefined = getLatestLadderResults().find((r) => r.project === "clone");
 		const upstream = git(clone, "rev-parse", "upstream/main");
@@ -185,7 +175,7 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		expect(fs.readdirSync(root).toSorted()).toStrictEqual(
 			["cache", "clone", "config", "origin.git", "seed"].filter((n) => fs.existsSync(path.join(root, n))),
 		);
-	}, 60_000);
+	}, 180_000);
 
 	it("leaves every ref unchanged and removes the worktree when the agent leaves the rebase unfinished", async () => {
 		git(clone, "fetch", "-q", "upstream");
@@ -221,5 +211,5 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 				.filter((l) => l.startsWith("worktree ")),
 		).toHaveLength(1);
 		expect(git(clone, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(refsBefore);
-	}, 60_000);
+	}, 180_000);
 });

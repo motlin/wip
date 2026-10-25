@@ -93,6 +93,8 @@ export interface LadderTaskProject {
 let nextId = 1;
 const tasks = new Map<string, Task>();
 const jobHandles = new Map<string, JobHandle>();
+// Settles when a task's job and any follow-up it chains (the ladder's AI rung) have finished.
+const taskCompletions = new Map<string, Promise<void>>();
 
 // The registry keeps finished tasks so the Tasks page can show history, but a
 // long-lived server enqueues forever — retain only the most recent terminal
@@ -183,6 +185,7 @@ function ensureLoaded(): void {
 export function reloadTasksFromDb(): void {
 	tasks.clear();
 	jobHandles.clear();
+	taskCompletions.clear();
 	nextId = 1;
 	loaded = true;
 	loadPersistedTasks();
@@ -719,11 +722,16 @@ function registerTask(task: Task): Task {
 	});
 	jobHandles.set(task.id, handle);
 	void handle.settled.finally(() => jobHandles.delete(task.id));
+	let completion = handle.settled;
 	if (task.taskType === "ladder" && task.ladderAi) {
 		task.aiPending = true;
 		// The ladder job holds the repo resource, so the AI job can only be enqueued after it settles.
-		void handle.settled.then(async () => runLadderAiFollowUp(task)).finally(() => (task.aiPending = false));
+		completion = completion.then(async () => runLadderAiFollowUp(task)).finally(() => (task.aiPending = false));
 	}
+	taskCompletions.set(task.id, completion);
+	void completion.finally(() => {
+		if (taskCompletions.get(task.id) === completion) taskCompletions.delete(task.id);
+	});
 
 	return task;
 }
@@ -929,8 +937,14 @@ export const enqueueTest = (
 export const cancelTest = cancelTask;
 export const getAllJobs = getAllTasks;
 
+/** Resolves once the task's job and any follow-up it chains have finished; immediately if none is in flight. */
+export async function waitForTask(id: string): Promise<void> {
+	await taskCompletions.get(id);
+}
+
 export async function resetQueue(): Promise<void> {
-	const settled = [...jobHandles.values()].map(async (handle) => handle.settled);
+	// Each completion covers its job's settle plus any chained follow-up.
+	const settled = [...taskCompletions.values()];
 	for (const task of tasks.values()) {
 		if (task.status === "queued" || task.status === "running") {
 			cancelTask(task.id);
@@ -939,6 +953,7 @@ export async function resetQueue(): Promise<void> {
 	await Promise.allSettled(settled);
 	tasks.clear();
 	jobHandles.clear();
+	taskCompletions.clear();
 	nextId = 1;
 	loaded = false;
 }

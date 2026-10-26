@@ -40,7 +40,7 @@ import {
 	createBranch,
 	runClaudeCommand,
 } from "../lib/server-fns.js";
-import {snoozedQueryOptions} from "../lib/queries.js";
+import {projectsQueryOptions, snoozedQueryOptions} from "../lib/queries.js";
 import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
@@ -156,6 +156,10 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const cache = useChildrenCache(item.project);
 	const {data: snoozedItems} = useQuery(snoozedQueryOptions());
 	const snoozedEntry = snoozedItems?.find((s) => s.project === item.project && s.sha === item.sha);
+	const {data: projects} = useQuery(projectsQueryOptions());
+	// Every item in a repo with no test configured is unverified, whatever its category, so it must never read as green.
+	const noTests =
+		category === "no_test" || projects?.find((p) => p.name === item.project)?.hasTestConfigured === false;
 	const [error, setError] = useState<string | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
@@ -1138,7 +1142,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				</div>
 
 				{/* No tests marker: landable without a test, with an "Add a test" detour */}
-				{category === "no_test" && (
+				{noTests && (
 					<span
 						data-testid="no-tests-marker"
 						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
@@ -1146,19 +1150,23 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						no tests
 					</span>
 				)}
-				{actions.has("add_test") && branch && (
+				{noTests && (
 					<button
 						type="button"
 						onClick={() => {
 							void handleAddTest();
 						}}
-						disabled={addingTest}
+						disabled={addingTest || !branch}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							addingTest
+							addingTest || !branch
 								? "cursor-not-allowed opacity-60 text-text-300"
 								: "text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-950/30"
 						}`}
-						title="Queue a task that adds a test for this commit"
+						title={
+							branch
+								? "Queue a task that adds a test for this commit"
+								: "Name a branch first: Claude tasks run on a branch checkout"
+						}
 					>
 						{addingTest ? (
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />

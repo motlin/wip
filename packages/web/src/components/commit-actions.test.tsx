@@ -2,9 +2,9 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
-import type {GitChildResult} from "@wip/shared";
+import type {GitChildResult, ProjectInfo} from "@wip/shared";
 
-import {BranchActions} from "./commit-actions.js";
+import {BranchActions, PullRequestActions} from "./commit-actions.js";
 import {clearToasts, getToasts} from "../lib/toast-store.js";
 
 const serverFns = vi.hoisted(() => ({
@@ -24,8 +24,30 @@ function branchItem(overrides: Partial<GitChildResult>): GitChildResult {
 	} as GitChildResult;
 }
 
-function renderBranch(item: GitChildResult, category: Parameters<typeof BranchActions>[0]["category"]) {
+function project(hasTestConfigured: boolean): ProjectInfo {
+	return {
+		name: "wip",
+		dir: "/repo/wip",
+		remote: "motlin/wip",
+		originRemote: "origin",
+		upstreamRemote: "upstream",
+		upstreamBranch: "main",
+		upstreamRef: "upstream/main",
+		dirty: false,
+		detachedHead: false,
+		branchCount: 1,
+		hasTestConfigured,
+		rebaseInProgress: false,
+	};
+}
+
+function renderBranch(
+	item: GitChildResult,
+	category: Parameters<typeof BranchActions>[0]["category"],
+	projects?: ProjectInfo[],
+) {
 	const queryClient = new QueryClient();
+	if (projects) queryClient.setQueryData(["projects"], projects);
 	return render(
 		<QueryClientProvider client={queryClient}>
 			<BranchActions item={item} category={category} />
@@ -51,6 +73,53 @@ describe("no_test marker and Add a test detour", () => {
 
 		expect(screen.queryByTestId("no-tests-marker")).toBeNull();
 		expect(screen.queryByRole("button", {name: "Add a test"})).toBeNull();
+	});
+
+	it("shows the no tests marker on a pushed branch in a project with no test configured", () => {
+		renderBranch(branchItem({pushedToRemote: true}), "pushed_no_pr", [project(false)]);
+
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+		expect(screen.getByRole("button", {name: "Add a test"}).hasAttribute("disabled")).toBe(false);
+	});
+
+	it("shows the no tests marker on a ready_to_push branch in a project with no test configured", () => {
+		renderBranch(branchItem({localAhead: true}), "ready_to_push", [project(false)]);
+
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+	});
+
+	it("shows the no tests marker on a pull request in a project with no test configured", () => {
+		const queryClient = new QueryClient();
+		queryClient.setQueryData(["projects"], [project(false)]);
+		render(
+			<QueryClientProvider client={queryClient}>
+				<PullRequestActions
+					item={branchItem({prUrl: "https://github.com/motlin/wip/pull/1", prNumber: 1})}
+					category="checks_passed"
+				/>
+			</QueryClientProvider>,
+		);
+
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+	});
+
+	it("does not show the no tests marker in a project with a test configured", () => {
+		renderBranch(branchItem({pushedToRemote: true}), "pushed_no_pr", [project(true)]);
+
+		expect(screen.queryByTestId("no-tests-marker")).toBeNull();
+		expect(screen.queryByRole("button", {name: "Add a test"})).toBeNull();
+	});
+
+	it("disables Add a test with a reason on an unnamed commit", () => {
+		renderBranch(branchItem({branch: undefined}), "no_test", [project(false)]);
+
+		const button = screen.getByRole("button", {name: "Add a test"});
+		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
+			disabled: true,
+			title: "Name a branch first: Claude tasks run on a branch checkout",
+		});
+		fireEvent.click(button);
+		expect(serverFns.runClaudeCommand.mock.calls).toEqual([]);
 	});
 
 	it("enqueues exactly one task for the commit when Add a test is clicked", async () => {

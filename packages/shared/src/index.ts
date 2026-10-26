@@ -201,6 +201,8 @@ export {
 	type TestStatus,
 	MergeStateStatusSchema,
 	type MergeStateStatus,
+	CATEGORY_COLUMNS,
+	CATEGORY_ORDER,
 	CategorySchema,
 	type Category,
 	TransitionSchema,

@@ -1,6 +1,7 @@
 import {
 	type Category,
 	type Transition,
+	CATEGORY_ORDER,
 	CategorySchema,
 	getTransitionsFrom,
 	STATE_MACHINE,
@@ -282,7 +283,6 @@ const BACK_EDGES = new Set([
 	"checks_failed->checks_running",
 	"changes_requested->checks_running",
 	"review_comments->checks_running",
-	"rebase_conflicts->ready_to_test",
 	// Review back-edges (dismiss/re-review goes backward in SDLC)
 	"changes_requested->checks_passed",
 	"review_comments->checks_passed",
@@ -296,25 +296,11 @@ function isBackEdge(t: {from: Category; to: Category; transition: string}): bool
 	return BACK_EDGES.has(`${t.from}->${t.to}`);
 }
 
-// Column assignments for tie-breaking: when multiple nodes have in-degree 0,
-// prefer nodes from earlier columns. This keeps failure states adjacent to
+// Tie-break by position in the canonical order: when multiple nodes have
+// in-degree 0, prefer nodes from earlier columns. This keeps failure states adjacent to
 // their success counterparts (e.g. test_failed near test_running, not after push states).
-const COLUMN_ORDER: Category[][] = [
-	["untriaged", "triaged", "plan_unreviewed", "plan_approved"],
-	["detached_head", "local_changes", "no_test"],
-	["ready_to_test", "test_running", "test_failed"],
-	["needs_rebase", "rebase_conflicts", "needs_split"],
-	["ready_to_push", "pushing", "pushed_no_pr"],
-	["checks_unknown", "checks_running", "checks_failed"],
-	["checks_passed", "review_comments", "changes_requested", "approved"],
-];
-
 function columnIndex(cat: Category): number {
-	for (let i = 0; i < COLUMN_ORDER.length; i++) {
-		const row = COLUMN_ORDER[i]?.indexOf(cat) ?? -1;
-		if (row >= 0) return i * 100 + row;
-	}
-	return 9999;
+	return CATEGORY_ORDER.indexOf(cat);
 }
 
 // Derive category order from STATE_MACHINE topology using topological sort.

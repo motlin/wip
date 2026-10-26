@@ -21,37 +21,29 @@ export const MergeStateStatusSchema = z.enum([
 ]);
 export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
 
-// Kanban left-to-right: full SDLC flow
-export const CategorySchema = z.enum([
-	"snoozed",
-	"skippable",
-	"untriaged",
-	"triaged",
-	"plan_unreviewed",
-	"plan_approved",
-	"no_test",
-	"detached_head",
-	"local_changes",
-	"ready_to_test",
-	"test_running",
-	"test_failed",
-	"needs_rebase",
-	"rebase_unknown",
-	"rebase_conflicts",
-	"rebase_stuck",
-	"needs_split",
-	"ready_to_push",
-	"pushing",
-	"pushed_no_pr",
-	"checks_unknown",
-	"checks_running",
-	"checks_failed",
-	"checks_passed",
-	"review_comments",
-	"changes_requested",
-	"approved",
-]);
-export type Category = z.infer<typeof CategorySchema>;
+// The one canonical category order: the full SDLC flow left to right, grouped
+// into lifecycle-phase columns. CategorySchema, the /states graph columns and the
+// queue's topological tie-break all derive from this.
+export const CATEGORY_COLUMNS = [
+	// Overrides and ideas
+	["snoozed", "skippable", "untriaged", "triaged", "plan_unreviewed", "plan_approved"],
+	// Early local
+	["detached_head", "local_changes", "no_test"],
+	// Test cycle
+	["ready_to_test", "test_running", "test_failed"],
+	// Rebase and split
+	["needs_rebase", "rebase_unknown", "rebase_conflicts", "rebase_stuck", "needs_split"],
+	// Push
+	["ready_to_push", "pushing", "pushed_no_pr"],
+	// CI
+	["checks_unknown", "checks_running", "checks_failed"],
+	// Review
+	["checks_passed", "review_comments", "changes_requested", "approved"],
+] as const;
+
+export type Category = (typeof CATEGORY_COLUMNS)[number][number];
+export const CATEGORY_ORDER: readonly Category[] = CATEGORY_COLUMNS.flat();
+export const CategorySchema = z.enum(CATEGORY_ORDER);
 
 // Named transitions: verbs that move items between states
 export const TransitionSchema = z.enum([
@@ -79,6 +71,7 @@ export const TransitionSchema = z.enum([
 	"approve",
 	"dismiss_review",
 	"merge",
+	"push_complete",
 ]);
 export type Transition = z.infer<typeof TransitionSchema>;
 
@@ -93,10 +86,10 @@ export interface StateTransition {
 	outcome?: TransitionOutcome;
 }
 
-// Formal state machine: every valid (from, action, to) triple.
+// Every valid (from, action, to) triple except the unsnooze returns, which are derived below.
 // States are nouns/adjectives (what the item IS); transitions are verbs (what HAPPENS).
-export const STATE_MACHINE: readonly StateTransition[] = [
-	// Snooze/unsnooze — available from most states
+const FLOW_TRANSITIONS: readonly StateTransition[] = [
+	// Snooze — available from most states
 	{from: "ready_to_test", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "test_failed", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "ready_to_push", transition: "snooze", to: "snoozed", kind: "active"},
@@ -120,7 +113,6 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: "review_comments", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "changes_requested", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "approved", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "snoozed", transition: "unsnooze", to: "snoozed", kind: "active"},
 
 	// Plan flow
 	{from: "triaged", transition: "generate_plan", to: "plan_unreviewed", kind: "active"},
@@ -162,6 +154,8 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	{from: "ready_to_push", transition: "push", to: "pushing", kind: "active"},
 	{from: "ready_to_push", transition: "force_push", to: "pushed_no_pr", kind: "active"},
 	{from: "no_test", transition: "push", to: "pushing", kind: "active"},
+	{from: "pushing", transition: "push_complete", to: "pushed_no_pr", kind: "passive"},
+	{from: "pushing", transition: "push_complete", to: "checks_unknown", kind: "passive"},
 	{from: "pushing", transition: "snooze", to: "snoozed", kind: "active"},
 
 	// PR creation
@@ -205,7 +199,20 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 	// Skippable — orthogonal state (no incoming transitions; derived from item.skippable flag)
 	// Skippable items are terminal and cannot transition to other states via actions
 	// Only way to exit is to mark as unskippable (implicit, not modeled as explicit transition)
-] as const;
+];
+
+// Formal state machine. Unsnoozing (the timer expiring or the user's Unsnooze) is a passive
+// return to whichever state the item is in when it is next classified, so every snoozable
+// state gets a return edge.
+export const STATE_MACHINE: readonly StateTransition[] = [
+	...FLOW_TRANSITIONS,
+	...FLOW_TRANSITIONS.filter((t) => t.transition === "snooze").map((t): StateTransition => ({
+		from: "snoozed",
+		transition: "unsnooze",
+		to: t.from,
+		kind: "passive",
+	})),
+];
 
 // Lookup helpers
 export function getTransitionsFrom(state: Category): StateTransition[] {

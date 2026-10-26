@@ -2,7 +2,7 @@ import {createFileRoute, Link, useNavigate} from "@tanstack/react-router";
 import {z} from "zod";
 import {ArrowLeft} from "../components/icons.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../lib/category-actions";
-import {STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
+import {CATEGORY_COLUMNS, STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
 
 const statesSearchSchema = z.object({
 	state: z.string().optional(),
@@ -28,23 +28,8 @@ interface NodePos {
 	y: number;
 }
 
-// Column assignments: group states by lifecycle phase
-const COLUMNS: Category[][] = [
-	// Col 0: overrides + ideas
-	["snoozed", "skippable", "untriaged", "triaged", "plan_unreviewed", "plan_approved"],
-	// Col 1: early local
-	["detached_head", "local_changes", "no_test"],
-	// Col 2: test cycle
-	["ready_to_test", "test_running", "test_failed"],
-	// Col 3: rebase + split
-	["needs_rebase", "rebase_unknown", "rebase_conflicts", "rebase_stuck", "needs_split"],
-	// Col 4: push
-	["ready_to_push", "pushed_no_pr"],
-	// Col 5: CI
-	["checks_unknown", "checks_running", "checks_failed"],
-	// Col 6: review
-	["checks_passed", "review_comments", "changes_requested", "approved"],
-];
+// Column assignments: the canonical lifecycle-phase columns
+const COLUMNS: readonly (readonly Category[])[] = CATEGORY_COLUMNS;
 
 function computePositions(): Map<Category, NodePos> {
 	const positions = new Map<Category, NodePos>();

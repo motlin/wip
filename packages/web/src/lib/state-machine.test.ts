@@ -6,7 +6,10 @@ import {
 	getTransitionsFrom,
 	getTransitionsTo,
 	applyTransition,
+	CATEGORY_ORDER,
+	CATEGORY_COLUMNS,
 } from "@wip/shared";
+import {CATEGORY_PRIORITY} from "./category-actions.js";
 
 describe("STATE_MACHINE", () => {
 	const allCategories = CategorySchema.options;
@@ -55,11 +58,33 @@ describe("STATE_MACHINE", () => {
 		expect(fromSnoozed.some((t) => t.transition === "unsnooze")).toBe(true);
 	});
 
-	it("unsnooze is a self-transition on snoozed (actual state derived at runtime)", () => {
-		const unsnooze = STATE_MACHINE.find((t) => t.transition === "unsnooze");
-		expect(unsnooze).toBeDefined();
-		expect(unsnooze!.from).toBe("snoozed");
-		expect(unsnooze!.to).toBe("snoozed");
+	it("has no snoozed self-loop", () => {
+		const selfLoops = STATE_MACHINE.filter((t) => t.from === "snoozed" && t.to === "snoozed");
+		expect(selfLoops).toStrictEqual([]);
+	});
+
+	it("unsnooze is a passive return to every state that can be snoozed", () => {
+		const unsnoozeTargets = STATE_MACHINE.filter((t) => t.transition === "unsnooze").map((t) => ({
+			from: t.from,
+			to: t.to,
+			kind: t.kind,
+		}));
+		const snoozeSources = STATE_MACHINE.filter((t) => t.transition === "snooze").map((t) => ({
+			from: "snoozed",
+			to: t.from,
+			kind: "passive",
+		}));
+		expect(unsnoozeTargets).toStrictEqual(snoozeSources);
+	});
+
+	it("pushing settles passively into pushed_no_pr or checks_unknown", () => {
+		const fromPushing = getTransitionsFrom("pushing")
+			.filter((t) => t.transition !== "snooze")
+			.map((t) => ({to: t.to, kind: t.kind}));
+		expect(fromPushing).toStrictEqual([
+			{to: "pushed_no_pr", kind: "passive"},
+			{to: "checks_unknown", kind: "passive"},
+		]);
 	});
 
 	it("every non-terminal, non-snoozed state can be snoozed", () => {
@@ -94,6 +119,34 @@ describe("STATE_MACHINE", () => {
 				`${t.from} --${t.transition}--> ${t.to} missing valid kind, got "${t.kind}"`,
 			).toContain(t.kind);
 		}
+	});
+});
+
+describe("canonical category order", () => {
+	const allCategories = CategorySchema.options;
+
+	it("CATEGORY_ORDER is the CategorySchema order with every category exactly once", () => {
+		expect(CATEGORY_ORDER).toStrictEqual(allCategories);
+		expect(new Set(CATEGORY_ORDER).size).toBe(allCategories.length);
+	});
+
+	it("CATEGORY_COLUMNS flatten to the canonical order", () => {
+		expect(CATEGORY_COLUMNS.flat()).toStrictEqual(allCategories);
+	});
+
+	it("CATEGORY_PRIORITY includes every category exactly once", () => {
+		expect(CATEGORY_PRIORITY.toSorted()).toStrictEqual(allCategories.toSorted());
+	});
+
+	it("every state in the graph has a column, including pushing", () => {
+		const graphStates = new Set(STATE_MACHINE.flatMap((t) => [t.from, t.to]));
+		const placed = new Set(CATEGORY_COLUMNS.flat());
+		expect([...graphStates].filter((s) => !placed.has(s))).toStrictEqual([]);
+		expect(graphStates.has("pushing")).toBe(true);
+	});
+
+	it("rebase_conflicts -> ready_to_test is a forward edge", () => {
+		expect(CATEGORY_PRIORITY.indexOf("rebase_conflicts")).toBeLessThan(CATEGORY_PRIORITY.indexOf("ready_to_test"));
 	});
 });
 

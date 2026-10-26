@@ -801,8 +801,10 @@ export async function testChildHandler(data: TestChildInput): Promise<TestJobSta
 			throw new Error(`Cannot run test: no test configured for ${data.project}`);
 		}
 
+		// An explicit Run Test on a test_failed commit re-runs it; otherwise git-test's cached result stands.
+		const retest = (await getGitTestStatuses(p.dir, [data.sha])).get(data.sha) === "failed";
 		const {enqueueTest} = await import("./task-queue.js");
-		const job = enqueueTest(data.project, p.dir, data.sha, shortSha, subject, branch);
+		const job = enqueueTest(data.project, p.dir, data.sha, shortSha, subject, branch, {retest});
 		return {id: job.id, status: job.status, message: job.message};
 	});
 }

@@ -583,13 +583,15 @@ export async function testBranch(
 	branch: string,
 	upstreamRef: string,
 	env: Record<string, string>,
-	opts?: {force?: boolean},
+	opts?: {force?: boolean; retest?: boolean},
 ): Promise<{exitCode: number; logContent: string}> {
 	// Write JUSTFILE_BRANCH as crash-recovery courtesy
 	const branchFilePath = path.join(dir, "JUSTFILE_BRANCH");
 	fs.writeFileSync(branchFilePath, branch + "\n");
 
-	const testArgs = ["test", "run", "--retest"];
+	// A cached bad result fails fast; only an explicit user request re-runs it.
+	const testArgs = ["test", "run"];
+	if (opts?.retest) testArgs.push("--retest");
 	if (opts?.force) testArgs.push("--force");
 	testArgs.push(`${upstreamRef}..${branch}`);
 

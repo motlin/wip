@@ -1,5 +1,5 @@
 import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
-import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {execSync, execFileSync} from "node:child_process";
@@ -19,6 +19,7 @@ import {
 	getNeedsRebaseBranches,
 	getRemoteBranchInfo,
 	pruneRemote,
+	testBranch,
 } from "./git.js";
 import {sorted} from "../test/sorted.js";
 import {getPrStatuses} from "./github-pr-status.js";
@@ -627,6 +628,55 @@ describe("pruneRemote", () => {
 		tempDir = createTestGitRepo("owner", "repo");
 		// Should not throw when the remote can't be contacted
 		await expect(pruneRemote(tempDir, "nonexistent-remote")).resolves.toBeUndefined();
+	});
+});
+
+describe("testBranch", {timeout: 30_000}, () => {
+	let tempDir: string | undefined;
+	let counterDir: string | undefined;
+
+	afterEach(() => {
+		for (const dir of [tempDir, counterDir]) {
+			if (dir) rmSync(dir, {recursive: true, force: true});
+		}
+		tempDir = undefined;
+		counterDir = undefined;
+	});
+
+	function setupRedBranch(): {dir: string; counter: string} {
+		const dir = createTestGitRepo("owner", "repo");
+		tempDir = dir;
+		counterDir = mkdtempSync(join(tmpdir(), "wip-counter-"));
+		const counter = join(counterDir, "runs");
+		execSync("git commit --allow-empty -m base && git branch base", {cwd: dir, stdio: "ignore"});
+		execSync("git checkout -b feature && git commit --allow-empty -m red", {cwd: dir, stdio: "ignore"});
+		execFileSync("git", ["test", "add", "--test", "default", `echo run >> ${counter}; false`], {
+			cwd: dir,
+			stdio: "ignore",
+		});
+		return {dir, counter};
+	}
+
+	it("reuses a cached bad result by default", async () => {
+		const {dir, counter} = setupRedBranch();
+
+		const first = await testBranch(dir, "feature", "base", {});
+		const second = await testBranch(dir, "feature", "base", {});
+
+		expect([first.exitCode !== 0, second.exitCode !== 0, readFileSync(counter, "utf8")]).toStrictEqual([
+			true,
+			true,
+			"run\n",
+		]);
+	});
+
+	it("re-runs a cached bad result only when retest is asked", async () => {
+		const {dir, counter} = setupRedBranch();
+
+		await testBranch(dir, "feature", "base", {});
+		await testBranch(dir, "feature", "base", {}, {retest: true});
+
+		expect(readFileSync(counter, "utf8")).toBe("run\nrun\n");
 	});
 });
 

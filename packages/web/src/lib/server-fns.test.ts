@@ -1087,6 +1087,32 @@ describe("testChild (underlying logic via task-queue)", () => {
 		expect(allJobs.has(job.id)).toBe(true);
 	});
 
+	it("passes --retest only for an explicit Run Test on a test_failed commit", async () => {
+		const {testChildHandler} = await import("./server-fns.impl.js");
+		const {getAllJobs, testTaskArgs} = await import("./task-queue.js");
+
+		const dir = await createTestGitRepo();
+		// git-test keys results by tree, so each commit changes a file.
+		await writeTestFile(join(dir, "a.txt"), "red\n");
+		await execa("git", ["add", "a.txt"], {cwd: dir});
+		await execa("git", ["commit", "-m", "red"], {cwd: dir});
+		const red = (await execa("git", ["rev-parse", "HEAD"], {cwd: dir})).stdout.trim();
+		await writeTestFile(join(dir, "a.txt"), "untested\n");
+		await execa("git", ["commit", "-am", "untested"], {cwd: dir});
+		const untested = (await execa("git", ["rev-parse", "HEAD"], {cwd: dir})).stdout.trim();
+		await markGitTest(dir, red, false);
+		seedProjectCache([makeProject({name: "retest-proj", dir})]);
+
+		const redJob = await testChildHandler({project: "retest-proj", sha: red});
+		const untestedJob = await testChildHandler({project: "retest-proj", sha: untested});
+
+		const jobs = getAllJobs();
+		expect([testTaskArgs(jobs.get(redJob.id)!), testTaskArgs(jobs.get(untestedJob.id)!)]).toStrictEqual([
+			["-C", dir, "test", "run", "--retest", red],
+			["-C", dir, "test", "run", untested],
+		]);
+	});
+
 	it("enqueueTest returns existing job if already queued for same sha+project", async () => {
 		const {enqueueTest} = await import("./task-queue.js");
 

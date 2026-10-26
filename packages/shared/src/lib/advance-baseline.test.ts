@@ -1,5 +1,5 @@
 import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
-import {existsSync, mkdtempSync, rmSync} from "node:fs";
+import {existsSync, mkdtempSync, readFileSync, rmSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {execSync} from "node:child_process";
@@ -82,6 +82,21 @@ describe("checkBaseline", () => {
 		expect(tableNames()).toStrictEqual(before);
 		expect(before).not.toContain("test_results");
 		expect(existsSync(join(cacheDir, "wip", "test-logs", "p", `${sha}.log`))).toBe(true);
+	});
+
+	it("reuses a cached bad baseline instead of retesting it", async () => {
+		const counter = join(cacheDir, "runs");
+		git(dir, `test add --test default "echo run >> ${counter}; false"`);
+		const sha = git(dir, "rev-parse main");
+
+		const first = await checkBaseline({project: "p", dir, upstreamRef: "main"});
+		const second = await checkBaseline({project: "p", dir, upstreamRef: "main"});
+
+		expect([first, second, readFileSync(counter, "utf8")]).toStrictEqual([
+			{sha, green: false},
+			{sha, green: false},
+			"run\n",
+		]);
 	});
 
 	it("stops on a non-zero git test exit without writing to the database", async () => {

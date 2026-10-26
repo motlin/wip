@@ -18,7 +18,7 @@ export interface BaselineCheck {
 /** Run git-test on a single commit; the exit code decides. The log stays as a file. */
 async function defaultRunTest(dir: string, sha: string, project: string): Promise<boolean> {
 	const env = await getMiseEnv(dir);
-	const {exitCode} = await gitTestRun(dir, sha, {logDir: getTestLogDir(project), retest: true, env});
+	const {exitCode} = await gitTestRun(dir, sha, {logDir: getTestLogDir(project), env});
 	return exitCode === 0;
 }
 

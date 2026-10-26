@@ -56,6 +56,8 @@ export interface Task {
 	upstreamBranch?: string;
 	remote?: string;
 	createBranch?: boolean;
+	/** Test tasks: re-run a cached bad result. Only for an explicit Run Test on a test_failed item. */
+	retest?: boolean;
 	status: TaskStatus;
 	message?: string;
 	outcome?: TransitionOutcome;
@@ -355,9 +357,14 @@ async function runProcess({
 	return {exitCode: result.exitCode, duration};
 }
 
+/** `git test run` args for a test task: a cached result is reused unless the task asks to retest. */
+export function testTaskArgs(task: Pick<Task, "projectDir" | "sha" | "retest">): string[] {
+	return ["-C", task.projectDir, "test", "run", ...(task.retest ? ["--retest"] : []), task.sha];
+}
+
 async function runTestTask(task: Task, signal: AbortSignal): Promise<void> {
 	const miseEnv = await getMiseEnv(task.projectDir);
-	const args = ["-C", task.projectDir, "test", "run", "--retest", task.sha];
+	const args = testTaskArgs(task);
 
 	const result = await runProcess({
 		task,
@@ -743,6 +750,7 @@ export function enqueueTask(
 	subject?: string,
 	branch?: string,
 	command?: string,
+	retest?: boolean,
 ): Task {
 	ensureLoaded();
 	const existing = findTask(sha, project, taskType);
@@ -760,6 +768,7 @@ export function enqueueTask(
 		subject: subject ?? shortSha,
 		branch,
 		command,
+		...(retest ? {retest} : {}),
 		status: "queued",
 		queuedAt: Date.now(),
 	});
@@ -931,7 +940,8 @@ export const enqueueTest = (
 	shortSha: string,
 	subject?: string,
 	branch?: string,
-) => enqueueTask("test", project, projectDir, sha, shortSha, subject, branch);
+	opts?: {retest?: boolean},
+): Task => enqueueTask("test", project, projectDir, sha, shortSha, subject, branch, undefined, opts?.retest);
 export const cancelTest = cancelTask;
 export const getAllJobs = getAllTasks;
 

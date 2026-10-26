@@ -159,6 +159,7 @@ export default class Test extends Command {
 				// Run git test on branch range
 				const result = await testBranch(p.dir, branchName, p.upstreamRef, miseEnv, {
 					force: flags.force,
+					retest: true,
 				});
 
 				const logPath = path.join(logDir, `${child.sha}.log`);

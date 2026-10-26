@@ -6,13 +6,21 @@ vi.mock("@wip/shared", () => ({
 	getChildren: vi.fn<(...args: unknown[]) => unknown>(),
 	cacheMergeStatus: vi.fn<(...args: unknown[]) => unknown>(),
 	getCachedMergeStatuses: vi.fn<(...args: unknown[]) => unknown>(),
+	heldShas: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
 	getProjects: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
-import {fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from "@wip/shared";
+import {
+	fetchUpstreamRef,
+	computeMergeStatus,
+	getChildren,
+	cacheMergeStatus,
+	getCachedMergeStatuses,
+	heldShas,
+} from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
 import {mergeStatusToTransition, checkProject, emitter} from "./merge-queue";
@@ -23,6 +31,7 @@ const mockGetChildren = getChildren as Mock;
 const mockGetCachedMergeStatuses = getCachedMergeStatuses as Mock;
 const mockComputeMergeStatus = computeMergeStatus as Mock;
 const mockCacheMergeStatus = cacheMergeStatus as Mock;
+const mockHeldShas = heldShas as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -71,7 +80,33 @@ describe("mergeStatusToTransition", () => {
 describe("checkProject", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		mockHeldShas.mockResolvedValue(new Set());
 		emitter.removeAllListeners();
+	});
+
+	it("skips On hold children: no merge-tree work and no event for them", async () => {
+		const project = makeProject();
+		mockGetProjects.mockResolvedValue([project]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockResolvedValue(["held-sha", "free-sha"]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockHeldShas.mockResolvedValue(new Set(["held-sha"]));
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 0, rebaseable: null});
+
+		const events: unknown[] = [];
+		emitter.on("mergeStatus", (e) => events.push(e));
+
+		await checkProject("test-project");
+
+		expect({
+			held: mockHeldShas.mock.calls,
+			computed: mockComputeMergeStatus.mock.calls,
+			events: events.map((e) => (e as {sha: string}).sha),
+		}).toStrictEqual({
+			held: [["/tmp/test-project", "test-project", ["held-sha", "free-sha"]]],
+			computed: [["/tmp/test-project", "free-sha", "upstream-abc"]],
+			events: ["free-sha"],
+		});
 	});
 
 	it("does nothing when the project is not found", async () => {

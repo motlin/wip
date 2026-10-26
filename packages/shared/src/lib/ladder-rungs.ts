@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import {tracedExeca, type ExecaResult} from "../services/traced-execa.js";
 import {getCacheDir} from "./config.js";
+import {heldShas} from "./snooze-identity.js";
 import {planLadder, type LadderProjectInfo, type LadderResult, type LadderRungName} from "./ladder.js";
 
 /**
@@ -18,6 +19,8 @@ export interface LadderRungProject {
 	upstreamBranch: string;
 	/** Aborts running subprocesses (execa cancelSignal). */
 	signal?: AbortSignal | undefined;
+	/** Which of these branch-tip shas are On hold; their branches are left alone. */
+	onHold?: ((shas: string[]) => Promise<ReadonlySet<string>>) | undefined;
 }
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}(?:\\[[0-9;]*m|\\(B)`, "g");
@@ -96,10 +99,18 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	const upstream = `${project.upstreamRemote}/${project.upstreamBranch}`;
 	const branchList = await gitIn(
 		project.path,
-		["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+		["for-each-ref", "--format=%(objectname) %(refname:short)", "refs/heads"],
 		project.signal,
 	);
 	if (branchList.exitCode !== 0) return errorResult(project, "rebase-leftovers", branchList);
+	const tips = branchList.stdout
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const space = line.indexOf(" ");
+			return {sha: line.slice(0, space), branch: line.slice(space + 1)};
+		});
+	const held = project.onHold ? await project.onHold(tips.map((tip) => tip.sha)) : new Set<string>();
 	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"], project.signal);
 	if (worktrees.exitCode !== 0) return errorResult(project, "rebase-leftovers", worktrees);
 	const checkedOut = new Set(
@@ -111,8 +122,8 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 
 	const leftovers: string[] = [];
 	/* oxlint-disable no-await-in-loop -- git subprocesses run one at a time: worktree add/remove contend on the repo lock and rebases are heavy */
-	for (const branch of branchList.stdout.split("\n").filter(Boolean)) {
-		if (checkedOut.has(branch)) continue;
+	for (const {sha, branch} of tips) {
+		if (checkedOut.has(branch) || held.has(sha)) continue;
 		const contains = await gitIn(project.path, ["merge-base", "--is-ancestor", upstream, branch], project.signal);
 		if (contains.exitCode !== 0) leftovers.push(branch);
 	}
@@ -256,6 +267,7 @@ export async function runLadder(project: LadderRunProject, options: RunLadderOpt
 		upstreamRemote: project.upstreamRemote,
 		upstreamBranch: project.upstreamBranch,
 		signal: options.signal,
+		onHold: project.onHold ?? (async (shas) => heldShas(project.path, project.name, shas)),
 	};
 	const result: LadderResult = {project: project.name, rungs: []};
 	/* oxlint-disable no-await-in-loop -- rungs are ordered and must run one at a time */

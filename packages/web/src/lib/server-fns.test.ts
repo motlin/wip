@@ -1901,13 +1901,10 @@ describe("getProjectChildrenHandler", () => {
 		expect(child!.mergeStateStatus).toBe("BLOCKED");
 	});
 
-	it("filters out snoozed children", async () => {
+	it("returns an On hold child flagged instead of dropping it, and enqueues no branch-name job for it", async () => {
 		const dir = await createTestGitRepo();
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Snoozed commit"]);
 		const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
-
-		const {snoozeItem} = await import("@wip/shared");
-		snoozeItem(sha, "snooze-filter-test", sha.slice(0, 7), "Snoozed commit", null);
 
 		const project = makeProject({
 			name: "snooze-filter-test",
@@ -1915,14 +1912,59 @@ describe("getProjectChildrenHandler", () => {
 			upstreamRef: "main~1",
 		});
 		seedProjectCache([project]);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue").mockImplementation(
+			() =>
+				({
+					settled: Promise.resolve(),
+					coalesced: false,
+				}) as unknown as ReturnType<typeof workQueue.enqueue>,
+		);
+		const namingJobs = () =>
+			enqueueSpy.mock.calls.filter(([job]) => job.kind === "branch-name").map(([job]) => job.coalesceKey);
 
-		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
-		const result = await getProjectChildrenHandler("snooze-filter-test");
-		const snoozedChild = result.find((c) => c.sha === sha);
-		expect(snoozedChild).toBeUndefined();
+		const {refreshProjectChildren} = await import("./server-fns.impl.js");
+		const before = await refreshProjectChildren("snooze-filter-test");
+		const namedBefore = namingJobs();
+		enqueueSpy.mockClear();
+
+		const {snoozeItem} = await import("@wip/shared");
+		snoozeItem(sha, "snooze-filter-test", sha.slice(0, 7), "Snoozed commit", null);
+		const after = await refreshProjectChildren("snooze-filter-test");
+		enqueueSpy.mockRestore();
+
+		expect({
+			before: before.map((c) => ({sha: c.sha, onHold: c.onHold})),
+			namedBefore,
+			after: after.map((c) => ({sha: c.sha, onHold: c.onHold})),
+			namedAfter: namingJobs(),
+		}).toStrictEqual({
+			before: [{sha, onHold: undefined}],
+			namedBefore: [`branch-name:snooze-filter-test:${sha}`],
+			after: [{sha, onHold: true}],
+			namedAfter: [],
+		});
 	});
 
-	it("keeps a commit put On hold hidden after it is reworded to a new sha", async () => {
+	it("leaves an On hold child out of the Run All Tests and Rebase All counts", async () => {
+		const {cacheChildren} = await import("@wip/shared");
+		seedProjectCache([makeProject({name: "held-bulk", dir: "/tmp/held-bulk"})]);
+		cacheChildren("held-bulk", [
+			makeChild({project: "held-bulk", sha: "a".repeat(40), branch: undefined, testStatus: "unknown"}),
+			makeChild({
+				project: "held-bulk",
+				sha: "b".repeat(40),
+				branch: undefined,
+				testStatus: "unknown",
+				onHold: true,
+			}),
+		]);
+
+		const {runAllCountsHandler} = await import("./server-fns.impl.js");
+
+		expect(await runAllCountsHandler()).toStrictEqual({readyToTest: 1, needsRebase: 0});
+	});
+
+	it("keeps a commit put On hold flagged after it is reworded to a new sha", async () => {
 		const dir = await createTestGitRepo();
 		await writeTestFile(join(dir, "held.txt"), "held\n");
 		await execa("git", ["-C", dir, "add", "held.txt"]);
@@ -1941,13 +1983,13 @@ describe("getProjectChildrenHandler", () => {
 		const result = await getProjectChildrenHandler("hold-rebase-test");
 		const snoozed = await getSnoozedListHandler();
 
-		expect(result.map((c) => c.sha)).not.toContain(reworded);
+		expect(result.map((c) => ({sha: c.sha, onHold: c.onHold}))).toStrictEqual([{sha: reworded, onHold: true}]);
 		expect(snoozed.map((s) => ({sha: s.sha, until: s.until, orphaned: s.orphaned}))).toStrictEqual([
 			{sha: reworded, until: null, orphaned: false},
 		]);
 	});
 
-	it("keeps a pre-migration On hold row hidden when its commit is rebased before the first children refresh", async () => {
+	it("keeps a pre-migration On hold row flagged when its commit is rebased before the first children refresh", async () => {
 		const dir = await createTestGitRepo();
 		await writeTestFile(join(dir, "legacy.txt"), "legacy\n");
 		await execa("git", ["-C", dir, "add", "legacy.txt"]);
@@ -1967,9 +2009,9 @@ describe("getProjectChildrenHandler", () => {
 		const result = await getProjectChildrenHandler("legacy-hold-test");
 
 		expect({
-			shown: result.map((c) => c.sha).includes(rebased),
+			held: result.map((c) => ({sha: c.sha, onHold: c.onHold})),
 			rows: getAllSnoozedForDisplay().map((s) => ({sha: s.sha, orphaned: s.orphaned})),
-		}).toStrictEqual({shown: false, rows: [{sha: rebased, orphaned: false}]});
+		}).toStrictEqual({held: [{sha: rebased, onHold: true}], rows: [{sha: rebased, orphaned: false}]});
 	});
 });
 

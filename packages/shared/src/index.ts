@@ -117,7 +117,13 @@ export {renderTree, type NodeStatus, type ReportNode} from "./lib/advance-report
 export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from "./lib/advance-config.js";
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
 export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
-export {backfillSnoozedPatchIds, resolveSnoozedChildren, type ResolvedSnoozes} from "./lib/snooze-identity.js";
+export {
+	backfillSnoozedPatchIds,
+	heldShas,
+	isOnHold,
+	resolveSnoozedChildren,
+	type ResolvedSnoozes,
+} from "./lib/snooze-identity.js";
 export {
 	runAdvanceUnits,
 	type SchedulableUnit,

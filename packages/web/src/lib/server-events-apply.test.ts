@@ -154,7 +154,7 @@ describe("batched cache writes", () => {
 		expect(children?.[0]?.sha).toBe(SHA);
 	});
 
-	it("filters snoozed children on flush", () => {
+	it("flags snoozed children on flush instead of dropping them", () => {
 		queryClient.setQueryData(
 			["snoozed"],
 			[
@@ -171,7 +171,9 @@ describe("batched cache writes", () => {
 		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
 		vi.advanceTimersByTime(300);
 
-		expect(queryClient.getQueryData<GitChildResult[]>(["children", "wip"])).toHaveLength(0);
+		expect(queryClient.getQueryData<GitChildResult[]>(["children", "wip"])).toStrictEqual([
+			{...makeChild(), onHold: true},
+		]);
 	});
 
 	it("keeps a client-side pushing overlay when a children event arrives mid-push", () => {

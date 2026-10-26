@@ -110,9 +110,10 @@ function QueueLayout() {
 
 		g.untriaged.projectItems = workItems.projectItems;
 
+		// On hold and snoozed items are not WIP.
 		let total = 0;
 		for (const cat of CATEGORY_PRIORITY) {
-			total += bucketCount(g[cat]);
+			if (cat !== "snoozed") total += bucketCount(g[cat]);
 		}
 
 		const rtCount = g.ready_to_test.gitChildren?.length ?? 0;

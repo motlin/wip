@@ -147,6 +147,35 @@ describe("runRebaseLeftoversRung with real repos", () => {
 		expect(git(clone, "rev-parse", "clean~1")).toBe(git(clone, "rev-parse", "upstream/main"));
 		expect(git(clone, "status", "--porcelain")).toBe(" M base.txt\n?? dirty.txt".trim());
 	});
+
+	it("leaves a branch whose tip is On hold untouched", async () => {
+		git(clone, "branch", "-D", "conflicting");
+		const cleanBefore = git(clone, "rev-parse", "clean");
+		const oldBase = git(clone, "rev-parse", "main");
+		const asked: Set<string>[] = [];
+
+		const result = await runRebaseLeftoversRung({
+			...project(),
+			onHold: async (shas) => {
+				asked.push(new Set(shas));
+				return Promise.resolve(new Set([cleanBefore]));
+			},
+		});
+
+		expect({
+			result,
+			asked,
+			clean: git(clone, "rev-parse", "clean"),
+		}).toStrictEqual({
+			result: {
+				project: "clone",
+				rungs: [{rung: "rebase-leftovers", status: "passed", detail: "rebased 1 branch(es)"}],
+				rebased: ["main"],
+			},
+			asked: [new Set([cleanBefore, oldBase])],
+			clean: cleanBefore,
+		});
+	});
 });
 
 describe("runPruneRung and runDeleteMergedLocalRung with real repos", () => {

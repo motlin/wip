@@ -350,7 +350,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			const result = await snoozeChildFn({data: {project: item.project, sha: item.sha, until}});
 			showActionToasts("Snooze", result);
 			if (result.ok) {
-				cache.removeItem(item.sha);
+				cache.updateItem(item.sha, (i) => ({...i, onHold: true}));
 				queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) => [
 					...(old ?? []),
 					{

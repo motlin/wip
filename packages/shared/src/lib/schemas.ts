@@ -373,6 +373,8 @@ export const GitChildResultSchema = z.object({
 	isHead: z.boolean().optional(),
 	/** Set when some On hold / Snooze row in the project carries a patch-id. */
 	patchId: z.string().optional(),
+	/** On hold or snoozed: returned flagged so the client can show it collapsed; classifies as `snoozed`. */
+	onHold: z.boolean().optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 

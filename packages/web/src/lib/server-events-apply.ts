@@ -4,7 +4,7 @@ import {createQueryUpdateBatcher} from "./query-update-batcher.js";
 import type {ProjectChildrenResult} from "./server-fns.js";
 import type {ServerEvent, TaskEvent} from "./server-events-schema.js";
 import {applyMergeEvent, applySchedulerState, applyTaskEvent, getTaskSnapshot} from "./server-events-store.js";
-import {filterSnoozedChildren} from "./snoozed-filter.js";
+import {flagSnoozedChildren} from "./snoozed-filter.js";
 import {pushToast} from "./toast-store.js";
 
 /**
@@ -94,7 +94,7 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 			const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
 			const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
 			const merged = keepClientOverlays(old, projectChildren);
-			queryClient.setQueryData(["children", project], filterSnoozedChildren(merged, project, snoozed));
+			queryClient.setQueryData(["children", project], flagSnoozedChildren(merged, project, snoozed));
 		}
 	}, QUERY_FLUSH_DELAY_MS);
 	const todosBatcher = createQueryUpdateBatcher<TodoItem[]>((updates) => {
@@ -226,7 +226,7 @@ export async function resyncLoadedProjects(
 					const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
 					queryClient.setQueryData(
 						["children", project],
-						filterSnoozedChildren(keepClientOverlays(old, children.value, hasActiveTask), project, snoozed),
+						flagSnoozedChildren(keepClientOverlays(old, children.value, hasActiveTask), project, snoozed),
 					);
 				}
 				if (todos.status === "fulfilled") queryClient.setQueryData(["todos", project], todos.value);

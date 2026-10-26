@@ -1,5 +1,12 @@
 import {EventEmitter} from "node:events";
-import {fetchUpstreamRef, computeMergeStatus, getChildren, cacheMergeStatus, getCachedMergeStatuses} from "@wip/shared";
+import {
+	fetchUpstreamRef,
+	computeMergeStatus,
+	getChildren,
+	cacheMergeStatus,
+	getCachedMergeStatuses,
+	heldShas,
+} from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
 
@@ -24,7 +31,10 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 	const {sha: upstreamSha} = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
 	if (!upstreamSha) return;
 
-	const childShas = await getChildren(p.dir, p.upstreamRef);
+	const allShas = await getChildren(p.dir, p.upstreamRef);
+	// On hold items get no background merge-tree work.
+	const held = await heldShas(p.dir, p.name, allShas);
+	const childShas = allShas.filter((sha) => !held.has(sha));
 	const cached = new Map(getCachedMergeStatuses(p.name, upstreamSha).map((ms) => [ms.sha, ms]));
 
 	for (const sha of childShas) {

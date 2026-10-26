@@ -292,12 +292,13 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				seen.add(c.sha);
 				return true;
 			});
+			// On hold and snoozed children are returned flagged, not dropped, and get no background jobs.
 			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
-			const allChildren = uniqueChildren.filter((c) => !snoozes.hidden.has(c.sha));
 
 			// Collect all children that need branch name suggestions and fetch cached names up front
 			const defaultBranchPattern = /^(main|master)$/;
-			const namingKeys = allChildren
+			const namingKeys = uniqueChildren
+				.filter((c) => !snoozes.held.has(c.sha))
 				.filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
 				.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir}));
 			const cachedNames = namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
@@ -320,7 +321,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})
 			).stdout.trim();
 
-			const results: GitChildResult[] = allChildren.map((child) => {
+			const results: GitChildResult[] = uniqueChildren.map((child) => {
 				// Read failure tail for failed tests
 				let failureTail: string | undefined;
 				if (child.testStatus === "failed") {
@@ -374,6 +375,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 							: undefined,
 					isHead: child.sha === headSha,
 					patchId: snoozes.patchIds.get(child.sha),
+					onHold: snoozes.held.has(child.sha) || undefined,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);

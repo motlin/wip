@@ -3,6 +3,7 @@ import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminator
 
 export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {
 	if (child.kind === "upstream_ci") return "upstream_red";
+	if (child.onHold) return "snoozed";
 	if (isGitChildPullRequest(child)) return classifyPullRequest(child, project);
 	if (isGitChildBranch(child)) return classifyBranch(child, project);
 	return classifyCommit(child, project);

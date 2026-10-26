@@ -328,6 +328,14 @@ describe("classifyGitChild", () => {
 		).toBe("upstream_red");
 	});
 
+	it("classifies an On hold or snoozed child as snoozed whatever its other state", () => {
+		expect([
+			classifyGitChild(makePR({onHold: true, checkStatus: "failed"}), makeProject()),
+			classifyGitChild(makeBranch({onHold: true}), makeProject()),
+			classifyGitChild(makePR({onHold: true, branch: undefined, prUrl: undefined}), makeProject()),
+		]).toStrictEqual(["snoozed", "snoozed", "snoozed"]);
+	});
+
 	it("classifies a PR with no reviews as an existing PR, not needs PR", () => {
 		expect(
 			classifyGitChild(makePR({checkStatus: "failed", reviewStatus: "no_pr", localAhead: false}), makeProject()),

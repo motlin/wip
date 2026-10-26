@@ -7,7 +7,7 @@ import {join} from "node:path";
 
 import {getCommitFacts} from "./commit-facts.js";
 import {clearExpiredSnoozes, getAllSnoozed, getAllSnoozedForDisplay, initDb, resetDb, snoozeItem} from "./db.js";
-import {resolveSnoozedChildren} from "./snooze-identity.js";
+import {heldShas, isOnHold, resolveSnoozedChildren} from "./snooze-identity.js";
 
 const PROJECT = "proj";
 const GONE_SHA = "f".repeat(40);
@@ -73,7 +73,7 @@ describe("resolveSnoozedChildren", () => {
 		const rebased = rebaseFeature(dir);
 		const resolved = await resolveSnoozedChildren(dir, PROJECT, [child(rebased)]);
 
-		expect(resolved.hidden).toStrictEqual(new Set([rebased]));
+		expect(resolved.held).toStrictEqual(new Set([rebased]));
 		expect(getAllSnoozedForDisplay()).toStrictEqual([
 			{
 				sha: rebased,
@@ -94,7 +94,7 @@ describe("resolveSnoozedChildren", () => {
 
 		const resolved = await resolveSnoozedChildren(dir, PROJECT, [child(feat)]);
 
-		expect(resolved.hidden).toStrictEqual(new Set());
+		expect(resolved.held).toStrictEqual(new Set());
 		expect(getAllSnoozed()).toStrictEqual([]);
 	});
 
@@ -103,7 +103,7 @@ describe("resolveSnoozedChildren", () => {
 
 		const resolved = await resolveSnoozedChildren(dir, PROJECT, [child(feat)]);
 
-		expect(resolved.hidden).toStrictEqual(new Set());
+		expect(resolved.held).toStrictEqual(new Set());
 		expect(getAllSnoozedForDisplay()).toStrictEqual([
 			{
 				sha: GONE_SHA,
@@ -171,7 +171,7 @@ describe("snoozed migration", () => {
 				orphaned: false,
 			},
 		]);
-		expect(resolved.hidden).toStrictEqual(new Set([feat]));
+		expect(resolved.held).toStrictEqual(new Set([feat]));
 		expect(getAllSnoozedForDisplay()).toStrictEqual([
 			{
 				sha: feat,
@@ -183,5 +183,66 @@ describe("snoozed migration", () => {
 				orphaned: false,
 			},
 		]);
+	});
+});
+
+describe("isOnHold", () => {
+	beforeEach(() => {
+		initDb(":memory:");
+	});
+
+	afterEach(() => {
+		resetDb();
+	});
+
+	it("matches an active row by patch-id at any sha, by last-known sha, and ignores other projects and expired snoozes", () => {
+		snoozeItem("a".repeat(40), PROJECT, "aaaaaaa", "held", null, "p".repeat(40));
+		snoozeItem("b".repeat(40), PROJECT, "bbbbbbb", "legacy", null);
+		snoozeItem("c".repeat(40), PROJECT, "ccccccc", "expired", "2000-01-01T00:00:00Z", "q".repeat(40));
+		clearExpiredSnoozes();
+
+		expect({
+			byPatchId: isOnHold(PROJECT, {sha: "d".repeat(40), patchId: "p".repeat(40)}),
+			byLastKnownSha: isOnHold(PROJECT, {sha: "a".repeat(40)}),
+			legacyBySha: isOnHold(PROJECT, {sha: "b".repeat(40)}),
+			otherProject: isOnHold("other", {sha: "a".repeat(40), patchId: "p".repeat(40)}),
+			expired: isOnHold(PROJECT, {sha: "c".repeat(40), patchId: "q".repeat(40)}),
+			unrelated: isOnHold(PROJECT, {sha: "e".repeat(40), patchId: "r".repeat(40)}),
+		}).toStrictEqual({
+			byPatchId: true,
+			byLastKnownSha: true,
+			legacyBySha: true,
+			otherProject: false,
+			expired: false,
+			unrelated: false,
+		});
+	});
+});
+
+describe("heldShas", () => {
+	let dir: string;
+	let feat: string;
+
+	beforeEach(() => {
+		initDb(":memory:");
+		({dir, feat} = createRepo());
+	});
+
+	afterEach(() => {
+		resetDb();
+		rmSync(dir, {recursive: true, force: true});
+	});
+
+	it("finds a held commit at its rebased sha among background candidates", async () => {
+		const patchId = await patchIdOf(dir, feat);
+		snoozeItem(feat, PROJECT, feat.slice(0, 7), "feat", null, patchId);
+		const rebased = rebaseFeature(dir);
+		const main = sh(dir, "git rev-parse main");
+
+		expect(await heldShas(dir, PROJECT, [rebased, main])).toStrictEqual(new Set([rebased]));
+	});
+
+	it("returns an empty set when the project has nothing on hold", async () => {
+		expect(await heldShas(dir, PROJECT, [feat])).toStrictEqual(new Set());
 	});
 });

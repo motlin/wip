@@ -45,7 +45,7 @@ import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns.js";
-import {CATEGORIES} from "../lib/category-actions.js";
+import {CATEGORIES, addTestCommand} from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
 import {runPendingAction} from "../lib/pending-action.js";
 
@@ -188,6 +188,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [merging, setMerging] = useState(false);
 	const [creatingBranch, setCreatingBranch] = useState(false);
 	const [runningClaude, setRunningClaude] = useState(false);
+	const [addingTest, setAddingTest] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -619,6 +620,15 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 		await runPendingAction("Run Claude", setRunningClaude, async () => {
 			await runClaudeCommand({
 				data: {project: item.project, sha: item.sha, branch, command: llmCommand},
+			});
+		});
+	};
+
+	const handleAddTest = async () => {
+		if (!branch) return;
+		await runPendingAction("Add a test", setAddingTest, async () => {
+			await runClaudeCommand({
+				data: {project: item.project, sha: item.sha, branch, command: addTestCommand(item.sha)},
 			});
 		});
 	};
@@ -1126,6 +1136,38 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						</div>
 					)}
 				</div>
+
+				{/* No tests marker: landable without a test, with an "Add a test" detour */}
+				{category === "no_test" && (
+					<span
+						data-testid="no-tests-marker"
+						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
+					>
+						no tests
+					</span>
+				)}
+				{actions.has("add_test") && branch && (
+					<button
+						type="button"
+						onClick={() => {
+							void handleAddTest();
+						}}
+						disabled={addingTest}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							addingTest
+								? "cursor-not-allowed opacity-60 text-text-300"
+								: "text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-950/30"
+						}`}
+						title="Queue a task that adds a test for this commit"
+					>
+						{addingTest ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Bot className="h-3.5 w-3.5" />
+						)}
+						{addingTest ? "Queuing..." : "Add a test"}
+					</button>
+				)}
 
 				{/* Run Claude Command */}
 				{llmCommand && branch && (

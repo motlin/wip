@@ -33,6 +33,49 @@ function renderBranch(item: GitChildResult, category: Parameters<typeof BranchAc
 	);
 }
 
+describe("no_test marker and Add a test detour", () => {
+	afterEach(() => {
+		cleanup();
+		clearToasts();
+		serverFns.runClaudeCommand.mockReset();
+	});
+
+	it("shows the no tests marker on a no_test item", () => {
+		renderBranch(branchItem({}), "no_test");
+
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+	});
+
+	it("does not show the no tests marker on a tested item", () => {
+		renderBranch(branchItem({}), "ready_to_push");
+
+		expect(screen.queryByTestId("no-tests-marker")).toBeNull();
+		expect(screen.queryByRole("button", {name: "Add a test"})).toBeNull();
+	});
+
+	it("enqueues exactly one task for the commit when Add a test is clicked", async () => {
+		serverFns.runClaudeCommand.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+		renderBranch(branchItem({}), "no_test");
+
+		fireEvent.click(screen.getByRole("button", {name: "Add a test"}));
+
+		await waitFor(() => {
+			expect(serverFns.runClaudeCommand.mock.calls).toEqual([
+				[
+					{
+						data: {
+							project: "wip",
+							sha: "abc123",
+							branch: "feature/x",
+							command: "Add a test that covers the changes in commit abc123",
+						},
+					},
+				],
+			]);
+		});
+	});
+});
+
 describe("commit-actions error toasts", () => {
 	afterEach(() => {
 		cleanup();

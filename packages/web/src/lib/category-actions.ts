@@ -21,7 +21,13 @@ export type Action =
 	| "delete_branch"
 	| "refresh"
 	| "merge"
-	| "create_branch";
+	| "create_branch"
+	| "add_test";
+
+/** The detour task an "Add a test" click queues for a commit in a repo with no test configured. */
+export function addTestCommand(sha: string): string {
+	return `Add a test that covers the changes in commit ${sha}`;
+}
 
 // Maps state-machine transitions to UI action names.
 // Only transitions that correspond to a user-triggerable action are included.
@@ -67,7 +73,7 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	ready_to_test: ["refresh", "rename", "delete_branch"],
 	test_running: ["view_test_log", "refresh"],
 	local_changes: ["rename"],
-	no_test: ["rename", "delete_branch"],
+	no_test: ["add_test", "rename", "delete_branch"],
 };
 
 function buildActions(category: Category): readonly Action[] {

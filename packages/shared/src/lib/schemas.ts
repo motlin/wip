@@ -379,6 +379,8 @@ export const GitChildResultSchema = z.object({
 	files: z.number().int().nonnegative().optional(),
 	insertions: z.number().int().nonnegative().optional(),
 	deletions: z.number().int().nonnegative().optional(),
+	/** Size above `flow.splitThresholdLines`: shows a marker and offers a split transition. */
+	considerSplitting: z.boolean().optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 

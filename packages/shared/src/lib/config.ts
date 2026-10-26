@@ -144,3 +144,14 @@ export function getAiMaxAttempts(config: Record<string, ConfigValue> = readConfi
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_AI_MAX_ATTEMPTS;
 }
+
+/** Placeholder until real data says otherwise (lean plan open question 3). */
+export const DEFAULT_SPLIT_THRESHOLD_LINES = 400;
+
+/** Lines changed above which a commit shows "consider splitting", from config key `flow.splitThresholdLines`. Defaults to 400. */
+export function getSplitThresholdLines(config: Record<string, ConfigValue> = readConfig()): number {
+	const value = config["flow.splitThresholdLines"];
+	if (typeof value !== "string") return DEFAULT_SPLIT_THRESHOLD_LINES;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_SPLIT_THRESHOLD_LINES;
+}

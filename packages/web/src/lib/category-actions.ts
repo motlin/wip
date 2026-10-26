@@ -29,6 +29,9 @@ export function addTestCommand(sha: string): string {
 	return `Add a test that covers the changes in commit ${sha}`;
 }
 
+/** The split transition a "consider splitting" commit gains, run through the task queue. */
+export const SPLIT_BRANCH_COMMAND = "/git:split-branch";
+
 // Maps state-machine transitions to UI action names.
 // Only transitions that correspond to a user-triggerable action are included.
 export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {

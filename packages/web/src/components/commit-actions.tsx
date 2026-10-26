@@ -46,7 +46,7 @@ import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category, ProjectInfo} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns.js";
-import {CATEGORIES, addTestCommand} from "../lib/category-actions.js";
+import {CATEGORIES, SPLIT_BRANCH_COMMAND, addTestCommand} from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import {unverifiedPushReason} from "../lib/push-verification.js";
@@ -206,6 +206,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [creatingBranch, setCreatingBranch] = useState(false);
 	const [runningClaude, setRunningClaude] = useState(false);
 	const [addingTest, setAddingTest] = useState(false);
+	const [splitting, setSplitting] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -689,6 +690,15 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 		await runPendingAction("Add a test", setAddingTest, async () => {
 			await runClaudeCommand({
 				data: {project: item.project, sha: item.sha, branch, command: addTestCommand(item.sha)},
+			});
+		});
+	};
+
+	const handleSplit = async () => {
+		if (!branch) return;
+		await runPendingAction("Split", setSplitting, async () => {
+			await runClaudeCommand({
+				data: {project: item.project, sha: item.sha, branch, command: SPLIT_BRANCH_COMMAND},
 			});
 		});
 	};
@@ -1285,6 +1295,38 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							<Bot className="h-3.5 w-3.5" />
 						)}
 						{addingTest ? "Queuing..." : "Add a test"}
+					</button>
+				)}
+
+				{/* Consider splitting: a large commit stays a candidate and gains a split transition */}
+				{item.considerSplitting && (
+					<span
+						data-testid="consider-splitting-marker"
+						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
+					>
+						consider splitting
+					</span>
+				)}
+				{item.considerSplitting && (
+					<button
+						type="button"
+						onClick={() => {
+							void handleSplit();
+						}}
+						disabled={splitting || !branch}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							splitting || !branch
+								? "cursor-not-allowed opacity-60 text-text-300"
+								: "text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-950/30"
+						}`}
+						title={
+							branch
+								? `Queue ${SPLIT_BRANCH_COMMAND} for this commit`
+								: "Name a branch first: Claude tasks run on a branch checkout"
+						}
+					>
+						{splitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
+						{splitting ? "Queuing..." : "Split"}
 					</button>
 				)}
 

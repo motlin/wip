@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 import {
+	considerSplitting,
 	rankCandidates,
 	rankGitChildren,
 	remainingJob,
@@ -182,6 +183,27 @@ describe("rankGitChildren", () => {
 			"behind-tiny",
 			"medium",
 			"large",
+		]);
+	});
+});
+
+describe("considerSplitting", () => {
+	it.each([
+		{name: "above the threshold", input: {insertions: 300, deletions: 101}, expected: true},
+		{name: "exactly at the threshold", input: {insertions: 300, deletions: 100}, expected: false},
+		{name: "small", input: {insertions: 3, deletions: 1}, expected: false},
+		{name: "unsized", input: {}, expected: false},
+	])("$name", ({input, expected}) => {
+		expect(considerSplitting(child("c", input), 400)).toBe(expected);
+	});
+
+	it("keeps a commit marked consider splitting in the rank, after smaller ones", () => {
+		const items = [child("huge", {insertions: 5000}), child("tiny", {insertions: 2})];
+		expect(
+			rankGitChildren(items).map((c) => ({subject: c.subject, split: considerSplitting(c, 400)})),
+		).toStrictEqual([
+			{subject: "tiny", split: false},
+			{subject: "huge", split: true},
 		]);
 	});
 });

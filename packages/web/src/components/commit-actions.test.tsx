@@ -363,3 +363,54 @@ describe("commit-actions error toasts", () => {
 		expect(screen.queryByText("claude exploded")).toBeNull();
 	});
 });
+
+describe("consider splitting marker and Split transition", () => {
+	afterEach(() => {
+		cleanup();
+		clearToasts();
+		serverFns.runClaudeCommand.mockReset();
+	});
+
+	it("shows the marker plus both the normal Push and Split on a large commit", () => {
+		renderBranch(branchItem({testStatus: "passed", considerSplitting: true}), "ready_to_push", [project(true)]);
+
+		expect({
+			markers: screen.getAllByTestId("consider-splitting-marker").map((el) => el.textContent),
+			push: screen.getAllByRole("button", {name: "Push"}).length,
+			split: screen.getAllByRole("button", {name: "Split"}).length,
+		}).toEqual({markers: ["consider splitting"], push: 1, split: 1});
+	});
+
+	it("shows neither the marker nor Split on a small commit", () => {
+		renderBranch(branchItem({testStatus: "passed"}), "ready_to_push", [project(true)]);
+
+		expect({
+			marker: screen.queryByTestId("consider-splitting-marker"),
+			split: screen.queryByRole("button", {name: "Split"}),
+			push: screen.getAllByRole("button", {name: "Push"}).length,
+		}).toEqual({marker: null, split: null, push: 1});
+	});
+
+	it("queues /git:split-branch through the task queue when Split is clicked", async () => {
+		serverFns.runClaudeCommand.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+		renderBranch(branchItem({testStatus: "passed", considerSplitting: true}), "ready_to_push", [project(true)]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Split"}));
+
+		await waitFor(() => {
+			expect(serverFns.runClaudeCommand.mock.calls).toEqual([
+				[{data: {project: "wip", sha: "abc123", branch: "feature/x", command: "/git:split-branch"}}],
+			]);
+		});
+	});
+
+	it("disables Split with a reason on an unnamed commit", () => {
+		renderBranch(branchItem({branch: undefined, considerSplitting: true}), "ready_to_test", [project(true)]);
+
+		const button = screen.getByRole("button", {name: "Split"});
+		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
+			disabled: true,
+			title: "Name a branch first: Claude tasks run on a branch checkout",
+		});
+	});
+});

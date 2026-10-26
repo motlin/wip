@@ -119,3 +119,11 @@ export function rankGitChildren<T extends GitChildResult>(children: readonly T[]
 			.map(({child}) => child)
 	);
 }
+
+/** Size marks a commit "consider splitting" above the threshold; it adds a split transition and never gates or unranks. */
+export function considerSplitting(
+	child: Pick<GitChildResult, "insertions" | "deletions">,
+	thresholdLines: number,
+): boolean {
+	return (child.insertions ?? 0) + (child.deletions ?? 0) > thresholdLines;
+}

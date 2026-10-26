@@ -13,6 +13,7 @@ import {
 	getProjectsDirs,
 	getRemoteBranchInfo,
 	getCommitFacts,
+	getSplitThresholdLines,
 	getTestLogDir,
 	invalidatePrCache,
 	invalidateIssuesCache,
@@ -83,6 +84,7 @@ import {
 	type SaveRegistryInput,
 	classifyGitChild,
 } from "@wip/shared";
+import {considerSplitting} from "@wip/shared/candidate-rank.js";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
@@ -299,6 +301,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				p.name,
 				uniqueChildren.map((c) => c.sha),
 			);
+			const splitThresholdLines = getSplitThresholdLines();
 			// On hold and snoozed children are returned flagged, not dropped, and get no background jobs.
 			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
 
@@ -387,6 +390,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					files: facts?.files,
 					insertions: facts?.insertions,
 					deletions: facts?.deletions,
+					considerSplitting: facts && considerSplitting(facts, splitThresholdLines) ? true : undefined,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);

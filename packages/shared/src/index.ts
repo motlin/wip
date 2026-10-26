@@ -16,6 +16,7 @@ export {
 	getActionMaxWaitMs,
 	getAiRungTimeoutMs,
 	getAiMaxAttempts,
+	getSplitThresholdLines,
 	DEFAULT_AI_RUNG_TIMEOUT_MS,
 } from "./lib/config.js";
 export {

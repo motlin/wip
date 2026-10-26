@@ -19,6 +19,8 @@ import {
 	type ProjectInfo,
 	classifyGitChild,
 	upstreamRedCommand,
+	setConfigValue,
+	unsetConfigValue,
 } from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
@@ -1770,6 +1772,38 @@ describe("getProjectChildrenHandler", () => {
 		expect(
 			result.map((c) => ({subject: c.subject, files: c.files, insertions: c.insertions, deletions: c.deletions})),
 		).toStrictEqual([{subject: "Sized commit", files: 2, insertions: 4, deletions: 0}]);
+	});
+
+	it("marks a child above flow.splitThresholdLines consider splitting and leaves smaller ones unmarked", async () => {
+		const dir = await createTestGitRepo();
+		const {stdout: base} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);
+		await execa("git", ["-C", dir, "checkout", "-b", "small"]);
+		await writeTestFile(join(dir, "small.txt"), "one\n");
+		await execa("git", ["-C", dir, "add", "small.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Small commit"]);
+		await execa("git", ["-C", dir, "checkout", "-b", "large", base]);
+		await writeTestFile(join(dir, "large.txt"), "one\ntwo\nthree\nfour\n");
+		await execa("git", ["-C", dir, "add", "large.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Large commit"]);
+		const project = makeProject({name: "split-marker-test", dir, upstreamRef: base});
+		seedProjectCache([project]);
+		setConfigValue("flow.splitThresholdLines", "3");
+
+		try {
+			const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+			const result = await getProjectChildrenHandler("split-marker-test");
+
+			expect(
+				result
+					.map((c) => ({subject: c.subject, considerSplitting: c.considerSplitting}))
+					.toSorted((a, b) => a.subject.localeCompare(b.subject)),
+			).toStrictEqual([
+				{subject: "Large commit", considerSplitting: true},
+				{subject: "Small commit", considerSplitting: undefined},
+			]);
+		} finally {
+			unsetConfigValue("flow.splitThresholdLines");
+		}
 	});
 
 	it("sets blockReason when dirty AND sha equals HEAD", async () => {

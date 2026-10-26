@@ -129,6 +129,21 @@ export async function getCommitFacts(dir: string, project: string, shas: string[
 	return result;
 }
 
+/** The subset of `shas` that still name commits, in one `cat-file --batch-check`. */
+export async function existingCommitShas(dir: string, shas: readonly string[]): Promise<Set<string>> {
+	const check = await tracedExeca("git", ["-C", dir, "cat-file", "--batch-check=%(objectname) %(objecttype)"], {
+		input: `${shas.join("\n")}\n`,
+		reject: false,
+	});
+	return new Set(
+		check.stdout
+			.split("\n")
+			.map((line) => line.trim().split(" "))
+			.filter(([, type]) => type === "commit")
+			.map(([sha]) => sha ?? ""),
+	);
+}
+
 /**
  * diff-tree prints nothing for an empty commit, a merge, or an unknown sha, so a
  * sha missing from both outputs must be verified before caching zero facts for it.
@@ -141,16 +156,6 @@ async function existingCommits(
 ): Promise<string[]> {
 	const silent = misses.filter((sha) => !patchIds.has(sha) && !sizes.has(sha));
 	if (silent.length === 0) return misses;
-	const check = await tracedExeca("git", ["-C", dir, "cat-file", "--batch-check=%(objectname) %(objecttype)"], {
-		input: `${silent.join("\n")}\n`,
-		reject: false,
-	});
-	const commits = new Set(
-		check.stdout
-			.split("\n")
-			.map((line) => line.trim().split(" "))
-			.filter(([, type]) => type === "commit")
-			.map(([sha]) => sha),
-	);
+	const commits = await existingCommitShas(dir, silent);
 	return misses.filter((sha) => !silent.includes(sha) || commits.has(sha));
 }

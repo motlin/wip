@@ -1,4 +1,4 @@
-import {getCommitFacts} from "./commit-facts.js";
+import {existingCommitShas, getCommitFacts} from "./commit-facts.js";
 import {loadWorkItems, writeWorkItems} from "./db.js";
 import {git} from "./git-exec.js";
 import {landedPatchIds, type LandingOutcome} from "./landing-detector.js";
@@ -126,7 +126,8 @@ const UPSTREAM_SCAN_LIMIT = 1000;
 /**
  * Patch-ids of departed items that `upstream` now contains, by sha (fast-forward) or by
  * patch-id (rebased in). One rev-list over upstream since the departures' parents, plus
- * the cached patch-id batch, all under the subprocess gate.
+ * the cached patch-id batch, all under the subprocess gate. Departures whose sha no
+ * longer exists cannot bound the range, so they are matched by their recorded patch-id.
  */
 export async function upstreamLandedPatchIds(
 	dir: string,
@@ -135,6 +136,11 @@ export async function upstreamLandedPatchIds(
 	upstream: string,
 ): Promise<string[]> {
 	if (departed.length === 0) return [];
+	const existing = await existingCommitShas(
+		dir,
+		departed.map((item) => item.sha),
+	);
+	const bounds = departed.filter((item) => existing.has(item.sha)).map((item) => `${item.sha}^@`);
 	const range = (
 		await git(
 			dir,
@@ -142,8 +148,7 @@ export async function upstreamLandedPatchIds(
 			"--no-merges",
 			`--max-count=${UPSTREAM_SCAN_LIMIT}`,
 			upstream,
-			"--not",
-			...departed.map((item) => `${item.sha}^@`),
+			...(bounds.length > 0 ? ["--not", ...bounds] : []),
 		)
 	)
 		.split("\n")

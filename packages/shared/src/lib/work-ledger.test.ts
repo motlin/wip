@@ -317,4 +317,40 @@ describe("unnamed fast-forward landings", () => {
 
 		expect(loadWorkItems("proj").map((row) => row.state)).toStrictEqual(["landed"]);
 	});
+
+	it("still lands a fast-forwarded child when another departure's sha no longer exists", async () => {
+		sh(dir, "git checkout -q --detach");
+		const landing = commitFile(dir, "landing.txt", "landing\n", "Landing");
+		sh(dir, "git checkout -q main");
+		const landingId = (await getCommitFacts(dir, "proj", [landing])).get(landing)?.patchId ?? "";
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", [
+			{patchId: landingId, sha: landing, subject: "Landing", state: "approved"},
+			{patchId: "gone-patch-id", sha: MISSING_SHA, subject: "Gone", state: "approved"},
+		]);
+
+		sh(dir, `git merge -q --ff-only ${landing}`);
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", []);
+
+		expect(Object.fromEntries(loadWorkItems("proj").map((row) => [row.subject, row.state]))).toStrictEqual({
+			Landing: "landed",
+			Gone: "abandoned",
+		});
+	});
+
+	it("lands a departure whose sha no longer exists when upstream has its patch-id", async () => {
+		sh(dir, "git checkout -q --detach");
+		const child = commitFile(dir, "child.txt", "child\n", "Child");
+		sh(dir, "git checkout -q main");
+		const patchId = (await getCommitFacts(dir, "proj", [child])).get(child)?.patchId ?? "";
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", [
+			{patchId, sha: MISSING_SHA, subject: "Child", state: "approved"},
+		]);
+
+		sh(dir, `git cherry-pick ${child}`);
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", []);
+
+		expect(loadWorkItems("proj").map((row) => row.state)).toStrictEqual(["landed"]);
+	});
 });
+
+const MISSING_SHA = "0123456789abcdef0123456789abcdef01234567";

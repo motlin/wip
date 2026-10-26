@@ -1,6 +1,7 @@
 import {tracedExeca} from "../services/traced-execa.js";
+import {getTestLogDir} from "./config.js";
+import {gitTestRun} from "./git-test-cli.js";
 import {getMiseEnv} from "./git.js";
-import {recordTestResult} from "./db.js";
 
 /**
  * Broken-upstream detection. Before advancing branches, the baseline
@@ -14,18 +15,11 @@ export interface BaselineCheck {
 	green: boolean;
 }
 
-/** Run git-test on a single commit, recording the result. */
+/** Run git-test on a single commit; the exit code decides. The log stays as a file. */
 async function defaultRunTest(dir: string, sha: string, project: string): Promise<boolean> {
 	const env = await getMiseEnv(dir);
-	const start = performance.now();
-	const result = await tracedExeca("git", ["-C", dir, "test", "run", "--retest", sha], {
-		reject: false,
-		env,
-	});
-	const duration = Math.round(performance.now() - start);
-	const green = result.exitCode === 0;
-	recordTestResult(sha, project, green ? "passed" : "failed", result.exitCode, duration);
-	return green;
+	const {exitCode} = await gitTestRun(dir, sha, {logDir: getTestLogDir(project), retest: true, env});
+	return exitCode === 0;
 }
 
 export async function checkBaseline(opts: {

@@ -1,6 +1,10 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 
+import DatabaseConstructor from "better-sqlite3";
 import {sql} from "drizzle-orm";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 import {sorted} from "../test/sorted.js";
 
@@ -27,8 +31,6 @@ import {
 	getCachedUpstreamSha,
 	setBranchName,
 	getBranchName,
-	recordTestResult,
-	getTestResultsForProject,
 	type CachedPrStatus,
 	cacheIssues,
 	getCachedIssues,
@@ -985,44 +987,67 @@ describe("setBranchName deduplication", () => {
 	});
 });
 
-describe("recordTestResult deduplication", () => {
-	it("skips re-insert when test result is unchanged", () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+describe("test_results migration", () => {
+	let dir: string;
 
-		recordTestResult("abc123", "test-project", "passed", 0, 1234);
-
-		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		recordTestResult("abc123", "test-project", "passed", 0, 1234);
-
-		const rows = getDb().all<{
-			system_from: string;
-			system_to: string;
-		}>(sql`SELECT * FROM test_results`);
-		expect(rows).toHaveLength(1);
-		expect(rows[0]!.system_from).toBe("2025-01-01 00:00:00.000");
-
-		vi.useRealTimers();
+	beforeEach(() => {
+		resetDb();
+		dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-db-migration-"));
 	});
 
-	it("replaces row when test status changes", () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+	afterEach(() => {
+		fs.rmSync(dir, {recursive: true, force: true});
+	});
 
-		recordTestResult("abc123", "test-project", "passed", 0, 1234);
+	it("drops an existing test_results table and leaves other tables intact", () => {
+		const dbPath = path.join(dir, "wip.db");
+		const legacy = new DatabaseConstructor(dbPath);
+		legacy.exec(`
+			CREATE TABLE test_results (
+				sha TEXT NOT NULL,
+				project TEXT NOT NULL,
+				test_name TEXT NOT NULL DEFAULT 'default',
+				status TEXT NOT NULL,
+				exit_code INTEGER NOT NULL,
+				duration_ms INTEGER NOT NULL,
+				system_from TEXT NOT NULL,
+				system_to TEXT NOT NULL DEFAULT '9999-12-31 23:59:59',
+				PRIMARY KEY (sha, project, test_name, system_to)
+			)
+		`);
+		legacy.exec(`INSERT INTO test_results (sha, project, status, exit_code, duration_ms, system_from)
+			VALUES ('abc123', 'p', 'passed', 0, 10, '2025-01-01 00:00:00.000')`);
+		legacy.exec(`
+			CREATE TABLE branch_names (
+				sha TEXT NOT NULL,
+				project TEXT NOT NULL,
+				name TEXT NOT NULL,
+				system_from TEXT NOT NULL,
+				system_to TEXT NOT NULL DEFAULT '9999-12-31 23:59:59',
+				PRIMARY KEY (sha, project, system_to)
+			)
+		`);
+		legacy.exec(`INSERT INTO branch_names (sha, project, name, system_from)
+			VALUES ('abc123', 'p', 'feature', '2025-01-01 00:00:00.000')`);
+		legacy.close();
 
-		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		recordTestResult("abc123", "test-project", "failed", 1, 5678);
+		initDb(dbPath);
+		const tables = getDb()
+			.all<{name: string}>(sql`SELECT name FROM sqlite_master WHERE type='table'`)
+			.map((row) => row.name);
 
-		const cached = getTestResultsForProject("test-project");
-		expect(cached.get("abc123")).toBe("failed");
+		expect(tables).not.toContain("test_results");
+		expect(tables).toContain("branch_names");
+		expect(tables).toContain("snoozed");
+		expect(getBranchName("abc123", "p")).toBe("feature");
+	});
 
-		const allRows = getDb().all<{
-			system_to: string;
-		}>(sql`SELECT * FROM test_results`);
-		expect(allRows).toHaveLength(2);
-
-		vi.useRealTimers();
+	it("never creates a test_results table in a fresh database", () => {
+		initDb(":memory:");
+		const tables = getDb()
+			.all<{name: string}>(sql`SELECT name FROM sqlite_master WHERE type='table'`)
+			.map((row) => row.name);
+		expect(tables).not.toContain("test_results");
 	});
 });
 

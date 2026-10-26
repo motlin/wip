@@ -55,7 +55,6 @@ export {type BaseBranchStatus, type PrStatuses, getPrStatuses} from "./lib/githu
 export {
 	type SnoozedItem,
 	type BranchNameItem,
-	type TestResultItem,
 	type CachedPrStatus,
 	initDb,
 	resetDb,
@@ -72,8 +71,6 @@ export {
 	getBranchName,
 	getBranchNames,
 	setBranchName,
-	getTestResultsForProject,
-	recordTestResult,
 	getCachedPrStatuses,
 	cachePrStatuses,
 	invalidatePrCache,

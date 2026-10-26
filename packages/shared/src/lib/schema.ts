@@ -17,24 +17,6 @@ export const branchNames = sqliteTable(
 	],
 );
 
-export const testResults = sqliteTable(
-	"test_results",
-	{
-		sha: text("sha").notNull(),
-		project: text("project").notNull(),
-		testName: text("test_name").notNull().default("default"),
-		status: text("status", {enum: ["passed", "failed"]}).notNull(),
-		exitCode: integer("exit_code").notNull(),
-		durationMs: integer("duration_ms").notNull(),
-		systemFrom: text("system_from").notNull(),
-		systemTo: text("system_to").notNull().default(FAR_FUTURE),
-	},
-	(table) => [
-		primaryKey({columns: [table.sha, table.project, table.testName, table.systemTo]}),
-		index("test_results_active_idx").on(table.project, table.systemTo),
-	],
-);
-
 export const prStatusCache = sqliteTable(
 	"pr_status_cache",
 	{

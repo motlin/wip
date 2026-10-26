@@ -16,7 +16,6 @@ import {
 	getTestLogDir,
 	hasLocalModifications,
 	isDirty,
-	recordTestResult,
 	suggestBranchNames,
 	testBranch,
 	testFix,
@@ -158,11 +157,9 @@ export default class Test extends Command {
 				process.stdout.write(chalk.dim(`  ${child.shortSha} ${branchName} `));
 
 				// Run git test on branch range
-				const branchStart = performance.now();
 				const result = await testBranch(p.dir, branchName, p.upstreamRef, miseEnv, {
 					force: flags.force,
 				});
-				const branchDuration = Math.round(performance.now() - branchStart);
 
 				const logPath = path.join(logDir, `${child.sha}.log`);
 				fs.writeFileSync(logPath, result.logContent + "\n");
@@ -179,7 +176,6 @@ export default class Test extends Command {
 						exitCode: 0,
 						logPath,
 					});
-					recordTestResult(child.sha, p.name, "passed", 0, branchDuration);
 				} else if (await hasLocalModifications(p.dir)) {
 					// Test failed with dirty worktree — attempt auto-fix
 					this.clearLine();
@@ -202,7 +198,6 @@ export default class Test extends Command {
 							logPath,
 							message: fixResult.message,
 						});
-						recordTestResult(child.sha, p.name, "passed", 0, branchDuration);
 					} else {
 						this.log(chalk.red(`  ${child.shortSha} ${branchName} fix failed: ${fixResult.message}`));
 						this.log(chalk.dim(`  Log: ${logPath}`));
@@ -216,7 +211,6 @@ export default class Test extends Command {
 							logPath,
 							message: fixResult.message,
 						});
-						recordTestResult(child.sha, p.name, "failed", result.exitCode, branchDuration);
 					}
 				} else {
 					// Test failed with clean worktree — real failure
@@ -232,7 +226,6 @@ export default class Test extends Command {
 						exitCode: result.exitCode,
 						logPath,
 					});
-					recordTestResult(child.sha, p.name, "failed", result.exitCode, branchDuration);
 				}
 			}
 
@@ -358,7 +351,6 @@ export default class Test extends Command {
 						exitCode: 0,
 						logPath,
 					});
-					recordTestResult(sha, p.name, "passed", 0, testDuration);
 				} else {
 					this.clearLine();
 					this.log(chalk.red(`  ${shortSha} failed (exit ${result.exitCode})`));
@@ -371,7 +363,6 @@ export default class Test extends Command {
 						exitCode: result.exitCode ?? 1,
 						logPath,
 					});
-					recordTestResult(sha, p.name, "failed", result.exitCode ?? 1, testDuration);
 					allPassed = false;
 				}
 			}

@@ -44,7 +44,6 @@ import {
 	projectCache,
 	snoozed,
 	taskRecords,
-	testResults,
 	todosCache,
 	upstreamRefs,
 } from "./schema.js";
@@ -138,7 +137,6 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			for (const table of [
 				"snoozed",
 				"branch_names",
-				"test_results",
 				"pr_status_cache",
 				"pr_failed_checks",
 				"mise_env_cache",
@@ -185,26 +183,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS branch_names_active_idx ON branch_names (sha, project, system_to)`);
 
-	// Migrate: drop test_results if exit_code/duration_ms are nullable (cache data is ephemeral)
-	const testCols = tableInfo(sqlite, "test_results");
-	if (testCols.some((c) => c.name === "exit_code" && c.notnull === 0)) {
-		sqlite.exec("DROP TABLE test_results");
-	}
-
-	sqlite.exec(`
-		CREATE TABLE IF NOT EXISTS test_results (
-			sha TEXT NOT NULL,
-			project TEXT NOT NULL,
-			test_name TEXT NOT NULL DEFAULT 'default',
-			status TEXT NOT NULL,
-			exit_code INTEGER NOT NULL,
-			duration_ms INTEGER NOT NULL,
-			system_from TEXT NOT NULL,
-			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
-			PRIMARY KEY (sha, project, test_name, system_to)
-		)
-	`);
-	sqlite.exec(`CREATE INDEX IF NOT EXISTS test_results_active_idx ON test_results (project, system_to)`);
+	// Migrate: test results live only in git-test; drop the old wip copy.
+	sqlite.exec("DROP TABLE IF EXISTS test_results");
 
 	// Migrate cache tables to temporal schema (drop and recreate — cache data is ephemeral)
 	const prCols = tableInfo(sqlite, "pr_status_cache");
@@ -650,42 +630,6 @@ export function setBranchName(sha: string, project: string, name: string): void 
 		keyWhere: and(eq(branchNames.sha, sha), eq(branchNames.project, project)),
 		isUnchanged: (existing) => existing.name === name,
 		newRow: {sha, project, name},
-	});
-}
-
-// Test result functions
-
-export type TestResultItem = typeof testResults.$inferSelect;
-
-export function getTestResultsForProject(project: string): Map<string, "passed" | "failed"> {
-	const d = getDb();
-	const rows = d
-		.select({sha: testResults.sha, status: testResults.status})
-		.from(testResults)
-		.where(and(eq(testResults.project, project), eq(testResults.systemTo, FAR_FUTURE)))
-		.all();
-
-	const result = new Map<string, "passed" | "failed">();
-	for (const row of rows) {
-		result.set(row.sha, row.status);
-	}
-	return result;
-}
-
-export function recordTestResult(
-	sha: string,
-	project: string,
-	status: "passed" | "failed",
-	exitCode: number,
-	durationMs: number,
-	testName = "default",
-): void {
-	temporalUpsert({
-		table: testResults,
-		keyWhere: and(eq(testResults.sha, sha), eq(testResults.project, project), eq(testResults.testName, testName)),
-		isUnchanged: (existing) =>
-			existing.status === status && existing.exitCode === exitCode && existing.durationMs === durationMs,
-		newRow: {sha, project, testName, status, exitCode, durationMs},
 	});
 }
 

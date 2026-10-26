@@ -8,7 +8,6 @@ import {
 	invalidatePrCache,
 	loadRecentTaskRecords,
 	rebaseBranchOntoUpstream,
-	recordTestResult,
 	runLadder,
 	upsertTaskRecord,
 	TaskTypeSchema,
@@ -376,7 +375,6 @@ async function runTestTask(task: Task, signal: AbortSignal): Promise<void> {
 	task.message =
 		status === "passed" ? `${task.shortSha} passed` : `${task.shortSha} failed (exit ${result.exitCode})`;
 
-	recordTestResult(task.sha, task.project, status, result.exitCode ?? 1, result.duration);
 	emit(task);
 }
 

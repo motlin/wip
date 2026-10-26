@@ -69,8 +69,16 @@ export function resolveDbPath(env: NodeJS.ProcessEnv = process.env): string {
 	return dbPath;
 }
 
+let lastTimestampMs = Number.NEGATIVE_INFINITY;
+
+/**
+ * Bitemporal write timestamp, strictly increasing within the process: two writes to one key
+ * in the same millisecond would otherwise close both rows at the same system_to and collide
+ * on the (key, system_to) primary key.
+ */
 function now(): string {
-	return new Date().toISOString().replace("T", " ").replace("Z", "");
+	lastTimestampMs = Math.max(Date.now(), lastTimestampMs + 1);
+	return new Date(lastTimestampMs).toISOString().replace("T", " ").replace("Z", "");
 }
 
 let db: BetterSQLite3Database<typeof schema> | undefined;
@@ -86,6 +94,7 @@ export function initDb(dbPath: string): void {
 
 export function resetDb(): void {
 	db = undefined;
+	lastTimestampMs = Number.NEGATIVE_INFINITY;
 	customDbPath = undefined;
 }
 

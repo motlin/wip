@@ -14,6 +14,11 @@ import {
 	getCachedMergeStatuses,
 	setAdvanceConfig,
 	getAdvanceConfig,
+	setPriorityOverride,
+	clearPriorityOverride,
+	getPriorityOverride,
+	snoozeItem,
+	unsnoozeItem,
 } from "./db.js";
 import {FAR_FUTURE} from "./schema.js";
 
@@ -169,5 +174,36 @@ describe("setAdvanceConfig temporal upsert", () => {
 		expect(closed).toStrictEqual({system_from: T0, system_to: T1});
 		expect(live).toStrictEqual({system_from: T1, system_to: FAR_FUTURE});
 		expect(getAdvanceConfig("test-project")).toBe(8);
+	});
+});
+
+describe("same-millisecond writes to one key", () => {
+	const todo = {kind: "todo", key: "a/todo.md\u0000Ship"} as const;
+
+	it("gives each priority override version a strictly later system_from", () => {
+		setPriorityOverride("test-project", todo, "low");
+		setPriorityOverride("test-project", todo, "high");
+		setPriorityOverride("test-project", todo, "low");
+		clearPriorityOverride("test-project", todo);
+
+		expect(rowsOf("priority_overrides")).toStrictEqual([
+			{system_from: "2025-01-01 00:00:00.000", system_to: "2025-01-01 00:00:00.001"},
+			{system_from: "2025-01-01 00:00:00.001", system_to: "2025-01-01 00:00:00.002"},
+			{system_from: "2025-01-01 00:00:00.002", system_to: "2025-01-01 00:00:00.003"},
+		]);
+		expect(getPriorityOverride("test-project", todo)).toBeUndefined();
+	});
+
+	it("re-snoozes the same item without colliding on system_to", () => {
+		snoozeItem("abc123", "test-project", "abc", "subject", null);
+		snoozeItem("abc123", "test-project", "abc", "subject", "2025-02-01 00:00:00.000");
+		snoozeItem("abc123", "test-project", "abc", "subject", null);
+		unsnoozeItem("abc123", "test-project");
+
+		expect(rowsOf("snoozed")).toStrictEqual([
+			{system_from: "2025-01-01 00:00:00.000", system_to: "2025-01-01 00:00:00.001"},
+			{system_from: "2025-01-01 00:00:00.001", system_to: "2025-01-01 00:00:00.002"},
+			{system_from: "2025-01-01 00:00:00.002", system_to: "2025-01-01 00:00:00.003"},
+		]);
 	});
 });

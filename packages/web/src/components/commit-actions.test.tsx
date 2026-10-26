@@ -12,6 +12,8 @@ const serverFns = vi.hoisted(() => ({
 	runClaudeCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	abortRebase: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	rebaseChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	pushChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	forcePush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	getProjectChildren: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => Promise.resolve({children: []})),
 	getProjects: vi.fn<() => Promise<unknown[]>>(async () => Promise.resolve([])),
 	getSnoozedList: vi.fn<() => Promise<unknown[]>>(async () => Promise.resolve([])),
@@ -221,6 +223,107 @@ describe("Abort rebase on a stuck rebase", () => {
 		renderBranch(branchItem({}), "rebase_conflicts");
 
 		expect(screen.queryByRole("button", {name: "Abort rebase"})).toBeNull();
+	});
+});
+
+describe("Push and Force Push warn on unverified commits", () => {
+	afterEach(() => {
+		cleanup();
+		clearToasts();
+		serverFns.pushChild.mockReset();
+		serverFns.forcePush.mockReset();
+	});
+
+	it("warns on the first Push click of a commit behind upstream and pushes on the second", async () => {
+		serverFns.pushChild.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+		renderBranch(branchItem({testStatus: "passed", commitsBehind: 3}), "ready_to_push", [project(true)]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Push"}));
+		const afterFirst = {
+			warnings: screen.getAllByTestId("unverified-push-warning").map((el) => el.textContent),
+			calls: [...serverFns.pushChild.mock.calls],
+		};
+		fireEvent.click(screen.getByRole("button", {name: "Push anyway"}));
+
+		await waitFor(() => {
+			expect({afterFirst, calls: serverFns.pushChild.mock.calls}).toEqual({
+				afterFirst: {
+					warnings: ["Unverified: 3 commits behind upstream. Click again to push anyway."],
+					calls: [],
+				},
+				calls: [[{data: {project: "wip", sha: "abc123", branch: "feature/x"}}]],
+			});
+		});
+	});
+
+	it("warns on the first Force Push click of a commit that is not green and force-pushes on the second", async () => {
+		serverFns.forcePush.mockResolvedValue({ok: true, message: "pushed"});
+		renderBranch(branchItem({testStatus: "unknown", localAhead: true, pushedToRemote: true}), "pushed_no_pr", [
+			project(true),
+		]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Force Push"}));
+		const afterFirst = {
+			warnings: screen.getAllByTestId("unverified-push-warning").map((el) => el.textContent),
+			calls: [...serverFns.forcePush.mock.calls],
+		};
+		fireEvent.click(screen.getByRole("button", {name: "Force Push anyway"}));
+
+		await waitFor(() => {
+			expect({afterFirst, calls: serverFns.forcePush.mock.calls}).toEqual({
+				afterFirst: {
+					warnings: ["Unverified: test not passed (unknown). Click again to push anyway."],
+					calls: [],
+				},
+				calls: [[{data: {project: "wip", branch: "feature/x"}}]],
+			});
+		});
+	});
+
+	it("pushes a verified commit on the first click with no warning", async () => {
+		serverFns.pushChild.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+		renderBranch(branchItem({testStatus: "passed", commitsBehind: 0}), "ready_to_push", [project(true)]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Push"}));
+
+		await waitFor(() => {
+			expect({
+				warning: screen.queryByTestId("unverified-push-warning"),
+				calls: serverFns.pushChild.mock.calls,
+			}).toEqual({
+				warning: null,
+				calls: [[{data: {project: "wip", sha: "abc123", branch: "feature/x"}}]],
+			});
+		});
+	});
+
+	it("force-pushes a verified commit on the first click with no warning", async () => {
+		serverFns.forcePush.mockResolvedValue({ok: true, message: "pushed"});
+		renderBranch(branchItem({testStatus: "passed", localAhead: true, pushedToRemote: true}), "pushed_no_pr", [
+			project(true),
+		]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Force Push"}));
+
+		await waitFor(() => {
+			expect({
+				warning: screen.queryByTestId("unverified-push-warning"),
+				calls: serverFns.forcePush.mock.calls,
+			}).toEqual({warning: null, calls: [[{data: {project: "wip", branch: "feature/x"}}]]});
+		});
+	});
+
+	it("does not treat a commit in a repo with no test configured as unverified when it is on the tip", async () => {
+		serverFns.pushChild.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+		renderBranch(branchItem({testStatus: "unknown", commitsBehind: 0}), "ready_to_push", [project(false)]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Push"}));
+
+		await waitFor(() => {
+			expect(serverFns.pushChild.mock.calls).toEqual([
+				[{data: {project: "wip", sha: "abc123", branch: "feature/x"}}],
+			]);
+		});
 	});
 });
 

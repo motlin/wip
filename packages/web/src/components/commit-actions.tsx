@@ -49,6 +49,7 @@ import type {ProjectChildrenResult} from "../lib/server-fns.js";
 import {CATEGORIES, addTestCommand} from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
 import {runPendingAction} from "../lib/pending-action.js";
+import {unverifiedPushReason} from "../lib/push-verification.js";
 
 const SNOOZE_PRESETS = [
 	{label: "1 hour", hours: 1},
@@ -209,6 +210,22 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
 	const pr = isPullRequest(item) ? item : null;
+	// Push / Force Push on an unverified commit warns on the first click and pushes on the second; never blocked.
+	const unverifiedReason = unverifiedPushReason({
+		testStatus: item.testStatus,
+		commitsBehind,
+		needsRebase: item.needsRebase,
+		noTests,
+	});
+	const [armedPush, setArmedPush] = useState<"push" | "force_push" | null>(null);
+	const confirmUnverified = (kind: "push" | "force_push") => {
+		if (unverifiedReason === null || armedPush === kind) {
+			setArmedPush(null);
+			return true;
+		}
+		setArmedPush(kind);
+		return false;
+	};
 
 	useEffect(() => {
 		if (!deleteConfirmOpen) return undefined;
@@ -769,7 +786,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						type="button"
 						onClick={() => {
-							void handleForcePush();
+							if (confirmUnverified("force_push")) void handleForcePush();
 						}}
 						disabled={forcePushing}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
@@ -783,7 +800,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						) : (
 							<ArrowUpRight className="h-3.5 w-3.5" />
 						)}
-						{forcePushing ? "Pushing..." : "Force Push"}
+						{forcePushing ? "Pushing..." : armedPush === "force_push" ? "Force Push anyway" : "Force Push"}
 					</button>
 				)}
 
@@ -1090,7 +1107,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						type="button"
 						onClick={() => {
-							void handlePush();
+							if (confirmUnverified("push")) void handlePush();
 						}}
 						disabled={item.pushing}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
@@ -1104,7 +1121,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						) : (
 							<ArrowRight className="h-3.5 w-3.5" />
 						)}
-						{item.pushing ? "Pushing..." : pushLabel}
+						{item.pushing ? "Pushing..." : armedPush === "push" ? `${pushLabel} anyway` : pushLabel}
 					</button>
 				)}
 
@@ -1221,6 +1238,17 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						</div>
 					)}
 				</div>
+
+				{/* Unverified push warning: shown after the first Push / Force Push click */}
+				{armedPush !== null && unverifiedReason !== null && (
+					<span
+						data-testid="unverified-push-warning"
+						role="alert"
+						className="inline-flex items-center gap-1 rounded border border-amber-500/50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+					>
+						Unverified: {unverifiedReason}. Click again to push anyway.
+					</span>
+				)}
 
 				{/* No tests marker: landable without a test, with an "Add a test" detour */}
 				{noTests && (

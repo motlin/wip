@@ -90,6 +90,21 @@ describe("planProject", () => {
 		expect(plan.baseline.needsTest).toBe(false);
 	});
 
+	it("carries each tip's patch-id as the unit's change identity", async () => {
+		git(dir, "checkout -q feature-a");
+		execSync("echo change > file.txt && git add file.txt && git commit -q -m a4", {cwd: dir, stdio: "ignore"});
+		const tip = git(dir, "rev-parse feature-a");
+		const expected = execSync(`git diff-tree -p ${tip} | git patch-id --stable`, {cwd: dir})
+			.toString()
+			.trim()
+			.split(/\s+/)[0];
+		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+		const byBranch = Object.fromEntries(plan.units.map((u) => [u.branch, u]));
+		expect(byBranch["feature-a"]?.patchId).toStrictEqual(expected);
+		// An empty tip commit has no patch-id.
+		expect(byBranch["feature-b"]?.patchId).toStrictEqual("");
+	});
+
 	it("excludes the upstream branch itself (empty chain)", async () => {
 		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
 		expect(plan.units.some((u) => u.branch === "main")).toBe(false);

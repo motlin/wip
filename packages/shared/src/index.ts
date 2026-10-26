@@ -116,6 +116,7 @@ export {
 export {renderTree, type NodeStatus, type ReportNode} from "./lib/advance-report.js";
 export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from "./lib/advance-config.js";
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
+export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
 export {
 	runAdvanceUnits,
 	type SchedulableUnit,

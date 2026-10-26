@@ -329,3 +329,17 @@ export const taskRecords = sqliteTable(
 	},
 	(table) => [index("task_records_created_idx").on(table.createdAt)],
 );
+
+/** Immutable per-commit facts: patch-id (identity only) and size. A sha's diff never changes, so rows are never updated. */
+export const commitFacts = sqliteTable(
+	"commit_facts",
+	{
+		project: text("project").notNull(),
+		sha: text("sha").notNull(),
+		patchId: text("patch_id").notNull(),
+		files: integer("files").notNull(),
+		insertions: integer("insertions").notNull(),
+		deletions: integer("deletions").notNull(),
+	},
+	(table) => [primaryKey({columns: [table.project, table.sha]})],
+);

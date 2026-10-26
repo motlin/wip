@@ -7,12 +7,13 @@ import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";
 
 const idleProbe = {loadPerCore: () => 0, freeMemRatio: () => 1};
 
-function unit(id: string, dependsOn: string[] = []): AdvanceUnit {
+function unit(id: string, dependsOn: string[] = [], patchId = `patch-${id}`): AdvanceUnit {
 	return {
 		id,
 		project: "proj",
 		branch: id,
 		tipSha: `sha-${id}`,
+		patchId,
 		chain: [`sha-${id}`],
 		dependsOn,
 		worktreeRequired: false,
@@ -81,6 +82,25 @@ describe("advanceProject", () => {
 		);
 		expect(report.children[0]?.status).toBe("stuck");
 		expect(report.status).toBe("red");
+	});
+
+	it("keys failure memory by patch-id, so the same change on another branch is recognized", async () => {
+		const failing = {green: false, log: "FAIL Foo.bar\nAssertionError: 1 != 2"};
+		const samePatchFix = vi.fn<AdvanceActions["fix"]>().mockResolvedValue({changed: true, log: ""});
+		await advanceProject(
+			plan(unit("a", [], "patch-same"), unit("b", [], "patch-same")),
+			actions({test: vi.fn<AdvanceActions["test"]>().mockResolvedValue(failing), fix: samePatchFix}),
+			{...opts, globalConcurrency: 1},
+		);
+		expect(samePatchFix).toHaveBeenCalledTimes(1);
+
+		const distinctFix = vi.fn<AdvanceActions["fix"]>().mockResolvedValue({changed: true, log: ""});
+		await advanceProject(
+			plan(unit("a"), unit("b")),
+			actions({test: vi.fn<AdvanceActions["test"]>().mockResolvedValue(failing), fix: distinctFix}),
+			{...opts, globalConcurrency: 1},
+		);
+		expect(distinctFix).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not fix in dry-run, reporting the failing branch red", async () => {

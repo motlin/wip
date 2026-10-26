@@ -2,7 +2,7 @@ import {type AdvancePlan, type AdvanceUnit} from "./advance-plan.js";
 import {runAdvanceUnits} from "./advance-queue.js";
 import {createSystemProbe} from "./system-probe.js";
 import type {ResourceLock, WorkResourceProbe} from "./work-queue.js";
-import {RunMemory, normalizeFailureSignature, type UnitRef} from "./advance-progress.js";
+import {RunMemory, changeIdentity, normalizeFailureSignature, type UnitRef} from "./advance-progress.js";
 import {type NodeStatus, type ReportNode} from "./advance-report.js";
 import {tracedExeca} from "../services/traced-execa.js";
 import {getMiseEnv, hasLocalModifications, testBranch, testFix} from "./git.js";
@@ -81,7 +81,10 @@ async function advanceUnit(
 	opts: Required<Pick<AdvanceProjectOptions, "autonomy" | "maxAttemptsPerUnit">>,
 	emit: (event: AdvanceEvent) => void,
 ): Promise<UnitResult> {
-	const ref: UnitRef = {project: unit.project, changeIdentity: unit.id};
+	const ref: UnitRef = {
+		project: unit.project,
+		changeIdentity: changeIdentity({patchId: unit.patchId, branch: unit.branch, sha: unit.tipSha}),
+	};
 	const run = opts.autonomy === "run";
 
 	try {

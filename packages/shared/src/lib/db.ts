@@ -31,6 +31,7 @@ import {
 	branchNames,
 	cacheFreshness,
 	childrenCache,
+	commitFacts,
 	FAR_FUTURE,
 	ghLoginCache,
 	githubIssues,
@@ -441,6 +442,18 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS task_records_created_idx ON task_records (created_at)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS commit_facts (
+			project TEXT NOT NULL,
+			sha TEXT NOT NULL,
+			patch_id TEXT NOT NULL,
+			files INTEGER NOT NULL,
+			insertions INTEGER NOT NULL,
+			deletions INTEGER NOT NULL,
+			PRIMARY KEY (project, sha)
+		)
+	`);
 
 	db = drizzle(sqlite, {schema});
 
@@ -1381,6 +1394,24 @@ export function loadRecentTaskRecords(): TaskRecord[] {
 		.orderBy(desc(taskRecords.createdAt), desc(sql`rowid`))
 		.limit(TASK_RECORD_LIMIT)
 		.all();
+}
+
+// --- Commit facts (immutable per sha) ---
+
+export type CommitFactRow = typeof commitFacts.$inferSelect;
+
+export function loadCommitFacts(project: string, shas: string[]): CommitFactRow[] {
+	if (shas.length === 0) return [];
+	return getDb()
+		.select()
+		.from(commitFacts)
+		.where(and(eq(commitFacts.project, project), inArray(commitFacts.sha, shas)))
+		.all();
+}
+
+export function insertCommitFacts(rows: CommitFactRow[]): void {
+	if (rows.length === 0) return;
+	getDb().insert(commitFacts).values(rows).onConflictDoNothing().run();
 }
 
 // --- Project cache ---

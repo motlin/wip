@@ -1,4 +1,5 @@
 import {tracedExeca} from "../services/traced-execa.js";
+import {getCommitFacts} from "./commit-facts.js";
 import {mapWithConcurrency} from "./concurrency.js";
 import {getGitTestStatuses} from "./git-test-cli.js";
 
@@ -20,6 +21,8 @@ export interface AdvanceUnit {
 	project: string;
 	branch: string;
 	tipSha: string;
+	/** Patch-id of the tip commit ("" when it has no diff): the unit's identity across rebases. */
+	patchId: string;
 	/** Commits this unit owns, newest-first, with shared ancestors removed. */
 	chain: string[];
 	/** Unit ids that own this unit's shared ancestors and must go green first. */
@@ -68,6 +71,12 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 	// name tie-break keeps the plan deterministic.
 	tips.sort((a, b) => a.chain.length - b.chain.length || a.branch.localeCompare(b.branch));
 
+	const facts = await getCommitFacts(
+		dir,
+		project,
+		tips.map((tip) => tip.tipSha),
+	);
+
 	const owner = new Map<string, string>();
 	const units: AdvanceUnit[] = [];
 	for (const tip of tips) {
@@ -79,6 +88,7 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 			project,
 			branch: tip.branch,
 			tipSha: tip.tipSha,
+			patchId: facts.get(tip.tipSha)?.patchId ?? "",
 			chain: ownedNew,
 			dependsOn,
 			worktreeRequired: tip.branch !== currentBranch,

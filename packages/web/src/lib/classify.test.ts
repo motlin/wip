@@ -411,6 +411,10 @@ describe("classifyTodo", () => {
 	it("returns triaged", () => {
 		expect(classifyTodo(makeTodo())).toBe("triaged");
 	});
+
+	it("returns blocked for a blocked todo", () => {
+		expect(classifyTodo(makeTodo({blocked: true}))).toBe("blocked");
+	});
 });
 
 describe("State machine consistency", () => {

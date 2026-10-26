@@ -41,8 +41,8 @@ export function classifyIssue(_issue: IssueResult): Category {
 	return "triaged";
 }
 
-export function classifyTodo(_todo: TodoItem): Category {
-	return "triaged";
+export function classifyTodo(todo: TodoItem): Category {
+	return todo.blocked ? "blocked" : "triaged";
 }
 
 export function classifyPullRequest(child: GitChildResult, project?: ProjectInfo): Category {

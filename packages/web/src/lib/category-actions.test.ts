@@ -181,9 +181,10 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(indexOf("checks_running")).toBeLessThan(indexOf("checks_passed"));
 	});
 
-	it("orders review flow last", () => {
+	it("orders review flow last, followed only by terminal landed", () => {
 		expect(indexOf("checks_passed")).toBeLessThan(indexOf("approved"));
-		expect(indexOf("approved")).toBe(CATEGORY_PRIORITY.length - 1);
+		expect(indexOf("approved")).toBe(CATEGORY_PRIORITY.length - 2);
+		expect(indexOf("landed")).toBe(CATEGORY_PRIORITY.length - 1);
 	});
 
 	it("places test_failed adjacent to test_running (not after push states)", () => {

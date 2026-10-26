@@ -26,7 +26,7 @@ export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
 // queue's topological tie-break all derive from this.
 export const CATEGORY_COLUMNS = [
 	// Overrides and ideas
-	["snoozed", "skippable", "untriaged", "triaged"],
+	["snoozed", "skippable", "untriaged", "triaged", "blocked"],
 	// Early local
 	["detached_head", "local_changes", "no_test"],
 	// Test cycle
@@ -39,6 +39,8 @@ export const CATEGORY_COLUMNS = [
 	["checks_unknown", "checks_running", "checks_failed"],
 	// Review
 	["checks_passed", "review_comments", "changes_requested", "approved"],
+	// Done
+	["landed"],
 ] as const;
 
 export type Category = (typeof CATEGORY_COLUMNS)[number][number];
@@ -98,6 +100,7 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "checks_failed", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "untriaged", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "triaged", transition: "snooze", to: "snoozed", kind: "active"},
+	{from: "blocked", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "no_test", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "detached_head", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "local_changes", transition: "snooze", to: "snoozed", kind: "active"},
@@ -179,8 +182,8 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "changes_requested", transition: "force_push", to: "checks_running", kind: "active"},
 	{from: "review_comments", transition: "force_push", to: "checks_running", kind: "active"},
 
-	// Merge
-	{from: "approved", transition: "merge", to: "approved", kind: "active"},
+	// Merge: landed is terminal (no outgoing transitions)
+	{from: "approved", transition: "merge", to: "landed", kind: "active"},
 
 	// Skippable — orthogonal state (no incoming transitions; derived from item.skippable flag)
 	// Skippable items are terminal and cannot transition to other states via actions
@@ -396,6 +399,8 @@ export const TodoItemSchema = z.object({
 	title: z.string(),
 	sourceFile: z.string(),
 	sourceLabel: z.string(),
+	// A `- [!]` task: blocked work that classifies as `blocked`.
+	blocked: z.boolean().optional(),
 });
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 

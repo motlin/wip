@@ -133,6 +133,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	skippable: "Skippable",
 	untriaged: "Untriaged",
 	triaged: "Triaged",
+	blocked: "Blocked",
 	no_test: "No test configured",
 	detached_head: "Detached HEAD",
 	local_changes: "Local changes — dirty worktree",
@@ -153,10 +154,12 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	review_comments: "Review comments",
 	changes_requested: "Changes requested",
 	approved: "Approved",
+	landed: "Landed",
 };
 
 function categoryStyle(category: Category, text: string): string {
 	switch (category) {
+		case "landed":
 		case "approved":
 		case "checks_passed":
 			return chalk.green(text);
@@ -171,6 +174,7 @@ function categoryStyle(category: Category, text: string): string {
 		case "checks_failed":
 		case "rebase_conflicts":
 		case "rebase_stuck":
+		case "blocked":
 			return chalk.red(text);
 		case "ready_to_test":
 		case "test_running":
@@ -237,6 +241,7 @@ export default class Report extends Command {
 			skippable: [],
 			untriaged: [],
 			triaged: [],
+			blocked: [],
 			no_test: [],
 			detached_head: [],
 			local_changes: [],
@@ -257,6 +262,7 @@ export default class Report extends Command {
 			review_comments: [],
 			changes_requested: [],
 			approved: [],
+			landed: [],
 		};
 
 		let projectCount = 0;

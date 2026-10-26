@@ -449,6 +449,7 @@ export async function refreshProjectTodos(projectName: string): Promise<SharedTo
 			title: task.text,
 			sourceFile: task.sourceFile,
 			sourceLabel: path.relative(p.dir, task.sourceFile),
+			blocked: task.blocked,
 		}));
 		cacheTodos(projectName, todos);
 		const {todoEmitter} = await import("./todo-events.js");

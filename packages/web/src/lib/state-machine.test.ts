@@ -32,8 +32,16 @@ describe("STATE_MACHINE", () => {
 		expect(keys.length).toBe(unique.size);
 	});
 
+	it("landed is terminal: no outgoing transitions", () => {
+		expect(getTransitionsFrom("landed")).toStrictEqual([]);
+	});
+
+	it("blocked todos can be snoozed", () => {
+		expect(applyTransition("blocked", "snooze")).toBe("snoozed");
+	});
+
 	it("every non-terminal state has at least one outgoing transition", () => {
-		const terminal = new Set(["skippable"]);
+		const terminal = new Set(["skippable", "landed"]);
 		for (const cat of allCategories) {
 			if (terminal.has(cat)) continue;
 			const outgoing = getTransitionsFrom(cat);
@@ -88,7 +96,7 @@ describe("STATE_MACHINE", () => {
 	});
 
 	it("every non-terminal, non-snoozed state can be snoozed", () => {
-		const terminal = new Set(["skippable", "snoozed"]);
+		const terminal = new Set(["skippable", "snoozed", "landed"]);
 		for (const cat of allCategories) {
 			if (terminal.has(cat)) continue;
 			const transitions = getTransitionsFrom(cat);
@@ -204,8 +212,8 @@ describe("applyTransition", () => {
 		expect(applyTransition("test_running", "snooze", "conflicts")).toBe("snoozed");
 	});
 
-	it("returns approved for merge from approved", () => {
-		expect(applyTransition("approved", "merge")).toBe("approved");
+	it("returns landed for merge from approved", () => {
+		expect(applyTransition("approved", "merge")).toBe("landed");
 	});
 
 	it("returns approved for approve from changes_requested", () => {

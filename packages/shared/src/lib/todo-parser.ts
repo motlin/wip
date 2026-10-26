@@ -4,6 +4,7 @@ import * as path from "node:path";
 export interface TodoTask {
 	text: string;
 	completed: boolean;
+	blocked: boolean;
 	sourceFile: string;
 	contextLines: string[];
 }
@@ -38,6 +39,7 @@ export function parseTodoContent(content: string, sourceFile: string): TodoTask[
 			current = {
 				text: match[2] ?? "",
 				completed: match[1] === "x",
+				blocked: match[1] === "!",
 				sourceFile,
 				contextLines: [],
 			};

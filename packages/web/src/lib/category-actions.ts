@@ -140,6 +140,7 @@ export interface CategoryConfig {
 }
 
 export const CATEGORIES: Record<Category, CategoryConfig> = {
+	landed: {label: "Landed", palette: "green", actions: buildActions("landed")},
 	approved: {label: "Approved", palette: "green", actions: buildActions("approved")},
 	changes_requested: {
 		label: "Changes Requested",
@@ -229,6 +230,7 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	no_test: {label: "No Test", palette: "dim", actions: buildActions("no_test")},
 	untriaged: {label: "Untriaged", palette: "muted", actions: buildActions("untriaged")},
 	triaged: {label: "Triaged", palette: "purple", actions: buildActions("triaged")},
+	blocked: {label: "Blocked", palette: "red", actions: buildActions("blocked")},
 	skippable: {label: "Skippable", palette: "muted", actions: buildActions("skippable")},
 	snoozed: {label: "Snoozed", palette: "muted", actions: buildActions("snoozed")},
 };

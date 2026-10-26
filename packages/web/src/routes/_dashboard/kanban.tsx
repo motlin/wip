@@ -37,6 +37,7 @@ function Kanban() {
 		const g: Record<Category, ColumnItems> = {
 			untriaged: {},
 			triaged: {},
+			blocked: {},
 			skippable: {},
 			snoozed: {},
 			no_test: {},
@@ -59,6 +60,7 @@ function Kanban() {
 			review_comments: {},
 			changes_requested: {},
 			approved: {},
+			landed: {},
 		};
 
 		const projectMap = new Map(projects.map((p) => [p.name, p]));

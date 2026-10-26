@@ -141,7 +141,6 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 		to: "ready_to_test",
 		kind: "active",
 	},
-	{from: "rebase_stuck", transition: "resolve_conflicts", to: "ready_to_test", kind: "active"},
 	// Abort, don't rescue: backing a stuck rebase out leaves the branch needing the rebase again
 	{from: "rebase_stuck", transition: "abort_rebase", to: "needs_rebase", kind: "active"},
 

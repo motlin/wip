@@ -166,6 +166,13 @@ describe("canonical category order", () => {
 	it("rebase_conflicts -> ready_to_test is a forward edge", () => {
 		expect(CATEGORY_PRIORITY.indexOf("rebase_conflicts")).toBeLessThan(CATEGORY_PRIORITY.indexOf("ready_to_test"));
 	});
+
+	it("rebase_stuck can only be aborted or snoozed, never rescued", () => {
+		expect(getTransitionsFrom("rebase_stuck")).toStrictEqual([
+			{from: "rebase_stuck", transition: "snooze", to: "snoozed", kind: "active"},
+			{from: "rebase_stuck", transition: "abort_rebase", to: "needs_rebase", kind: "active"},
+		]);
+	});
 });
 
 describe("applyTransition", () => {

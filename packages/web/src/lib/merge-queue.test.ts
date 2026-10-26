@@ -12,6 +12,7 @@ vi.mock("@wip/shared", () => ({
 	getMergedPrHeads: vi.fn<(...args: unknown[]) => unknown>(),
 	markMergedPrs: vi.fn<(...args: unknown[]) => unknown>(),
 	recordLandingOutcomes: vi.fn<(...args: unknown[]) => unknown>(),
+	getCommitFacts: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
@@ -30,10 +31,18 @@ import {
 	getMergedPrHeads,
 	markMergedPrs,
 	recordLandingOutcomes,
+	getCommitFacts,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
-import {mergeStatusToTransition, checkProject, emitter} from "./merge-queue";
+import {
+	mergeStatusToTransition,
+	checkProject,
+	checkDeferredMergeStatus,
+	deferredMergeStatusProjects,
+	emitter,
+	resetDeferredMergeStatus,
+} from "./merge-queue";
 
 const mockGetProjects = getProjects as unknown as Mock;
 const mockFetchUpstreamRef = fetchUpstreamRef as Mock;
@@ -47,6 +56,7 @@ const mockDetectLandings = detectLandings as Mock;
 const mockGetMergedPrHeads = getMergedPrHeads as Mock;
 const mockMarkMergedPrs = markMergedPrs as Mock;
 const mockRecordLandingOutcomes = recordLandingOutcomes as Mock;
+const mockGetCommitFacts = getCommitFacts as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -100,7 +110,72 @@ describe("checkProject", () => {
 		mockDetectLandings.mockResolvedValue([]);
 		mockGetMergedPrHeads.mockResolvedValue([]);
 		mockMarkMergedPrs.mockImplementation((suspects: unknown) => suspects);
+		mockGetCommitFacts.mockResolvedValue(new Map());
+		resetDeferredMergeStatus();
 		emitter.removeAllListeners();
+	});
+
+	it("runs merge-tree eagerly only for the pull window and defers the rest to one per sweep tick", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		// child-00 is the largest, child-19 the smallest: shortest job first ranks them in reverse.
+		const shas = Array.from({length: 20}, (_, i) => `child-${String(i).padStart(2, "0")}`);
+		mockGetChildren.mockResolvedValue(shas);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockGetCommitFacts.mockResolvedValue(
+			new Map(
+				shas.map((sha, i) => [sha, {patchId: `p-${sha}`, files: 1, insertions: 1000 - i * 40, deletions: 0}]),
+			),
+		);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 0, rebaseable: null});
+
+		await checkProject("test-project");
+		const firstPass = mockComputeMergeStatus.mock.calls.map(([, sha]) => sha as string);
+		const projectsAfterFirstPass = deferredMergeStatusProjects();
+
+		await checkDeferredMergeStatus("test-project");
+		const afterOneTick = mockComputeMergeStatus.mock.calls.map(([, sha]) => sha as string);
+
+		expect({firstPass, projectsAfterFirstPass, afterOneTick}).toStrictEqual({
+			firstPass: ["child-19", "child-18", "child-17", "child-16"],
+			projectsAfterFirstPass: ["test-project"],
+			afterOneTick: ["child-19", "child-18", "child-17", "child-16", "child-15"],
+		});
+	});
+
+	it("rotates deferred checks across projects", async () => {
+		mockGetProjects.mockResolvedValue([makeProject({name: "alpha"}), makeProject({name: "beta"})]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockResolvedValue(["a", "b", "c", "d", "e", "f"]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 0, rebaseable: null});
+
+		await checkProject("alpha");
+		await checkProject("beta");
+		const before = deferredMergeStatusProjects();
+		await checkDeferredMergeStatus("alpha");
+
+		expect({before, after: deferredMergeStatusProjects()}).toStrictEqual({
+			before: ["alpha", "beta"],
+			after: ["beta", "alpha"],
+		});
+	});
+
+	it("drops the deferred backlog once every deferred child has run", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockResolvedValue(["a", "b", "c", "d", "e"]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 0, rebaseable: null});
+
+		await checkProject("test-project");
+		await checkDeferredMergeStatus("test-project");
+		await checkDeferredMergeStatus("test-project");
+
+		expect({
+			computed: mockComputeMergeStatus.mock.calls.map(([, sha]) => sha as string),
+			projects: deferredMergeStatusProjects(),
+		}).toStrictEqual({computed: ["a", "b", "c", "d", "e"], projects: []});
 	});
 
 	it("skips On hold children: no merge-tree work and no event for them", async () => {

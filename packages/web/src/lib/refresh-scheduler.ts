@@ -8,7 +8,14 @@ import type {WorkQueueState} from "./work-queue.js";
  * pipeline, so refresh fan-out shares a budget with tests, rebases, and pushes
  * instead of owning a private slot count.
  */
-export type RefreshKind = "children" | "todos" | "merge-status" | "discovery" | "issues" | "project-items";
+export type RefreshKind =
+	| "children"
+	| "todos"
+	| "merge-status"
+	| "merge-status-deferred"
+	| "discovery"
+	| "issues"
+	| "project-items";
 
 /** Refresh kinds that touch the GitHub API rather than one repo's git state. */
 const REPO_INDEPENDENT_KINDS: ReadonlySet<RefreshKind> = new Set(["discovery", "issues", "project-items"]);
@@ -102,7 +109,7 @@ export function enqueueRefresh(options: {
 		resources: REPO_INDEPENDENT_KINDS.has(options.kind) ? [key] : [repoResource(options.project)],
 		kind: options.kind,
 		project: options.project,
-		costClass: options.kind === "merge-status" ? "git-write" : "cheap",
+		costClass: options.kind === "merge-status" || options.kind === "merge-status-deferred" ? "git-write" : "cheap",
 		run: trackRefreshOutcome(key, async () => options.run()),
 	});
 	if (handle.coalesced && options.force === true) {

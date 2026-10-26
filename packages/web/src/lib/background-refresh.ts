@@ -98,6 +98,24 @@ export function enqueueProjectRefresh(project: string, options: {force?: boolean
 	});
 }
 
+/**
+ * One deferred merge-tree check per sweep tick: children outside the pull window
+ * (lean plan step 24) run here at background rank, rotating across projects.
+ */
+async function enqueueDeferredMergeStatus(): Promise<void> {
+	const {deferredMergeStatusProjects, checkDeferredMergeStatus} = await import("./merge-queue.js");
+	const [project] = deferredMergeStatusProjects();
+	if (project === undefined) return;
+	enqueueRefresh({
+		kind: "merge-status-deferred",
+		project,
+		run: async () => {
+			await checkDeferredMergeStatus(project);
+			await watchGate.recordRefreshed(project);
+		},
+	});
+}
+
 export function ensureBackgroundRefresh(): void {
 	if (started) return;
 	started = true;
@@ -134,7 +152,12 @@ export function ensureBackgroundRefresh(): void {
 		startPeriodicSweep({
 			intervalMs: SWEEP_INTERVAL_MS,
 			listProjects: () => cachedProjectNames,
-			enqueueForProject: enqueueProjectRefresh,
+			enqueueForProject: (project) => {
+				enqueueProjectRefresh(project);
+				void enqueueDeferredMergeStatus().catch((error: unknown) => {
+					log.general.error({error}, "deferred merge-status enqueue failed");
+				});
+			},
 		});
 	})().catch((error: unknown) => {
 		started = false;

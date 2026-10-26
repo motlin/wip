@@ -21,7 +21,6 @@ const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
 	"needs_rebase",
 	"rebase_conflicts",
 	"rebase_stuck",
-	"needs_split",
 	"ready_to_push",
 	"pushed_no_pr",
 	"ready_to_test",
@@ -31,8 +30,6 @@ const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
 	"approved",
 	"changes_requested",
 	"review_comments",
-	"plan_unreviewed",
-	"plan_approved",
 ]);
 
 const MAX_VISIBLE_PROJECTS = 8;
@@ -59,8 +56,6 @@ function QueueLayout() {
 		const g: Record<Category, ColumnItems> = {
 			untriaged: {},
 			triaged: {},
-			plan_unreviewed: {},
-			plan_approved: {},
 			skippable: {},
 			snoozed: {},
 			no_test: {},
@@ -73,7 +68,6 @@ function QueueLayout() {
 			rebase_unknown: {},
 			rebase_conflicts: {},
 			rebase_stuck: {},
-			needs_split: {},
 			ready_to_push: {},
 			pushing: {},
 			pushed_no_pr: {},

@@ -153,8 +153,10 @@ describe("classifyBranch", () => {
 		);
 	});
 
-	it("returns needs_split for multi-commit branch with tests passed", () => {
-		expect(classifyBranch(makeBranch({testStatus: "passed", commitsAhead: 3}), makeProject())).toBe("needs_split");
+	it("returns ready_to_push for multi-commit branch with tests passed", () => {
+		expect(classifyBranch(makeBranch({testStatus: "passed", commitsAhead: 3}), makeProject())).toBe(
+			"ready_to_push",
+		);
 	});
 
 	it("returns ready_to_push when commitsAhead is undefined (defaults to single)", () => {
@@ -165,10 +167,6 @@ describe("classifyBranch", () => {
 		expect(classifyBranch(makeBranch({testStatus: "passed", commitsAhead: 0}), makeProject())).toBe(
 			"ready_to_push",
 		);
-	});
-
-	it("returns needs_split for commitsAhead=2", () => {
-		expect(classifyBranch(makeBranch({testStatus: "passed", commitsAhead: 2}), makeProject())).toBe("needs_split");
 	});
 
 	it("returns pushed_no_pr when pushed and in sync with remote", () => {
@@ -404,38 +402,14 @@ function makeTodo(overrides: Partial<TodoItem> = {}): TodoItem {
 }
 
 describe("classifyIssue", () => {
-	it("returns triaged when no planStatus", () => {
+	it("returns triaged", () => {
 		expect(classifyIssue(makeIssue())).toBe("triaged");
-	});
-
-	it("returns triaged when planStatus is none", () => {
-		expect(classifyIssue(makeIssue({planStatus: "none"}))).toBe("triaged");
-	});
-
-	it("returns plan_unreviewed when planStatus is unreviewed", () => {
-		expect(classifyIssue(makeIssue({planStatus: "unreviewed"}))).toBe("plan_unreviewed");
-	});
-
-	it("returns plan_approved when planStatus is approved", () => {
-		expect(classifyIssue(makeIssue({planStatus: "approved"}))).toBe("plan_approved");
 	});
 });
 
 describe("classifyTodo", () => {
-	it("returns triaged when no planStatus", () => {
+	it("returns triaged", () => {
 		expect(classifyTodo(makeTodo())).toBe("triaged");
-	});
-
-	it("returns triaged when planStatus is none", () => {
-		expect(classifyTodo(makeTodo({planStatus: "none"}))).toBe("triaged");
-	});
-
-	it("returns plan_unreviewed when planStatus is unreviewed", () => {
-		expect(classifyTodo(makeTodo({planStatus: "unreviewed"}))).toBe("plan_unreviewed");
-	});
-
-	it("returns plan_approved when planStatus is approved", () => {
-		expect(classifyTodo(makeTodo({planStatus: "approved"}))).toBe("plan_approved");
 	});
 });
 
@@ -552,21 +526,6 @@ describe("State machine consistency", () => {
 			const isValid = statesInMachine.has(category) || specialStates.has(category);
 			expect(isValid, `classifyIssue returned invalid state: ${category}`).toBe(true);
 		});
-
-		it("returns valid state for all plan status cases", () => {
-			const testCases = [
-				makeIssue(),
-				makeIssue({planStatus: "none"}),
-				makeIssue({planStatus: "unreviewed"}),
-				makeIssue({planStatus: "approved"}),
-			];
-
-			for (const issue of testCases) {
-				const category = classifyIssue(issue);
-				const isValid = statesInMachine.has(category) || specialStates.has(category);
-				expect(isValid, `classifyIssue returned invalid state: ${category}`).toBe(true);
-			}
-		});
 	});
 
 	describe("classifyTodo returns valid state machine states", () => {
@@ -575,21 +534,6 @@ describe("State machine consistency", () => {
 			const category = classifyTodo(todo);
 			const isValid = statesInMachine.has(category) || specialStates.has(category);
 			expect(isValid, `classifyTodo returned invalid state: ${category}`).toBe(true);
-		});
-
-		it("returns valid state for all plan status cases", () => {
-			const testCases = [
-				makeTodo(),
-				makeTodo({planStatus: "none"}),
-				makeTodo({planStatus: "unreviewed"}),
-				makeTodo({planStatus: "approved"}),
-			];
-
-			for (const todo of testCases) {
-				const category = classifyTodo(todo);
-				const isValid = statesInMachine.has(category) || specialStates.has(category);
-				expect(isValid, `classifyTodo returned invalid state: ${category}`).toBe(true);
-			}
 		});
 	});
 });

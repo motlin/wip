@@ -26,13 +26,13 @@ export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
 // queue's topological tie-break all derive from this.
 export const CATEGORY_COLUMNS = [
 	// Overrides and ideas
-	["snoozed", "skippable", "untriaged", "triaged", "plan_unreviewed", "plan_approved"],
+	["snoozed", "skippable", "untriaged", "triaged"],
 	// Early local
 	["detached_head", "local_changes", "no_test"],
 	// Test cycle
 	["ready_to_test", "test_running", "test_failed"],
-	// Rebase and split
-	["needs_rebase", "rebase_unknown", "rebase_conflicts", "rebase_stuck", "needs_split"],
+	// Rebase
+	["needs_rebase", "rebase_unknown", "rebase_conflicts", "rebase_stuck"],
 	// Push
 	["ready_to_push", "pushing", "pushed_no_pr"],
 	// CI
@@ -49,8 +49,6 @@ export const CategorySchema = z.enum(CATEGORY_ORDER);
 export const TransitionSchema = z.enum([
 	"snooze",
 	"unsnooze",
-	"generate_plan",
-	"approve_plan",
 	"create_branch",
 	"commit",
 	"run_test",
@@ -59,7 +57,6 @@ export const TransitionSchema = z.enum([
 	"cancel_test",
 	"rebase",
 	"resolve_conflicts",
-	"split",
 	"push",
 	"force_push",
 	"create_pr",
@@ -96,14 +93,11 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "needs_rebase", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "rebase_unknown", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "rebase_stuck", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "needs_split", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "pushed_no_pr", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "checks_passed", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "checks_failed", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "untriaged", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "triaged", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "plan_unreviewed", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "plan_approved", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "no_test", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "detached_head", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "local_changes", transition: "snooze", to: "snoozed", kind: "active"},
@@ -113,11 +107,6 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "review_comments", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "changes_requested", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "approved", transition: "snooze", to: "snoozed", kind: "active"},
-
-	// Plan flow
-	{from: "triaged", transition: "generate_plan", to: "plan_unreviewed", kind: "active"},
-	{from: "plan_unreviewed", transition: "approve_plan", to: "plan_approved", kind: "active"},
-	{from: "plan_approved", transition: "create_branch", to: "ready_to_test", kind: "active"},
 
 	// Local development flow
 	{from: "triaged", transition: "create_branch", to: "ready_to_test", kind: "active"},
@@ -146,9 +135,6 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 		kind: "active",
 	},
 	{from: "rebase_stuck", transition: "resolve_conflicts", to: "ready_to_test", kind: "active"},
-
-	// Split flow (multi-commit branches)
-	{from: "needs_split", transition: "split", to: "ready_to_push", kind: "active"},
 
 	// Push flow
 	{from: "ready_to_push", transition: "push", to: "pushing", kind: "active"},
@@ -380,9 +366,6 @@ export const GitChildResultSchema = z.object({
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 
 // A GitHub issue assigned to me
-export const PlanStatusSchema = z.enum(["none", "unreviewed", "approved"]);
-export type PlanStatus = z.infer<typeof PlanStatusSchema>;
-
 export const GitHubIssueSchema = z.object({
 	number: z.number().int().positive(),
 	title: z.string().min(1),
@@ -392,9 +375,7 @@ export const GitHubIssueSchema = z.object({
 });
 export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
 
-export const IssueResultSchema = GitHubIssueSchema.extend({
-	planStatus: PlanStatusSchema.optional(),
-});
+export const IssueResultSchema = GitHubIssueSchema;
 export type IssueResult = z.infer<typeof IssueResultSchema>;
 
 export const GitHubProjectItemSchema = z.object({
@@ -415,7 +396,6 @@ export const TodoItemSchema = z.object({
 	title: z.string(),
 	sourceFile: z.string(),
 	sourceLabel: z.string(),
-	planStatus: PlanStatusSchema.optional(),
 });
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 

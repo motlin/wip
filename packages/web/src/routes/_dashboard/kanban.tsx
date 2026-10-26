@@ -37,8 +37,6 @@ function Kanban() {
 		const g: Record<Category, ColumnItems> = {
 			untriaged: {},
 			triaged: {},
-			plan_unreviewed: {},
-			plan_approved: {},
 			skippable: {},
 			snoozed: {},
 			no_test: {},
@@ -51,7 +49,6 @@ function Kanban() {
 			rebase_unknown: {},
 			rebase_conflicts: {},
 			rebase_stuck: {},
-			needs_split: {},
 			ready_to_push: {},
 			pushing: {},
 			pushed_no_pr: {},
@@ -73,14 +70,13 @@ function Kanban() {
 			g[cat].gitChildren = g[cat].gitChildren ?? [];
 			g[cat].gitChildren.push(child);
 		}
-		// Issues are classified by plan status (triaged, plan_unreviewed, plan_approved).
+		// Issues and todos are always triaged.
 		for (const issue of workItems.issues) {
 			const cat = classifyIssue(issue);
 			g[cat].issues = g[cat].issues ?? [];
 			g[cat].issues.push(issue);
 		}
 
-		// Todos are classified by plan status (triaged, plan_unreviewed, plan_approved).
 		for (const todo of workItems.todos) {
 			const cat = classifyTodo(todo);
 			g[cat].todos = g[cat].todos ?? [];

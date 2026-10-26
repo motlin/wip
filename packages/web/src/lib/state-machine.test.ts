@@ -106,6 +106,16 @@ describe("STATE_MACHINE", () => {
 		}
 	});
 
+	it("has no dead plan or split states in the enum or the graph", () => {
+		const dead = new Set(["plan_unreviewed", "plan_approved", "needs_split"]);
+		const graphStates = new Set(STATE_MACHINE.flatMap((t) => [t.from, t.to]));
+		expect(allCategories.filter((c) => dead.has(c))).toStrictEqual([]);
+		expect([...graphStates].filter((s) => dead.has(s))).toStrictEqual([]);
+		expect(
+			TransitionSchema.options.filter((t) => ["generate_plan", "approve_plan", "split"].includes(t)),
+		).toStrictEqual([]);
+	});
+
 	it("TransitionSchema does not include edit_code or refresh", () => {
 		const transitions = TransitionSchema.options;
 		expect(transitions).not.toContain("edit_code");

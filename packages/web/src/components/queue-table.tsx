@@ -116,7 +116,7 @@ function typeFilterMatches(filter: TypeFilter, type: ItemType): boolean {
 	return type === filter;
 }
 
-const GREEN_BADGE_CATEGORIES = new Set<Category>(["checks_passed", "approved", "ready_to_push", "plan_approved"]);
+const GREEN_BADGE_CATEGORIES = new Set<Category>(["checks_passed", "approved", "ready_to_push"]);
 const RED_BADGE_CATEGORIES = new Set<Category>([
 	"checks_failed",
 	"test_failed",

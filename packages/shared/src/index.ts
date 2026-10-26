@@ -230,8 +230,6 @@ export {
 	type TaskQueueJob,
 	TestQueueJobSchema,
 	type TestQueueJob,
-	PlanStatusSchema,
-	type PlanStatus,
 	TodoItemSchema,
 	type TodoItem,
 	ActionLogEntrySchema,

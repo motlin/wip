@@ -33,23 +33,16 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 	if (child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch) return "pushed_no_pr";
 	if (child.pushedToRemote && child.localAhead) return "ready_to_push";
 	if (!project.hasTestConfigured) return "no_test";
-	if (child.testStatus === "passed" && (child.commitsAhead ?? 1) > 1) return "needs_split";
 	if (child.testStatus === "passed") return "ready_to_push";
 	return "ready_to_test";
 }
 
-function classifyPlanStatus(planStatus: "none" | "unreviewed" | "approved" | undefined): Category | null {
-	if (planStatus === "unreviewed") return "plan_unreviewed";
-	if (planStatus === "approved") return "plan_approved";
-	return null;
+export function classifyIssue(_issue: IssueResult): Category {
+	return "triaged";
 }
 
-export function classifyIssue(issue: IssueResult): Category {
-	return classifyPlanStatus(issue.planStatus) ?? "triaged";
-}
-
-export function classifyTodo(todo: TodoItem): Category {
-	return classifyPlanStatus(todo.planStatus) ?? "triaged";
+export function classifyTodo(_todo: TodoItem): Category {
+	return "triaged";
 }
 
 export function classifyPullRequest(child: GitChildResult, project?: ProjectInfo): Category {

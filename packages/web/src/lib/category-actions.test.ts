@@ -33,10 +33,6 @@ describe("CATEGORIES", () => {
 		expect(CATEGORIES.test_failed.llmCommand).toBe("/build:fix");
 	});
 
-	it("maps needs_split to /git:split-branch", () => {
-		expect(CATEGORIES.needs_split.llmCommand).toBe("/git:split-branch");
-	});
-
 	it("maps rebase_conflicts to /git:conflicts", () => {
 		expect(CATEGORIES.rebase_conflicts.llmCommand).toBe("/git:conflicts");
 	});
@@ -47,10 +43,6 @@ describe("CATEGORIES", () => {
 
 	it("maps local_changes to /git:commit", () => {
 		expect(CATEGORIES.local_changes.llmCommand).toBe("/git:commit");
-	});
-
-	it("maps plan_approved to /markdown-tasks:do-one-task", () => {
-		expect(CATEGORIES.plan_approved.llmCommand).toBe("/markdown-tasks:do-one-task");
 	});
 
 	it("maps checks_failed to /gha", () => {
@@ -83,20 +75,12 @@ describe("TRANSITION_TO_ACTION", () => {
 		expect(TRANSITION_TO_ACTION.rebase).toBe("rebase_local");
 	});
 
-	it("maps approve_plan to review_plan", () => {
-		expect(TRANSITION_TO_ACTION.approve_plan).toBe("review_plan");
-	});
-
 	it("maps create_branch to create_branch", () => {
 		expect(TRANSITION_TO_ACTION.create_branch).toBe("create_branch");
 	});
 
 	it("maps merge to merge", () => {
 		expect(TRANSITION_TO_ACTION.merge).toBe("merge");
-	});
-
-	it("maps generate_plan to generate_plan", () => {
-		expect(TRANSITION_TO_ACTION.generate_plan).toBe("generate_plan");
 	});
 });
 
@@ -125,14 +109,6 @@ describe("getTransitionActions", () => {
 
 	it("returns create_branch for detached_head", () => {
 		expect(getTransitionActions("detached_head")).toContain("create_branch");
-	});
-
-	it("returns review_plan for plan_unreviewed", () => {
-		expect(getTransitionActions("plan_unreviewed")).toContain("review_plan");
-	});
-
-	it("returns create_branch for plan_approved", () => {
-		expect(getTransitionActions("plan_approved")).toContain("create_branch");
 	});
 });
 
@@ -185,11 +161,9 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(CATEGORY_PRIORITY[1]).toBe("skippable");
 	});
 
-	it("orders plan flow before test flow", () => {
+	it("orders ideas before test flow", () => {
 		expect(indexOf("untriaged")).toBeLessThan(indexOf("ready_to_test"));
 		expect(indexOf("triaged")).toBeLessThan(indexOf("ready_to_test"));
-		expect(indexOf("plan_unreviewed")).toBeLessThan(indexOf("ready_to_test"));
-		expect(indexOf("plan_approved")).toBeLessThan(indexOf("ready_to_test"));
 	});
 
 	it("orders test flow before push flow", () => {

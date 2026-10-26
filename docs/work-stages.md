@@ -310,18 +310,17 @@ CommitItem now has `testStatus`, so states #9 and #10 are reachable. The `detach
 
 ### classifyBranch (branches — BranchItem)
 
-| Code path                                     | Category        | DFA #  | DFA state                          | Notes                                   |
-| --------------------------------------------- | --------------- | ------ | ---------------------------------- | --------------------------------------- |
-| `branch.skippable`                            | `skippable`     | 2      | Skippable                          |                                         |
-| `testStatus === 'failed'`                     | `test_failed`   | 18–20  | Branch, test failed                | Not checking rebased or conflicts       |
-| `pushedToRemote && localAhead`                | `ready_to_push` | 25     | Pushed, local ahead, needs PR      | Local has unpushed commits              |
-| `pushedToRemote && branch !== upstream`       | `pushed_no_pr`  | 24     | Pushed, in sync, needs PR          |                                         |
-| `branch.needsRebase`                          | `needs_rebase`  | 13, 16 | Branch, not rebased                | Distinguishes needs-rebase from rebased |
-| `testStatus === 'passed' && commitsAhead > 1` | `needs_split`   | 22     | Branch, test passed, multi-commit  |                                         |
-| `testStatus === 'passed'`                     | `ready_to_push` | 23     | Branch, test passed, single-commit | Not checking rebased                    |
-| `project.dirty`                               | `local_changes` | 11     | Branch, dirty                      |                                         |
-| `!project.hasTestConfigured`                  | `no_test`       | 12–14  | Branch, no test                    | Not checking rebased or conflicts       |
-| default                                       | `ready_to_test` | 15–17  | Branch, untested                   | Not checking rebased or conflicts       |
+| Code path                               | Category        | DFA #  | DFA state                          | Notes                                   |
+| --------------------------------------- | --------------- | ------ | ---------------------------------- | --------------------------------------- |
+| `branch.skippable`                      | `skippable`     | 2      | Skippable                          |                                         |
+| `testStatus === 'failed'`               | `test_failed`   | 18–20  | Branch, test failed                | Not checking rebased or conflicts       |
+| `pushedToRemote && localAhead`          | `ready_to_push` | 25     | Pushed, local ahead, needs PR      | Local has unpushed commits              |
+| `pushedToRemote && branch !== upstream` | `pushed_no_pr`  | 24     | Pushed, in sync, needs PR          |                                         |
+| `branch.needsRebase`                    | `needs_rebase`  | 13, 16 | Branch, not rebased                | Distinguishes needs-rebase from rebased |
+| `testStatus === 'passed'`               | `ready_to_push` | 23     | Branch, test passed, single-commit | Not checking rebased                    |
+| `project.dirty`                         | `local_changes` | 11     | Branch, dirty                      |                                         |
+| `!project.hasTestConfigured`            | `no_test`       | 12–14  | Branch, no test                    | Not checking rebased or conflicts       |
+| default                                 | `ready_to_test` | 15–17  | Branch, untested                   | Not checking rebased or conflicts       |
 
 **Now distinguished**: `needsRebase` check separates not-rebased branches (#13, #16) from rebased ones. `localAhead` check separates pushed-but-ahead (#25) from in-sync (#24).
 
@@ -380,7 +379,7 @@ CommitItem now has `testStatus`, so states #9 and #10 are reachable. The `detach
 | 19    | Branch, not rebased, test failed     | **collapsed** | shown as #20 (test_failed); `testStatus === 'failed'` checked before `needsRebase` |
 | 20    | Branch, rebased, test failed         | yes           | classifyBranch                                                                     |
 | 21    | Branch, not rebased, test passed     | yes           | classifyBranch (`needsRebase` checked before `testStatus === 'passed'`)            |
-| 22    | Branch, rebased, test passed, multi  | yes           | classifyBranch (shown as needs_split)                                              |
+| 22    | Branch, rebased, test passed, multi  | **collapsed** | shown as #23 (ready_to_push)                                                       |
 | 23    | Branch, rebased, test passed, single | yes           | classifyBranch                                                                     |
 | 24    | Pushed, in sync, needs PR            | yes           | classifyBranch (`pushedToRemote && !localAhead`)                                   |
 | 25    | Pushed, local ahead, needs PR        | yes           | classifyBranch (`pushedToRemote && localAhead`)                                    |

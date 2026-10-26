@@ -20,11 +20,8 @@ export type Action =
 	| "view_test_log"
 	| "delete_branch"
 	| "refresh"
-	| "review_plan"
-	| "implement"
 	| "merge"
-	| "create_branch"
-	| "generate_plan";
+	| "create_branch";
 
 // Maps state-machine transitions to UI action names.
 // Only transitions that correspond to a user-triggerable action are included.
@@ -35,10 +32,8 @@ export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
 	commit: "commit",
 	create_pr: "create_pr",
 	rebase: "rebase_local",
-	approve_plan: "review_plan",
 	merge: "merge",
 	create_branch: "create_branch",
-	generate_plan: "generate_plan",
 };
 
 // Derive user-triggerable actions from state machine transitions for a category.
@@ -64,7 +59,6 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	pushed_no_pr: ["force_push", "refresh", "rename", "delete_branch"],
 	ready_to_push: ["refresh", "rename", "delete_branch"],
 	pushing: ["refresh"],
-	needs_split: ["refresh", "rename"],
 	needs_rebase: ["refresh", "rename"],
 	rebase_unknown: ["refresh", "rename"],
 	rebase_conflicts: ["refresh", "rename"],
@@ -74,7 +68,6 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	test_running: ["view_test_log", "refresh"],
 	local_changes: ["rename"],
 	no_test: ["rename", "delete_branch"],
-	plan_approved: ["implement"],
 };
 
 function buildActions(category: Category): readonly Action[] {
@@ -186,12 +179,6 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 		actions: buildActions("ready_to_push"),
 	},
 	pushing: {label: "Pushing", palette: "yellow", actions: buildActions("pushing")},
-	needs_split: {
-		label: "Needs Split",
-		palette: "orange",
-		actions: buildActions("needs_split"),
-		llmCommand: "/git:split-branch",
-	},
 	needs_rebase: {
 		label: "Needs Rebase",
 		palette: "orange",
@@ -242,17 +229,6 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	no_test: {label: "No Test", palette: "dim", actions: buildActions("no_test")},
 	untriaged: {label: "Untriaged", palette: "muted", actions: buildActions("untriaged")},
 	triaged: {label: "Triaged", palette: "purple", actions: buildActions("triaged")},
-	plan_unreviewed: {
-		label: "Plan Unreviewed",
-		palette: "orange",
-		actions: buildActions("plan_unreviewed"),
-	},
-	plan_approved: {
-		label: "Plan Approved",
-		palette: "green",
-		actions: buildActions("plan_approved"),
-		llmCommand: "/markdown-tasks:do-one-task",
-	},
 	skippable: {label: "Skippable", palette: "muted", actions: buildActions("skippable")},
 	snoozed: {label: "Snoozed", palette: "muted", actions: buildActions("snoozed")},
 };

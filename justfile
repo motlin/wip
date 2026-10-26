@@ -92,10 +92,15 @@ storybook *args: install
 pre-commit: install
     pre-commit run --all-files
 
+# Fail if the browser bundle imports server-only modules (execa, node builtins); they break the page in production
+[group('build')]
+check-client-bundle: build
+    ! grep -lE 'import"(execa|node:[a-z_]+)"|from"(execa|node:[a-z_]+)"' packages/web/dist/client/assets/*.js
+
 # Run all pre-commit checks
 [arg("quick", long, value="true", help="Skip tests")]
 [group('build')]
-verify quick="": check build fallow pre-commit
+verify quick="": check build check-client-bundle fallow pre-commit
     {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
 

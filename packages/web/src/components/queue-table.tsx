@@ -1,7 +1,8 @@
 import {useNavigate} from "@tanstack/react-router";
 import {useState, useMemo} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi, upstreamRedCommand} from "@wip/shared";
+import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi} from "@wip/shared/git-child-discriminators.js";
+import {upstreamRedCommand} from "@wip/shared/upstream-red.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../lib/category-actions.js";
 import {useQueueContext, bucketCount} from "../lib/queue-context.js";
 

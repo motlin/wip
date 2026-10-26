@@ -10,7 +10,7 @@ import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
 import {SystemStatus} from "../../components/system-status";
 import {CategoryBadge} from "../../components/category-badge";
-import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared";
+import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared/classify.js";
 import {sidebarProjects} from "../../lib/sidebar-projects";
 import type {Category} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotClass} from "../../lib/category-actions";

@@ -18,6 +18,14 @@
 			"types": "./src/lib/classify.ts",
 			"import": "./src/lib/classify.ts"
 		},
+		"./git-child-discriminators.js": {
+			"types": "./src/lib/git-child-discriminators.ts",
+			"import": "./src/lib/git-child-discriminators.ts"
+		},
+		"./upstream-red.js": {
+			"types": "./src/lib/upstream-red.ts",
+			"import": "./src/lib/upstream-red.ts"
+		},
 		"./schemas.js": {
 			"types": "./src/lib/schemas.ts",
 			"import": "./src/lib/schemas.ts"

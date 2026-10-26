@@ -1,6 +1,11 @@
 import {createFileRoute} from "@tanstack/react-router";
 import {useState, type ReactNode} from "react";
-import {isGitChildPullRequest, isGitChildBranch, isGitChildCommit, isGitChildUpstreamCi} from "@wip/shared";
+import {
+	isGitChildPullRequest,
+	isGitChildBranch,
+	isGitChildCommit,
+	isGitChildUpstreamCi,
+} from "@wip/shared/git-child-discriminators.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../../../lib/category-actions.js";
 import {CommitCard} from "../../../components/commit-card.js";
 import {BranchCard} from "../../../components/branch-card.js";

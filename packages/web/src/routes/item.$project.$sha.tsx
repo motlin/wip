@@ -30,7 +30,7 @@ import {
 	projectsQueryOptions,
 	snoozedQueryOptions,
 } from "../lib/queries.js";
-import {classifyCommit, classifyBranch, classifyPullRequest} from "@wip/shared";
+import {classifyCommit, classifyBranch, classifyPullRequest} from "@wip/shared/classify.js";
 import {applyTransition} from "@wip/shared/schemas.js";
 import {CATEGORIES, categoryTextClass} from "../lib/category-actions.js";
 import {branchRemoteUrl} from "../lib/branch-rename.js";

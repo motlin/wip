@@ -1,4 +1,5 @@
-import {type Category, type ProjectInfo, projectCondition} from "@wip/shared";
+import type {Category, ProjectInfo} from "@wip/shared";
+import {projectCondition} from "@wip/shared/classify.js";
 
 export interface SidebarProject {
 	name: string;

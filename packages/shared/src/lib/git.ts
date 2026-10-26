@@ -375,7 +375,7 @@ export async function fetchUpstreamRef(
 	dir: string,
 	upstreamRef: string,
 	projectName: string,
-): Promise<{changed: boolean; sha: string}> {
+): Promise<{changed: boolean; from: string | null; sha: string}> {
 	const parts = upstreamRef.split("/");
 	const remote = parts[0] ?? "";
 	const branch = parts.slice(1).join("/");
@@ -385,13 +385,12 @@ export async function fetchUpstreamRef(
 
 	const result = await git(dir, "rev-parse", upstreamRef);
 	const newSha = result.trim();
-	if (!newSha) return {changed: false, sha: ""};
-
 	const cachedSha = getCachedUpstreamSha(projectName);
-	if (cachedSha === newSha) return {changed: false, sha: newSha};
+	if (!newSha) return {changed: false, from: cachedSha, sha: ""};
+	if (cachedSha === newSha) return {changed: false, from: cachedSha, sha: newSha};
 
 	cacheUpstreamSha(projectName, upstreamRef, newSha);
-	return {changed: true, sha: newSha};
+	return {changed: true, from: cachedSha, sha: newSha};
 }
 
 export async function computeMergeStatus(

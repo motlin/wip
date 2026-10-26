@@ -23,13 +23,24 @@ export function mergeStatusToTransition(
 	return "rebase";
 }
 
+export interface UpstreamMovedEvent {
+	project: string;
+	/** The previously cached upstream tip, or null on the first fetch for this project. */
+	from: string | null;
+	to: string;
+}
+
 function emit(event: MergeStatusEvent): void {
 	emitter.emit("mergeStatus", event);
 }
 
 async function checkProjectInfo(p: ProjectInfo): Promise<void> {
-	const {sha: upstreamSha} = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
+	const {changed, from, sha: upstreamSha} = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
 	if (!upstreamSha) return;
+	if (changed) {
+		const moved: UpstreamMovedEvent = {project: p.name, from, to: upstreamSha};
+		emitter.emit("upstreamMoved", moved);
+	}
 
 	const allShas = await getChildren(p.dir, p.upstreamRef);
 	// On hold items get no background merge-tree work.

@@ -109,6 +109,34 @@ describe("checkProject", () => {
 		});
 	});
 
+	it("emits exactly one upstreamMoved event with from/to when upstream moved", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: true, from: "upstream-old", sha: "upstream-new"});
+		mockGetChildren.mockResolvedValue([]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+
+		const events: unknown[] = [];
+		emitter.on("upstreamMoved", (e) => events.push(e));
+
+		await checkProject("test-project");
+
+		expect(events).toStrictEqual([{project: "test-project", from: "upstream-old", to: "upstream-new"}]);
+	});
+
+	it("emits no upstreamMoved event when upstream is unchanged", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, from: "upstream-abc", sha: "upstream-abc"});
+		mockGetChildren.mockResolvedValue([]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+
+		const events: unknown[] = [];
+		emitter.on("upstreamMoved", (e) => events.push(e));
+
+		await checkProject("test-project");
+
+		expect(events).toStrictEqual([]);
+	});
+
 	it("does nothing when the project is not found", async () => {
 		mockGetProjects.mockResolvedValue([makeProject({name: "other"})]);
 

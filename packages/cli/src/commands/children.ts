@@ -44,7 +44,7 @@ export default class Children extends Command {
 		for (const p of projects) {
 			if (args.project && p.name !== args.project) continue;
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			if (children.length === 0) continue;
 
 			if (children.length > 0) {

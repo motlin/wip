@@ -283,7 +283,7 @@ export default class Report extends Command {
 			if (args.project && p.name !== args.project) continue;
 
 			const prStatuses = await getPrStatuses(p.dir, p.name, p.upstreamRemote);
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses);
 			if (children.length === 0 && !args.project) continue;
 
 			projectCount++;

@@ -115,7 +115,7 @@ export default class Test extends Command {
 				continue;
 			}
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			const testable = children.filter((c) => !c.skippable);
 			if (testable.length === 0) continue;
 

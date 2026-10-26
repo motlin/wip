@@ -88,3 +88,19 @@ export async function gitTestResults(
 	}
 	return parseGitTestResults(result.stdout, unique);
 }
+
+/**
+ * Stored `default` git-test verdicts in wip's passed/failed vocabulary. Shas git-test
+ * knows nothing about are left out, so callers fall back to "unknown".
+ */
+export async function getGitTestStatuses(
+	dir: string,
+	shas: readonly string[],
+): Promise<Map<string, "passed" | "failed">> {
+	const statuses = new Map<string, "passed" | "failed">();
+	for (const [sha, status] of await gitTestResults(dir, DEFAULT_GIT_TEST, shas)) {
+		if (status === "good") statuses.set(sha, "passed");
+		else if (status === "bad") statuses.set(sha, "failed");
+	}
+	return statuses;
+}

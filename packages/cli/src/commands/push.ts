@@ -71,7 +71,7 @@ export default class Push extends Command {
 				continue;
 			}
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			const green = children.filter((c) => c.testStatus === "passed" && !c.skippable);
 
 			if (green.length === 0) continue;

@@ -1,14 +1,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+	DEFAULT_GIT_TEST,
 	getAiMaxAttempts,
 	getAiRungTimeoutMs,
 	getCacheDir,
+	gitTestResults,
 	runLadder,
 	runReplayRung,
 	runRebaseLeftoversRung,
 	type LadderResult,
 	type LadderRunProject,
+	type GitTestStatus,
 	type LadderStopInfo,
 	type WorkQueue,
 } from "@wip/shared";
@@ -108,21 +111,23 @@ async function defaultRerun(project: LadderRunProject, signal: AbortSignal): Pro
 	});
 }
 
-/** Green only when at least one commit is listed and every line reports "good". */
-export function parseGitTestResults(output: string): "green" | "red" {
-	const lines = output.split("\n").filter((line) => line.trim() !== "");
-	return lines.length > 0 && lines.every((line) => line.startsWith("good")) ? "green" : "red";
+/** Green only when at least one commit is listed and git-test reports every one good. */
+export function branchVerdict(statuses: ReadonlyMap<string, GitTestStatus>): "green" | "red" {
+	return statuses.size > 0 && [...statuses.values()].every((status) => status === "good") ? "green" : "red";
 }
 
 async function defaultResults(project: LadderRunProject, branch: string): Promise<"green" | "red"> {
 	const range = `${project.upstreamRemote}/${project.upstreamBranch}..${branch}`;
+	const revList = await git(project.path, ["rev-list", range]);
+	if (revList.exitCode !== 0) return "red";
+	const shas = revList.stdout.split("\n").filter((sha) => sha.length > 0);
 	// A branch with no commits beyond upstream has nothing to test.
-	const ahead = await git(project.path, ["rev-list", "--count", range]);
-	if (ahead.exitCode === 0 && ahead.stdout.trim() === "0") return "green";
-	const result = await tracedExeca("git", ["-C", project.path, "test", "results", "--no-color", range], {
-		reject: false,
-	});
-	return result.failed ? "red" : parseGitTestResults(result.stdout);
+	if (shas.length === 0) return "green";
+	try {
+		return branchVerdict(await gitTestResults(project.path, DEFAULT_GIT_TEST, shas));
+	} catch {
+		return "red";
+	}
 }
 
 function shellQuote(text: string): string {

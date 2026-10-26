@@ -1,6 +1,6 @@
 import {tracedExeca} from "../services/traced-execa.js";
 import {mapWithConcurrency} from "./concurrency.js";
-import {getTestResultsForProject} from "./db.js";
+import {getGitTestStatuses} from "./git-test-cli.js";
 
 const TIP_CONCURRENCY = 4;
 
@@ -85,7 +85,7 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 		});
 	}
 
-	const baselineGreen = getTestResultsForProject(project).get(baselineSha) === "passed";
+	const baselineGreen = (await getGitTestStatuses(dir, [baselineSha])).get(baselineSha) === "passed";
 
 	return {
 		project,

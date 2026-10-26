@@ -155,6 +155,7 @@ export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type Workt
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
 export {
 	DEFAULT_GIT_TEST,
+	getGitTestStatuses,
 	gitTestResults,
 	gitTestRun,
 	parseGitTestResults,

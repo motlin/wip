@@ -1,7 +1,7 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 import {Polly, type PollyConfig} from "@pollyjs/core";
 import {tmpdir} from "node:os";
-import {mkdir as makeDirectory, mkdtemp, rm} from "node:fs/promises";
+import {mkdir as makeDirectory, mkdtemp, rm, writeFile as writeTestFile} from "node:fs/promises";
 import {join} from "node:path";
 import {execa} from "execa";
 
@@ -11,7 +11,6 @@ import {
 	setGitHubClient,
 	resetGitHubClient,
 	createTestClient,
-	recordTestResult,
 	cacheUpstreamSha,
 	cacheMergeStatus,
 	cacheIssues,
@@ -166,6 +165,12 @@ async function createTestGitRepo(prefix = "wip-test-"): Promise<string> {
 	);
 	await execa("git", ["commit", "--allow-empty", "-m", "Initial commit"], {cwd: dir});
 	return dir;
+}
+
+/** Store a git-test verdict for the default test by running a trivial command. A bad run exits non-zero. */
+async function markGitTest(dir: string, sha: string, good: boolean): Promise<void> {
+	await execa("git", ["-C", dir, "config", "test.default.command", good ? "true" : "false"]);
+	await execa("git", ["-C", dir, "test", "run", "--test", "default", sha], {reject: false});
 }
 
 async function createBareRemote(prefix = "wip-remote-"): Promise<string> {
@@ -510,11 +515,11 @@ describe("generateAdvancePlanForProjects", () => {
 		expect(plan.projects.every((project) => project.branches.length === 0)).toBe(true);
 	});
 
-	it("returns noop when a project has no branch units and the baseline is cached green", async () => {
+	it("returns noop when a project has no branch units and git-test reports the baseline good", async () => {
 		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
 		const dir = await createTestGitRepo();
 		const baselineSha = (await execa("git", ["-C", dir, "rev-parse", "main"])).stdout.trim();
-		recordTestResult(baselineSha, "noop-project", "passed", 0, 10);
+		await markGitTest(dir, baselineSha, true);
 
 		const plan = await generateAdvancePlanForProjects([
 			makeProject({name: "noop-project", dir, upstreamRef: "main"}),
@@ -586,19 +591,22 @@ describe("generateAdvancePlanForProjects", () => {
 		]);
 	});
 
-	it("derives each branch's expected actions from its tip's recorded test result", async () => {
+	it("derives each branch's expected actions from its tip's git-test result", async () => {
 		const {generateAdvancePlanForProjects} = await import("./server-fns.impl.js");
 		const dir = await createTestGitRepo();
-		await execa("git", ["-C", dir, "checkout", "-b", "feature/passed"]);
-		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Passing work"]);
-		const passedSha = (await execa("git", ["-C", dir, "rev-parse", "feature/passed"])).stdout.trim();
-		await execa("git", ["-C", dir, "checkout", "-b", "feature/failed", "main"]);
-		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Failing work"]);
-		const failedSha = (await execa("git", ["-C", dir, "rev-parse", "feature/failed"])).stdout.trim();
-		await execa("git", ["-C", dir, "checkout", "-b", "feature/untested", "main"]);
-		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Untested work"]);
-		recordTestResult(passedSha, "state-project", "passed", 0, 10);
-		recordTestResult(failedSha, "state-project", "failed", 1, 10);
+		// git-test keys verdicts by tree, so each branch commits a distinct file.
+		const commitFile = async (branch: string, file: string): Promise<string> => {
+			await execa("git", ["-C", dir, "checkout", "-b", branch, "main"]);
+			await writeTestFile(join(dir, file), file);
+			await execa("git", ["-C", dir, "add", file]);
+			await execa("git", ["-C", dir, "commit", "-m", file]);
+			return (await execa("git", ["-C", dir, "rev-parse", branch])).stdout.trim();
+		};
+		const passedSha = await commitFile("feature/passed", "passed.txt");
+		const failedSha = await commitFile("feature/failed", "failed.txt");
+		await commitFile("feature/untested", "untested.txt");
+		await markGitTest(dir, passedSha, true);
+		await markGitTest(dir, failedSha, false);
 
 		const plan = await generateAdvancePlanForProjects([
 			makeProject({name: "state-project", dir, upstreamRef: "main", upstreamBranch: "main"}),

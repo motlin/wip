@@ -65,7 +65,7 @@ import {
 	type TaskQueueJob,
 	planProject,
 	resolveAdvanceConcurrency,
-	getTestResultsForProject,
+	getGitTestStatuses,
 	matchesFilters,
 	buildInventoryFromTemplates,
 	getInventoryPath,
@@ -229,7 +229,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 			}
 
 			const [children, remoteBranchInfo] = await Promise.all([
-				getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, p.name, mergeStatusMap),
+				getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, prStatuses, mergeStatusMap),
 				getRemoteBranchInfo(p.dir),
 			]);
 
@@ -237,7 +237,6 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 			const needsRebaseBranches = await getNeedsRebaseBranches(
 				p.dir,
 				p.upstreamRef,
-				p.name,
 				prStatuses,
 				remoteBranchInfo.remoteBranches,
 				remoteBranchInfo.remoteBranchRefs,
@@ -1647,7 +1646,11 @@ export async function generateAdvancePlanForProjects(
 		// eslint-disable-next-line no-await-in-loop
 		const plan = await planProject({project: project.name, dir: project.dir, upstreamRef: project.upstreamRef});
 		const status = plan.units.length === 0 && !plan.baseline.needsTest ? "noop" : "ready";
-		const tipResults = getTestResultsForProject(project.name);
+		// eslint-disable-next-line no-await-in-loop -- sequential like planProject above, to bound git subprocesses
+		const tipResults = await getGitTestStatuses(
+			project.dir,
+			plan.units.map((unit) => unit.tipSha),
+		);
 		const testShasInFlight = new Set(
 			getAllActiveTasks()
 				.filter((task) => task.taskType === "test" && task.project === project.name)

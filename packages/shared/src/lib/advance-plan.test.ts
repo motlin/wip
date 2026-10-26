@@ -6,7 +6,7 @@ import {tmpdir} from "node:os";
 import {execSync} from "node:child_process";
 
 import {planProject} from "./advance-plan.js";
-import {initDb, resetDb, recordTestResult} from "./db.js";
+import {initDb, resetDb} from "./db.js";
 
 function git(dir: string, command: string): string {
 	return execSync(`git ${command}`, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
@@ -78,13 +78,14 @@ describe("planProject", () => {
 		expect(byBranch["feature-a"]?.worktreeRequired).toBe(true);
 	});
 
-	it("resolves the baseline and marks it needing a test until a pass is cached", async () => {
+	it("resolves the baseline and marks it needing a test until git-test reports it good", async () => {
 		const baselineSha = git(dir, "rev-parse main");
 		let plan = await planProject({project: "proj", dir, upstreamRef: "main"});
 		expect(plan.baseline.sha).toStrictEqual(baselineSha);
 		expect(plan.baseline.needsTest).toBe(true);
 
-		recordTestResult(baselineSha, "proj", "passed", 0, 5);
+		git(dir, "config test.default.command true");
+		git(dir, `test run --test default ${baselineSha}`);
 		plan = await planProject({project: "proj", dir, upstreamRef: "main"});
 		expect(plan.baseline.needsTest).toBe(false);
 	});

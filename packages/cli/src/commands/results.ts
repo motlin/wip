@@ -61,7 +61,7 @@ export default class Results extends Command {
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
 
-			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured, undefined, p.name);
+			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			if (children.length === 0) continue;
 
 			const nonSkippable = children.filter((c) => !c.skippable);

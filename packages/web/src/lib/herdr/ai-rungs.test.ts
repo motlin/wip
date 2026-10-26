@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 import {createWorkQueue, type LadderResult, type LadderRunProject} from "@wip/shared";
-import {parseGitTestResults, runAiConflictRung, runAiTestFixRung, type AiRungDeps} from "./ai-rungs.js";
+import {branchVerdict, runAiConflictRung, runAiTestFixRung, type AiRungDeps} from "./ai-rungs.js";
 
 const project: LadderRunProject = {
 	name: "demo",
@@ -134,12 +134,33 @@ describe("runAiConflictRung", () => {
 	});
 });
 
-describe("parseGitTestResults", () => {
-	it("is green only when every commit line is good", () => {
-		expect(parseGitTestResults("good  abc one\ngood  def two\n")).toBe("green");
-		expect(parseGitTestResults("good  abc one\nbad   def two\n")).toBe("red");
-		expect(parseGitTestResults("good  abc one\n?     def two\n")).toBe("red");
-		expect(parseGitTestResults("")).toBe("red");
+describe("branchVerdict", () => {
+	it("is green only when git-test reports every commit good", () => {
+		expect(
+			branchVerdict(
+				new Map([
+					["a", "good"],
+					["b", "good"],
+				]),
+			),
+		).toBe("green");
+		expect(
+			branchVerdict(
+				new Map([
+					["a", "good"],
+					["b", "bad"],
+				]),
+			),
+		).toBe("red");
+		expect(
+			branchVerdict(
+				new Map([
+					["a", "good"],
+					["b", "unknown"],
+				]),
+			),
+		).toBe("red");
+		expect(branchVerdict(new Map())).toBe("red");
 	});
 });
 

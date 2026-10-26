@@ -73,6 +73,13 @@ jobs:
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+      # Readers take test status from `git test results`, so the tests need the git-test CLI.
+      - name: Install git-test
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://raw.githubusercontent.com/motlin/git-test/4965286c9291a5711491dafd6b6034361c59355f/bin/git-test -o "$HOME/.local/bin/git-test"
+          chmod +x "$HOME/.local/bin/git-test"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: just test
 
   markdownlint:

@@ -6,7 +6,6 @@ import {log} from "../services/logger-pino.js";
 import {tracedExeca} from "../services/traced-execa.js";
 import {nameBranch} from "./branch-namer.js";
 import {
-	getTestResultsForProject,
 	getBranchName,
 	setBranchName,
 	getCachedMiseEnv,
@@ -17,6 +16,7 @@ import {
 import {mapWithConcurrency} from "./concurrency.js";
 import {getConfigValue} from "./config.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
+import {getGitTestStatuses} from "./git-test-cli.js";
 import {inventoryExists, loadInventory, type Inventory} from "./inventory.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
 import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
@@ -181,7 +181,6 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 export async function getNeedsRebaseBranches(
 	dir: string,
 	upstreamRef: string,
-	projectName?: string,
 	prStatuses?: PrStatuses,
 	remoteBranches?: Set<string>,
 	remoteBranchRefs?: Map<string, string>,
@@ -204,10 +203,6 @@ export async function getNeedsRebaseBranches(
 		.filter(Boolean)
 		.filter((b) => !b.match(/^(main|master)$/));
 	if (nonMainBranches.length === 0) return [];
-
-	const testStatusMap: Map<string, "passed" | "failed"> = projectName
-		? getTestResultsForProject(projectName)
-		: new Map<string, "passed" | "failed">();
 
 	const needsRebase: ChildCommit[] = [];
 	const format = "%H%x00%h%x00%s%x00%B%x00%ai";
@@ -262,7 +257,7 @@ export async function getNeedsRebaseBranches(
 			subject,
 			date,
 			branch,
-			testStatus: testStatusMap.get(sha) ?? "unknown",
+			testStatus: "unknown",
 			checkStatus,
 			skippable: isSkippable(fullMessage),
 			pushedToRemote,
@@ -281,6 +276,12 @@ export async function getNeedsRebaseBranches(
 		});
 	}
 
+	if (needsRebase.length === 0) return needsRebase;
+	const testStatuses = await getGitTestStatuses(
+		dir,
+		needsRebase.map((child) => child.sha),
+	);
+	for (const child of needsRebase) child.testStatus = testStatuses.get(child.sha) ?? "unknown";
 	return needsRebase;
 }
 
@@ -421,7 +422,6 @@ export async function getChildCommits(
 	upstreamRef: string,
 	hasTest: boolean,
 	prStatuses?: PrStatuses,
-	projectName?: string,
 	mergeStatusMap?: Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>,
 ): Promise<ChildCommit[]> {
 	const childrenOutput = await git(dir, "children", upstreamRef);
@@ -459,8 +459,9 @@ export async function getChildCommits(
 
 	const {remoteBranches, remoteBranchRefs, defaultBranch} = parseRemoteBranchOutput(remoteBranchOutput);
 
-	const testStatusMap: Map<string, "passed" | "failed"> =
-		hasTest && projectName ? getTestResultsForProject(projectName) : new Map<string, "passed" | "failed">();
+	const testStatusMap: Map<string, "passed" | "failed"> = hasTest
+		? await getGitTestStatuses(dir, shas)
+		: new Map<string, "passed" | "failed">();
 
 	const records = logResult.stdout.split(RS).filter((r) => r.trim());
 	const children: ChildCommit[] = [];

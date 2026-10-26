@@ -7,7 +7,13 @@ import {join} from "node:path";
 import {getCommitFacts} from "./commit-facts.js";
 import {getWorkItemHistory, initDb, loadWorkItems, resetDb} from "./db.js";
 import {landedPatchIds} from "./landing-detector.js";
-import {reconcileLedger, reconcileWorkItems, recordLandingOutcomes, type WorkItem} from "./work-ledger.js";
+import {
+	reconcileLedger,
+	reconcileWorkItems,
+	reconcileWorkItemsWithUpstream,
+	recordLandingOutcomes,
+	type WorkItem,
+} from "./work-ledger.js";
 
 const T0 = "2026-10-01T00:00:00.000Z";
 const T1 = "2026-10-02T00:00:00.000Z";
@@ -249,5 +255,66 @@ describe("landing outcomes into the ledger", () => {
 			A: "landed",
 			B: "approved",
 		});
+	});
+});
+
+describe("unnamed fast-forward landings", () => {
+	let dir: string;
+
+	beforeEach(() => {
+		initDb(":memory:");
+		dir = mkdtempSync(join(tmpdir(), "wip-ledger-ff-"));
+		sh(dir, "git init -q -b main");
+		sh(dir, "git config user.email test@test.com");
+		sh(dir, "git config user.name Test");
+		commitFile(dir, "base.txt", "base\n", "base");
+	});
+
+	afterEach(() => {
+		resetDb();
+		rmSync(dir, {recursive: true, force: true});
+	});
+
+	it("marks an unnamed child that lands by fast-forward as landed and a dropped one as abandoned", async () => {
+		sh(dir, "git checkout -q --detach");
+		const landing = commitFile(dir, "landing.txt", "landing\n", "Landing");
+		sh(dir, "git checkout -q --detach main");
+		const dropped = commitFile(dir, "dropped.txt", "dropped\n", "Dropped");
+		sh(dir, "git checkout -q main");
+		const facts = await getCommitFacts(dir, "proj", [landing, dropped]);
+		const landingId = facts.get(landing)?.patchId ?? "";
+		const droppedId = facts.get(dropped)?.patchId ?? "";
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", [
+			{patchId: landingId, sha: landing, subject: "Landing", state: "approved"},
+			{patchId: droppedId, sha: dropped, subject: "Dropped", state: "approved"},
+		]);
+
+		sh(dir, `git merge -q --ff-only ${landing}`);
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", []);
+
+		expect(
+			Object.fromEntries(
+				loadWorkItems("proj").map((row) => [row.subject, {state: row.state, landed: row.landedAt !== null}]),
+			),
+		).toStrictEqual({
+			Landing: {state: "landed", landed: true},
+			Dropped: {state: "abandoned", landed: false},
+		});
+	});
+
+	it("marks an unnamed child that upstream rebased in (same patch-id, new sha) as landed", async () => {
+		sh(dir, "git checkout -q --detach");
+		const child = commitFile(dir, "child.txt", "child\n", "Child");
+		sh(dir, "git checkout -q main");
+		const patchId = (await getCommitFacts(dir, "proj", [child])).get(child)?.patchId ?? "";
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", [
+			{patchId, sha: child, subject: "Child", state: "approved"},
+		]);
+
+		commitFile(dir, "upstream.txt", "upstream\n", "Upstream");
+		sh(dir, `git cherry-pick ${child}`);
+		await reconcileWorkItemsWithUpstream(dir, "proj", "main", []);
+
+		expect(loadWorkItems("proj").map((row) => row.state)).toStrictEqual(["landed"]);
 	});
 });

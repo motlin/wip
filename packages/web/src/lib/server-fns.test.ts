@@ -1802,6 +1802,31 @@ describe("getProjectChildrenHandler", () => {
 		]);
 	});
 
+	it("records an unnamed child that leaves the children set by fast-forward as landed", async () => {
+		const dir = await createTestGitRepo();
+		const {stdout: base} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);
+		await execa("git", ["-C", dir, "branch", "upstream-tip", base]);
+		await writeTestFile(join(dir, "ff.txt"), "ff\n");
+		await execa("git", ["-C", dir, "add", "ff.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Fast-forward commit"]);
+		const {stdout: child} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);
+		const project = makeProject({name: "ledger-ff-test", dir, upstreamRef: "upstream-tip"});
+		seedProjectCache([project]);
+
+		const {refreshProjectChildren} = await import("./server-fns.impl.js");
+		await refreshProjectChildren("ledger-ff-test");
+		await execa("git", ["-C", dir, "branch", "-f", "upstream-tip", child]);
+		await refreshProjectChildren("ledger-ff-test");
+
+		expect(
+			loadWorkItems("ledger-ff-test").map((item) => ({
+				subject: item.subject,
+				state: item.state,
+				landed: item.landedAt !== null,
+			})),
+		).toStrictEqual([{subject: "Fast-forward commit", state: "landed", landed: true}]);
+	});
+
 	it("marks a child above flow.splitThresholdLines consider splitting and leaves smaller ones unmarked", async () => {
 		const dir = await createTestGitRepo();
 		const {stdout: base} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);

@@ -32,7 +32,7 @@ import {
 	setCachedProjectList,
 	getCachedChildren,
 	cacheChildren,
-	reconcileWorkItems,
+	reconcileWorkItemsWithUpstream,
 	invalidateChildrenCache,
 	isCacheFresh,
 	getCacheFreshnessByPrefix,
@@ -426,10 +426,12 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				if (baselineRed) results.push(baselineRed);
 			}
 
-			// The work-item ledger follows each change by patch-id; a departure here is abandoned
-			// unless landing detection (merge-queue) records it as landed.
-			reconcileWorkItems(
+			// The work-item ledger follows each change by patch-id; a departure is landed when
+			// upstream contains it (or landing detection names it), otherwise abandoned.
+			await reconcileWorkItemsWithUpstream(
+				p.dir,
 				p.name,
+				p.upstreamRef,
 				results.flatMap((child) => {
 					const patchId = commitFacts.get(child.sha)?.patchId;
 					if (child.kind === "upstream_ci" || !patchId) return [];

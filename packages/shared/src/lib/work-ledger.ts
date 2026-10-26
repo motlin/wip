@@ -1,4 +1,6 @@
+import {getCommitFacts} from "./commit-facts.js";
 import {loadWorkItems, writeWorkItems} from "./db.js";
+import {git} from "./git-exec.js";
 import {landedPatchIds, type LandingOutcome} from "./landing-detector.js";
 
 /**
@@ -7,7 +9,8 @@ import {landedPatchIds, type LandingOutcome} from "./landing-detector.js";
  * (lead time starts there). A change that leaves the children set ends `landed` when a
  * landing outcome names it, otherwise `abandoned`; a later landing outcome still
  * corrects an abandoned item to landed, since landing detection and children refresh
- * run independently.
+ * run independently. A departure that upstream already contains (an unnamed fast-forward
+ * or a rebase onto upstream that no landing outcome named) is landed too.
  */
 
 export const TERMINAL_WORK_STATES = ["landed", "abandoned"] as const;
@@ -113,6 +116,59 @@ export function reconcileWorkItems(
 	landedIds: readonly string[] = [],
 ): WorkItem[] {
 	const changes = reconcileLedger(loadWorkItems(project), observed, landedIds, new Date().toISOString());
+	writeWorkItems(project, changes);
+	return changes;
+}
+
+// Bounds the upstream range scanned for departures; a landing is near the upstream tip.
+const UPSTREAM_SCAN_LIMIT = 1000;
+
+/**
+ * Patch-ids of departed items that `upstream` now contains, by sha (fast-forward) or by
+ * patch-id (rebased in). One rev-list over upstream since the departures' parents, plus
+ * the cached patch-id batch, all under the subprocess gate.
+ */
+export async function upstreamLandedPatchIds(
+	dir: string,
+	project: string,
+	departed: readonly WorkItem[],
+	upstream: string,
+): Promise<string[]> {
+	if (departed.length === 0) return [];
+	const range = (
+		await git(
+			dir,
+			"rev-list",
+			"--no-merges",
+			`--max-count=${UPSTREAM_SCAN_LIMIT}`,
+			upstream,
+			"--not",
+			...departed.map((item) => `${item.sha}^@`),
+		)
+	)
+		.split("\n")
+		.filter(Boolean);
+	if (range.length === 0) return [];
+	const facts = await getCommitFacts(dir, project, range);
+	const upstreamIds = new Set(range.map((sha) => facts.get(sha)?.patchId).filter(Boolean));
+	return departed.filter((item) => upstreamIds.has(item.patchId)).map((item) => item.patchId);
+}
+
+/**
+ * Like reconcileWorkItems, but first checks the departures against `upstream` so work
+ * that landed without a landing outcome naming it is recorded as landed, not abandoned.
+ */
+export async function reconcileWorkItemsWithUpstream(
+	dir: string,
+	project: string,
+	upstream: string,
+	observed: readonly ObservedWorkItem[],
+): Promise<WorkItem[]> {
+	const current = loadWorkItems(project);
+	const observedIds = new Set(observed.map((obs) => obs.patchId));
+	const departed = current.filter((item) => !observedIds.has(item.patchId) && !isTerminal(item.state));
+	const landedIds = await upstreamLandedPatchIds(dir, project, departed, upstream);
+	const changes = reconcileLedger(current, observed, landedIds, new Date().toISOString());
 	writeWorkItems(project, changes);
 	return changes;
 }

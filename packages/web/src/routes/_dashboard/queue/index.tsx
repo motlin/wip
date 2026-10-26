@@ -1,11 +1,8 @@
 import {createFileRoute} from "@tanstack/react-router";
-import type {ReactNode} from "react";
-import {
-	isGitChildPullRequest,
-	isGitChildBranch,
-	isGitChildCommit,
-	isGitChildUpstreamCi,
-} from "@wip/shared/git-child-discriminators.js";
+import type {ReactElement, ReactNode} from "react";
+import {rankGitChildren} from "@wip/shared/candidate-rank.js";
+import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi} from "@wip/shared/git-child-discriminators.js";
+import type {GitChildResult} from "@wip/shared/schemas.js";
 import {CommitCard} from "../../../components/commit-card.js";
 import {BranchCard} from "../../../components/branch-card.js";
 import {PullRequestCard} from "../../../components/pull-request-card.js";
@@ -22,24 +19,18 @@ export const Route = createFileRoute("/_dashboard/queue/")({
 	component: QueueCards,
 });
 
+function gitChildCard(child: GitChildResult, category: Category): ReactElement {
+	if (isGitChildUpstreamCi(child)) {
+		return <UpstreamCiCard key={`${child.remote}-${child.sha}`} item={child} category={category} />;
+	}
+	if (isGitChildPullRequest(child)) return <PullRequestCard key={child.sha} pr={child} category={category} />;
+	if (isGitChildBranch(child)) return <BranchCard key={child.sha} branch={child} category={category} />;
+	return <CommitCard key={child.sha} commit={child} category={category} />;
+}
+
 function sectionCards(items: ColumnItems, category: Category): ReactNode[] {
 	return [
-		...(items.gitChildren
-			?.filter(isGitChildUpstreamCi)
-			.map((item) => <UpstreamCiCard key={`${item.remote}-${item.sha}`} item={item} category={category} />) ??
-			[]),
-		...(items.gitChildren
-			?.filter((c) => isGitChildPullRequest(c))
-			.map((pr) => <PullRequestCard key={pr.sha} pr={pr} category={category} />) ?? []),
-		...(items.gitChildren
-			?.filter((c) => isGitChildBranch(c) && c.commitsAhead === 1)
-			.map((b) => <BranchCard key={b.sha} branch={b} category={category} />) ?? []),
-		...(items.gitChildren
-			?.filter((c) => isGitChildCommit(c))
-			.map((c) => <CommitCard key={c.sha} commit={c} category={category} />) ?? []),
-		...(items.gitChildren
-			?.filter((c) => isGitChildBranch(c) && c.commitsAhead !== 1)
-			.map((b) => <BranchCard key={b.sha} branch={b} category={category} />) ?? []),
+		...rankGitChildren(items.gitChildren ?? []).map((child) => gitChildCard(child, category)),
 		...(items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} category={category} />) ?? []),
 		...(items.projectItems?.map((p) => (
 			<ProjectBoardItemCard key={`project-${p.project}-${p.number ?? p.title}`} item={p} />

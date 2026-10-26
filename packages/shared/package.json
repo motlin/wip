@@ -22,6 +22,10 @@
 			"types": "./src/lib/git-child-discriminators.ts",
 			"import": "./src/lib/git-child-discriminators.ts"
 		},
+		"./candidate-rank.js": {
+			"types": "./src/lib/candidate-rank.ts",
+			"import": "./src/lib/candidate-rank.ts"
+		},
 		"./upstream-red.js": {
 			"types": "./src/lib/upstream-red.ts",
 			"import": "./src/lib/upstream-red.ts"

@@ -154,6 +154,15 @@ export {createSystemProbe} from "./lib/system-probe.js";
 export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
 export {
+	DEFAULT_GIT_TEST,
+	gitTestResults,
+	gitTestRun,
+	parseGitTestResults,
+	type GitTestRunOptions,
+	type GitTestRunResult,
+	type GitTestStatus,
+} from "./lib/git-test-cli.js";
+export {
 	advanceProject,
 	createGitActions,
 	type Autonomy,

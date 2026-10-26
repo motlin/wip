@@ -391,6 +391,15 @@ describe("consider splitting marker and Split transition", () => {
 		}).toEqual({marker: null, split: null, push: 1});
 	});
 
+	it("shows the marker but no Split in a state without a split transition", () => {
+		renderBranch(branchItem({testStatus: "passed", considerSplitting: true}), "pushed_no_pr", [project(true)]);
+
+		expect({
+			markers: screen.getAllByTestId("consider-splitting-marker").map((el) => el.textContent),
+			split: screen.queryByRole("button", {name: "Split"}),
+		}).toEqual({markers: ["consider splitting"], split: null});
+	});
+
 	it("queues /git:split-branch through the task queue when Split is clicked", async () => {
 		serverFns.runClaudeCommand.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
 		renderBranch(branchItem({testStatus: "passed", considerSplitting: true}), "ready_to_push", [project(true)]);

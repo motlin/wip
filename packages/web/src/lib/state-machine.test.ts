@@ -119,9 +119,17 @@ describe("STATE_MACHINE", () => {
 		const graphStates = new Set(STATE_MACHINE.flatMap((t) => [t.from, t.to]));
 		expect(allCategories.filter((c) => dead.has(c))).toStrictEqual([]);
 		expect([...graphStates].filter((s) => dead.has(s))).toStrictEqual([]);
-		expect(
-			TransitionSchema.options.filter((t) => ["generate_plan", "approve_plan", "split"].includes(t)),
-		).toStrictEqual([]);
+		expect(TransitionSchema.options.filter((t) => ["generate_plan", "approve_plan"].includes(t))).toStrictEqual([]);
+	});
+
+	it("split is an active transition from the pre-push branch states into ready_to_test, since split commits are new and untested", () => {
+		expect(STATE_MACHINE.filter((t) => t.transition === "split")).toStrictEqual([
+			{from: "ready_to_test", transition: "split", to: "ready_to_test", kind: "active"},
+			{from: "test_failed", transition: "split", to: "ready_to_test", kind: "active"},
+			{from: "needs_rebase", transition: "split", to: "ready_to_test", kind: "active"},
+			{from: "rebase_unknown", transition: "split", to: "ready_to_test", kind: "active"},
+			{from: "ready_to_push", transition: "split", to: "ready_to_test", kind: "active"},
+		]);
 	});
 
 	it("TransitionSchema does not include edit_code or refresh", () => {
@@ -253,6 +261,14 @@ describe("applyTransition", () => {
 
 	it("returns checks_failed for checks_fail from checks_unknown", () => {
 		expect(applyTransition("checks_unknown", "checks_fail")).toBe("checks_failed");
+	});
+
+	it("returns ready_to_test for split from ready_to_push", () => {
+		expect(applyTransition("ready_to_push", "split")).toBe("ready_to_test");
+	});
+
+	it("returns undefined for split once the branch is pushed", () => {
+		expect(applyTransition("checks_passed", "split")).toBeUndefined();
 	});
 
 	it("returns test_running for run_test from no_test", () => {

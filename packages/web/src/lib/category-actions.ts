@@ -22,14 +22,15 @@ export type Action =
 	| "refresh"
 	| "abort_rebase"
 	| "merge"
-	| "create_branch";
+	| "create_branch"
+	| "split";
 
 /** The detour task an "Add a test" click queues for a commit in a repo with no test configured. */
 export function addTestCommand(sha: string): string {
 	return `Add a test that covers the changes in commit ${sha}`;
 }
 
-/** The split transition a "consider splitting" commit gains, run through the task queue. */
+/** The command the split transition queues for a "consider splitting" commit. */
 export const SPLIT_BRANCH_COMMAND = "/git:split-branch";
 
 // Maps state-machine transitions to UI action names.
@@ -44,6 +45,7 @@ export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
 	abort_rebase: "abort_rebase",
 	merge: "merge",
 	create_branch: "create_branch",
+	split: "split",
 };
 
 // Derive user-triggerable actions from state machine transitions for a category.
@@ -277,6 +279,8 @@ const BACK_EDGES = new Set([
 	"checks_failed->checks_running",
 	"changes_requested->checks_running",
 	"rebase_stuck->needs_rebase",
+	"test_failed->ready_to_test",
+	"ready_to_push->ready_to_test",
 	"review_comments->checks_running",
 	// Review back-edges (dismiss/re-review goes backward in SDLC)
 	"changes_requested->checks_passed",

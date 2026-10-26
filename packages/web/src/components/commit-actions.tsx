@@ -1298,7 +1298,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					</button>
 				)}
 
-				{/* Consider splitting: a large commit stays a candidate and gains a split transition */}
+				{/* Consider splitting: a large commit stays a candidate; the marker enables the state's split transition */}
 				{item.considerSplitting && (
 					<span
 						data-testid="consider-splitting-marker"
@@ -1307,7 +1307,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						consider splitting
 					</span>
 				)}
-				{item.considerSplitting && (
+				{item.considerSplitting && actions.has("split") && (
 					<button
 						type="button"
 						onClick={() => {

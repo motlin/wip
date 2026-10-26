@@ -62,6 +62,7 @@ export const TransitionSchema = z.enum([
 	"rebase",
 	"resolve_conflicts",
 	"abort_rebase",
+	"split",
 	"push",
 	"force_push",
 	"create_pr",
@@ -143,6 +144,14 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	},
 	// Abort, don't rescue: backing a stuck rebase out leaves the branch needing the rebase again
 	{from: "rebase_stuck", transition: "abort_rebase", to: "needs_rebase", kind: "active"},
+
+	// Split: a commit marked "consider splitting" can be split (git:split-branch) alongside its
+	// normal path, from any branch state before push. The split commits are new and untested.
+	{from: "ready_to_test", transition: "split", to: "ready_to_test", kind: "active"},
+	{from: "test_failed", transition: "split", to: "ready_to_test", kind: "active"},
+	{from: "needs_rebase", transition: "split", to: "ready_to_test", kind: "active"},
+	{from: "rebase_unknown", transition: "split", to: "ready_to_test", kind: "active"},
+	{from: "ready_to_push", transition: "split", to: "ready_to_test", kind: "active"},
 
 	// Push flow
 	{from: "ready_to_push", transition: "push", to: "pushing", kind: "active"},
@@ -379,7 +388,7 @@ export const GitChildResultSchema = z.object({
 	files: z.number().int().nonnegative().optional(),
 	insertions: z.number().int().nonnegative().optional(),
 	deletions: z.number().int().nonnegative().optional(),
-	/** Size above `flow.splitThresholdLines`: shows a marker and offers a split transition. */
+	/** Size above `flow.splitThresholdLines`: shows a marker and enables the state's split transition. */
 	considerSplitting: z.boolean().optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;

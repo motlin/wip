@@ -112,6 +112,10 @@ describe("TRANSITION_TO_ACTION", () => {
 	it("maps merge to merge", () => {
 		expect(TRANSITION_TO_ACTION.merge).toBe("merge");
 	});
+
+	it("maps split to split", () => {
+		expect(TRANSITION_TO_ACTION.split).toBe("split");
+	});
 });
 
 describe("getTransitionActions", () => {
@@ -139,6 +143,16 @@ describe("getTransitionActions", () => {
 
 	it("returns create_branch for detached_head", () => {
 		expect(getTransitionActions("detached_head")).toContain("create_branch");
+	});
+
+	it("offers split exactly from the states with a split transition", () => {
+		expect(CategorySchema.options.filter((cat) => getTransitionActions(cat).includes("split"))).toStrictEqual([
+			"ready_to_test",
+			"test_failed",
+			"needs_rebase",
+			"rebase_unknown",
+			"ready_to_push",
+		]);
 	});
 });
 

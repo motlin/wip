@@ -292,6 +292,13 @@ export {
 	todoItemKey,
 } from "./lib/priority.js";
 export {
+	type LadderNode,
+	parseAsapLadder,
+	type PriorityProposal,
+	proposePriorities,
+	tierPriority,
+} from "./lib/asap-priority.js";
+export {
 	commitPriority,
 	setCommitPriorityOverride,
 	setTodoPriorityOverride,

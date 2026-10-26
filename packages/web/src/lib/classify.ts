@@ -30,7 +30,9 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 	if (child.needsRebase && child.rebaseable === true) return "needs_rebase";
 	if (child.needsRebase) return "rebase_unknown";
 	if (project.dirty) return "local_changes";
-	if (child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch) return "pushed_no_pr";
+	const verified = child.testStatus === "passed" || !project.hasTestConfigured;
+	if (verified && child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
+		return "pushed_no_pr";
 	if (child.pushedToRemote && child.localAhead) return "ready_to_push";
 	if (!project.hasTestConfigured) return "no_test";
 	if (child.testStatus === "passed") return "ready_to_push";
@@ -45,11 +47,12 @@ export function classifyTodo(todo: TodoItem): Category {
 	return todo.blocked ? "blocked" : "triaged";
 }
 
-export function classifyPullRequest(child: GitChildResult, project?: ProjectInfo): Category {
+export function classifyPullRequest(child: GitChildResult, project: ProjectInfo): Category {
 	if (child.skippable) return "skippable";
 	if (child.pushing) return "pushing";
-	if (project?.rebaseInProgress) return "rebase_stuck";
+	if (project.rebaseInProgress) return "rebase_stuck";
 	if (child.testStatus === "running") return "test_running";
+	if (child.testStatus === "failed") return "test_failed";
 	if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
 	if (child.needsRebase) return "needs_rebase";
 	if (child.checkStatus === "failed" && child.localAhead) return "ready_to_push";

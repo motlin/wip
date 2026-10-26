@@ -37,7 +37,7 @@ function DiffViewer() {
 	const category =
 		child && projectInfo
 			? isPr
-				? classifyPullRequest(child)
+				? classifyPullRequest(child, projectInfo)
 				: isBranch
 					? classifyBranch(child, projectInfo)
 					: undefined

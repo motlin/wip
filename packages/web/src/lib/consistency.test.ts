@@ -151,7 +151,7 @@ describe("ChildCommit from getNeedsRebaseBranches should carry correct propertie
 			reviewStatus: childWithPr.reviewStatus,
 			needsRebase: childWithPr.needsRebase,
 		});
-		expect(classifyPullRequest(pr)).toBe("needs_rebase");
+		expect(classifyPullRequest(pr, makeProject())).toBe("needs_rebase");
 
 		// Without prUrl (as getNeedsRebaseBranches might fail to set), it classifies
 		// via classifyBranch differently

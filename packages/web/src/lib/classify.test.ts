@@ -169,9 +169,18 @@ describe("classifyBranch", () => {
 		);
 	});
 
-	it("returns pushed_no_pr when pushed and in sync with remote", () => {
+	it("returns pushed_no_pr when pushed, in sync with remote, and no test configured", () => {
+		expect(
+			classifyBranch(
+				makeBranch({pushedToRemote: true, localAhead: false}),
+				makeProject({hasTestConfigured: false}),
+			),
+		).toBe("pushed_no_pr");
+	});
+
+	it("returns ready_to_test when pushed and in sync but test status unknown", () => {
 		expect(classifyBranch(makeBranch({pushedToRemote: true, localAhead: false}), makeProject())).toBe(
-			"pushed_no_pr",
+			"ready_to_test",
 		);
 	});
 
@@ -181,8 +190,10 @@ describe("classifyBranch", () => {
 		);
 	});
 
-	it("returns pushed_no_pr when pushed and localAhead is undefined (defaults to in-sync)", () => {
-		expect(classifyBranch(makeBranch({pushedToRemote: true}), makeProject())).toBe("pushed_no_pr");
+	it("returns pushed_no_pr when pushed, test passed, and localAhead is undefined (defaults to in-sync)", () => {
+		expect(classifyBranch(makeBranch({pushedToRemote: true, testStatus: "passed"}), makeProject())).toBe(
+			"pushed_no_pr",
+		);
 	});
 
 	it("prioritizes test_failed over needs_rebase", () => {
@@ -274,7 +285,7 @@ describe("classifyGitChild", () => {
 
 describe("classifyPullRequest", () => {
 	it("returns skippable for skippable PRs", () => {
-		expect(classifyPullRequest(makePR({skippable: true}))).toBe("skippable");
+		expect(classifyPullRequest(makePR({skippable: true}), makeProject())).toBe("skippable");
 	});
 
 	it("returns pushing when pushing is true, even if checks passed and approved", () => {
@@ -296,87 +307,125 @@ describe("classifyPullRequest", () => {
 	});
 
 	it("returns checks_failed when checks failed, even if approved", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "failed", reviewStatus: "approved"}))).toBe("checks_failed");
-	});
-
-	it("returns checks_failed when checks failed, even with changes_requested", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "failed", reviewStatus: "changes_requested"}))).toBe(
+		expect(classifyPullRequest(makePR({checkStatus: "failed", reviewStatus: "approved"}), makeProject())).toBe(
 			"checks_failed",
 		);
 	});
 
+	it("returns checks_failed when checks failed, even with changes_requested", () => {
+		expect(
+			classifyPullRequest(makePR({checkStatus: "failed", reviewStatus: "changes_requested"}), makeProject()),
+		).toBe("checks_failed");
+	});
+
 	it("returns checks_running when checks running, even if approved", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "running", reviewStatus: "approved"}))).toBe("checks_running");
+		expect(classifyPullRequest(makePR({checkStatus: "running", reviewStatus: "approved"}), makeProject())).toBe(
+			"checks_running",
+		);
 	});
 
 	it("returns checks_running when checks pending, even if approved", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "pending", reviewStatus: "approved"}))).toBe("checks_running");
+		expect(classifyPullRequest(makePR({checkStatus: "pending", reviewStatus: "approved"}), makeProject())).toBe(
+			"checks_running",
+		);
 	});
 
 	it("returns approved only when checks passed AND review approved", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "approved"}))).toBe("approved");
+		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "approved"}), makeProject())).toBe(
+			"approved",
+		);
 	});
 
 	it("returns changes_requested when checks passed and changes requested", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "changes_requested"}))).toBe(
-			"changes_requested",
-		);
+		expect(
+			classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "changes_requested"}), makeProject()),
+		).toBe("changes_requested");
 	});
 
 	it("returns review_comments when checks passed and commented", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "commented"}))).toBe("review_comments");
+		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "commented"}), makeProject())).toBe(
+			"review_comments",
+		);
 	});
 
 	it("returns checks_passed when checks passed and no review", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "no_pr"}))).toBe("checks_passed");
+		expect(classifyPullRequest(makePR({checkStatus: "passed", reviewStatus: "no_pr"}), makeProject())).toBe(
+			"checks_passed",
+		);
 	});
 
 	it("returns checks_running when checks running with no review", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "running", reviewStatus: "no_pr"}))).toBe("checks_running");
+		expect(classifyPullRequest(makePR({checkStatus: "running", reviewStatus: "no_pr"}), makeProject())).toBe(
+			"checks_running",
+		);
 	});
 
 	it("returns checks_unknown for unknown check status", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "unknown", reviewStatus: "no_pr"}))).toBe("checks_unknown");
+		expect(classifyPullRequest(makePR({checkStatus: "unknown", reviewStatus: "no_pr"}), makeProject())).toBe(
+			"checks_unknown",
+		);
 	});
 
 	it("returns checks_unknown for none check status", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "none", reviewStatus: "no_pr"}))).toBe("checks_unknown");
+		expect(classifyPullRequest(makePR({checkStatus: "none", reviewStatus: "no_pr"}), makeProject())).toBe(
+			"checks_unknown",
+		);
 	});
 
 	it("returns checks_unknown when approved but checks unknown", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "unknown", reviewStatus: "approved"}))).toBe("checks_unknown");
+		expect(classifyPullRequest(makePR({checkStatus: "unknown", reviewStatus: "approved"}), makeProject())).toBe(
+			"checks_unknown",
+		);
 	});
 
 	it("returns ready_to_push when checks failed and local is ahead of remote", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "failed", localAhead: true}))).toBe("ready_to_push");
+		expect(classifyPullRequest(makePR({checkStatus: "failed", localAhead: true}), makeProject())).toBe(
+			"ready_to_push",
+		);
 	});
 
 	it("returns checks_failed when checks failed and in sync with remote", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "failed", localAhead: false}))).toBe("checks_failed");
+		expect(classifyPullRequest(makePR({checkStatus: "failed", localAhead: false}), makeProject())).toBe(
+			"checks_failed",
+		);
 	});
 
 	it("returns checks_failed when checks failed and localAhead is undefined", () => {
-		expect(classifyPullRequest(makePR({checkStatus: "failed"}))).toBe("checks_failed");
+		expect(classifyPullRequest(makePR({checkStatus: "failed"}), makeProject())).toBe("checks_failed");
 	});
 
 	it("returns test_running when test is running", () => {
-		expect(classifyPullRequest(makePR({testStatus: "running"}))).toBe("test_running");
+		expect(classifyPullRequest(makePR({testStatus: "running"}), makeProject())).toBe("test_running");
+	});
+
+	it("returns test_failed when the local test failed, even if checks passed and approved", () => {
+		expect(
+			classifyPullRequest(
+				makePR({testStatus: "failed", checkStatus: "passed", reviewStatus: "approved"}),
+				makeProject(),
+			),
+		).toBe("test_failed");
 	});
 
 	it("returns needs_rebase when PR needs rebase", () => {
-		expect(classifyPullRequest(makePR({needsRebase: true, checkStatus: "passed"}))).toBe("needs_rebase");
+		expect(classifyPullRequest(makePR({needsRebase: true, checkStatus: "passed"}), makeProject())).toBe(
+			"needs_rebase",
+		);
 	});
 
 	it("returns rebase_conflicts when PR needs rebase and is not rebaseable", () => {
-		expect(classifyPullRequest(makePR({needsRebase: true, rebaseable: false, checkStatus: "passed"}))).toBe(
-			"rebase_conflicts",
-		);
+		expect(
+			classifyPullRequest(makePR({needsRebase: true, rebaseable: false, checkStatus: "passed"}), makeProject()),
+		).toBe("rebase_conflicts");
 	});
 
 	it("prioritizes needsRebase over check/review status", () => {
-		expect(classifyPullRequest(makePR({needsRebase: true, checkStatus: "passed", reviewStatus: "approved"}))).toBe(
-			"needs_rebase",
-		);
+		expect(
+			classifyPullRequest(
+				makePR({needsRebase: true, checkStatus: "passed", reviewStatus: "approved"}),
+				makeProject(),
+			),
+		).toBe("needs_rebase");
 	});
 });
 
@@ -498,7 +547,7 @@ describe("State machine consistency", () => {
 	describe("classifyPullRequest returns valid state machine states", () => {
 		it("returns state that appears in STATE_MACHINE or is a special state", () => {
 			const pr = makePR();
-			const category = classifyPullRequest(pr);
+			const category = classifyPullRequest(pr, makeProject());
 			const isValid = statesInMachine.has(category) || specialStates.has(category);
 			expect(isValid, `classifyPullRequest returned invalid state: ${category}`).toBe(true);
 		});
@@ -516,7 +565,7 @@ describe("State machine consistency", () => {
 			];
 
 			for (const pr of testCases) {
-				const category = classifyPullRequest(pr);
+				const category = classifyPullRequest(pr, makeProject());
 				const isValid = statesInMachine.has(category) || specialStates.has(category);
 				expect(isValid, `classifyPullRequest returned invalid state: ${category}`).toBe(true);
 			}

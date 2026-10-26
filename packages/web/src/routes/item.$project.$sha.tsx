@@ -129,7 +129,7 @@ function ItemDetail() {
 				? ("snoozed" as const)
 				: projectInfo
 					? isPr
-						? classifyPullRequest(child)
+						? classifyPullRequest(child, projectInfo)
 						: isBranch
 							? classifyBranch(child, projectInfo)
 							: classifyCommit(child, projectInfo)

@@ -23,6 +23,7 @@ import * as path from "node:path";
 
 import {type CheckStatus, type GitChildResult, type ProjectInfo, type ReviewStatus, type TodoItem} from "./schemas.js";
 import type {GitHubIssue} from "./github-issues.js";
+import type {Priority, PriorityItemRef} from "./priority.js";
 import type {GitHubProjectItem} from "./github-projects.js";
 import * as schema from "./schema.js";
 import {log} from "../services/logger-pino.js";
@@ -42,6 +43,7 @@ import {
 	miseEnvCache,
 	prFailedChecks,
 	prStatusCache,
+	priorityOverrides,
 	projectCache,
 	snoozed,
 	taskRecords,
@@ -465,6 +467,19 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (project, sha)
 		)
 	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS priority_overrides (
+			project TEXT NOT NULL,
+			item_kind TEXT NOT NULL,
+			item_key TEXT NOT NULL,
+			priority TEXT NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, item_kind, item_key, system_to)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS priority_overrides_active_idx ON priority_overrides (project, system_to)`);
 
 	db = drizzle(sqlite, {schema});
 
@@ -1480,6 +1495,54 @@ export function loadCommitFacts(project: string, shas: string[]): CommitFactRow[
 export function insertCommitFacts(rows: CommitFactRow[]): void {
 	if (rows.length === 0) return;
 	getDb().insert(commitFacts).values(rows).onConflictDoNothing().run();
+}
+
+// --- Per-item priority overrides ---
+
+function priorityOverrideWhere(project: string, item: PriorityItemRef): SQL | undefined {
+	return and(
+		eq(priorityOverrides.project, project),
+		eq(priorityOverrides.itemKind, item.kind),
+		eq(priorityOverrides.itemKey, item.key),
+	);
+}
+
+export function getPriorityOverride(project: string, item: PriorityItemRef): Priority | undefined {
+	return getDb()
+		.select({priority: priorityOverrides.priority})
+		.from(priorityOverrides)
+		.where(and(priorityOverrideWhere(project, item), eq(priorityOverrides.systemTo, FAR_FUTURE)))
+		.get()?.priority;
+}
+
+export function getPriorityOverrides(project: string) {
+	return getDb()
+		.select({
+			project: priorityOverrides.project,
+			itemKind: priorityOverrides.itemKind,
+			itemKey: priorityOverrides.itemKey,
+			priority: priorityOverrides.priority,
+		})
+		.from(priorityOverrides)
+		.where(and(eq(priorityOverrides.project, project), eq(priorityOverrides.systemTo, FAR_FUTURE)))
+		.all();
+}
+
+export function setPriorityOverride(project: string, item: PriorityItemRef, priority: Priority): void {
+	temporalUpsert({
+		table: priorityOverrides,
+		keyWhere: priorityOverrideWhere(project, item),
+		isUnchanged: (existing) => existing.priority === priority,
+		newRow: {project, itemKind: item.kind, itemKey: item.key, priority},
+	});
+}
+
+export function clearPriorityOverride(project: string, item: PriorityItemRef): void {
+	getDb()
+		.update(priorityOverrides)
+		.set({systemTo: now()})
+		.where(and(priorityOverrideWhere(project, item), eq(priorityOverrides.systemTo, FAR_FUTURE)))
+		.run();
 }
 
 // --- Project cache ---

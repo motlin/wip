@@ -101,6 +101,10 @@ export {
 	getAdvanceConfig,
 	getAllAdvanceConfig,
 	setAdvanceConfig,
+	getPriorityOverride,
+	getPriorityOverrides,
+	setPriorityOverride,
+	clearPriorityOverride,
 	upsertTaskRecord,
 	loadRecentTaskRecords,
 	type TaskRecord,
@@ -279,6 +283,20 @@ export {
 	type MergePrInput,
 } from "./lib/schemas.js";
 export {type ReadinessCommit, isGreen, isLandable} from "./lib/readiness.js";
+export {
+	DEFAULT_PRIORITY,
+	effectivePriority,
+	type Priority,
+	type PriorityItemRef,
+	PrioritySchema,
+	todoItemKey,
+} from "./lib/priority.js";
+export {
+	commitPriority,
+	setCommitPriorityOverride,
+	setTodoPriorityOverride,
+	todoPriority,
+} from "./lib/priority-overrides.js";
 export {
 	classifyGitChild,
 	classifyCommit,

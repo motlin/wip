@@ -348,3 +348,20 @@ export const commitFacts = sqliteTable(
 	},
 	(table) => [primaryKey({columns: [table.project, table.sha]})],
 );
+
+/** Per-item priority overrides: a commit keyed by patch-id (survives rebases) or a todo keyed by todoItemKey. */
+export const priorityOverrides = sqliteTable(
+	"priority_overrides",
+	{
+		project: text("project").notNull(),
+		itemKind: text("item_kind", {enum: ["commit", "todo"]}).notNull(),
+		itemKey: text("item_key").notNull(),
+		priority: text("priority", {enum: ["high", "medium", "low"]}).notNull(),
+		systemFrom: text("system_from").notNull(),
+		systemTo: text("system_to").notNull().default(FAR_FUTURE),
+	},
+	(table) => [
+		primaryKey({columns: [table.project, table.itemKind, table.itemKey, table.systemTo]}),
+		index("priority_overrides_active_idx").on(table.project, table.systemTo),
+	],
+);

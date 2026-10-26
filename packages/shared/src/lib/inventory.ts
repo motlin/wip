@@ -6,6 +6,7 @@ import {z} from "zod";
 
 import {getConfigDir} from "./config.js";
 import type {TemplateTexts} from "./inventory-import.js";
+import {PrioritySchema} from "./priority.js";
 
 export {diffInventories, type InventoryDiff} from "./inventory-import.js";
 
@@ -19,6 +20,8 @@ export const ProjectRecordSchema = z.object({
 	notes: z.string().optional(),
 	/** The user's own words for why they skipped this project by hand. */
 	skipNote: z.string().optional(),
+	/** Ready-slot tier; unset reads as medium (see effectivePriority). */
+	priority: PrioritySchema.optional(),
 });
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
 

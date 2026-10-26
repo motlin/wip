@@ -184,10 +184,31 @@ describe("classifyBranch", () => {
 		);
 	});
 
-	it("returns ready_to_push when pushed but local is ahead of remote", () => {
+	it("returns ready_to_test when pushed, local is ahead of remote, and test status unknown", () => {
 		expect(classifyBranch(makeBranch({pushedToRemote: true, localAhead: true}), makeProject())).toBe(
-			"ready_to_push",
+			"ready_to_test",
 		);
+	});
+
+	it("returns ready_to_push when pushed, local is ahead of remote, and test passed", () => {
+		expect(
+			classifyBranch(makeBranch({pushedToRemote: true, localAhead: true, testStatus: "passed"}), makeProject()),
+		).toBe("ready_to_push");
+	});
+
+	it("returns test_failed when pushed, local is ahead of remote, and test failed", () => {
+		expect(
+			classifyBranch(makeBranch({pushedToRemote: true, localAhead: true, testStatus: "failed"}), makeProject()),
+		).toBe("test_failed");
+	});
+
+	it("returns ready_to_push when pushed, local is ahead of remote, and no test configured", () => {
+		expect(
+			classifyBranch(
+				makeBranch({pushedToRemote: true, localAhead: true}),
+				makeProject({hasTestConfigured: false}),
+			),
+		).toBe("ready_to_push");
 	});
 
 	it("returns pushed_no_pr when pushed, test passed, and localAhead is undefined (defaults to in-sync)", () => {

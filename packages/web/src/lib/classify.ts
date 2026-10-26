@@ -33,7 +33,7 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 	const verified = child.testStatus === "passed" || !project.hasTestConfigured;
 	if (verified && child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
 		return "pushed_no_pr";
-	if (child.pushedToRemote && child.localAhead) return "ready_to_push";
+	if (verified && child.pushedToRemote && child.localAhead) return "ready_to_push";
 	if (!project.hasTestConfigured) return "no_test";
 	if (child.testStatus === "passed") return "ready_to_push";
 	return "ready_to_test";

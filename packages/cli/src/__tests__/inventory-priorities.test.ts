@@ -2,14 +2,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {Config} from "@oclif/core";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
+import {loadTestConfig} from "./test-config.js";
 
 import {loadInventory, saveInventory, type ProjectRecord} from "@wip/shared";
 
 import InventoryPriorities, {type InventoryPrioritiesResult} from "../commands/inventory/priorities.js";
-
-const CLI_ROOT = path.resolve(import.meta.dirname, "../..");
 
 const LADDER = {
 	name: "📌 Tasks (asap) (personal)",
@@ -26,7 +24,7 @@ function priorities(): Record<string, string | undefined> {
 }
 
 async function runPriorities(argv: string[]): Promise<InventoryPrioritiesResult> {
-	const config = await Config.load({root: CLI_ROOT});
+	const config = await loadTestConfig();
 	return await new InventoryPriorities(argv, config).run();
 }
 

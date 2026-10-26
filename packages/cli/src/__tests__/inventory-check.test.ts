@@ -2,17 +2,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import {Config} from "@oclif/core";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
+import {loadTestConfig} from "./test-config.js";
 
 import {saveInventory, type ProjectRecord} from "@wip/shared";
 
 import InventoryCheck, {type InventoryCheckResult} from "../commands/inventory/check.js";
 
-const CLI_ROOT = path.resolve(import.meta.dirname, "../..");
-
 async function runCheck(argv: string[]): Promise<{result?: InventoryCheckResult; exitCode?: number}> {
-	const config = await Config.load({root: CLI_ROOT});
+	const config = await loadTestConfig();
 	try {
 		return {result: await new InventoryCheck(argv, config).run()};
 	} catch (error) {
@@ -192,7 +190,7 @@ describe("wip inventory check", () => {
 	it("reports a nested entry outside any git repo as not a git repo", async () => {
 		fs.mkdirSync(path.join(projectsDir, "loose", "child"), {recursive: true});
 		saveInventory([record("loose/child", "nested")]);
-		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
+		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], await loadTestConfig());
 		expect(JSON.parse(stdout.join(""))).toEqual({
 			consistent: false,
 			unregistered: [],
@@ -206,7 +204,7 @@ describe("wip inventory check", () => {
 		fs.writeFileSync(path.join(projectsDir, "Brewfile"), "brew 'git'\n");
 		fs.writeFileSync(path.join(projectsDir, "notes.txt"), "notes\n");
 		saveInventory([record("Brewfile")]);
-		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
+		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], await loadTestConfig());
 		expect(JSON.parse(stdout.join(""))).toEqual({
 			consistent: false,
 			unregistered: [],
@@ -219,7 +217,7 @@ describe("wip inventory check", () => {
 	it("prints exactly one JSON document and exits 1 when inconsistent with --json", async () => {
 		makeRepo("stray");
 		saveInventory([record("gone")]);
-		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], CLI_ROOT);
+		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], await loadTestConfig());
 		expect(process.exitCode).toBe(1);
 		expect(JSON.parse(stdout.join(""))).toEqual({
 			consistent: false,

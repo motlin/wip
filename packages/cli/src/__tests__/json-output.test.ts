@@ -1,4 +1,5 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from "vite-plus/test";
+import {loadTestConfig} from "./test-config.js";
 import path from "node:path";
 
 import type {ChildCommit, ProjectInfo} from "@wip/shared";
@@ -359,14 +360,17 @@ describe("JSON output mode", () => {
 	describe("children --json", () => {
 		it("outputs structured JSON with project children and summary", async () => {
 			const {default: Children} = await import("../commands/children.js");
-			await Children.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
+			await Children.run(["--json", "--projects-dir", "/tmp/fake-projects"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedChildrenJson);
 		});
 
 		it("returns structured data from run()", async () => {
 			const {default: Children} = await import("../commands/children.js");
-			const result = await Children.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
+			const result = await Children.run(
+				["--json", "--projects-dir", "/tmp/fake-projects"],
+				await loadTestConfig(),
+			);
 
 			expect(result).toStrictEqual(expectedChildrenRunResult);
 		});
@@ -375,7 +379,7 @@ describe("JSON output mode", () => {
 	describe("results --json", () => {
 		it("outputs structured JSON with test results and summary", async () => {
 			const {default: Results} = await import("../commands/results.js");
-			await Results.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
+			await Results.run(["--json", "--projects-dir", "/tmp/fake-projects"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
 				results: [
@@ -402,7 +406,7 @@ describe("JSON output mode", () => {
 	describe("report --json", () => {
 		it("outputs structured JSON with report data", async () => {
 			const {default: Report} = await import("../commands/report.js");
-			await Report.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
+			await Report.run(["--json", "--projects-dir", "/tmp/fake-projects"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedReportJson);
 		});
@@ -411,7 +415,7 @@ describe("JSON output mode", () => {
 			vi.mocked(discoverAllProjects).mockResolvedValue([{...fakeProject, dirty: true}]);
 			vi.mocked(execa).mockResolvedValueOnce({exitCode: 0, stdout: `${fakeChild.sha}\n`, stderr: ""} as never);
 			const {default: Report} = await import("../commands/report.js");
-			const result = await Report.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
+			const result = await Report.run(["--json", "--projects-dir", "/tmp/fake-projects"], await loadTestConfig());
 
 			expect({
 				localChanges: result.localChanges,
@@ -446,14 +450,17 @@ describe("JSON output mode", () => {
 	describe("push --json", () => {
 		it("outputs structured JSON with push results in dry-run mode", async () => {
 			const {default: Push} = await import("../commands/push.js");
-			await Push.run(["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"]);
+			await Push.run(["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedPushJson);
 		});
 
 		it("returns structured data from run()", async () => {
 			const {default: Push} = await import("../commands/push.js");
-			const result = await Push.run(["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"]);
+			const result = await Push.run(
+				["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"],
+				await loadTestConfig(),
+			);
 
 			expect(result).toStrictEqual(expectedPushJson);
 		});
@@ -462,21 +469,27 @@ describe("JSON output mode", () => {
 	describe("test --json", () => {
 		it("outputs structured JSON with test results in dry-run mode", async () => {
 			const {default: Test} = await import("../commands/test.js");
-			await Test.run(["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"]);
+			await Test.run(["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedTestJson);
 		});
 
 		it("returns structured data from run()", async () => {
 			const {default: Test} = await import("../commands/test.js");
-			const result = await Test.run(["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"]);
+			const result = await Test.run(
+				["--json", "--dry-run", "--projects-dir", "/tmp/fake-projects"],
+				await loadTestConfig(),
+			);
 
 			expect(result).toStrictEqual(expectedTestJson);
 		});
 
 		it("returns structured data from run() in fast mode", async () => {
 			const {default: Test} = await import("../commands/test.js");
-			const result = await Test.run(["--json", "--dry-run", "--fast", "--projects-dir", "/tmp/fake-projects"]);
+			const result = await Test.run(
+				["--json", "--dry-run", "--fast", "--projects-dir", "/tmp/fake-projects"],
+				await loadTestConfig(),
+			);
 
 			expect(result).toStrictEqual(expectedTestFastJson);
 		});
@@ -485,7 +498,7 @@ describe("JSON output mode", () => {
 	describe("config set --json --dry-run", () => {
 		it("outputs structured JSON showing what would be set", async () => {
 			const {default: ConfigSet} = await import("../commands/config/set.js");
-			await ConfigSet.run(["myKey", "myValue", "--dry-run", "--json"]);
+			await ConfigSet.run(["myKey", "myValue", "--dry-run", "--json"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
 				key: "myKey",
@@ -499,7 +512,7 @@ describe("JSON output mode", () => {
 			vi.mocked(setConfigValue).mockClear();
 
 			const {default: ConfigSet} = await import("../commands/config/set.js");
-			await ConfigSet.run(["myKey", "myValue", "--dry-run"]);
+			await ConfigSet.run(["myKey", "myValue", "--dry-run"], await loadTestConfig());
 
 			expect(setConfigValue).not.toHaveBeenCalled();
 		});
@@ -511,7 +524,7 @@ describe("JSON output mode", () => {
 			vi.mocked(unsetConfigValue).mockReturnValue(true);
 
 			const {default: ConfigUnset} = await import("../commands/config/unset.js");
-			await ConfigUnset.run(["myKey", "--dry-run", "--json"]);
+			await ConfigUnset.run(["myKey", "--dry-run", "--json"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
 				key: "myKey",
@@ -526,7 +539,7 @@ describe("JSON output mode", () => {
 			vi.mocked(getConfigValueMock).mockReturnValue("someValue");
 
 			const {default: ConfigUnset} = await import("../commands/config/unset.js");
-			await ConfigUnset.run(["myKey", "--dry-run"]);
+			await ConfigUnset.run(["myKey", "--dry-run"], await loadTestConfig());
 
 			expect(unsetConfigValue).not.toHaveBeenCalled();
 		});
@@ -535,7 +548,7 @@ describe("JSON output mode", () => {
 	describe("serve --json", () => {
 		it("outputs structured JSON with server info in dry-run mode", async () => {
 			const {default: Serve} = await import("../commands/serve.js");
-			await Serve.run(["--json", "--dry-run"]);
+			await Serve.run(["--json", "--dry-run"], await loadTestConfig());
 
 			const parsed = parseJsonOutput(capture.getOutput());
 			const {webDir, ...rest} = parsed as {webDir: string; port: number; dryRun: boolean};
@@ -547,7 +560,7 @@ describe("JSON output mode", () => {
 	describe("config get --json", () => {
 		it("outputs structured JSON when listing all config", async () => {
 			const {default: ConfigGet} = await import("../commands/config/get.js");
-			await ConfigGet.run(["--json"]);
+			await ConfigGet.run(["--json"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
 				projectsDir: "/tmp/fake-projects",
@@ -556,7 +569,7 @@ describe("JSON output mode", () => {
 
 		it("outputs structured JSON for a single key", async () => {
 			const {default: ConfigGet} = await import("../commands/config/get.js");
-			await ConfigGet.run(["projectsDir", "--json"]);
+			await ConfigGet.run(["projectsDir", "--json"], await loadTestConfig());
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual({
 				projectsDir: "/tmp/fake-projects",

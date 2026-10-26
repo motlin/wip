@@ -3,17 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
+import {loadTestConfig} from "./test-config.js";
 
 import {loadInventory, saveInventory} from "@wip/shared";
 
-import {Config} from "@oclif/core";
-
 import InventoryImport, {type InventoryImportResult} from "../commands/inventory/import.js";
 
-const CLI_ROOT = path.resolve(import.meta.dirname, "../..");
-
 async function runImport(argv: string[]): Promise<InventoryImportResult> {
-	const config = await Config.load({root: CLI_ROOT});
+	const config = await loadTestConfig();
 	return await new InventoryImport(argv, config).run();
 }
 
@@ -74,7 +71,7 @@ describe("wip inventory import", () => {
 
 	it("prints only JSON on stdout in --json mode", async () => {
 		const out = captureStdout();
-		const config = await Config.load({root: CLI_ROOT});
+		const config = await loadTestConfig();
 		const command = new InventoryImport(["--templates-dir", templatesDir, "--dry-run", "--json"], config);
 		// eslint-disable-next-line no-underscore-dangle -- oclif runs the JSON wrapper through the protected _run
 		await (command as unknown as {_run(): Promise<unknown>})._run();

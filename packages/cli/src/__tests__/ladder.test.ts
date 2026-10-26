@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
+import {loadTestConfig} from "./test-config.js";
 
 import type {LadderResult, ProjectInfo} from "@wip/shared";
 
@@ -94,7 +95,10 @@ describe("wip ladder", () => {
 		restores.push(c.restore);
 
 		const {default: Ladder} = await import("../commands/ladder.js");
-		const result = await Ladder.run(["--all", "--json", "--projects-dir", "/tmp/fake-projects"]);
+		const result = await Ladder.run(
+			["--all", "--json", "--projects-dir", "/tmp/fake-projects"],
+			await loadTestConfig(),
+		);
 		c.restore();
 
 		expect(result).toEqual({
@@ -116,7 +120,7 @@ describe("wip ladder", () => {
 		restores.push(c.restore);
 
 		const {default: Ladder} = await import("../commands/ladder.js");
-		await Ladder.run(["--all", "--json"]);
+		await Ladder.run(["--all", "--json"], await loadTestConfig());
 		c.restore();
 
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[0].map((p) => p.name)).toEqual(["a", "b"]);
@@ -130,7 +134,7 @@ describe("wip ladder", () => {
 		restores.push(c.restore);
 
 		const {default: Ladder} = await import("../commands/ladder.js");
-		const result = await Ladder.run(["b", "--dry-run"]);
+		const result = await Ladder.run(["b", "--dry-run"], await loadTestConfig());
 		c.restore();
 
 		const call = vi.mocked(runLadderAcrossProjects).mock.calls[0];
@@ -143,7 +147,7 @@ describe("wip ladder", () => {
 	it("errors when neither a project nor --all is given", async () => {
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a")]);
 		const {default: Ladder} = await import("../commands/ladder.js");
-		await expect(Ladder.run([])).rejects.toThrow(/project|--all/);
+		await expect(Ladder.run([], await loadTestConfig())).rejects.toThrow(/project|--all/);
 		expect(runLadderAcrossProjects).not.toHaveBeenCalled();
 		expect(matchesFilters).not.toHaveBeenCalled();
 	});
@@ -151,7 +155,7 @@ describe("wip ladder", () => {
 	it("refuses --all when no project registry exists, without scanning directories", async () => {
 		vi.mocked(inventoryExists).mockReturnValueOnce(false);
 		const {default: Ladder} = await import("../commands/ladder.js");
-		await expect(Ladder.run(["--all"])).rejects.toThrow(
+		await expect(Ladder.run(["--all"], await loadTestConfig())).rejects.toThrow(
 			"No project registry at /tmp/fake-config/wip/projects.json5; import one with `wip inventory import` before running the ladder on every project",
 		);
 		expect(discoverAllProjects).not.toHaveBeenCalled();
@@ -167,7 +171,7 @@ describe("wip ladder", () => {
 		restores.push(c.restore);
 
 		const {default: Ladder} = await import("../commands/ladder.js");
-		await Ladder.run(["a", "--json"]);
+		await Ladder.run(["a", "--json"], await loadTestConfig());
 		c.restore();
 		vi.mocked(inventoryExists).mockReturnValue(true);
 

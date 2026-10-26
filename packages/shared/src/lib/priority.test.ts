@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
+import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 import {execSync} from "node:child_process";
 import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -62,6 +62,7 @@ describe("per-item priority overrides", () => {
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		resetDb();
 		rmSync(dir, {recursive: true, force: true});
 	});
@@ -95,13 +96,19 @@ describe("per-item priority overrides", () => {
 		const todo = {project: "proj", title: "Do it", sourceFile: ".llm/todo.md", sourceLabel: "todo"};
 		expect(todoPriority(todo, undefined)).toStrictEqual("medium");
 
+		// Each bitemporal write closes the previous row at "now"; distinct clock ticks keep
+		// two closes of the same key from colliding on system_to within one millisecond.
+		vi.useFakeTimers({toFake: ["Date"]});
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 		setTodoPriorityOverride(todo, "low");
+		vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
 		setTodoPriorityOverride(todo, "high");
 		expect(todoPriority(todo, "low")).toStrictEqual("high");
 		expect(getPriorityOverrides("proj")).toStrictEqual([
 			{project: "proj", itemKind: "todo", itemKey: todoItemKey(todo), priority: "high"},
 		]);
 
+		vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
 		clearPriorityOverride("proj", {kind: "todo", key: todoItemKey(todo)});
 		expect(todoPriority(todo, "low")).toStrictEqual("low");
 		expect(getPriorityOverrides("proj")).toStrictEqual([]);

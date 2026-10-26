@@ -123,6 +123,13 @@ export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
 export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
 export {
+	detectLandings,
+	findLandingSuspects,
+	type DetectLandingsInput,
+	type LandingOutcome,
+	type LandingSuspect,
+} from "./lib/landing-detector.js";
+export {
 	backfillSnoozedPatchIds,
 	heldShas,
 	isOnHold,

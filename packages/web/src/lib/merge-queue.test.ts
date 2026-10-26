@@ -7,6 +7,8 @@ vi.mock("@wip/shared", () => ({
 	cacheMergeStatus: vi.fn<(...args: unknown[]) => unknown>(),
 	getCachedMergeStatuses: vi.fn<(...args: unknown[]) => unknown>(),
 	heldShas: vi.fn<(...args: unknown[]) => unknown>(),
+	findLandingSuspects: vi.fn<(...args: unknown[]) => unknown>(),
+	detectLandings: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
@@ -20,6 +22,8 @@ import {
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	heldShas,
+	findLandingSuspects,
+	detectLandings,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
@@ -32,6 +36,8 @@ const mockGetCachedMergeStatuses = getCachedMergeStatuses as Mock;
 const mockComputeMergeStatus = computeMergeStatus as Mock;
 const mockCacheMergeStatus = cacheMergeStatus as Mock;
 const mockHeldShas = heldShas as Mock;
+const mockFindLandingSuspects = findLandingSuspects as Mock;
+const mockDetectLandings = detectLandings as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -81,6 +87,8 @@ describe("checkProject", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mockHeldShas.mockResolvedValue(new Set());
+		mockFindLandingSuspects.mockResolvedValue([]);
+		mockDetectLandings.mockResolvedValue([]);
 		emitter.removeAllListeners();
 	});
 
@@ -121,6 +129,47 @@ describe("checkProject", () => {
 		await checkProject("test-project");
 
 		expect(events).toStrictEqual([{project: "test-project", from: "upstream-old", to: "upstream-new"}]);
+	});
+
+	it("detects landings on an upstream move and emits landed only for landed tips", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: true, from: "upstream-old", sha: "upstream-new"});
+		mockGetChildren.mockResolvedValue([]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		const suspects = [
+			{sha: "landed-sha", branch: "done"},
+			{sha: "partial-sha", branch: "partial"},
+		];
+		mockFindLandingSuspects.mockResolvedValue(suspects);
+		mockDetectLandings.mockResolvedValue([
+			{sha: "landed-sha", branch: "done", outcome: "landed", newTip: "upstream-new"},
+			{sha: "partial-sha", branch: "partial", outcome: "remaining", newTip: "partial-new"},
+		]);
+
+		const events: unknown[] = [];
+		emitter.on("landed", (e) => events.push(e));
+
+		await checkProject("test-project");
+
+		expect({
+			found: mockFindLandingSuspects.mock.calls,
+			detected: mockDetectLandings.mock.calls,
+			events,
+		}).toStrictEqual({
+			found: [["/tmp/test-project", "upstream-old", "upstream-new"]],
+			detected: [
+				[
+					{
+						dir: "/tmp/test-project",
+						project: "test-project",
+						from: "upstream-old",
+						to: "upstream-new",
+						suspects,
+					},
+				],
+			],
+			events: [{project: "test-project", sha: "landed-sha", branch: "done"}],
+		});
 	});
 
 	it("emits no upstreamMoved event when upstream is unchanged", async () => {

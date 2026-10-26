@@ -6,6 +6,8 @@ import {
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	heldShas,
+	findLandingSuspects,
+	detectLandings,
 } from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
@@ -30,6 +32,29 @@ export interface UpstreamMovedEvent {
 	to: string;
 }
 
+export interface LandedEvent {
+	project: string;
+	/** The tip that landed (its sha before any replay). */
+	sha: string;
+	branch?: string;
+}
+
+/** Replay-first landing detection after upstream moved; emits `landed` for each tip the replay shows landed. */
+async function detectProjectLandings(p: ProjectInfo, from: string, to: string): Promise<void> {
+	const suspects = await findLandingSuspects(p.dir, from, to);
+	if (suspects.length === 0) return;
+	const outcomes = await detectLandings({dir: p.dir, project: p.name, from, to, suspects});
+	for (const outcome of outcomes) {
+		if (outcome.outcome !== "landed") continue;
+		const landed: LandedEvent = {
+			project: p.name,
+			sha: outcome.sha,
+			...(outcome.branch === undefined ? {} : {branch: outcome.branch}),
+		};
+		emitter.emit("landed", landed);
+	}
+}
+
 function emit(event: MergeStatusEvent): void {
 	emitter.emit("mergeStatus", event);
 }
@@ -40,6 +65,8 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 	if (changed) {
 		const moved: UpstreamMovedEvent = {project: p.name, from, to: upstreamSha};
 		emitter.emit("upstreamMoved", moved);
+		// With no previous tip there is no new upstream range to compare against.
+		if (from) await detectProjectLandings(p, from, upstreamSha);
 	}
 
 	const allShas = await getChildren(p.dir, p.upstreamRef);

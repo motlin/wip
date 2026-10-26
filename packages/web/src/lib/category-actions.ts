@@ -55,6 +55,7 @@ export function getTransitionActions(category: Category): Action[] {
 
 // Non-state-changing actions that are added per category beyond what the state machine provides.
 export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>> = {
+	upstream_red: ["open_pr_link", "refresh"],
 	approved: ["open_pr_link", "refresh"],
 	changes_requested: ["open_pr_link", "refresh"],
 	review_comments: ["open_pr_link", "refresh"],
@@ -146,6 +147,12 @@ export interface CategoryConfig {
 }
 
 export const CATEGORIES: Record<Category, CategoryConfig> = {
+	upstream_red: {
+		label: "Upstream Red",
+		palette: "red",
+		actions: buildActions("upstream_red"),
+		llmCommand: "/github:gha",
+	},
 	landed: {label: "Landed", palette: "green", actions: buildActions("landed")},
 	approved: {label: "Approved", palette: "green", actions: buildActions("approved")},
 	changes_requested: {
@@ -341,11 +348,13 @@ function deriveCategoryPriority(): Category[] {
 
 	// Place special orthogonal states at the front:
 	// - snoozed first, skippable second (both are "not actionable now" categories)
-	const rest = sorted.filter((s) => s !== "snoozed" && s !== "skippable");
+	// upstream_red is forced last so the reversed (most urgent first) order starts with it.
+	const rest = sorted.filter((s) => s !== "snoozed" && s !== "skippable" && s !== "upstream_red");
 	const result: Category[] = [
 		...(allStates.has("snoozed") ? ["snoozed" as Category] : []),
 		...(allStates.has("skippable") ? ["skippable" as Category] : []),
 		...rest,
+		"upstream_red",
 	];
 
 	return result;

@@ -25,6 +25,8 @@ export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
 // into lifecycle-phase columns. CategorySchema, the /states graph columns and the
 // queue's topological tie-break all derive from this.
 export const CATEGORY_COLUMNS = [
+	// Line stop: a red upstream outranks everything
+	["upstream_red"],
 	// Overrides and ideas
 	["snoozed", "skippable", "untriaged", "triaged", "blocked"],
 	// Early local
@@ -110,6 +112,7 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "review_comments", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "changes_requested", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "approved", transition: "snooze", to: "snoozed", kind: "active"},
+	{from: "upstream_red", transition: "snooze", to: "snoozed", kind: "active"},
 
 	// Local development flow
 	{from: "triaged", transition: "create_branch", to: "ready_to_test", kind: "active"},

@@ -17,11 +17,14 @@ import {
 	cacheProjectItems,
 	type GitHubIssue,
 	type ProjectInfo,
+	classifyGitChild,
+	upstreamRedCommand,
 } from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
 	getManagedFailedBaseBranches,
 	launchBackgroundEnqueue,
+	localBaselineRedChild,
 	seedProjectCache,
 	resetProjectCache,
 } from "./server-fns.impl.js";
@@ -311,6 +314,57 @@ describe("getManagedFailedBaseBranches", () => {
 		]);
 
 		expect(result).toStrictEqual([managedFailure]);
+	});
+});
+
+describe("localBaselineRedChild", () => {
+	const project: ProjectInfo = {
+		name: "proj",
+		dir: "/tmp/proj",
+		remote: "motlin/proj",
+		originRemote: "origin",
+		upstreamRemote: "upstream",
+		upstreamBranch: "main",
+		upstreamRef: "upstream/main",
+		dirty: false,
+		detachedHead: false,
+		branchCount: 1,
+		hasTestConfigured: true,
+		rebaseInProgress: false,
+	};
+	const sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+	it("reports a failed git-test baseline as an upstream_red child suggesting /build:fix", () => {
+		const child = localBaselineRedChild(project, sha, "failed", "2026-10-26");
+		expect(child).toStrictEqual({
+			kind: "upstream_ci",
+			project: "proj",
+			remote: "motlin/proj",
+			originRemote: "origin",
+			sha,
+			shortSha: "bbbbbbb",
+			subject: "Fix failing tests on upstream/main",
+			date: "2026-10-26",
+			branch: "main",
+			testStatus: "failed",
+			checkStatus: "none",
+			skippable: false,
+			pushedToRemote: true,
+			reviewStatus: "no_pr",
+		});
+		expect(child && {category: classifyGitChild(child, project), command: upstreamRedCommand(child)}).toStrictEqual(
+			{
+				category: "upstream_red",
+				command: "/build:fix",
+			},
+		);
+	});
+
+	it("reports nothing for a green or unknown baseline", () => {
+		expect([
+			localBaselineRedChild(project, sha, "passed", "2026-10-26"),
+			localBaselineRedChild(project, sha, undefined, "2026-10-26"),
+		]).toStrictEqual([undefined, undefined]);
 	});
 });
 

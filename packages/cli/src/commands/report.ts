@@ -70,6 +70,7 @@ interface ReportJson {
 
 // Kanban left-to-right: full SDLC flow
 const CATEGORY_ORDER: Category[] = [
+	"upstream_red",
 	"snoozed",
 	"skippable",
 	"untriaged",
@@ -97,6 +98,7 @@ const CATEGORY_ORDER: Category[] = [
 ];
 
 const CATEGORY_LABELS: Record<Category, string> = {
+	upstream_red: "Upstream red",
 	snoozed: "Snoozed",
 	skippable: "Skippable",
 	untriaged: "Untriaged",
@@ -138,6 +140,7 @@ function categoryStyle(category: Category, text: string): string {
 		case "review_comments":
 		case "pushed_no_pr":
 			return chalk.blue(text);
+		case "upstream_red":
 		case "test_failed":
 		case "checks_failed":
 		case "rebase_conflicts":
@@ -205,6 +208,7 @@ export default class Report extends Command {
 		const projects = await discoverAllProjects(projectsDirs);
 
 		const grouped: Record<Category, ClassifiedChild[]> = {
+			upstream_red: [],
 			snoozed: [],
 			skippable: [],
 			untriaged: [],

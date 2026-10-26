@@ -35,6 +35,7 @@ function Kanban() {
 
 	const {grouped, totalCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
+			upstream_red: {},
 			untriaged: {},
 			triaged: {},
 			blocked: {},

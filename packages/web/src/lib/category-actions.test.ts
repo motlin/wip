@@ -2,6 +2,7 @@ import {describe, it, expect} from "vite-plus/test";
 import {
 	CATEGORIES,
 	CATEGORY_PRIORITY,
+	CATEGORY_PRIORITY_REVERSED,
 	TRANSITION_TO_ACTION,
 	getTransitionActions,
 	SUPPLEMENTARY_ACTIONS,
@@ -54,6 +55,17 @@ describe("CATEGORIES", () => {
 
 	it("maps checks_failed to /gha", () => {
 		expect(CATEGORIES.checks_failed.llmCommand).toBe("/gha");
+	});
+
+	it("gives upstream_red the red palette and /github:gha", () => {
+		expect({palette: CATEGORIES.upstream_red.palette, llmCommand: CATEGORIES.upstream_red.llmCommand}).toEqual({
+			palette: "red",
+			llmCommand: "/github:gha",
+		});
+	});
+
+	it("ranks upstream_red first", () => {
+		expect(CATEGORY_PRIORITY_REVERSED[0]).toBe("upstream_red");
 	});
 });
 
@@ -188,10 +200,9 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(indexOf("checks_running")).toBeLessThan(indexOf("checks_passed"));
 	});
 
-	it("orders review flow last, followed only by terminal landed", () => {
+	it("orders review flow last, followed only by terminal landed and the forced upstream_red", () => {
 		expect(indexOf("checks_passed")).toBeLessThan(indexOf("approved"));
-		expect(indexOf("approved")).toBe(CATEGORY_PRIORITY.length - 2);
-		expect(indexOf("landed")).toBe(CATEGORY_PRIORITY.length - 1);
+		expect(CATEGORY_PRIORITY.slice(-3)).toStrictEqual(["approved", "landed", "upstream_red"]);
 	});
 
 	it("places test_failed adjacent to test_running (not after push states)", () => {

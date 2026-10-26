@@ -17,6 +17,7 @@ import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotCl
 
 // Categories where the user needs to take action (not waiting on CI or external review)
 const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
+	"upstream_red",
 	"checks_passed",
 	"checks_failed",
 	"test_failed",
@@ -56,6 +57,7 @@ function QueueLayout() {
 
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
 		const g: Record<Category, ColumnItems> = {
+			upstream_red: {},
 			untriaged: {},
 			triaged: {},
 			blocked: {},

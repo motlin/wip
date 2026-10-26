@@ -125,6 +125,46 @@ export type {ActionResult, SnoozedChild, GitChildResult};
 
 export type ProjectChildrenResult = GitChildResult[];
 
+/** A red local baseline: `git test results` says the upstream tip fails the default git-test. */
+export function localBaselineRedChild(
+	p: ProjectInfo,
+	upstreamSha: string,
+	upstreamTestStatus: "passed" | "failed" | undefined,
+	date: string,
+): GitChildResult | undefined {
+	if (upstreamTestStatus !== "failed") return undefined;
+	return {
+		kind: "upstream_ci",
+		project: p.name,
+		remote: p.remote,
+		originRemote: p.originRemote,
+		sha: upstreamSha,
+		shortSha: upstreamSha.slice(0, 7),
+		subject: `Fix failing tests on ${p.upstreamRef}`,
+		date,
+		branch: p.upstreamBranch,
+		testStatus: "failed",
+		checkStatus: "none",
+		skippable: false,
+		pushedToRemote: true,
+		reviewStatus: "no_pr",
+	};
+}
+
+async function readLocalBaselineRedChild(p: ProjectInfo, upstreamSha: string): Promise<GitChildResult | undefined> {
+	try {
+		const status = (await getGitTestStatuses(p.dir, [upstreamSha])).get(upstreamSha);
+		if (status !== "failed") return undefined;
+		const {stdout} = await tracedExeca("git", ["-C", p.dir, "show", "-s", "--format=%cs", upstreamSha], {
+			reject: false,
+		});
+		return localBaselineRedChild(p, upstreamSha, status, stdout.trim());
+	} catch (error: unknown) {
+		log.general.warn({project: p.name, error}, "Reading the baseline git-test result failed");
+		return undefined;
+	}
+}
+
 export function getManagedFailedBaseBranches(baseBranches: BaseBranchStatus[]): BaseBranchStatus[] {
 	return baseBranches.filter((base) => base.policy === "managed" && base.checkStatus === "failed");
 }
@@ -360,6 +400,9 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					prUrl: `${firstFailedBase.repositoryUrl}/actions`,
 					failedChecks,
 				});
+			} else if (p.hasTestConfigured && upstreamSha) {
+				const baselineRed = await readLocalBaselineRedChild(p, upstreamSha);
+				if (baselineRed) results.push(baselineRed);
 			}
 
 			cacheChildren(projectName, results);

@@ -281,6 +281,13 @@ export {
 	projectCondition,
 } from "./lib/classify.js";
 export {
+	type GitHubIdentity,
+	type UpstreamOwnership,
+	stopsLine,
+	upstreamOwnership,
+	upstreamRedCommand,
+} from "./lib/upstream-red.js";
+export {
 	isGitChildUpstreamCi,
 	isGitChildPullRequest,
 	isGitChildBranch,

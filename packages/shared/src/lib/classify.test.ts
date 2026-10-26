@@ -315,8 +315,17 @@ describe("classifyBranch", () => {
 });
 
 describe("classifyGitChild", () => {
-	it("classifies failed base-branch CI as blocking checks", () => {
-		expect(classifyGitChild(makePR({kind: "upstream_ci"}), makeProject())).toBe("checks_failed");
+	it("classifies failed base-branch CI as upstream_red", () => {
+		expect(classifyGitChild(makePR({kind: "upstream_ci"}), makeProject())).toBe("upstream_red");
+	});
+
+	it("classifies a red local baseline as upstream_red", () => {
+		expect(
+			classifyGitChild(
+				makePR({kind: "upstream_ci", testStatus: "failed", checkStatus: "none", prUrl: undefined}),
+				makeProject(),
+			),
+		).toBe("upstream_red");
 	});
 
 	it("classifies a PR with no reviews as an existing PR, not needs PR", () => {

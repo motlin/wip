@@ -1,7 +1,7 @@
 import {useNavigate} from "@tanstack/react-router";
 import {useState, useMemo} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi} from "@wip/shared";
+import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi, upstreamRedCommand} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../lib/category-actions.js";
 import {useQueueContext, bucketCount} from "../lib/queue-context.js";
 
@@ -20,6 +20,8 @@ interface FlatRow {
 	project: string;
 	sha: string | undefined;
 	issueNumber: number | undefined;
+	/** Overrides the category's command, e.g. /build:fix for a red local baseline. */
+	llmCommand?: string;
 }
 
 function gitChildToRow(child: GitChildResult, category: Category): FlatRow {
@@ -43,6 +45,7 @@ function gitChildToRow(child: GitChildResult, category: Category): FlatRow {
 		project: child.project,
 		sha: child.sha,
 		issueNumber: undefined,
+		llmCommand: type === "ci" ? upstreamRedCommand(child) : undefined,
 	};
 }
 
@@ -118,6 +121,7 @@ function typeFilterMatches(filter: TypeFilter, type: ItemType): boolean {
 
 const GREEN_BADGE_CATEGORIES = new Set<Category>(["checks_passed", "approved", "ready_to_push"]);
 const RED_BADGE_CATEGORIES = new Set<Category>([
+	"upstream_red",
 	"checks_failed",
 	"test_failed",
 	"rebase_conflicts",
@@ -380,7 +384,7 @@ function RowActions({row}: {row: FlatRow}) {
 		}
 	}
 
-	const llmCommand = CATEGORIES[row.category].llmCommand;
+	const llmCommand = row.llmCommand ?? CATEGORIES[row.category].llmCommand;
 	if (llmCommand) {
 		actions.push(llmCommand);
 	}

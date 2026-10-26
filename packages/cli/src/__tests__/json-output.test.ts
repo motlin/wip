@@ -41,7 +41,6 @@ vi.mock("@wip/shared", () => ({
 	snoozeItem: vi.fn<Shared["snoozeItem"]>(),
 	unsnoozeItem: vi.fn<Shared["unsnoozeItem"]>(),
 	getActiveSnoozed: vi.fn<Shared["getActiveSnoozed"]>(() => []),
-	getSnoozedSet: vi.fn<Shared["getSnoozedSet"]>(() => new Set()),
 	getAllSnoozed: vi.fn<Shared["getAllSnoozed"]>(() => []),
 	clearExpiredSnoozes: vi.fn<Shared["clearExpiredSnoozes"]>(() => 0),
 	log: {subprocess: {debug: vi.fn<(...args: unknown[]) => void>()}},

@@ -165,12 +165,23 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			short_sha TEXT NOT NULL DEFAULT '',
 			subject TEXT NOT NULL DEFAULT '',
 			until TEXT,
+			patch_id TEXT,
+			orphaned INTEGER NOT NULL DEFAULT 0,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (sha, project, system_to)
 		)
 	`);
+	// Migrate: On hold and Snooze are keyed by patch-id. Existing rows get null and are backfilled lazily.
+	{
+		const cols = tableInfo(sqlite, "snoozed");
+		if (!cols.some((c) => c.name === "patch_id")) sqlite.exec("ALTER TABLE snoozed ADD COLUMN patch_id TEXT");
+		if (!cols.some((c) => c.name === "orphaned")) {
+			sqlite.exec("ALTER TABLE snoozed ADD COLUMN orphaned INTEGER NOT NULL DEFAULT 0");
+		}
+	}
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS snoozed_active_idx ON snoozed (system_to)`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS snoozed_patch_idx ON snoozed (patch_id, project)`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS branch_names (
@@ -518,14 +529,16 @@ export function snoozeItem(
 	shortSha: string,
 	subject: string,
 	until: string | null,
+	patchId: string | null = null,
 ): void {
 	const d = getDb();
 	const timestamp = now();
+	const sameItem = patchId ? or(eq(snoozed.sha, sha), eq(snoozed.patchId, patchId)) : eq(snoozed.sha, sha);
 
 	d.transaction((tx) => {
 		tx.update(snoozed)
 			.set({systemTo: timestamp})
-			.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
+			.where(and(sameItem, eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
 			.run();
 
 		tx.insert(snoozed)
@@ -535,6 +548,8 @@ export function snoozeItem(
 				shortSha,
 				subject,
 				until,
+				// An empty diff has an empty patch-id, which identifies nothing.
+				patchId: patchId === "" ? null : patchId,
 				systemFrom: timestamp,
 				systemTo: FAR_FUTURE,
 			})
@@ -550,6 +565,62 @@ export function unsnoozeItem(sha: string, project: string): void {
 		.run();
 }
 
+/** Active, unexpired rows for one project. */
+export function getActiveSnoozedForProject(project: string): SnoozedItem[] {
+	return getActiveSnoozed().filter((row) => row.project === project);
+}
+
+/** Active rows still waiting for a patch-id backfill (not yet found orphaned). */
+export function getSnoozedNeedingBackfill(project: string): SnoozedItem[] {
+	return getDb()
+		.select()
+		.from(snoozed)
+		.where(
+			and(
+				eq(snoozed.project, project),
+				eq(snoozed.systemTo, FAR_FUTURE),
+				isNull(snoozed.patchId),
+				eq(snoozed.orphaned, false),
+			),
+		)
+		.all();
+}
+
+/**
+ * Record the backfill outcome on the active row in place: the patch-id is a derived
+ * fact of the same sha, so it opens no new bitemporal version.
+ */
+export function setSnoozedIdentity(sha: string, project: string, identity: {patchId: string} | {orphaned: true}): void {
+	getDb()
+		.update(snoozed)
+		.set("patchId" in identity ? {patchId: identity.patchId} : {orphaned: true})
+		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
+		.run();
+}
+
+/** The item was seen at a new sha (same patch-id): close the old version and reopen it there. */
+export function repointSnoozed(row: SnoozedItem, next: {sha: string; shortSha: string; subject: string}): void {
+	const d = getDb();
+	const timestamp = now();
+	d.transaction((tx) => {
+		tx.update(snoozed)
+			.set({systemTo: timestamp})
+			.where(and(eq(snoozed.sha, row.sha), eq(snoozed.project, row.project), eq(snoozed.systemTo, FAR_FUTURE)))
+			.run();
+		tx.insert(snoozed)
+			.values({
+				...row,
+				sha: next.sha,
+				shortSha: next.shortSha,
+				subject: next.subject,
+				orphaned: false,
+				systemFrom: timestamp,
+				systemTo: FAR_FUTURE,
+			})
+			.run();
+	}, WRITE_TRANSACTION_CONFIG);
+}
+
 export function getActiveSnoozed(): SnoozedItem[] {
 	const d = getDb();
 	const nowStr = now();
@@ -558,11 +629,6 @@ export function getActiveSnoozed(): SnoozedItem[] {
 		.from(snoozed)
 		.where(and(eq(snoozed.systemTo, FAR_FUTURE), or(isNull(snoozed.until), gte(snoozed.until, nowStr))))
 		.all();
-}
-
-export function getSnoozedSet(): Set<string> {
-	const items = getActiveSnoozed();
-	return new Set(items.map((i) => `${i.project}:${i.sha}`));
 }
 
 export function getAllSnoozed(): SnoozedItem[] {
@@ -579,6 +645,8 @@ export function getAllSnoozedForDisplay() {
 			shortSha: snoozed.shortSha,
 			subject: snoozed.subject,
 			until: snoozed.until,
+			patchId: snoozed.patchId,
+			orphaned: snoozed.orphaned,
 		})
 		.from(snoozed)
 		.where(eq(snoozed.systemTo, FAR_FUTURE))

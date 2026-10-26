@@ -161,7 +161,7 @@ function ItemDetail() {
 						<p className="font-mono text-xs text-text-300">{snoozedEntry.shortSha || sha.slice(0, 7)}</p>
 						<p className="mt-1 text-sm text-text-100">{snoozedEntry.subject}</p>
 						<p className="mt-2 text-xs text-amber-400">
-							{snoozedEntry.until ? `Snoozed until ${snoozedEntry.until}` : "On Hold"}
+							{snoozedEntry.until ? `Snoozed until ${snoozedEntry.until}` : "On hold"}
 						</p>
 						<p className="mt-2 text-xs text-text-500">
 							Commit no longer found in git — the branch may have been rebased.
@@ -233,7 +233,7 @@ function ItemDetail() {
 							{isSnoozed && (
 								<SidebarField label="Snoozed">
 									<span className="text-amber-400">
-										{snoozedEntry?.until ? `Until ${snoozedEntry.until}` : "On Hold"}
+										{snoozedEntry?.until ? `Until ${snoozedEntry.until}` : "On hold"}
 									</span>
 								</SidebarField>
 							)}

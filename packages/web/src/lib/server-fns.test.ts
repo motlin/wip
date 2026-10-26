@@ -502,6 +502,8 @@ describe("getSnoozedList (underlying logic)", () => {
 			shortSha: "abc1234",
 			subject: "Fix the bug",
 			until: null,
+			patchId: null,
+			orphaned: false,
 		});
 
 		// Verify no temporal fields (systemFrom, systemTo) are present
@@ -1919,6 +1921,31 @@ describe("getProjectChildrenHandler", () => {
 		const snoozedChild = result.find((c) => c.sha === sha);
 		expect(snoozedChild).toBeUndefined();
 	});
+
+	it("keeps a commit put On hold hidden after it is reworded to a new sha", async () => {
+		const dir = await createTestGitRepo();
+		await writeTestFile(join(dir, "held.txt"), "held\n");
+		await execa("git", ["-C", dir, "add", "held.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Held commit"]);
+		const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+
+		const project = makeProject({name: "hold-rebase-test", dir, upstreamRef: "main~1"});
+		seedProjectCache([project]);
+
+		const {snoozeChildHandler, getProjectChildrenHandler, getSnoozedListHandler} =
+			await import("./server-fns.impl.js");
+		await snoozeChildHandler({project: "hold-rebase-test", sha, until: null});
+		await execa("git", ["-C", dir, "commit", "--amend", "-m", "Held commit, reworded"]);
+		const reworded = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+
+		const result = await getProjectChildrenHandler("hold-rebase-test");
+		const snoozed = await getSnoozedListHandler();
+
+		expect(result.map((c) => c.sha)).not.toContain(reworded);
+		expect(snoozed.map((s) => ({sha: s.sha, until: s.until, orphaned: s.orphaned}))).toStrictEqual([
+			{sha: reworded, until: null, orphaned: false},
+		]);
+	});
 });
 
 // -- pushChildHandler (direct handler tests) --
@@ -2533,7 +2560,15 @@ describe("getQueueSnapshotHandler", () => {
 				issues: [makeIssue(3, "Snapshot issue")],
 				projectItems: [projectItem],
 				snoozed: [
-					{sha: "b".repeat(40), project: "beta", shortSha: "bbbbbbb", subject: "Snoozed one", until: null},
+					{
+						sha: "b".repeat(40),
+						project: "beta",
+						shortSha: "bbbbbbb",
+						subject: "Snoozed one",
+						until: null,
+						patchId: null,
+						orphaned: false,
+					},
 				],
 			},
 			enqueued: 0,

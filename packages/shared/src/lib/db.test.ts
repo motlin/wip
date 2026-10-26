@@ -314,6 +314,8 @@ describe("Snoozed items", () => {
 			shortSha: "sha2def",
 			subject: "Another fix",
 			until: "2099-01-01",
+			patchId: null,
+			orphaned: false,
 		});
 		// Verify no temporal fields
 		expect("systemFrom" in display[0]!).toBe(false);

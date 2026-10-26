@@ -27,7 +27,7 @@ const sha = "a".repeat(40);
 function seededClient() {
 	const queryClient = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}});
 	queryClient.setQueryData(snoozedQueryOptions().queryKey, [
-		{project, sha, shortSha: "aaaaaaa", subject: "Snoozed commit", until: null},
+		{project, sha, shortSha: "aaaaaaa", subject: "Snoozed commit", until: null, patchId: null, orphaned: false},
 	]);
 	queryClient.setQueryData(projectChildrenQueryOptions(project).queryKey, []);
 	queryClient.setQueryData(projectsQueryOptions().queryKey, []);

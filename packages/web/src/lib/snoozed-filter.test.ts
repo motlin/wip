@@ -5,13 +5,15 @@ import type {SnoozedChild} from "@wip/shared";
 import {filterSnoozedChildren} from "./snoozed-filter";
 import {makeChild} from "./test-factories";
 
-function makeSnoozed(project: string, sha: string): SnoozedChild {
+function makeSnoozed(project: string, sha: string, patchId: string | null = null): SnoozedChild {
 	return {
 		project,
 		sha,
 		shortSha: sha.slice(0, 7),
 		subject: "snoozed",
 		until: "2026-05-01T00:00:00.000Z",
+		patchId,
+		orphaned: false,
 	};
 }
 
@@ -22,6 +24,14 @@ describe("filterSnoozedChildren", () => {
 		const snoozed = [makeSnoozed("proj", "a".repeat(40))];
 
 		expect(filterSnoozedChildren([a, b], "proj", snoozed)).toStrictEqual([b]);
+	});
+
+	it("removes a rebased child whose patch-id matches a snoozed entry at its old sha", () => {
+		const rebased = makeChild({project: "proj", sha: "c".repeat(40), patchId: "p".repeat(40)});
+		const other = makeChild({project: "proj", sha: "d".repeat(40), patchId: "q".repeat(40)});
+		const snoozed = [makeSnoozed("proj", "a".repeat(40), "p".repeat(40))];
+
+		expect(filterSnoozedChildren([rebased, other], "proj", snoozed)).toStrictEqual([other]);
 	});
 
 	it("ignores snoozed entries for other projects", () => {

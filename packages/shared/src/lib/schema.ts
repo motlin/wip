@@ -234,12 +234,17 @@ export const snoozed = sqliteTable(
 		shortSha: text("short_sha").notNull().default(""),
 		subject: text("subject").notNull().default(""),
 		until: text("until"),
+		/** Identity across rebases; `sha` is the last-known sha. Null until backfilled, or when the sha is gone. */
+		patchId: text("patch_id"),
+		/** The sha no longer exists in the repo, so no patch-id could be found. Shown, never auto-deleted. */
+		orphaned: integer("orphaned", {mode: "boolean"}).notNull().default(false),
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},
 	(table) => [
 		primaryKey({columns: [table.sha, table.project, table.systemTo]}),
 		index("snoozed_active_idx").on(table.systemTo),
+		index("snoozed_patch_idx").on(table.patchId, table.project),
 	],
 );
 

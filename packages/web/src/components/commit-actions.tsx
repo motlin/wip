@@ -56,7 +56,7 @@ const SNOOZE_PRESETS = [
 	{label: "4 hours", hours: 4},
 	{label: "1 day", hours: 24},
 	{label: "1 week", hours: 24 * 7},
-	{label: "On Hold", hours: null},
+	{label: "On hold", hours: null},
 ] as const;
 
 type ActionableItem = GitChildResult;
@@ -359,6 +359,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						shortSha: item.shortSha,
 						subject: item.subject,
 						until,
+						patchId: item.patchId ?? null,
+						orphaned: false,
 					},
 				]);
 			} else {
@@ -1200,7 +1202,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						{snoozedEntry
 							? snoozedEntry.until
 								? `Snoozed until ${new Date(snoozedEntry.until).toLocaleDateString(undefined, {month: "short", day: "numeric"})}`
-								: "On Hold"
+								: "On hold"
 							: "Snooze"}
 					</button>
 					{snoozeOpen && snoozePos && (

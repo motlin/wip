@@ -5,6 +5,7 @@ import {useState} from "react";
 import {unsnoozeChildFn, getProjectChildren} from "../lib/server-fns.js";
 import type {SnoozedChild} from "../lib/server-fns.js";
 import {snoozedQueryOptions} from "../lib/queries.js";
+import {snoozeLabel} from "../lib/snooze-label.js";
 
 export const Route = createFileRoute("/snoozed")({
 	loader: async ({context: {queryClient}}) => queryClient.query({...snoozedQueryOptions(), staleTime: "static"}),
@@ -13,19 +14,6 @@ export const Route = createFileRoute("/snoozed")({
 	}),
 	component: Snoozed,
 });
-
-function formatUntil(until: string | null): string {
-	if (!until) return "On Hold";
-	const date = new Date(until);
-	const now = new Date();
-	const diffMs = date.getTime() - now.getTime();
-	if (diffMs <= 0) return "Expired";
-	const hours = Math.floor(diffMs / (1000 * 60 * 60));
-	if (hours < 1) return `${Math.ceil(diffMs / (1000 * 60))}m remaining`;
-	if (hours < 24) return `${hours}h remaining`;
-	const days = Math.floor(hours / 24);
-	return `${days}d remaining`;
-}
 
 function Snoozed() {
 	const {data: snoozed} = useSuspenseQuery(snoozedQueryOptions());
@@ -36,17 +24,17 @@ function Snoozed() {
 	return (
 		<div className="mx-auto max-w-2xl p-6">
 			<div className="mb-6 flex items-baseline justify-between">
-				<h1 className="text-xl font-semibold">Snoozed</h1>
+				<h1 className="text-xl font-semibold">On hold and Snoozed</h1>
 				<span className="text-sm text-text-500">{snoozed.length} items</span>
 			</div>
 			{snoozed.length === 0 ? (
-				<p className="text-sm text-text-500">No snoozed items.</p>
+				<p className="text-sm text-text-500">Nothing on hold or snoozed.</p>
 			) : (
 				<div className="flex flex-col gap-6">
 					{onHold.length > 0 && (
 						<section>
 							<h2 className="mb-2 text-sm font-semibold text-text-300">
-								On Hold
+								On hold
 								<span className="ml-2 font-normal text-text-500">{onHold.length}</span>
 							</h2>
 							<div className="flex flex-col gap-2">
@@ -59,7 +47,7 @@ function Snoozed() {
 					{timed.length > 0 && (
 						<section>
 							<h2 className="mb-2 text-sm font-semibold text-yellow-700 dark:text-yellow-400">
-								Timed
+								Snoozed
 								<span className="ml-2 font-normal text-text-500">{timed.length}</span>
 							</h2>
 							<div className="flex flex-col gap-2">
@@ -114,7 +102,9 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 				<span className="shrink-0 rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300">
 					{item.shortSha || item.sha.slice(0, 7)}
 				</span>
-				<span className="text-xs text-text-500">{formatUntil(item.until)}</span>
+				<span className="text-xs text-text-500">
+					{item.orphaned ? "Orphaned: commit no longer exists" : snoozeLabel(item.until)}
+				</span>
 			</div>
 			{item.subject && <p className="mt-1.5 text-sm leading-snug text-text-100">{item.subject}</p>}
 			{error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
@@ -134,7 +124,7 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 					}`}
 				>
 					{waking ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlarmClockOff className="h-3 w-3" />}
-					{waking ? "Waking..." : "Wake"}
+					{waking ? "Waking..." : item.orphaned ? "Remove" : "Wake"}
 				</button>
 			</div>
 		</Link>

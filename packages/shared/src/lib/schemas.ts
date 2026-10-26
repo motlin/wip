@@ -371,6 +371,8 @@ export const GitChildResultSchema = z.object({
 	blockReason: z.string().optional(),
 	blockCommand: z.string().optional(),
 	isHead: z.boolean().optional(),
+	/** Set when some On hold / Snooze row in the project carries a patch-id. */
+	patchId: z.string().optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 
@@ -445,7 +447,12 @@ export const SnoozedChildSchema = z.object({
 	project: z.string(),
 	shortSha: shortShaSchema,
 	subject: z.string(),
+	/** Null = On hold (untimed); a datetime = Snooze (timed). */
 	until: z.iso.datetime().nullable(),
+	/** Identity across rebases; `sha` is the last-known sha. */
+	patchId: z.string().nullable(),
+	/** The sha is gone from the repo; listed for the user to remove. */
+	orphaned: z.boolean(),
 });
 export type SnoozedChild = z.infer<typeof SnoozedChildSchema>;
 

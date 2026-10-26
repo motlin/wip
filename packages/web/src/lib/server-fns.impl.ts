@@ -12,11 +12,13 @@ import {
 	getPrStatuses,
 	getProjectsDirs,
 	getRemoteBranchInfo,
-	getSnoozedSet,
+	getCommitFacts,
 	getTestLogDir,
 	invalidatePrCache,
 	invalidateIssuesCache,
 	invalidateProjectItemsCache,
+	backfillSnoozedPatchIds,
+	resolveSnoozedChildren,
 	snoozeItem,
 	suggestBranchNames,
 	unsnoozeItem,
@@ -284,14 +286,14 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 			);
 
 			clearExpiredSnoozes();
-			const snoozedSet = getSnoozedSet();
 			const seen = new Set<string>();
-			const allChildren = [...children, ...needsRebaseBranches].filter((c) => {
-				if (snoozedSet.has(`${p.name}:${c.sha}`)) return false;
+			const uniqueChildren = [...children, ...needsRebaseBranches].filter((c) => {
 				if (seen.has(c.sha)) return false;
 				seen.add(c.sha);
 				return true;
 			});
+			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
+			const allChildren = uniqueChildren.filter((c) => !snoozes.hidden.has(c.sha));
 
 			// Collect all children that need branch name suggestions and fetch cached names up front
 			const defaultBranchPattern = /^(main|master)$/;
@@ -371,6 +373,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 							? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
 							: undefined,
 					isHead: child.sha === headSha,
+					patchId: snoozes.patchIds.get(child.sha),
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);
@@ -1088,11 +1091,13 @@ export async function snoozeChildHandler(data: SnoozeChildInput): Promise<Action
 		const shortSha = snoozeFields[0] ?? data.sha.slice(0, 7);
 		const subject = snoozeFields[1] ?? "";
 
-		// Validate transition: snooze is allowed from many states (ready_to_test, test_failed, ready_to_push, etc.)
-		// We just log to ensure this was intended
-		log.subprocess.debug({project: data.project, sha: data.sha}, "Snoozing work item");
+		// Patch-id keys the row so the item stays On hold / snoozed across a rebase.
+		const facts = await getCommitFacts(p.dir, data.project, [data.sha]);
+		const patchId = facts.get(data.sha)?.patchId ?? null;
 
-		snoozeItem(data.sha, data.project, shortSha, subject, data.until);
+		log.subprocess.debug({project: data.project, sha: data.sha, patchId}, "Snoozing work item");
+
+		snoozeItem(data.sha, data.project, shortSha, subject, data.until, patchId);
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : "On hold"};
 	});
 }
@@ -1107,7 +1112,15 @@ export async function unsnoozeChildHandler(data: UnsnoozeChildInput): Promise<Ac
 export async function getSnoozedListHandler(): Promise<SnoozedChild[]> {
 	return traced("getSnoozedList", async () => {
 		clearExpiredSnoozes();
-		return Promise.resolve(getAllSnoozedForDisplay());
+		// Fill patch-ids for pre-migration rows so orphaned ones show as orphaned here.
+		const projects = await ensureProjects();
+		const projectsWithRows = new Set(getAllSnoozedForDisplay().map((row) => row.project));
+		await Promise.all(
+			projects
+				.filter((p) => projectsWithRows.has(p.name))
+				.map(async (p) => backfillSnoozedPatchIds(p.dir, p.name)),
+		);
+		return getAllSnoozedForDisplay();
 	});
 }
 

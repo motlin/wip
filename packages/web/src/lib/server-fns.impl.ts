@@ -1284,6 +1284,56 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 	});
 }
 
+type InterruptedOperation = "rebase" | "cherry-pick" | "merge";
+
+/** Clear a project's rebaseInProgress flag in the project cache and tell clients, without a full rediscovery. */
+async function markRebaseFinished(project: string): Promise<void> {
+	const projects = cachedProjects;
+	const entry = projects?.find((p) => p.name === project);
+	if (!projects || !entry) return;
+	entry.rebaseInProgress = false;
+	setCachedProjectList(projects);
+	const {projectEmitter} = await import("./project-events.js");
+	projectEmitter.emit("projects", projects);
+}
+
+/** The rebase, cherry-pick or merge a repo is stopped in, read from its git dir (worktree-aware). */
+async function findInterruptedOperation(dir: string): Promise<InterruptedOperation | undefined> {
+	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--absolute-git-dir"], {reject: false});
+	if (result.exitCode !== 0) return undefined;
+	const gitDir = result.stdout.trim();
+	const has = (name: string): boolean => fs.existsSync(path.join(gitDir, name));
+	if (has("rebase-merge") || has("rebase-apply")) return "rebase";
+	if (has("CHERRY_PICK_HEAD")) return "cherry-pick";
+	if (has("MERGE_HEAD")) return "merge";
+	return undefined;
+}
+
+/**
+ * Abort, don't rescue: back a stuck rebase, cherry-pick or merge out to where it
+ * started, as a git-write job holding the repo. The work is redone from a clean
+ * state (a fresh replay, or /git:conflicts) instead of patching up the halfway state.
+ */
+export async function abortRebaseHandler(project: string): Promise<ActionResult> {
+	return tracedAction("abortRebase", async () => {
+		const p = await resolveProject(project);
+		return runQueuedAction(project, "abortRebase", async () => {
+			const operation = await findInterruptedOperation(p.dir);
+			if (!operation) {
+				return {ok: false, message: `No rebase, cherry-pick or merge in progress in ${project}`};
+			}
+			const result = await tracedExeca("git", ["-C", p.dir, operation, "--abort"], {reject: false});
+			if (result.exitCode !== 0) {
+				return {ok: false, message: `Failed to abort ${operation}: ${result.stderr}`};
+			}
+			await markRebaseFinished(project);
+			invalidateChildrenCache(project);
+			invalidateMergeStatus(project);
+			return {ok: true, message: `Aborted ${operation} in ${project}`};
+		});
+	});
+}
+
 /**
  * Enqueues a single background rebase task for one branch, so the per-card
  * "Rebase" action runs on the shared task queue (visible on the Tasks page via

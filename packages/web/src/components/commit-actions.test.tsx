@@ -10,6 +10,8 @@ import {clearToasts, getToasts} from "../lib/toast-store.js";
 const serverFns = vi.hoisted(() => ({
 	testChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	runClaudeCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	abortRebase: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	getProjects: vi.fn<() => Promise<unknown[]>>(async () => Promise.resolve([])),
 	getSnoozedList: vi.fn<() => Promise<unknown[]>>(async () => Promise.resolve([])),
 }));
 
@@ -142,6 +144,31 @@ describe("no_test marker and Add a test detour", () => {
 				],
 			]);
 		});
+	});
+});
+
+describe("Abort rebase on a stuck rebase", () => {
+	afterEach(() => {
+		cleanup();
+		clearToasts();
+		serverFns.abortRebase.mockReset();
+	});
+
+	it("offers Abort rebase on a rebase_stuck item and aborts the project's operation when clicked", async () => {
+		serverFns.abortRebase.mockResolvedValue({ok: true, message: "Aborted rebase in wip"});
+		renderBranch(branchItem({}), "rebase_stuck");
+
+		fireEvent.click(screen.getByRole("button", {name: "Abort rebase"}));
+
+		await waitFor(() => {
+			expect(serverFns.abortRebase.mock.calls).toEqual([[{data: {project: "wip"}}]]);
+		});
+	});
+
+	it("does not offer Abort rebase outside rebase_stuck", () => {
+		renderBranch(branchItem({}), "rebase_conflicts");
+
+		expect(screen.queryByRole("button", {name: "Abort rebase"})).toBeNull();
 	});
 });
 

@@ -11,6 +11,7 @@ import {
 	PushChildInputSchema,
 	RebaseLocalInputSchema,
 	RefreshChildInputSchema,
+	AbortRebaseInputSchema,
 	RenameBranchInputSchema,
 	RunClaudeCommandInputSchema,
 	SnoozeChildInputSchema,
@@ -183,6 +184,10 @@ export const runClaudeCommand = createServerFn({method: "POST"})
 export const refreshChild = createServerFn({method: "POST"})
 	.validator((input: unknown) => RefreshChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).refreshChildHandler(data.project));
+
+export const abortRebase = createServerFn({method: "POST"})
+	.validator((input: unknown) => AbortRebaseInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).abortRebaseHandler(data.project));
 
 export const createBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => CreateBranchInputSchema.parse(input))

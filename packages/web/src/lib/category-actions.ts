@@ -20,6 +20,7 @@ export type Action =
 	| "view_test_log"
 	| "delete_branch"
 	| "refresh"
+	| "abort_rebase"
 	| "merge"
 	| "create_branch";
 
@@ -67,7 +68,7 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	needs_rebase: ["refresh", "rename"],
 	rebase_unknown: ["refresh", "rename"],
 	rebase_conflicts: ["refresh", "rename"],
-	rebase_stuck: ["refresh"],
+	rebase_stuck: ["abort_rebase", "refresh"],
 	test_failed: ["view_test_log", "refresh", "rename", "delete_branch"],
 	ready_to_test: ["refresh", "rename", "delete_branch"],
 	test_running: ["view_test_log", "refresh"],
@@ -206,7 +207,6 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 		label: "Rebase Stuck",
 		palette: "red",
 		actions: buildActions("rebase_stuck"),
-		llmCommand: "/git:conflicts",
 	},
 	test_failed: {
 		label: "Test Failed",

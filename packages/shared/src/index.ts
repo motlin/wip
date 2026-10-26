@@ -253,6 +253,7 @@ export {
 	CreatePrInputSchema,
 	type CreatePrInput,
 	RefreshChildInputSchema,
+	AbortRebaseInputSchema,
 	type RefreshChildInput,
 	CreateBranchInputSchema,
 	type CreateBranchInput,

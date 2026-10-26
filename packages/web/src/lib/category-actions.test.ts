@@ -45,6 +45,13 @@ describe("CATEGORIES", () => {
 		expect(CATEGORIES.local_changes.llmCommand).toBe("/git:commit");
 	});
 
+	it("makes Abort rebase the first action for rebase_stuck, with no rescue command", () => {
+		expect({first: CATEGORIES.rebase_stuck.actions[0], llmCommand: CATEGORIES.rebase_stuck.llmCommand}).toEqual({
+			first: "abort_rebase",
+			llmCommand: undefined,
+		});
+	});
+
 	it("maps checks_failed to /gha", () => {
 		expect(CATEGORIES.checks_failed.llmCommand).toBe("/gha");
 	});

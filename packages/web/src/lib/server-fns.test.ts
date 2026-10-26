@@ -2236,6 +2236,128 @@ async function execCallsAroundRepoHold(
 	return {whileHeld, afterRelease: calls.slice(whileHeld.length)};
 }
 
+async function gitOut(dir: string, ...args: string[]): Promise<string> {
+	return (await execa("git", ["-C", dir, ...args])).stdout.trim();
+}
+
+/** A repo whose `feature` branch conflicts with `main` on file.txt. Returns the feature tip. */
+async function createConflictingRepo(): Promise<{dir: string; featureTip: string}> {
+	const dir = await createTestGitRepo();
+	await writeTestFile(join(dir, "file.txt"), "base\n");
+	await gitOut(dir, "add", "file.txt");
+	await gitOut(dir, "commit", "-m", "base");
+	await gitOut(dir, "checkout", "-b", "feature");
+	await writeTestFile(join(dir, "file.txt"), "feature\n");
+	await gitOut(dir, "commit", "-am", "feature change");
+	const featureTip = await gitOut(dir, "rev-parse", "HEAD");
+	await gitOut(dir, "checkout", "main");
+	await writeTestFile(join(dir, "file.txt"), "main\n");
+	await gitOut(dir, "commit", "-am", "main change");
+	return {dir, featureTip};
+}
+
+describe("abortRebaseHandler", () => {
+	it("aborts a rebase stopped mid-conflict and leaves the branch tip unchanged", async () => {
+		const {dir, featureTip} = await createConflictingRepo();
+		await gitOut(dir, "checkout", "feature");
+		await execa("git", ["-C", dir, "rebase", "main"], {reject: false});
+		const {existsSync} = await import("node:fs");
+		expect(existsSync(join(dir, ".git", "rebase-merge"))).toBe(true);
+		seedProjectCache([makeProject({name: "abort-rebase", dir, rebaseInProgress: true})]);
+
+		const {abortRebaseHandler} = await import("./server-fns.impl.js");
+		const result = await abortRebaseHandler("abort-rebase");
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			rebaseMerge: existsSync(join(dir, ".git", "rebase-merge")),
+			head: await gitOut(dir, "rev-parse", "HEAD"),
+			feature: await gitOut(dir, "rev-parse", "feature"),
+		}).toEqual({
+			ok: true,
+			message: "Aborted rebase in abort-rebase",
+			rebaseMerge: false,
+			head: featureTip,
+			feature: featureTip,
+		});
+	});
+
+	it("aborts a cherry-pick stopped mid-conflict", async () => {
+		const {dir, featureTip} = await createConflictingRepo();
+		const mainTip = await gitOut(dir, "rev-parse", "main");
+		await execa("git", ["-C", dir, "cherry-pick", featureTip], {reject: false});
+		seedProjectCache([makeProject({name: "abort-cherry-pick", dir})]);
+
+		const {abortRebaseHandler} = await import("./server-fns.impl.js");
+		const result = await abortRebaseHandler("abort-cherry-pick");
+
+		const {existsSync} = await import("node:fs");
+		expect({
+			ok: result.ok,
+			message: result.message,
+			cherryPickHead: existsSync(join(dir, ".git", "CHERRY_PICK_HEAD")),
+			head: await gitOut(dir, "rev-parse", "HEAD"),
+		}).toEqual({
+			ok: true,
+			message: "Aborted cherry-pick in abort-cherry-pick",
+			cherryPickHead: false,
+			head: mainTip,
+		});
+	});
+
+	it("aborts a merge stopped mid-conflict", async () => {
+		const {dir} = await createConflictingRepo();
+		const mainTip = await gitOut(dir, "rev-parse", "main");
+		await execa("git", ["-C", dir, "merge", "feature"], {reject: false});
+		seedProjectCache([makeProject({name: "abort-merge", dir})]);
+
+		const {abortRebaseHandler} = await import("./server-fns.impl.js");
+		const result = await abortRebaseHandler("abort-merge");
+
+		const {existsSync} = await import("node:fs");
+		expect({
+			ok: result.ok,
+			message: result.message,
+			mergeHead: existsSync(join(dir, ".git", "MERGE_HEAD")),
+			head: await gitOut(dir, "rev-parse", "HEAD"),
+		}).toEqual({ok: true, message: "Aborted merge in abort-merge", mergeHead: false, head: mainTip});
+	});
+
+	it("reports that nothing is in progress on a clean repo", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "abort-nothing", dir})]);
+
+		const {abortRebaseHandler} = await import("./server-fns.impl.js");
+		const result = await abortRebaseHandler("abort-nothing");
+
+		expect({ok: result.ok, message: result.message}).toEqual({
+			ok: false,
+			message: "No rebase, cherry-pick or merge in progress in abort-nothing",
+		});
+	});
+
+	it("waits for a running job on the same project", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "queued-abort", dir})]);
+		const {abortRebaseHandler} = await import("./server-fns.impl.js");
+		let settled = false;
+		const release = holdRepo("queued-abort");
+		await tick();
+		const pending = abortRebaseHandler("queued-abort").then((r) => {
+			settled = true;
+			return r;
+		});
+		await new Promise((resolve) => {
+			setTimeout(resolve, 20);
+		});
+		const settledWhileHeld = settled;
+		release();
+		await pending;
+		expect({settledWhileHeld, settledAfter: settled}).toEqual({settledWhileHeld: false, settledAfter: true});
+	});
+});
+
 describe("queued git actions", () => {
 	afterEach(() => {
 		fakeExeca.handler = undefined;

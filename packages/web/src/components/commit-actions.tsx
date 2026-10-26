@@ -27,6 +27,7 @@ import {
 	unsnoozeChildFn,
 	cancelTestFn,
 	refreshChild,
+	abortRebase,
 	deleteBranch,
 	forcePush,
 	renameBranch,
@@ -43,7 +44,7 @@ import {
 import {projectsQueryOptions, snoozedQueryOptions} from "../lib/queries.js";
 import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {applyRenameToChild} from "../lib/branch-rename.js";
-import type {ActionResult, GitChildResult, SnoozedChild, Category} from "@wip/shared";
+import type {ActionResult, GitChildResult, SnoozedChild, Category, ProjectInfo} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns.js";
 import {CATEGORIES, addTestCommand} from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
@@ -163,6 +164,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
+	const [aborting, setAborting] = useState(false);
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
@@ -432,6 +434,29 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 		}
 	};
 
+	const handleAbortRebase = async () => {
+		setAborting(true);
+		setError(null);
+		try {
+			const result = await abortRebase({data: {project: item.project}});
+			showActionToasts("Abort rebase", result);
+			if (result.ok) {
+				queryClient.setQueryData<ProjectInfo[]>(["projects"], (old) =>
+					old?.map((p) => (p.name === item.project ? {...p, rebaseInProgress: false} : p)),
+				);
+				const fresh = await getProjectChildren({data: {project: item.project}});
+				queryClient.setQueryData(["children", item.project], fresh);
+			} else {
+				setError(result.message);
+			}
+		} catch (e) {
+			showActionError("Abort rebase", e);
+			setError(e instanceof Error ? e.message : "Failed to abort rebase");
+		} finally {
+			setAborting(false);
+		}
+	};
+
 	const handleForcePush = async () => {
 		setForcePushing(true);
 		setError(null);
@@ -647,6 +672,26 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	return (
 		<div>
 			<div className={`flex ${isRow ? "flex-wrap items-center gap-2" : "flex-col gap-1.5"}`}>
+				{/* Abort rebase: back a stuck rebase/cherry-pick/merge out instead of rescuing it */}
+				{actions.has("abort_rebase") && (
+					<button
+						type="button"
+						onClick={() => {
+							void handleAbortRebase();
+						}}
+						disabled={aborting}
+						title="Abort the stuck rebase, cherry-pick or merge and return to where it started"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							aborting
+								? "cursor-not-allowed opacity-60 text-text-300"
+								: "bg-red-600 hover:bg-red-700 text-white"
+						}`}
+					>
+						{aborting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+						Abort rebase
+					</button>
+				)}
+
 				{/* Merge PR */}
 				{actions.has("merge") && pr && (
 					<button

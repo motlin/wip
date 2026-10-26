@@ -99,7 +99,7 @@ const CATEGORY_ORDER: Category[] = [
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	upstream_red: "Upstream red",
-	snoozed: "Snoozed",
+	snoozed: "On hold and Snoozed",
 	skippable: "Skippable",
 	untriaged: "Untriaged",
 	triaged: "Triaged",

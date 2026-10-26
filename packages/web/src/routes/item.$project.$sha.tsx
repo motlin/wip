@@ -37,6 +37,7 @@ import {branchRemoteUrl} from "../lib/branch-rename.js";
 import {useTestJob, useTestLog} from "../lib/server-events-context.js";
 import {useAutoTail} from "../lib/use-auto-tail.js";
 import {itemBackLabel, itemBackTarget} from "../lib/item-back-link.js";
+import {findSnoozedEntry} from "../lib/snoozed-filter.js";
 
 const itemSearchSchema = z.object({
 	from: z.string().optional(),
@@ -101,8 +102,8 @@ function ItemDetail() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const {data: snoozedItems} = useSuspenseQuery(snoozedQueryOptions());
 	const projectInfo = projects.find((p) => p.name === project);
-	const isSnoozed = snoozedItems.some((s) => s.project === project && s.sha === sha);
-	const snoozedEntry = snoozedItems.find((s) => s.project === project && s.sha === sha);
+	const snoozedEntry = findSnoozedEntry(snoozedItems, project, {sha, patchId: child?.patchId});
+	const isSnoozed = snoozedEntry !== undefined || child?.onHold === true;
 	const testJob = useTestJob(sha, project);
 	const liveLog = useTestLog(sha, project);
 	const {containerRef: liveLogRef, isFollowing, setFollowing, scrollToStart, handleScroll} = useAutoTail(liveLog);

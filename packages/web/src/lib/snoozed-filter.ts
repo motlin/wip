@@ -22,3 +22,19 @@ export function flagSnoozedChildren(
 		!c.onHold && (shas.has(c.sha) || (c.patchId && patchIds.has(c.patchId))) ? {...c, onHold: true} : c,
 	);
 }
+
+/**
+ * The On hold or Snooze row holding one item, matched by patch-id when both sides
+ * know it (a row keeps its last-known sha, so a rebased item matches only this way),
+ * otherwise by sha.
+ */
+export function findSnoozedEntry(
+	snoozed: SnoozedChild[],
+	project: string,
+	identity: {sha: string; patchId?: string | undefined},
+): SnoozedChild | undefined {
+	return snoozed.find(
+		(s) =>
+			s.project === project && (s.sha === identity.sha || (s.patchId !== null && s.patchId === identity.patchId)),
+	);
+}

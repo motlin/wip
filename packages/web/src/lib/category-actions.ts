@@ -245,7 +245,7 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	triaged: {label: "Triaged", palette: "purple", actions: buildActions("triaged")},
 	blocked: {label: "Blocked", palette: "red", actions: buildActions("blocked")},
 	skippable: {label: "Skippable", palette: "muted", actions: buildActions("skippable")},
-	snoozed: {label: "Snoozed", palette: "muted", actions: buildActions("snoozed")},
+	snoozed: {label: "On hold and Snoozed", palette: "muted", actions: buildActions("snoozed")},
 };
 
 export function categoryTextClass(category: Category): string {

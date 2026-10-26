@@ -27,7 +27,7 @@ describe("QueueSection", () => {
 			collapsed,
 			expanded: screen.getAllByText(/^card /).map((node) => node.textContent),
 		}).toStrictEqual({
-			collapsed: {heading: `${CATEGORY_PRIORITY.indexOf("snoozed") + 1} Snoozed2`, cards: 0},
+			collapsed: {heading: `${CATEGORY_PRIORITY.indexOf("snoozed") + 1} On hold and Snoozed2`, cards: 0},
 			expanded: ["card 0", "card 1"],
 		});
 	});

@@ -2,7 +2,7 @@ import {describe, it, expect} from "vite-plus/test";
 
 import type {SnoozedChild} from "@wip/shared";
 
-import {flagSnoozedChildren} from "./snoozed-filter";
+import {findSnoozedEntry, flagSnoozedChildren} from "./snoozed-filter";
 import {makeChild} from "./test-factories";
 
 function makeSnoozed(project: string, sha: string, patchId: string | null = null): SnoozedChild {
@@ -52,5 +52,26 @@ describe("flagSnoozedChildren", () => {
 	it("returns the input unchanged when snoozed list is undefined", () => {
 		const a = makeChild({project: "proj", sha: "a".repeat(40)});
 		expect(flagSnoozedChildren([a], "proj", undefined)).toStrictEqual([a]);
+	});
+});
+
+describe("findSnoozedEntry", () => {
+	it("finds the row for a rebased item by patch-id when the row still carries the old sha", () => {
+		const row = makeSnoozed("proj", "a".repeat(40), "p".repeat(40));
+		const snoozed = [makeSnoozed("other-proj", "c".repeat(40), "p".repeat(40)), row];
+
+		expect(findSnoozedEntry(snoozed, "proj", {sha: "c".repeat(40), patchId: "p".repeat(40)})).toStrictEqual(row);
+	});
+
+	it("finds the row by sha when neither side knows a patch-id", () => {
+		const row = makeSnoozed("proj", "a".repeat(40));
+
+		expect(findSnoozedEntry([row], "proj", {sha: "a".repeat(40)})).toStrictEqual(row);
+	});
+
+	it("returns undefined for an item no row holds", () => {
+		const snoozed = [makeSnoozed("proj", "a".repeat(40), "p".repeat(40))];
+
+		expect(findSnoozedEntry(snoozed, "proj", {sha: "b".repeat(40), patchId: "q".repeat(40)})).toBeUndefined();
 	});
 });

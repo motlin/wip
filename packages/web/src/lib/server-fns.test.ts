@@ -21,6 +21,7 @@ import {
 	upstreamRedCommand,
 	setConfigValue,
 	unsetConfigValue,
+	loadWorkItems,
 } from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
@@ -1772,6 +1773,33 @@ describe("getProjectChildrenHandler", () => {
 		expect(
 			result.map((c) => ({subject: c.subject, files: c.files, insertions: c.insertions, deletions: c.deletions})),
 		).toStrictEqual([{subject: "Sized commit", files: 2, insertions: 4, deletions: 0}]);
+	});
+
+	it("reconciles the work-item ledger from the children set, keeping one item across a reword", async () => {
+		const dir = await createTestGitRepo();
+		await writeTestFile(join(dir, "ledger.txt"), "ledger\n");
+		await execa("git", ["-C", dir, "add", "ledger.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Ledger commit"]);
+		const project = makeProject({name: "ledger-test", dir, upstreamRef: "main~1"});
+		seedProjectCache([project]);
+
+		const {refreshProjectChildren} = await import("./server-fns.impl.js");
+		await refreshProjectChildren("ledger-test");
+		const [first] = loadWorkItems("ledger-test");
+		await execa("git", ["-C", dir, "commit", "--amend", "-m", "Ledger commit reworded"]);
+		const {stdout: reworded} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);
+		await refreshProjectChildren("ledger-test");
+
+		expect(
+			loadWorkItems("ledger-test").map((item) => ({
+				sha: item.sha,
+				subject: item.subject,
+				firstSeen: item.firstSeen,
+				state: item.state,
+			})),
+		).toStrictEqual([
+			{sha: reworded, subject: "Ledger commit reworded", firstSeen: first?.firstSeen, state: first?.state},
+		]);
 	});
 
 	it("marks a child above flow.splitThresholdLines consider splitting and leaves smaller ones unmarked", async () => {

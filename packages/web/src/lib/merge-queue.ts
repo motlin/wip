@@ -10,6 +10,7 @@ import {
 	detectLandings,
 	getMergedPrHeads,
 	markMergedPrs,
+	recordLandingOutcomes,
 } from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
@@ -50,6 +51,7 @@ async function detectProjectLandings(p: ProjectInfo, from: string, to: string): 
 		? markMergedPrs(found, await getMergedPrHeads(p.dir, p.upstreamRemote))
 		: found;
 	const outcomes = await detectLandings({dir: p.dir, project: p.name, from, to, suspects});
+	if (outcomes.length > 0) await recordLandingOutcomes(p.dir, p.name, from, to, outcomes);
 	for (const outcome of outcomes) {
 		if (outcome.outcome !== "landed") continue;
 		const landed: LandedEvent = {

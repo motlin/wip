@@ -11,6 +11,7 @@ vi.mock("@wip/shared", () => ({
 	detectLandings: vi.fn<(...args: unknown[]) => unknown>(),
 	getMergedPrHeads: vi.fn<(...args: unknown[]) => unknown>(),
 	markMergedPrs: vi.fn<(...args: unknown[]) => unknown>(),
+	recordLandingOutcomes: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
@@ -28,6 +29,7 @@ import {
 	detectLandings,
 	getMergedPrHeads,
 	markMergedPrs,
+	recordLandingOutcomes,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
@@ -44,6 +46,7 @@ const mockFindLandingSuspects = findLandingSuspects as Mock;
 const mockDetectLandings = detectLandings as Mock;
 const mockGetMergedPrHeads = getMergedPrHeads as Mock;
 const mockMarkMergedPrs = markMergedPrs as Mock;
+const mockRecordLandingOutcomes = recordLandingOutcomes as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -149,10 +152,11 @@ describe("checkProject", () => {
 			{sha: "partial-sha", branch: "partial"},
 		];
 		mockFindLandingSuspects.mockResolvedValue(suspects);
-		mockDetectLandings.mockResolvedValue([
+		const outcomes = [
 			{sha: "landed-sha", branch: "done", outcome: "landed", newTip: "upstream-new"},
 			{sha: "partial-sha", branch: "partial", outcome: "remaining", newTip: "partial-new"},
-		]);
+		];
+		mockDetectLandings.mockResolvedValue(outcomes);
 
 		const events: unknown[] = [];
 		emitter.on("landed", (e) => events.push(e));
@@ -163,6 +167,7 @@ describe("checkProject", () => {
 			found: mockFindLandingSuspects.mock.calls,
 			detected: mockDetectLandings.mock.calls,
 			events,
+			ledger: mockRecordLandingOutcomes.mock.calls,
 		}).toStrictEqual({
 			found: [["/tmp/test-project", "upstream-old", "upstream-new"]],
 			detected: [
@@ -177,6 +182,7 @@ describe("checkProject", () => {
 				],
 			],
 			events: [{project: "test-project", sha: "landed-sha", branch: "done"}],
+			ledger: [["/tmp/test-project", "test-project", "upstream-old", "upstream-new", outcomes]],
 		});
 	});
 

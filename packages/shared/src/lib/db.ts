@@ -1,6 +1,7 @@
 import DatabaseConstructor from "better-sqlite3";
 import {
 	and,
+	asc,
 	desc,
 	eq,
 	gte,
@@ -24,6 +25,7 @@ import * as path from "node:path";
 import {type CheckStatus, type GitChildResult, type ProjectInfo, type ReviewStatus, type TodoItem} from "./schemas.js";
 import type {GitHubIssue} from "./github-issues.js";
 import type {Priority, PriorityItemRef} from "./priority.js";
+import type {WorkItem} from "./work-ledger.js";
 import type {GitHubProjectItem} from "./github-projects.js";
 import * as schema from "./schema.js";
 import {log} from "../services/logger-pino.js";
@@ -48,6 +50,7 @@ import {
 	snoozed,
 	taskRecords,
 	todosCache,
+	workItems,
 	upstreamRefs,
 } from "./schema.js";
 
@@ -489,6 +492,23 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS priority_overrides_active_idx ON priority_overrides (project, system_to)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS work_items (
+			project TEXT NOT NULL,
+			patch_id TEXT NOT NULL,
+			sha TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			first_seen TEXT NOT NULL,
+			state TEXT NOT NULL,
+			state_since TEXT NOT NULL,
+			landed_at TEXT,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, patch_id, system_to)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS work_items_active_idx ON work_items (project, system_to)`);
 
 	db = drizzle(sqlite, {schema});
 
@@ -1552,6 +1572,54 @@ export function clearPriorityOverride(project: string, item: PriorityItemRef): v
 		.set({systemTo: now()})
 		.where(and(priorityOverrideWhere(project, item), eq(priorityOverrides.systemTo, FAR_FUTURE)))
 		.run();
+}
+
+// --- Work-item ledger ---
+
+const workItemColumns = {
+	patchId: workItems.patchId,
+	sha: workItems.sha,
+	subject: workItems.subject,
+	firstSeen: workItems.firstSeen,
+	state: workItems.state,
+	stateSince: workItems.stateSince,
+	landedAt: workItems.landedAt,
+};
+
+/** The live ledger rows for a project, terminal ones included. */
+export function loadWorkItems(project: string): WorkItem[] {
+	return getDb()
+		.select(workItemColumns)
+		.from(workItems)
+		.where(and(eq(workItems.project, project), eq(workItems.systemTo, FAR_FUTURE)))
+		.all();
+}
+
+/** Every row ever written for one change, oldest first: its state history. */
+export function getWorkItemHistory(project: string, patchId: string) {
+	return getDb()
+		.select({...workItemColumns, systemFrom: workItems.systemFrom, systemTo: workItems.systemTo})
+		.from(workItems)
+		.where(and(eq(workItems.project, project), eq(workItems.patchId, patchId)))
+		.orderBy(asc(workItems.systemFrom))
+		.all();
+}
+
+export function writeWorkItems(project: string, items: readonly WorkItem[]): void {
+	for (const item of items) {
+		temporalUpsert({
+			table: workItems,
+			keyWhere: and(eq(workItems.project, project), eq(workItems.patchId, item.patchId)),
+			isUnchanged: (existing) =>
+				existing.sha === item.sha &&
+				existing.subject === item.subject &&
+				existing.state === item.state &&
+				existing.firstSeen === item.firstSeen &&
+				existing.stateSince === item.stateSince &&
+				existing.landedAt === item.landedAt,
+			newRow: {project, ...item},
+		});
+	}
 }
 
 // --- Project cache ---

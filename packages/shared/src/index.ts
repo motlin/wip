@@ -110,6 +110,8 @@ export {
 	setAdvanceConfig,
 	getPriorityOverride,
 	getPriorityOverrides,
+	getWorkItemHistory,
+	loadWorkItems,
 	setPriorityOverride,
 	clearPriorityOverride,
 	upsertTaskRecord,
@@ -131,11 +133,22 @@ export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
 export {
 	detectLandings,
 	findLandingSuspects,
+	landedPatchIds,
 	markMergedPrs,
 	type DetectLandingsInput,
 	type LandingOutcome,
 	type LandingSuspect,
 } from "./lib/landing-detector.js";
+export {
+	applyLandings,
+	reconcileLedger,
+	reconcileWorkItems,
+	recordLandingOutcomes,
+	TERMINAL_WORK_STATES,
+	type ObservedWorkItem,
+	type TerminalWorkState,
+	type WorkItem,
+} from "./lib/work-ledger.js";
 export {
 	backfillSnoozedPatchIds,
 	heldShas,

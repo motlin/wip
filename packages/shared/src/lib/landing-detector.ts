@@ -88,6 +88,31 @@ async function hasPatchIdEvidence(
 	});
 }
 
+/**
+ * Patch-ids of the tip's commits (since the old upstream) that an outcome shows landed:
+ * all of them when the tip landed, otherwise only those whose patch-id is in the new
+ * upstream range (a partial landing).
+ */
+export async function landedPatchIds(
+	dir: string,
+	project: string,
+	from: string | null,
+	to: string,
+	outcome: LandingOutcome,
+): Promise<string[]> {
+	const own = lines(await git(dir, "rev-list", "--reverse", "--no-merges", `${from ?? to}..${outcome.sha}`));
+	if (own.length === 0) return [];
+	const upstream =
+		outcome.outcome === "landed"
+			? []
+			: lines(await git(dir, "rev-list", "--no-merges", from ? `${from}..${to}` : `${outcome.sha}..${to}`));
+	const facts = await getCommitFacts(dir, project, [...own, ...upstream]);
+	const ownIds = own.map((sha) => facts.get(sha)?.patchId ?? "").filter((id) => id !== "");
+	if (outcome.outcome === "landed") return ownIds;
+	const upstreamIds = new Set(upstream.map((sha) => facts.get(sha)?.patchId));
+	return ownIds.filter((id) => upstreamIds.has(id));
+}
+
 const PROBE_REF = "refs/wip/landing-probe";
 
 /** Replays `to..tip` onto `to` without updating any ref; returns the new tip, or null on conflict. */

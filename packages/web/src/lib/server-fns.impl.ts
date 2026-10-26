@@ -32,6 +32,7 @@ import {
 	setCachedProjectList,
 	getCachedChildren,
 	cacheChildren,
+	reconcileWorkItems,
 	invalidateChildrenCache,
 	isCacheFresh,
 	getCacheFreshnessByPrefix,
@@ -425,6 +426,16 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				if (baselineRed) results.push(baselineRed);
 			}
 
+			// The work-item ledger follows each change by patch-id; a departure here is abandoned
+			// unless landing detection (merge-queue) records it as landed.
+			reconcileWorkItems(
+				p.name,
+				results.flatMap((child) => {
+					const patchId = commitFacts.get(child.sha)?.patchId;
+					if (child.kind === "upstream_ci" || !patchId) return [];
+					return [{patchId, sha: child.sha, subject: child.subject, state: classifyGitChild(child, p)}];
+				}),
+			);
 			cacheChildren(projectName, results);
 			const {childrenEmitter} = await import("./children-events.js");
 			childrenEmitter.emit("children", {project: projectName, children: results});

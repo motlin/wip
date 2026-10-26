@@ -365,3 +365,28 @@ export const priorityOverrides = sqliteTable(
 		index("priority_overrides_active_idx").on(table.project, table.systemTo),
 	],
 );
+
+/**
+ * Work-item ledger (bitemporal): one live row per change (patch-id) per project. Every state
+ * change closes the live row and opens a new one, so closed rows are the state history.
+ * `first_seen` is carried forward across rebases; `landed` and `abandoned` are terminal.
+ */
+export const workItems = sqliteTable(
+	"work_items",
+	{
+		project: text("project").notNull(),
+		patchId: text("patch_id").notNull(),
+		sha: text("sha").notNull(),
+		subject: text("subject").notNull(),
+		firstSeen: text("first_seen").notNull(),
+		state: text("state").notNull(),
+		stateSince: text("state_since").notNull(),
+		landedAt: text("landed_at"),
+		systemFrom: text("system_from").notNull(),
+		systemTo: text("system_to").notNull().default(FAR_FUTURE),
+	},
+	(table) => [
+		primaryKey({columns: [table.project, table.patchId, table.systemTo]}),
+		index("work_items_active_idx").on(table.project, table.systemTo),
+	],
+);

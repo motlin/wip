@@ -9,6 +9,8 @@ vi.mock("@wip/shared", () => ({
 	heldShas: vi.fn<(...args: unknown[]) => unknown>(),
 	findLandingSuspects: vi.fn<(...args: unknown[]) => unknown>(),
 	detectLandings: vi.fn<(...args: unknown[]) => unknown>(),
+	getMergedPrHeads: vi.fn<(...args: unknown[]) => unknown>(),
+	markMergedPrs: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
@@ -24,6 +26,8 @@ import {
 	heldShas,
 	findLandingSuspects,
 	detectLandings,
+	getMergedPrHeads,
+	markMergedPrs,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
@@ -38,6 +42,8 @@ const mockCacheMergeStatus = cacheMergeStatus as Mock;
 const mockHeldShas = heldShas as Mock;
 const mockFindLandingSuspects = findLandingSuspects as Mock;
 const mockDetectLandings = detectLandings as Mock;
+const mockGetMergedPrHeads = getMergedPrHeads as Mock;
+const mockMarkMergedPrs = markMergedPrs as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -89,6 +95,8 @@ describe("checkProject", () => {
 		mockHeldShas.mockResolvedValue(new Set());
 		mockFindLandingSuspects.mockResolvedValue([]);
 		mockDetectLandings.mockResolvedValue([]);
+		mockGetMergedPrHeads.mockResolvedValue([]);
+		mockMarkMergedPrs.mockImplementation((suspects: unknown) => suspects);
 		emitter.removeAllListeners();
 	});
 
@@ -170,6 +178,43 @@ describe("checkProject", () => {
 			],
 			events: [{project: "test-project", sha: "landed-sha", branch: "done"}],
 		});
+	});
+
+	it("reports the branch's merged PR to landing detection", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: true, from: "upstream-old", sha: "upstream-new"});
+		mockGetChildren.mockResolvedValue([]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		const suspects = [{sha: "squashed-sha", branch: "squashed"}];
+		const merged = [{branch: "squashed", headOid: "squashed-sha"}];
+		const marked = [{sha: "squashed-sha", branch: "squashed", prMerged: true}];
+		mockFindLandingSuspects.mockResolvedValue(suspects);
+		mockGetMergedPrHeads.mockResolvedValue(merged);
+		mockMarkMergedPrs.mockReturnValue(marked);
+
+		await checkProject("test-project");
+
+		expect({
+			queried: mockGetMergedPrHeads.mock.calls,
+			marked: mockMarkMergedPrs.mock.calls,
+			detected: mockDetectLandings.mock.calls.map(([input]) => (input as {suspects: unknown}).suspects),
+		}).toStrictEqual({
+			queried: [["/tmp/test-project", "upstream"]],
+			marked: [[suspects, merged]],
+			detected: [marked],
+		});
+	});
+
+	it("skips the merged PR query when no suspect is on a branch", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: true, from: "upstream-old", sha: "upstream-new"});
+		mockGetChildren.mockResolvedValue([]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockFindLandingSuspects.mockResolvedValue([{sha: "unnamed-sha"}]);
+
+		await checkProject("test-project");
+
+		expect(mockGetMergedPrHeads.mock.calls).toStrictEqual([]);
 	});
 
 	it("emits no upstreamMoved event when upstream is unchanged", async () => {

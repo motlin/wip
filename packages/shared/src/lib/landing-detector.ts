@@ -25,6 +25,19 @@ export interface LandingSuspect {
 	prMerged?: boolean;
 }
 
+/** Flags suspects whose branch has a MERGED PR whose head is exactly the suspect's tip. */
+export function markMergedPrs(
+	suspects: readonly LandingSuspect[],
+	merged: ReadonlyArray<{branch: string; headOid: string}>,
+): LandingSuspect[] {
+	const mergedHeads = new Set(merged.map((pr) => `${pr.branch}\u0000${pr.headOid}`));
+	return suspects.map((suspect) =>
+		suspect.branch !== undefined && mergedHeads.has(`${suspect.branch}\u0000${suspect.sha}`)
+			? {...suspect, prMerged: true}
+			: suspect,
+	);
+}
+
 export type LandingOutcome =
 	| {sha: string; branch?: string; outcome: "landed" | "remaining"; newTip: string}
 	| {sha: string; branch?: string; outcome: "conflict"};

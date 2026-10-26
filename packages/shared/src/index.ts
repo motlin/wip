@@ -52,7 +52,13 @@ export {
 	applyFixesToBranch,
 	rebaseBranchOntoUpstream,
 } from "./lib/git-workflows.js";
-export {type BaseBranchStatus, type PrStatuses, getPrStatuses} from "./lib/github-pr-status.js";
+export {
+	type BaseBranchStatus,
+	type MergedPrHead,
+	type PrStatuses,
+	getMergedPrHeads,
+	getPrStatuses,
+} from "./lib/github-pr-status.js";
 export {
 	type SnoozedItem,
 	type BranchNameItem,
@@ -125,6 +131,7 @@ export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
 export {
 	detectLandings,
 	findLandingSuspects,
+	markMergedPrs,
 	type DetectLandingsInput,
 	type LandingOutcome,
 	type LandingSuspect,

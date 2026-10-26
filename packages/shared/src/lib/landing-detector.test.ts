@@ -6,7 +6,7 @@ import {join} from "node:path";
 
 import {getCommitFacts} from "./commit-facts.js";
 import {initDb, resetDb, snoozeItem} from "./db.js";
-import {detectLandings, findLandingSuspects} from "./landing-detector.js";
+import {detectLandings, findLandingSuspects, markMergedPrs} from "./landing-detector.js";
 
 const PROJECT = "proj";
 
@@ -286,5 +286,27 @@ describe("findLandingSuspects", () => {
 		const suspects = await findLandingSuspects(dir, base, to);
 
 		expect(suspects).toStrictEqual([{sha: b, branch: "feature"}, {sha: loose}]);
+	});
+});
+
+describe("markMergedPrs", () => {
+	it("flags a suspect whose branch's merged PR head is the suspect's tip", () => {
+		const suspects = [
+			{sha: "aaa", branch: "merged"},
+			{sha: "bbb", branch: "moved-on"},
+			{sha: "ccc", branch: "open"},
+			{sha: "ddd"},
+		];
+		const merged = [
+			{branch: "merged", headOid: "aaa"},
+			{branch: "moved-on", headOid: "old-bbb"},
+		];
+
+		expect(markMergedPrs(suspects, merged)).toStrictEqual([
+			{sha: "aaa", branch: "merged", prMerged: true},
+			{sha: "bbb", branch: "moved-on"},
+			{sha: "ccc", branch: "open"},
+			{sha: "ddd"},
+		]);
 	});
 });

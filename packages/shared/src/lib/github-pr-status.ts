@@ -681,3 +681,50 @@ async function fetchPrStatusesFromApi(
 		baseBranches,
 	};
 }
+
+const MERGED_PRS_QUERY = `
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(last: 50, states: MERGED, orderBy: {field: UPDATED_AT, direction: ASC}) {
+      nodes { headRefName headRefOid }
+    }
+  }
+}
+`;
+
+const MergedPrsResponseSchema = z.object({
+	data: z.object({
+		repository: z.object({
+			pullRequests: z.object({
+				nodes: z.array(z.object({headRefName: z.string(), headRefOid: z.string()})),
+			}),
+		}),
+	}),
+});
+
+export interface MergedPrHead {
+	branch: string;
+	headOid: string;
+}
+
+/**
+ * Head branch and head commit of the canonical repo's most recently updated MERGED PRs,
+ * for landing detection of squash merges that patch-ids cannot match. Empty while
+ * rate limited or when the query fails.
+ */
+export async function getMergedPrHeads(dir: string, upstreamRemote?: string): Promise<MergedPrHead[]> {
+	if (isGitHubRateLimited()) return [];
+	try {
+		const canonical = await getCanonicalRepo(dir, upstreamRemote);
+		const raw = await getGitHubClient().graphql(MERGED_PRS_QUERY, {owner: canonical.owner, name: canonical.name});
+		return MergedPrsResponseSchema.parse(raw).data.repository.pullRequests.nodes.map((pr) => ({
+			branch: pr.headRefName,
+			headOid: pr.headRefOid,
+		}));
+	} catch (error) {
+		const message = errorMessage(error);
+		if (detectRateLimitError(message)) markGitHubRateLimited();
+		log.general.warn({dir, error: message}, "GitHub merged PR query failed");
+		return [];
+	}
+}

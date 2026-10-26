@@ -8,6 +8,8 @@ import {
 	heldShas,
 	findLandingSuspects,
 	detectLandings,
+	getMergedPrHeads,
+	markMergedPrs,
 } from "@wip/shared";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
@@ -41,8 +43,12 @@ export interface LandedEvent {
 
 /** Replay-first landing detection after upstream moved; emits `landed` for each tip the replay shows landed. */
 async function detectProjectLandings(p: ProjectInfo, from: string, to: string): Promise<void> {
-	const suspects = await findLandingSuspects(p.dir, from, to);
-	if (suspects.length === 0) return;
+	const found = await findLandingSuspects(p.dir, from, to);
+	if (found.length === 0) return;
+	// A squash-merged PR leaves no patch-id evidence; its MERGED state is the landing signal.
+	const suspects = found.some((s) => s.branch !== undefined)
+		? markMergedPrs(found, await getMergedPrHeads(p.dir, p.upstreamRemote))
+		: found;
 	const outcomes = await detectLandings({dir: p.dir, project: p.name, from, to, suspects});
 	for (const outcome of outcomes) {
 		if (outcome.outcome !== "landed") continue;

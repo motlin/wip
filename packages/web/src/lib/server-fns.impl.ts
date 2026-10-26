@@ -79,6 +79,7 @@ import {
 	type InventoryStatus,
 	type RegistryCandidates,
 	type SaveRegistryInput,
+	classifyGitChild,
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
@@ -88,7 +89,6 @@ import {workQueue} from "./shared-work-queue.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
-import {classifyGitChild} from "./classify.js";
 import type {EnqueueRebaseOptions, LadderAiOptions} from "./task-queue.js";
 import {focusHerdrPane} from "./herdr/focus.js";
 import type {HerdrResult} from "./herdr/client.js";

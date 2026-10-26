@@ -271,6 +271,21 @@ export {
 } from "./lib/schemas.js";
 export {type ReadinessCommit, isGreen, isLandable} from "./lib/readiness.js";
 export {
+	classifyGitChild,
+	classifyCommit,
+	classifyBranch,
+	classifyPullRequest,
+	classifyIssue,
+	classifyTodo,
+	projectCondition,
+} from "./lib/classify.js";
+export {
+	isGitChildUpstreamCi,
+	isGitChildPullRequest,
+	isGitChildBranch,
+	isGitChildCommit,
+} from "./lib/git-child-discriminators.js";
+export {
 	type TodoTask,
 	parseTodoContent,
 	parseTodoFile,

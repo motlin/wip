@@ -14,6 +14,10 @@
 			"types": "./src/lib/inventory-import.ts",
 			"import": "./src/lib/inventory-import.ts"
 		},
+		"./classify.js": {
+			"types": "./src/lib/classify.ts",
+			"import": "./src/lib/classify.ts"
+		},
 		"./schemas.js": {
 			"types": "./src/lib/schemas.ts",
 			"import": "./src/lib/schemas.ts"

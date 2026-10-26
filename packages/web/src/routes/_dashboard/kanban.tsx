@@ -7,7 +7,7 @@ import type {ColumnItems} from "../../components/kanban-column.js";
 import {refreshAll} from "../../lib/server-fns.js";
 import {projectsQueryOptions} from "../../lib/queries.js";
 import {useWorkItems} from "../../lib/use-work-items.js";
-import {classifyGitChild, classifyIssue, classifyTodo} from "../../lib/classify.js";
+import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared";
 import {runPendingAction} from "../../lib/pending-action.js";
 import {CATEGORY_PRIORITY} from "../../lib/category-actions.js";
 import type {Category} from "@wip/shared";

@@ -1,4 +1,4 @@
-import type {Category, GitChildResult, IssueResult, TodoItem, ProjectInfo} from "@wip/shared";
+import type {Category, GitChildResult, IssueResult, TodoItem, ProjectInfo} from "./schemas.js";
 import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminators.js";
 
 export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {

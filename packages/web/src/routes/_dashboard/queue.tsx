@@ -10,7 +10,8 @@ import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
 import {SystemStatus} from "../../components/system-status";
 import {CategoryBadge} from "../../components/category-badge";
-import {classifyGitChild, classifyIssue, classifyTodo, projectCondition} from "../../lib/classify";
+import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared";
+import {sidebarProjects} from "../../lib/sidebar-projects";
 import type {Category} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotClass} from "../../lib/category-actions";
 
@@ -155,7 +156,7 @@ function QueueLayout() {
 
 		return {
 			categoryCounts: catCounts,
-			projectCounts: [...projCounts.entries()].toSorted((a, b) => b[1] - a[1]),
+			projectCounts: projCounts,
 			needsActionCount: action,
 			waitingCount: waiting,
 		};
@@ -216,9 +217,10 @@ function QueueLayout() {
 	);
 
 	const [showAllProjects, setShowAllProjects] = useState(false);
-	const visibleProjects = showAllProjects ? projectCounts : projectCounts.slice(0, MAX_VISIBLE_PROJECTS);
-	const hiddenProjectCount = projectCounts.length - MAX_VISIBLE_PROJECTS;
-	const projectConditions = useMemo(() => new Map(projects.map((p) => [p.name, projectCondition(p)])), [projects]);
+	const {visible: visibleProjects, hiddenCount: hiddenProjectCount} = useMemo(
+		() => sidebarProjects(projectCounts, projects, MAX_VISIBLE_PROJECTS, showAllProjects),
+		[projectCounts, projects, showAllProjects],
+	);
 
 	const queueContextValue = useMemo<QueueContextValue>(
 		() => ({
@@ -333,29 +335,26 @@ function QueueLayout() {
 							Projects
 						</h3>
 						<div className="flex flex-col gap-0.5">
-							{visibleProjects.map(([project, count]) => {
-								const condition = projectConditions.get(project);
-								return (
-									<button
-										key={project}
-										type="button"
-										onClick={() => {
-											handleProjectClick(project);
-										}}
-										className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-											selectedProject === project ? "bg-bg-200 font-medium" : ""
-										}`}
-									>
-										<span className="flex min-w-0 items-center gap-1.5">
-											<span className="truncate">{project}</span>
-											{condition && <CategoryBadge category={condition} />}
-										</span>
-										<span className="ml-2 min-w-6 shrink-0 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
-											{count}
-										</span>
-									</button>
-								);
-							})}
+							{visibleProjects.map(({name: project, count, condition}) => (
+								<button
+									key={project}
+									type="button"
+									onClick={() => {
+										handleProjectClick(project);
+									}}
+									className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
+										selectedProject === project ? "bg-bg-200 font-medium" : ""
+									}`}
+								>
+									<span className="flex min-w-0 items-center gap-1.5">
+										<span className="truncate">{project}</span>
+										{condition && <CategoryBadge category={condition} />}
+									</span>
+									<span className="ml-2 min-w-6 shrink-0 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+										{count}
+									</span>
+								</button>
+							))}
 							{hiddenProjectCount > 0 && !showAllProjects && (
 								<button
 									type="button"

@@ -1,15 +1,9 @@
 import {Args, Command, Flags} from "@oclif/core";
 import chalk from "chalk";
+import {execa} from "execa";
 
-import {
-	type Category,
-	type ChildCommit,
-	type ProjectInfo,
-	discoverAllProjects,
-	getChildCommits,
-	getPrStatuses,
-	getProjectsDirs,
-} from "@wip/shared";
+import {type Category, discoverAllProjects, getChildCommits, getPrStatuses, getProjectsDirs} from "@wip/shared";
+import {classifyGitChild} from "@wip/shared/classify.js";
 
 interface ClassifiedChild {
 	project: string;
@@ -35,7 +29,9 @@ interface ReportJson {
 		testRunning: number;
 		testFailed: number;
 		needsRebase: number;
+		rebaseUnknown: number;
 		rebaseConflicts: number;
+		rebaseStuck: number;
 		readyToPush: number;
 		pushedNoPr: number;
 		checksUnknown: number;
@@ -57,7 +53,9 @@ interface ReportJson {
 	testRunning: ClassifiedChild[];
 	testFailed: ClassifiedChild[];
 	needsRebase: ClassifiedChild[];
+	rebaseUnknown: ClassifiedChild[];
 	rebaseConflicts: ClassifiedChild[];
+	rebaseStuck: ClassifiedChild[];
 	readyToPush: ClassifiedChild[];
 	pushedNoPr: ClassifiedChild[];
 	checksUnknown: ClassifiedChild[];
@@ -68,39 +66,6 @@ interface ReportJson {
 	changesRequested: ClassifiedChild[];
 	approved: ClassifiedChild[];
 	nextSteps: string[];
-}
-
-function classifyChild(child: ChildCommit, project: ProjectInfo): Category {
-	if (child.skippable) return "skippable";
-
-	if (project.detachedHead) return "detached_head";
-	if (project.dirty) return "local_changes";
-	if (!project.hasTestConfigured) return "no_test";
-
-	if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
-	if (child.needsRebase) return "needs_rebase";
-	if (!child.pushedToRemote) {
-		if (child.testStatus === "passed") return "ready_to_push";
-		if (child.testStatus === "failed") return "test_failed";
-		if (child.testStatus === "unknown") return "ready_to_test";
-	}
-
-	if (child.pushedToRemote && child.localAhead) return "ready_to_push";
-	if (child.pushedToRemote && !child.prUrl) return "pushed_no_pr";
-
-	if (child.prUrl) {
-		if (child.checkStatus === "passed") {
-			if (child.reviewStatus === "approved") return "approved";
-			if (child.reviewStatus === "changes_requested") return "changes_requested";
-			if (child.reviewStatus === "commented") return "review_comments";
-			return "ready_to_push";
-		}
-		if (child.checkStatus === "failed") return "checks_failed";
-		if (child.checkStatus === "running" || child.checkStatus === "pending") return "checks_running";
-		if (child.checkStatus === "unknown") return "checks_unknown";
-	}
-
-	return "untriaged";
 }
 
 // Kanban left-to-right: full SDLC flow
@@ -116,8 +81,11 @@ const CATEGORY_ORDER: Category[] = [
 	"test_running",
 	"test_failed",
 	"needs_rebase",
+	"rebase_unknown",
 	"rebase_conflicts",
+	"rebase_stuck",
 	"ready_to_push",
+	"pushing",
 	"pushed_no_pr",
 	"checks_unknown",
 	"checks_running",
@@ -277,10 +245,20 @@ export default class Report extends Command {
 			if (children.length === 0 && !args.project) continue;
 
 			projectCount++;
+			if (p.dirty) dirtyProjects.add(p.name);
 
+			const headSha = (await execa("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})).stdout.trim();
 			for (const child of children) {
-				const category = classifyChild(child, p);
-				if (category === "local_changes") dirtyProjects.add(p.name);
+				const category = classifyGitChild(
+					{
+						...child,
+						project: p.name,
+						remote: p.remote,
+						originRemote: p.originRemote,
+						isHead: child.sha === headSha,
+					},
+					p,
+				);
 				grouped[category].push({
 					project: p.name,
 					sha: child.sha,
@@ -311,7 +289,9 @@ export default class Report extends Command {
 				testRunning: grouped.test_running.length,
 				testFailed: grouped.test_failed.length,
 				needsRebase: grouped.needs_rebase.length,
+				rebaseUnknown: grouped.rebase_unknown.length,
 				rebaseConflicts: grouped.rebase_conflicts.length,
+				rebaseStuck: grouped.rebase_stuck.length,
 				readyToPush: grouped.ready_to_push.length,
 				pushedNoPr: grouped.pushed_no_pr.length,
 				checksUnknown: grouped.checks_unknown.length,
@@ -333,7 +313,9 @@ export default class Report extends Command {
 			testRunning: grouped.test_running,
 			testFailed: grouped.test_failed,
 			needsRebase: grouped.needs_rebase,
+			rebaseUnknown: grouped.rebase_unknown,
 			rebaseConflicts: grouped.rebase_conflicts,
+			rebaseStuck: grouped.rebase_stuck,
 			readyToPush: grouped.ready_to_push,
 			pushedNoPr: grouped.pushed_no_pr,
 			checksUnknown: grouped.checks_unknown,

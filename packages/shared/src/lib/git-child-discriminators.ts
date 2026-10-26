@@ -1,4 +1,4 @@
-import type {GitChildResult} from "@wip/shared";
+import type {GitChildResult} from "./schemas.js";
 
 export function isGitChildUpstreamCi(child: GitChildResult): boolean {
 	return child.kind === "upstream_ci";

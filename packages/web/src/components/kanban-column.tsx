@@ -1,11 +1,6 @@
 import {useState, type ReactNode} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {
-	isGitChildPullRequest,
-	isGitChildBranch,
-	isGitChildCommit,
-	isGitChildUpstreamCi,
-} from "../lib/git-child-discriminators.js";
+import {isGitChildPullRequest, isGitChildBranch, isGitChildCommit, isGitChildUpstreamCi} from "@wip/shared";
 import {CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions.js";
 import {CommitCard} from "./commit-card.js";
 import {BranchCard} from "./branch-card.js";

@@ -65,6 +65,7 @@ vi.mock("node:fs", async () => {
 });
 
 import {discoverAllProjects, getChildCommits, getChildren, isDirty, readConfig, getConfigValue} from "@wip/shared";
+import {execa} from "execa";
 
 const fakeProject: ProjectInfo = {
 	name: "test-project",
@@ -211,7 +212,9 @@ const expectedReportJson = {
 		testRunning: 0,
 		testFailed: 1,
 		needsRebase: 0,
+		rebaseUnknown: 0,
 		rebaseConflicts: 0,
+		rebaseStuck: 0,
 		localChanges: 0,
 		detachedHead: 0,
 		noTest: 0,
@@ -249,7 +252,9 @@ const expectedReportJson = {
 		},
 	],
 	needsRebase: [],
+	rebaseUnknown: [],
 	rebaseConflicts: [],
+	rebaseStuck: [],
 	readyToTest: [],
 	testRunning: [],
 	localChanges: [],
@@ -401,6 +406,41 @@ describe("JSON output mode", () => {
 			await Report.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
 
 			expect(parseJsonOutput(capture.getOutput())).toStrictEqual(expectedReportJson);
+		});
+
+		it("scopes local changes to the child checked out at HEAD, like the web classifier", async () => {
+			vi.mocked(discoverAllProjects).mockResolvedValue([{...fakeProject, dirty: true}]);
+			vi.mocked(execa).mockResolvedValueOnce({exitCode: 0, stdout: `${fakeChild.sha}\n`, stderr: ""} as never);
+			const {default: Report} = await import("../commands/report.js");
+			const result = await Report.run(["--json", "--projects-dir", "/tmp/fake-projects"]);
+
+			expect({
+				localChanges: result.localChanges,
+				testFailed: result.testFailed,
+				readyToPush: result.readyToPush,
+			}).toStrictEqual({
+				localChanges: [
+					{
+						project: "test-project",
+						sha: "abc123def456789012345678901234567890abcd",
+						shortSha: "abc123d",
+						subject: "Add feature X",
+						date: "2025-01-15",
+						category: "local_changes",
+					},
+				],
+				testFailed: [
+					{
+						project: "test-project",
+						sha: "def456789012345678901234567890abcdef1234",
+						shortSha: "def4567",
+						subject: "Fix bug Y",
+						date: "2025-01-16",
+						category: "test_failed",
+					},
+				],
+				readyToPush: [],
+			});
 		});
 	});
 

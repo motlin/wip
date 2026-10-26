@@ -5,7 +5,7 @@ import "@git-diff-view/react/styles/diff-view.css";
 import {BranchActions, PullRequestActions} from "../components/commit-actions";
 import {FileDiffSection, DiffToolbar} from "../components/diff-section";
 import {diffQueryOptions, projectChildrenQueryOptions, projectsQueryOptions} from "../lib/queries";
-import {classifyBranch, classifyPullRequest} from "../lib/classify";
+import {classifyBranch, classifyPullRequest} from "@wip/shared";
 
 export const Route = createFileRoute("/diff/$project/$sha")({
 	loader: async ({context: {queryClient}, params}) =>

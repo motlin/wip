@@ -2,7 +2,7 @@ import {describe, it, expect} from "vite-plus/test";
 
 import type {ChildCommit, GitChildResult, ProjectInfo} from "@wip/shared";
 
-import {classifyBranch, classifyPullRequest} from "./classify";
+import {classifyBranch, classifyPullRequest} from "@wip/shared";
 
 /**
  * These tests verify that classifyBranch/classifyPullRequest produce correct

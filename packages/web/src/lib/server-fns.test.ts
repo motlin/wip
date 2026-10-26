@@ -1755,6 +1755,23 @@ describe("getProjectChildrenHandler", () => {
 		expect(result[0]!.subject).toBe("Child commit");
 	});
 
+	it("attaches files, insertions and deletions from the commit-facts cache to each child", async () => {
+		const dir = await createTestGitRepo();
+		await writeTestFile(join(dir, "a.txt"), "one\ntwo\nthree\n");
+		await writeTestFile(join(dir, "b.txt"), "b\n");
+		await execa("git", ["-C", dir, "add", "a.txt", "b.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Sized commit"]);
+		const project = makeProject({name: "sized-children-test", dir, upstreamRef: "main~1"});
+		seedProjectCache([project]);
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const result = await getProjectChildrenHandler("sized-children-test");
+
+		expect(
+			result.map((c) => ({subject: c.subject, files: c.files, insertions: c.insertions, deletions: c.deletions})),
+		).toStrictEqual([{subject: "Sized commit", files: 2, insertions: 4, deletions: 0}]);
+	});
+
 	it("sets blockReason when dirty AND sha equals HEAD", async () => {
 		const dir = await createTestGitRepo();
 		await execa("git", ["-C", dir, "checkout", "-b", "feature-block"], {cwd: dir});

@@ -167,4 +167,21 @@ describe("rankGitChildren", () => {
 			"dirty",
 		]);
 	});
+
+	it("ranks smaller commits first by log2(1 + insertions + deletions), size never outranking a penalty", () => {
+		const items = [
+			child("large", {date: "2026-09-01", insertions: 200, deletions: 55}),
+			child("small", {date: "2026-10-20", insertions: 1, deletions: 0}),
+			child("unsized", {date: "2026-10-25"}),
+			child("medium", {date: "2026-09-02", insertions: 5, deletions: 2}),
+			child("behind-tiny", {date: "2026-08-01", commitsBehind: 1, insertions: 1}),
+		];
+		expect(rankGitChildren(items).map((c) => c.subject)).toStrictEqual([
+			"unsized",
+			"small",
+			"behind-tiny",
+			"medium",
+			"large",
+		]);
+	});
 });

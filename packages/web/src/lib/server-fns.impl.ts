@@ -292,6 +292,13 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				seen.add(c.sha);
 				return true;
 			});
+			// Size (and patch-id) for every child in one batch through the commit_facts cache, before
+			// resolveSnoozedChildren so its patch-id lookup reads the cache instead of spawning again.
+			const commitFacts = await getCommitFacts(
+				p.dir,
+				p.name,
+				uniqueChildren.map((c) => c.sha),
+			);
 			// On hold and snoozed children are returned flagged, not dropped, and get no background jobs.
 			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
 
@@ -334,6 +341,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				}
 
 				const ms = mergeStatusMap.get(child.sha);
+				const facts = commitFacts.get(child.sha);
 				const suggestedBranch = cachedNames.get(`${p.name}:${child.sha}`);
 
 				return {
@@ -376,6 +384,9 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					isHead: child.sha === headSha,
 					patchId: snoozes.patchIds.get(child.sha),
 					onHold: snoozes.held.has(child.sha) || undefined,
+					files: facts?.files,
+					insertions: facts?.insertions,
+					deletions: facts?.deletions,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);

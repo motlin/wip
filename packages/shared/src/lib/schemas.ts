@@ -375,6 +375,10 @@ export const GitChildResultSchema = z.object({
 	patchId: z.string().optional(),
 	/** On hold or snoozed: returned flagged so the client can show it collapsed; classifies as `snoozed`. */
 	onHold: z.boolean().optional(),
+	/** Commit size from the commit_facts cache; absent when git could not read the commit. */
+	files: z.number().int().nonnegative().optional(),
+	insertions: z.number().int().nonnegative().optional(),
+	deletions: z.number().int().nonnegative().optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 

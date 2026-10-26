@@ -88,18 +88,22 @@ export function rankCandidates(chains: Chain[]): RankedCandidate[] {
 	return keyed.sort(compareKeyed).map(({project, sha, job, depth}) => ({project, sha, job, depth}));
 }
 
-/** Rank facts a queue item carries; the queue has no size, so only the penalties count. */
+/** Rank facts a queue item carries; an item without size facts ranks as zero lines. */
 function gitChildFacts(child: GitChildResult): RankFacts {
 	return {
 		landable: false,
 		needsReplay: child.needsRebase === true || (child.commitsBehind ?? 0) > 0,
 		predictedConflicts: child.rebaseable === false || child.mergeStateStatus === "DIRTY",
 		testBad: child.testStatus === "failed",
-		lines: 0,
+		lines: (child.insertions ?? 0) + (child.deletions ?? 0),
 	};
 }
 
-/** Orders queue items within a category: shortest remaining job, then commit date, then project/sha. */
+/**
+ * Orders queue items within a category: shortest remaining job, then commit date, then project/sha.
+ * First-seen time (the ledger, lean plan step 23) replaces commit date as the first tie-break once
+ * queue items carry it, matching rankCandidates.
+ */
 export function rankGitChildren<T extends GitChildResult>(children: readonly T[]): T[] {
 	return (
 		children

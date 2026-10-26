@@ -330,6 +330,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 						child.branch && p.dirty && child.sha === headSha
 							? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
 							: undefined,
+					isHead: child.sha === headSha,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);

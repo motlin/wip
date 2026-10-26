@@ -14,8 +14,8 @@ export function classifyCommit(child: GitChildResult, project: ProjectInfo): Cat
 	if (child.testStatus === "running") return "test_running";
 	if (child.testStatus === "failed") return "test_failed";
 	if (child.testStatus === "passed") return "ready_to_push";
-	if (project.detachedHead) return "detached_head";
-	if (project.dirty) return "local_changes";
+	if (child.isHead && project.detachedHead) return "detached_head";
+	if (child.isHead && project.dirty) return "local_changes";
 	if (!project.hasTestConfigured) return "no_test";
 	return "ready_to_test";
 }
@@ -23,13 +23,13 @@ export function classifyCommit(child: GitChildResult, project: ProjectInfo): Cat
 export function classifyBranch(child: GitChildResult, project: ProjectInfo): Category {
 	if (child.skippable) return "skippable";
 	if (child.pushing) return "pushing";
-	if (project.rebaseInProgress) return "rebase_stuck";
+	if (child.isHead && project.rebaseInProgress) return "rebase_stuck";
 	if (child.testStatus === "running") return "test_running";
 	if (child.testStatus === "failed") return "test_failed";
 	if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
 	if (child.needsRebase && child.rebaseable === true) return "needs_rebase";
 	if (child.needsRebase) return "rebase_unknown";
-	if (project.dirty) return "local_changes";
+	if (child.isHead && project.dirty) return "local_changes";
 	const verified = child.testStatus === "passed" || !project.hasTestConfigured;
 	if (verified && child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
 		return "pushed_no_pr";
@@ -37,6 +37,14 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 	if (!project.hasTestConfigured) return "no_test";
 	if (child.testStatus === "passed") return "ready_to_push";
 	return "ready_to_test";
+}
+
+// Project-wide conditions apply only to the child checked out at HEAD; the project itself shows one chip.
+export function projectCondition(project: ProjectInfo): Category | undefined {
+	if (project.rebaseInProgress) return "rebase_stuck";
+	if (project.detachedHead) return "detached_head";
+	if (project.dirty) return "local_changes";
+	return undefined;
 }
 
 export function classifyIssue(_issue: IssueResult): Category {
@@ -50,7 +58,7 @@ export function classifyTodo(todo: TodoItem): Category {
 export function classifyPullRequest(child: GitChildResult, project: ProjectInfo): Category {
 	if (child.skippable) return "skippable";
 	if (child.pushing) return "pushing";
-	if (project.rebaseInProgress) return "rebase_stuck";
+	if (child.isHead && project.rebaseInProgress) return "rebase_stuck";
 	if (child.testStatus === "running") return "test_running";
 	if (child.testStatus === "failed") return "test_failed";
 	if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";

@@ -365,6 +365,7 @@ export const GitChildResultSchema = z.object({
 	suggestedBranch: branchSchema.optional(),
 	blockReason: z.string().optional(),
 	blockCommand: z.string().optional(),
+	isHead: z.boolean().optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 

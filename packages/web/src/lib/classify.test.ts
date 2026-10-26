@@ -10,6 +10,7 @@ import {
 	classifyIssue,
 	classifyPullRequest,
 	classifyTodo,
+	projectCondition,
 } from "./classify.js";
 
 function makePR(overrides: Partial<GitChildResult> = {}): GitChildResult {
@@ -102,11 +103,19 @@ describe("classifyCommit", () => {
 	});
 
 	it("returns detached_head when project has detached head", () => {
-		expect(classifyCommit(makeCommit(), makeProject({detachedHead: true}))).toBe("detached_head");
+		expect(classifyCommit(makeCommit({isHead: true}), makeProject({detachedHead: true}))).toBe("detached_head");
+	});
+
+	it("ignores a detached head when the commit is not checked out", () => {
+		expect(classifyCommit(makeCommit(), makeProject({detachedHead: true}))).toBe("ready_to_test");
 	});
 
 	it("returns local_changes when project is dirty", () => {
-		expect(classifyCommit(makeCommit(), makeProject({dirty: true}))).toBe("local_changes");
+		expect(classifyCommit(makeCommit({isHead: true}), makeProject({dirty: true}))).toBe("local_changes");
+	});
+
+	it("ignores a dirty project when the commit is not checked out", () => {
+		expect(classifyCommit(makeCommit(), makeProject({dirty: true}))).toBe("ready_to_test");
 	});
 
 	it("returns no_test when project has no test configured", () => {
@@ -130,15 +139,15 @@ describe("classifyCommit", () => {
 	});
 
 	it("prioritizes test_running over detached_head", () => {
-		expect(classifyCommit(makeCommit({testStatus: "running"}), makeProject({detachedHead: true}))).toBe(
-			"test_running",
-		);
+		expect(
+			classifyCommit(makeCommit({testStatus: "running", isHead: true}), makeProject({detachedHead: true})),
+		).toBe("test_running");
 	});
 
 	it("prioritizes test_failed over detached_head", () => {
-		expect(classifyCommit(makeCommit({testStatus: "failed"}), makeProject({detachedHead: true}))).toBe(
-			"test_failed",
-		);
+		expect(
+			classifyCommit(makeCommit({testStatus: "failed", isHead: true}), makeProject({detachedHead: true})),
+		).toBe("test_failed");
 	});
 });
 
@@ -242,7 +251,11 @@ describe("classifyBranch", () => {
 	});
 
 	it("returns rebase_stuck when project has rebase in progress", () => {
-		expect(classifyBranch(makeBranch(), makeProject({rebaseInProgress: true}))).toBe("rebase_stuck");
+		expect(classifyBranch(makeBranch({isHead: true}), makeProject({rebaseInProgress: true}))).toBe("rebase_stuck");
+	});
+
+	it("ignores a rebase in progress when the branch is not checked out", () => {
+		expect(classifyBranch(makeBranch(), makeProject({rebaseInProgress: true}))).toBe("ready_to_test");
 	});
 
 	it("returns test_failed when test failed even with dirty project", () => {
@@ -280,7 +293,16 @@ describe("classifyBranch", () => {
 	});
 
 	it("returns local_changes when project dirty and no other flags", () => {
-		expect(classifyBranch(makeBranch(), makeProject({dirty: true}))).toBe("local_changes");
+		expect(classifyBranch(makeBranch({isHead: true}), makeProject({dirty: true}))).toBe("local_changes");
+	});
+
+	it("keeps a pushed branch that is not checked out in pushed_no_pr in a dirty project", () => {
+		expect(
+			classifyBranch(
+				makeBranch({pushedToRemote: true, localAhead: false, testStatus: "passed"}),
+				makeProject({dirty: true}),
+			),
+		).toBe("pushed_no_pr");
 	});
 
 	it("returns rebase_unknown when needsRebase even if project dirty", () => {
@@ -321,10 +343,19 @@ describe("classifyPullRequest", () => {
 	it("returns rebase_stuck when the project has a rebase in progress", () => {
 		expect(
 			classifyPullRequest(
-				makePR({checkStatus: "passed", reviewStatus: "approved"}),
+				makePR({checkStatus: "passed", reviewStatus: "approved", isHead: true}),
 				makeProject({rebaseInProgress: true}),
 			),
 		).toBe("rebase_stuck");
+	});
+
+	it("ignores a rebase in progress when the PR branch is not checked out", () => {
+		expect(
+			classifyPullRequest(
+				makePR({checkStatus: "passed", reviewStatus: "approved"}),
+				makeProject({rebaseInProgress: true}),
+			),
+		).toBe("approved");
 	});
 
 	it("returns checks_failed when checks failed, even if approved", () => {
@@ -526,8 +557,8 @@ describe("State machine consistency", () => {
 				{commit: makeCommit({skippable: true}), project: makeProject()},
 				{commit: makeCommit({testStatus: "failed"}), project: makeProject()},
 				{commit: makeCommit({testStatus: "passed"}), project: makeProject()},
-				{commit: makeCommit(), project: makeProject({detachedHead: true})},
-				{commit: makeCommit(), project: makeProject({dirty: true})},
+				{commit: makeCommit({isHead: true}), project: makeProject({detachedHead: true})},
+				{commit: makeCommit({isHead: true}), project: makeProject({dirty: true})},
 				{commit: makeCommit(), project: makeProject({hasTestConfigured: false})},
 			];
 
@@ -609,5 +640,19 @@ describe("State machine consistency", () => {
 			const isValid = statesInMachine.has(category) || specialStates.has(category);
 			expect(isValid, `classifyTodo returned invalid state: ${category}`).toBe(true);
 		});
+	});
+});
+
+describe("projectCondition", () => {
+	it("returns undefined for a clean project", () => {
+		expect(projectCondition(makeProject())).toBeUndefined();
+	});
+
+	it("returns one chip for a project-wide condition, preferring the most urgent", () => {
+		expect(projectCondition(makeProject({dirty: true}))).toBe("local_changes");
+		expect(projectCondition(makeProject({dirty: true, detachedHead: true}))).toBe("detached_head");
+		expect(projectCondition(makeProject({dirty: true, detachedHead: true, rebaseInProgress: true}))).toBe(
+			"rebase_stuck",
+		);
 	});
 });

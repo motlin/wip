@@ -1756,6 +1756,30 @@ describe("getProjectChildrenHandler", () => {
 		}
 	});
 
+	it("marks only the child checked out at HEAD with isHead", async () => {
+		const dir = await createTestGitRepo();
+		await execa("git", ["-C", dir, "checkout", "-b", "other"], {cwd: dir});
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Other commit"]);
+		await execa("git", ["-C", dir, "checkout", "main"], {cwd: dir});
+		await execa("git", ["-C", dir, "checkout", "-b", "current"], {cwd: dir});
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Current commit"]);
+
+		const project = makeProject({name: "is-head-test", dir, dirty: true, upstreamRef: "main"});
+		seedProjectCache([project]);
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const result = await getProjectChildrenHandler("is-head-test");
+
+		expect(
+			result
+				.map((c) => ({branch: c.branch, isHead: c.isHead}))
+				.toSorted((a, b) => a.branch!.localeCompare(b.branch!)),
+		).toEqual([
+			{branch: "current", isHead: true},
+			{branch: "other", isHead: false},
+		]);
+	});
+
 	it("includes failedChecks from cached PR statuses", async () => {
 		const dir = await createTestGitRepo();
 		await execa("git", ["-C", dir, "checkout", "-b", "ci-fail"], {cwd: dir});

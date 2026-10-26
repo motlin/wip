@@ -11,6 +11,8 @@ const serverFns = vi.hoisted(() => ({
 	testChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	runClaudeCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	abortRebase: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	rebaseChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	getProjectChildren: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => Promise.resolve({children: []})),
 	getProjects: vi.fn<() => Promise<unknown[]>>(async () => Promise.resolve([])),
 	getSnoozedList: vi.fn<() => Promise<unknown[]>>(async () => Promise.resolve([])),
 }));
@@ -152,6 +154,8 @@ describe("Abort rebase on a stuck rebase", () => {
 		cleanup();
 		clearToasts();
 		serverFns.abortRebase.mockReset();
+		serverFns.rebaseChild.mockReset();
+		serverFns.getProjectChildren.mockClear();
 	});
 
 	it("offers Abort rebase on a rebase_stuck item and aborts the project's operation when clicked", async () => {
@@ -163,6 +167,54 @@ describe("Abort rebase on a stuck rebase", () => {
 		await waitFor(() => {
 			expect(serverFns.abortRebase.mock.calls).toEqual([[{data: {project: "wip"}}]]);
 		});
+	});
+
+	it("makes Rebase again the next action once the abort succeeds, re-running the rebase through the existing rebase path", async () => {
+		serverFns.abortRebase.mockResolvedValue({
+			ok: true,
+			message: "Aborted rebase in wip",
+			rebaseAgainBranch: "feature/x",
+		});
+		serverFns.rebaseChild.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+		const queryClient = new QueryClient();
+		const view = render(
+			<QueryClientProvider client={queryClient}>
+				<BranchActions item={branchItem({})} category="rebase_stuck" />
+			</QueryClientProvider>,
+		);
+
+		fireEvent.click(screen.getByRole("button", {name: "Abort rebase"}));
+		await waitFor(() => {
+			expect(serverFns.getProjectChildren.mock.calls.length).toBe(1);
+		});
+		view.rerender(
+			<QueryClientProvider client={queryClient}>
+				<BranchActions item={branchItem({})} category="needs_rebase" />
+			</QueryClientProvider>,
+		);
+		const buttons = screen.getAllByRole("button").map((b) => b.textContent);
+		fireEvent.click(screen.getByRole("button", {name: "Rebase again"}));
+
+		await waitFor(() => {
+			expect({
+				first: buttons[0],
+				plainRebase: buttons.filter((b) => b === "Rebase"),
+				calls: serverFns.rebaseChild.mock.calls,
+			}).toEqual({
+				first: "Rebase again",
+				plainRebase: [],
+				calls: [[{data: {project: "wip", branch: "feature/x"}}]],
+			});
+		});
+	});
+
+	it("does not offer Rebase again on a needs_rebase item that was never aborted", () => {
+		renderBranch(branchItem({}), "needs_rebase");
+
+		expect({
+			rebaseAgain: screen.queryByRole("button", {name: "Rebase again"}),
+			rebase: screen.getAllByRole("button", {name: "Rebase"}).length,
+		}).toEqual({rebaseAgain: null, rebase: 1});
 	});
 
 	it("does not offer Abort rebase outside rebase_stuck", () => {

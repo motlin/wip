@@ -1340,31 +1340,45 @@ async function markRebaseFinished(project: string): Promise<void> {
 	projectEmitter.emit("projects", projects);
 }
 
+/** The branch a stopped rebase is replaying, from its head-name file; undefined when it is rebasing a detached HEAD. */
+function rebasingBranch(rebaseDir: string): string | undefined {
+	const headName = path.join(rebaseDir, "head-name");
+	if (!fs.existsSync(headName)) return undefined;
+	const ref = fs.readFileSync(headName, "utf8").trim();
+	return ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : undefined;
+}
+
 /** The rebase, cherry-pick or merge a repo is stopped in, read from its git dir (worktree-aware). */
-async function findInterruptedOperation(dir: string): Promise<InterruptedOperation | undefined> {
+async function findInterruptedOperation(
+	dir: string,
+): Promise<{operation: InterruptedOperation; branch?: string} | undefined> {
 	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--absolute-git-dir"], {reject: false});
 	if (result.exitCode !== 0) return undefined;
 	const gitDir = result.stdout.trim();
 	const has = (name: string): boolean => fs.existsSync(path.join(gitDir, name));
-	if (has("rebase-merge") || has("rebase-apply")) return "rebase";
-	if (has("CHERRY_PICK_HEAD")) return "cherry-pick";
-	if (has("MERGE_HEAD")) return "merge";
+	for (const rebaseDir of ["rebase-merge", "rebase-apply"]) {
+		if (has(rebaseDir)) return {operation: "rebase", branch: rebasingBranch(path.join(gitDir, rebaseDir))};
+	}
+	if (has("CHERRY_PICK_HEAD")) return {operation: "cherry-pick"};
+	if (has("MERGE_HEAD")) return {operation: "merge"};
 	return undefined;
 }
 
 /**
  * Abort, don't rescue: back a stuck rebase, cherry-pick or merge out to where it
  * started, as a git-write job holding the repo. The work is redone from a clean
- * state (a fresh replay, or /git:conflicts) instead of patching up the halfway state.
+ * state instead of patching up the halfway state: an aborted rebase reports its
+ * branch as rebaseAgainBranch, whose next action is "Rebase again".
  */
 export async function abortRebaseHandler(project: string): Promise<ActionResult> {
 	return tracedAction("abortRebase", async () => {
 		const p = await resolveProject(project);
 		return runQueuedAction(project, "abortRebase", async () => {
-			const operation = await findInterruptedOperation(p.dir);
-			if (!operation) {
+			const interrupted = await findInterruptedOperation(p.dir);
+			if (!interrupted) {
 				return {ok: false, message: `No rebase, cherry-pick or merge in progress in ${project}`};
 			}
+			const {operation, branch} = interrupted;
 			const result = await tracedExeca("git", ["-C", p.dir, operation, "--abort"], {reject: false});
 			if (result.exitCode !== 0) {
 				return {ok: false, message: `Failed to abort ${operation}: ${result.stderr}`};
@@ -1372,7 +1386,7 @@ export async function abortRebaseHandler(project: string): Promise<ActionResult>
 			await markRebaseFinished(project);
 			invalidateChildrenCache(project);
 			invalidateMergeStatus(project);
-			return {ok: true, message: `Aborted ${operation} in ${project}`};
+			return {ok: true, message: `Aborted ${operation} in ${project}`, rebaseAgainBranch: branch};
 		});
 	});
 }

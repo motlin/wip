@@ -8,6 +8,7 @@ import {
 	SUPPLEMENTARY_ACTIONS,
 } from "./category-actions";
 import {CategorySchema, type Category} from "@wip/shared";
+import {getTransitionsFrom} from "@wip/shared/schemas.js";
 
 function indexOf(cat: Category): number {
 	return CATEGORY_PRIORITY.indexOf(cat);
@@ -51,6 +52,16 @@ describe("CATEGORIES", () => {
 			first: "abort_rebase",
 			llmCommand: undefined,
 		});
+	});
+
+	it("models Abort rebase as the rebase_stuck --abort_rebase--> needs_rebase edge, so the next action is a rebase", () => {
+		expect({
+			edges: getTransitionsFrom("rebase_stuck")
+				.filter((t) => t.transition === "abort_rebase")
+				.map((t) => t.to),
+			action: TRANSITION_TO_ACTION.abort_rebase,
+			nextActions: CATEGORIES.needs_rebase.actions.includes("rebase_local"),
+		}).toEqual({edges: ["needs_rebase"], action: "abort_rebase", nextActions: true});
 	});
 
 	it("maps checks_failed to /gha", () => {

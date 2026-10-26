@@ -38,6 +38,7 @@ export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
 	commit: "commit",
 	create_pr: "create_pr",
 	rebase: "rebase_local",
+	abort_rebase: "abort_rebase",
 	merge: "merge",
 	create_branch: "create_branch",
 };
@@ -69,7 +70,7 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	needs_rebase: ["refresh", "rename"],
 	rebase_unknown: ["refresh", "rename"],
 	rebase_conflicts: ["refresh", "rename"],
-	rebase_stuck: ["abort_rebase", "refresh"],
+	rebase_stuck: ["refresh"],
 	test_failed: ["view_test_log", "refresh", "rename", "delete_branch"],
 	ready_to_test: ["refresh", "rename", "delete_branch"],
 	test_running: ["view_test_log", "refresh"],
@@ -272,6 +273,7 @@ const BACK_EDGES = new Set([
 	"test_running->ready_to_test",
 	"checks_failed->checks_running",
 	"changes_requested->checks_running",
+	"rebase_stuck->needs_rebase",
 	"review_comments->checks_running",
 	// Review back-edges (dismiss/re-review goes backward in SDLC)
 	"changes_requested->checks_passed",

@@ -165,6 +165,16 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [snoozeOpen, setSnoozeOpen] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
 	const [aborting, setAborting] = useState(false);
+	// Set by a successful Abort rebase: the branch whose next action is "Rebase again".
+	const rebaseAgainKey = ["rebase-again", item.project];
+	const {data: rebaseAgainBranch} = useQuery<string | null>({
+		queryKey: rebaseAgainKey,
+		queryFn: () => null,
+		enabled: false,
+		staleTime: Number.POSITIVE_INFINITY,
+		gcTime: Number.POSITIVE_INFINITY,
+	});
+	const rebaseAgain = category !== "rebase_stuck" && branch !== "" && rebaseAgainBranch === branch;
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
 	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
@@ -441,6 +451,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			const result = await abortRebase({data: {project: item.project}});
 			showActionToasts("Abort rebase", result);
 			if (result.ok) {
+				queryClient.setQueryData(rebaseAgainKey, result.rebaseAgainBranch ?? null);
 				queryClient.setQueryData<ProjectInfo[]>(["projects"], (old) =>
 					old?.map((p) => (p.name === item.project ? {...p, rebaseInProgress: false} : p)),
 				);
@@ -540,6 +551,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	};
 
 	const handleRebaseLocal = async () => {
+		if (rebaseAgain) queryClient.setQueryData(rebaseAgainKey, null);
 		setRebasingLocal(true);
 		setError(null);
 		try {
@@ -672,6 +684,30 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	return (
 		<div>
 			<div className={`flex ${isRow ? "flex-wrap items-center gap-2" : "flex-col gap-1.5"}`}>
+				{/* Rebase again: the next action after Abort rebase, a fresh replay onto current upstream */}
+				{rebaseAgain && (
+					<button
+						type="button"
+						onClick={() => {
+							void handleRebaseLocal();
+						}}
+						disabled={rebasingLocal}
+						title={`Rebase ${branch} onto current upstream again, from a clean state`}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							rebasingLocal
+								? "cursor-not-allowed opacity-60 text-text-300"
+								: "bg-orange-600 hover:bg-orange-700 text-white"
+						}`}
+					>
+						{rebasingLocal ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<GitBranch className="h-3.5 w-3.5" />
+						)}
+						{rebasingLocal ? "Rebasing..." : "Rebase again"}
+					</button>
+				)}
+
 				{/* Abort rebase: back a stuck rebase/cherry-pick/merge out instead of rescuing it */}
 				{actions.has("abort_rebase") && (
 					<button
@@ -752,7 +788,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Local Rebase */}
-				{actions.has("rebase_local") && (
+				{actions.has("rebase_local") && !rebaseAgain && (
 					<button
 						type="button"
 						onClick={() => {

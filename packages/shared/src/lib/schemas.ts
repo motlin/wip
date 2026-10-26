@@ -61,6 +61,7 @@ export const TransitionSchema = z.enum([
 	"cancel_test",
 	"rebase",
 	"resolve_conflicts",
+	"abort_rebase",
 	"push",
 	"force_push",
 	"create_pr",
@@ -141,6 +142,8 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 		kind: "active",
 	},
 	{from: "rebase_stuck", transition: "resolve_conflicts", to: "ready_to_test", kind: "active"},
+	// Abort, don't rescue: backing a stuck rebase out leaves the branch needing the rebase again
+	{from: "rebase_stuck", transition: "abort_rebase", to: "needs_rebase", kind: "active"},
 
 	// Push flow
 	{from: "ready_to_push", transition: "push", to: "pushing", kind: "active"},
@@ -421,6 +424,8 @@ export const ActionResultSchema = z.object({
 	message: z.string(),
 	compareUrl: z.url().optional(),
 	logs: z.array(ActionLogEntrySchema).optional(),
+	// Set by Abort rebase: the branch whose rebase was backed out, whose next action is "Rebase again"
+	rebaseAgainBranch: z.string().optional(),
 });
 export type ActionResult = z.infer<typeof ActionResultSchema>;
 

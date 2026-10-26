@@ -2325,12 +2325,14 @@ describe("abortRebaseHandler", () => {
 		expect({
 			ok: result.ok,
 			message: result.message,
+			rebaseAgainBranch: result.rebaseAgainBranch,
 			rebaseMerge: existsSync(join(dir, ".git", "rebase-merge")),
 			head: await gitOut(dir, "rev-parse", "HEAD"),
 			feature: await gitOut(dir, "rev-parse", "feature"),
 		}).toEqual({
 			ok: true,
 			message: "Aborted rebase in abort-rebase",
+			rebaseAgainBranch: "feature",
 			rebaseMerge: false,
 			head: featureTip,
 			feature: featureTip,
@@ -2350,11 +2352,13 @@ describe("abortRebaseHandler", () => {
 		expect({
 			ok: result.ok,
 			message: result.message,
+			rebaseAgainBranch: result.rebaseAgainBranch,
 			cherryPickHead: existsSync(join(dir, ".git", "CHERRY_PICK_HEAD")),
 			head: await gitOut(dir, "rev-parse", "HEAD"),
 		}).toEqual({
 			ok: true,
 			message: "Aborted cherry-pick in abort-cherry-pick",
+			rebaseAgainBranch: undefined,
 			cherryPickHead: false,
 			head: mainTip,
 		});

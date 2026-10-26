@@ -1946,6 +1946,31 @@ describe("getProjectChildrenHandler", () => {
 			{sha: reworded, until: null, orphaned: false},
 		]);
 	});
+
+	it("keeps a pre-migration On hold row hidden when its commit is rebased before the first children refresh", async () => {
+		const dir = await createTestGitRepo();
+		await writeTestFile(join(dir, "legacy.txt"), "legacy\n");
+		await execa("git", ["-C", dir, "add", "legacy.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Legacy held commit"]);
+		const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+
+		// A row written before the migration: sha only, no patch-id. /snoozed is never opened.
+		const {snoozeItem, getAllSnoozedForDisplay} = await import("@wip/shared");
+		snoozeItem(sha, "legacy-hold-test", sha.slice(0, 7), "Legacy held commit", null);
+		await execa("git", ["-C", dir, "commit", "--amend", "-m", "Legacy held commit, rebased"]);
+		const rebased = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+
+		const project = makeProject({name: "legacy-hold-test", dir, upstreamRef: "main~1"});
+		seedProjectCache([project]);
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const result = await getProjectChildrenHandler("legacy-hold-test");
+
+		expect({
+			shown: result.map((c) => c.sha).includes(rebased),
+			rows: getAllSnoozedForDisplay().map((s) => ({sha: s.sha, orphaned: s.orphaned})),
+		}).toStrictEqual({shown: false, rows: [{sha: rebased, orphaned: false}]});
+	});
 });
 
 // -- pushChildHandler (direct handler tests) --

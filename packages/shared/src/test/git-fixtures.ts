@@ -32,13 +32,9 @@ function hashCall(command: string, args: string[], input?: string): string {
 	return createHash("sha256").update(payload).digest("hex").slice(0, 16);
 }
 
-function getFixtureDir(testName: string): string {
-	return join(fixturesDir, testName);
-}
-
-function getFixturePath(testName: string, command: string, args: string[], input?: string): string {
+function getFixturePath(testDir: string, command: string, args: string[], input?: string): string {
 	const hash = hashCall(command, args, input);
-	return join(getFixtureDir(testName), `${hash}.json`);
+	return join(testDir, `${hash}.json`);
 }
 
 function saveFixture(fixturePath: string, call: RecordedCall): void {
@@ -64,12 +60,13 @@ export interface GitFixtureContext {
  * and saves the results as fixture files.
  *
  * @param testName - Unique name for this test's fixtures (used as directory name)
+ * @param fixturesRoot - Directory holding every test's fixture directory; defaults to the committed fixtures
  */
-export function setupGitFixtures(testName: string): GitFixtureContext {
+export function setupGitFixtures(testName: string, fixturesRoot: string = fixturesDir): GitFixtureContext {
 	const fixtureMap = new Map<string, RecordedCall>();
 
 	// Pre-load all existing fixtures for this test
-	const testDir = getFixtureDir(testName);
+	const testDir = join(fixturesRoot, testName);
 	if (existsSync(testDir)) {
 		for (const file of readdirSync(testDir)) {
 			if (!file.endsWith(".json")) continue;
@@ -110,7 +107,7 @@ export function setupGitFixtures(testName: string): GitFixtureContext {
 					stderr: result.stderr,
 					exitCode: result.exitCode,
 				};
-				const fixturePath = getFixturePath(testName, command, args, input);
+				const fixturePath = getFixturePath(testDir, command, args, input);
 				saveFixture(fixturePath, recorded);
 				fixtureMap.set(hash, recorded);
 				return result;
@@ -139,7 +136,7 @@ export function setupGitFixtures(testName: string): GitFixtureContext {
 	function addFixture(call: RecordedCall): void {
 		const hash = hashCall(call.command, call.args, call.input);
 		fixtureMap.set(hash, call);
-		const fixturePath = getFixturePath(testName, call.command, call.args, call.input);
+		const fixturePath = getFixturePath(testDir, call.command, call.args, call.input);
 		saveFixture(fixturePath, call);
 	}
 

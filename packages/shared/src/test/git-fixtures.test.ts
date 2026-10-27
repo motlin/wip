@@ -1,21 +1,25 @@
-import {describe, it, expect, afterEach} from "vite-plus/test";
-import {existsSync, rmSync} from "node:fs";
-import {dirname, join, resolve} from "node:path";
-import {fileURLToPath} from "node:url";
+import {describe, it, expect, afterEach, beforeEach} from "vite-plus/test";
+import {existsSync, mkdtempSync, rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 
-import {setupGitFixtures, type RecordedCall} from "./git-fixtures.js";
-
-const currentDir = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = resolve(currentDir, "..", "__fixtures__", "git");
+import {setupGitFixtures as setupFixturesIn, type RecordedCall} from "./git-fixtures.js";
 
 describe("setupGitFixtures", () => {
 	const testName = "__test-git-fixtures__";
-	const testDir = join(fixturesDir, testName);
+	// A private fixtures root per test: concurrent runs in one checkout used to share
+	// src/__fixtures__/git/__test-git-fixtures__ and read each other's half-written files.
+	let fixturesDir: string;
+	let testDir: string;
+	const setupGitFixtures = (name: string) => setupFixturesIn(name, fixturesDir);
+
+	beforeEach(() => {
+		fixturesDir = mkdtempSync(join(tmpdir(), "wip-git-fixtures-"));
+		testDir = join(fixturesDir, testName);
+	});
 
 	afterEach(() => {
-		if (existsSync(testDir)) {
-			rmSync(testDir, {recursive: true, force: true});
-		}
+		rmSync(fixturesDir, {recursive: true, force: true});
 	});
 
 	it("returns recorded fixture in replay mode", async () => {

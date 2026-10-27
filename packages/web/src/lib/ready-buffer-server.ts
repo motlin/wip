@@ -90,6 +90,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	const {
 		checkedOutBranches,
 		DEFAULT_GIT_TEST,
+		getAutoFixes,
 		getTestLogDir,
 		gitTestResults,
 		gitTestRun,
@@ -149,7 +150,9 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	}
 
 	// 3. The exit code of `git test run` decides, unless the patch-id fast path publishes instead.
+	// An unaccepted AI fixup (the retest of a fresh fix, or any recorded auto-fix) is never pushed.
 	const {branch} = candidate;
+	const autoFixed = candidate.autoFixed === true || getAutoFixes(p.name).has(candidate.id);
 	const pushRequest = (s: string): PushRequest | null =>
 		branch === undefined ? null : {project: p.name, dir: p.dir, repository: p.remote, branch, sha: s};
 	const outcome = await testStep(
@@ -160,6 +163,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 			sha,
 			replayed: !onUpstream,
 			...(baselineFailures === undefined ? {} : {baselineFailures}),
+			autoFixed,
 		},
 		{
 			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
@@ -177,7 +181,10 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	// 4. Step 34: a ready item in a pull-request repo is force-pushed with lease through the gate.
 	const request = pushRequest(sha);
 	if (request !== null) {
-		const pushed = await publishAfterAdvance({landing: repo.landing, outcome, request}, backgroundPusher());
+		const pushed = await publishAfterAdvance(
+			{landing: repo.landing, outcome, request, autoFixed},
+			backgroundPusher(),
+		);
 		if (pushed !== null) log.general.info({project: p.name, branch, sha, push: pushed}, "Ready-buffer push");
 	}
 	return outcome;

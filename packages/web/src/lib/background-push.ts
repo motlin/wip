@@ -121,19 +121,23 @@ export interface PublishInput {
 	landing: LandingMode | undefined;
 	outcome: AdvanceOutcome;
 	request: PushRequest;
+	/** An AI fixup awaits the user's review (including Fix it myself): never pushed until accepted. */
+	autoFixed?: boolean;
 }
 
 /**
  * After a buffer advance: a ready item in a pull-request repo is force-pushed with lease through
  * the gate (held = deferred); fast-forward repos never push. Any other outcome drops a deferred push
- * of the branch, except `checks_pending`, whose fast path already pushed. Null when nothing was pushed.
+ * of the branch, except `checks_pending`, whose fast path already pushed. An item whose AI fixup
+ * awaits review is never pushed (and its deferred push is dropped) until Accept fix squashes it.
+ * Null when nothing was pushed.
  */
 export async function publishAfterAdvance(
-	{landing, outcome, request}: PublishInput,
+	{landing, outcome, request, autoFixed}: PublishInput,
 	pusher: BackgroundPusher,
 ): Promise<PushOutcome | null> {
 	if (landing !== "pull-request") return null;
-	if (outcome === "ready") return pusher.push(request, {defer: true});
+	if (outcome === "ready" && autoFixed !== true) return pusher.push(request, {defer: true});
 	if (outcome !== "checks_pending") pusher.cancel(request.project, request.branch);
 	return null;
 }

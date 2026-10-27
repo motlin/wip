@@ -97,6 +97,8 @@ export interface TestStepInput {
 	replayed: boolean;
 	/** Set only on a foreign red upstream: the tests the baseline fails, which a commit may also fail. */
 	baselineFailures?: ReadonlySet<string>;
+	/** An AI fixup awaits the user's review: the fast path never publishes it. */
+	autoFixed?: boolean;
 }
 
 export interface TestStepDeps {
@@ -115,7 +117,8 @@ export interface TestStepDeps {
  * patch-id fast path. There a clean replay of a commit git-test already reported good skips the
  * local build, publishes, and waits for PR checks; patch-id never marks anything green on its own.
  * A failed publish falls back to running the test. On a foreign red upstream (plan step 35) a
- * failing run is still ready when every test it fails also fails on the baseline.
+ * failing run is still ready when every test it fails also fails on the baseline. An item whose AI
+ * fixup awaits review never takes the fast path, which would push the unreviewed fixup.
  */
 export async function testStep(
 	input: TestStepInput,
@@ -124,6 +127,7 @@ export async function testStep(
 	if (!input.hasTestConfigured) return "ready";
 	if (
 		input.trustPatchIdGreen &&
+		input.autoFixed !== true &&
 		input.replayed &&
 		(await deps.results(input.preReplaySha)) === "good" &&
 		(await deps.publish(input.sha))
@@ -312,7 +316,12 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			done.set(candidate.id, "stuck");
 			return undefined;
 		}
-		return advanceItem(repo, {...candidate, sha}, conflict ? {...tried, conflicts: true} : {...tried, fix: true});
+		// The fixup's retest is flagged so the advance never pushes the unreviewed fixup.
+		return advanceItem(
+			repo,
+			conflict ? {...candidate, sha} : {...candidate, sha, autoFixed: true},
+			conflict ? {...tried, conflicts: true} : {...tried, fix: true},
+		);
 	}
 
 	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void {

@@ -55,6 +55,8 @@ interface Harness {
 	queue: WorkQueue;
 	enqueued: Enqueued[];
 	advanced: string[];
+	/** Per advance, whether the candidate carried an unreviewed AI fixup. */
+	advancedAutoFixed: boolean[];
 	resolved: string[];
 	fixed: string[];
 	maxConcurrent: () => number;
@@ -103,6 +105,7 @@ function harness(options: {
 	queues.push(queue);
 	const enqueued: Enqueued[] = [];
 	const advanced: string[] = [];
+	const advancedAutoFixed: boolean[] = [];
 	const resolved: string[] = [];
 	const fixed: string[] = [];
 	let concurrent = 0;
@@ -130,6 +133,7 @@ function harness(options: {
 		capacity: () => options.capacity ?? 4,
 		advance: async (r, candidate) => {
 			advanced.push(`${r.name}:${candidate.id}`);
+			advancedAutoFixed.push(candidate.autoFixed === true);
 			concurrent += 1;
 			maxConcurrent = Math.max(maxConcurrent, concurrent);
 			await (options.gated
@@ -154,6 +158,7 @@ function harness(options: {
 		queue,
 		enqueued,
 		advanced,
+		advancedAutoFixed,
 		resolved,
 		fixed,
 		maxConcurrent: () => maxConcurrent,
@@ -374,6 +379,7 @@ describe("createReadyBuffer", () => {
 			jobs: h.enqueued.map((e) => [e.kind, e.coalesceKey, e.costClass, e.coalesced]),
 			fixed: h.fixed,
 			advanced: h.advanced,
+			advancedAutoFixed: h.advancedAutoFixed,
 			outcomes: h.buffer.outcomes("a"),
 		}).toStrictEqual({
 			jobs: [
@@ -383,6 +389,8 @@ describe("createReadyBuffer", () => {
 			],
 			fixed: [`a:c1:${"c1".padEnd(40, "0")}`],
 			advanced: ["a:c1", "a:c1"],
+			// The retest of the unreviewed fixup is flagged, so the advance never pushes it.
+			advancedAutoFixed: [false, true],
 			outcomes: {c1: "auto_fixed"},
 		});
 	});
@@ -648,7 +656,7 @@ describe("testStep (patch-id fast path)", () => {
 	const POST = "2".repeat(40);
 
 	async function step(
-		input: {trustPatchIdGreen: boolean; replayed: boolean; hasTestConfigured?: boolean},
+		input: {trustPatchIdGreen: boolean; replayed: boolean; hasTestConfigured?: boolean; autoFixed?: boolean},
 		before: "good" | "bad" | "unknown",
 		options: {exitCode?: number; published?: boolean} = {},
 	) {
@@ -660,6 +668,7 @@ describe("testStep (patch-id fast path)", () => {
 				hasTestConfigured: input.hasTestConfigured ?? true,
 				preReplaySha: PRE,
 				sha: POST,
+				...(input.autoFixed === undefined ? {} : {autoFixed: input.autoFixed}),
 			},
 			{
 				results: async (s) => {
@@ -714,6 +723,13 @@ describe("testStep (patch-id fast path)", () => {
 		}).toStrictEqual({
 			notReplayed: {outcome: "ready", calls: ["run 2"]},
 			publishFailed: {outcome: "ready", calls: ["results 1", "publish 2", "run 2"]},
+		});
+	});
+
+	it("never publishes an item whose AI fixup awaits review; it runs the test instead", async () => {
+		expect(await step({trustPatchIdGreen: true, replayed: true, autoFixed: true}, "good")).toStrictEqual({
+			outcome: "ready",
+			calls: ["run 2"],
 		});
 	});
 

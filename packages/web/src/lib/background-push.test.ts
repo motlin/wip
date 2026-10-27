@@ -105,6 +105,38 @@ describe("publishAfterAdvance", () => {
 	});
 });
 
+describe("publishAfterAdvance with an unaccepted AI fixup", () => {
+	it("never pushes a ready item whose auto-fix awaits review, and drops its deferred push", async () => {
+		const {pusher, commands} = fakes({remoteSha: OLD, gate: [{open: false, reason: "held"}]});
+		await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		const outcome = await publishAfterAdvance(
+			{landing: "pull-request", outcome: "ready", request, autoFixed: true},
+			pusher,
+		);
+		await pusher.flush();
+		expect({outcome, commands, pending: pusher.pending()}).toStrictEqual({
+			outcome: null,
+			commands: [REV_PARSE],
+			pending: [],
+		});
+	});
+
+	it("pushes once after the fix is accepted and the item is ready again", async () => {
+		const {pusher, commands, recorded} = fakes({remoteSha: OLD});
+		const unaccepted = await publishAfterAdvance(
+			{landing: "pull-request", outcome: "ready", request, autoFixed: true},
+			pusher,
+		);
+		const accepted = await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		expect({unaccepted, accepted, commands, recorded}).toStrictEqual({
+			unaccepted: null,
+			accepted: {status: "pushed"},
+			commands: [REV_PARSE, PUSH],
+			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
+		});
+	});
+});
+
 describe("createBackgroundPusher", () => {
 	it("does not defer a push asked without deferral (the patch-id fast path) when the gate is held", async () => {
 		const {pusher, commands} = fakes({remoteSha: OLD, gate: [{open: false, reason: "held"}]});

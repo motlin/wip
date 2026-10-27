@@ -440,12 +440,15 @@ export {
 	diffInventories,
 	getInventoryPath,
 	inventoryExists,
+	type LandingMode,
+	landingMode,
 	type ProjectRecord,
 	ProjectRecordSchema,
 	loadInventory,
 	readTemplateTexts,
 	saveInventory,
 	selectTrackedProjects,
+	trustsPatchIdGreen,
 } from "./lib/inventory.js";
 export {
 	type BuildInventoryOptions,

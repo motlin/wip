@@ -390,6 +390,8 @@ export const GitChildResultSchema = z.object({
 	deletions: z.number().int().nonnegative().optional(),
 	/** Size above `flow.splitThresholdLines`: shows a marker and enables the state's split transition. */
 	considerSplitting: z.boolean().optional(),
+	/** The ready buffer's patch-id fast path skipped the local test (green before replay); ready once PR checks pass. */
+	localTestSkipped: z.boolean().optional(),
 	/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
 	autoFixed: z
 		.object({

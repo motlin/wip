@@ -6,6 +6,7 @@ import {
 	bufferRepoFromChildren,
 	createReadyBuffer,
 	readyBufferEnabled,
+	testStep,
 	type AdvanceOutcome,
 	type BufferCandidate,
 	type BufferRepo,
@@ -464,6 +465,22 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("parks an item whose local test was skipped while its PR checks are pending, and pulls the next one", async () => {
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(3)})],
+			target: 1,
+			outcome: (_project, id) => (id === "c1" ? "checks_pending" : "ready"),
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({advanced: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			advanced: ["a:c1", "a:c2"],
+			outcomes: {c1: "checks_pending", c2: "ready"},
+		});
+	});
+
 	it("pulls nothing for a project with local changes", async () => {
 		const h = harness({repos: () => [repo("dirty", {localChanges: true}), repo("clean")], gated: true});
 
@@ -579,6 +596,116 @@ describe("bufferRepoFromChildren", () => {
 			],
 			localChanges: true,
 			upstreamRed: false,
+		});
+	});
+});
+
+describe("bufferRepoFromChildren with the patch-id fast path", () => {
+	it("counts a commit whose local test was skipped as ready only once its PR checks pass", () => {
+		const states = bufferRepoFromChildren(
+			project("motlin/wip"),
+			[
+				makeChild({
+					sha: sha("a"),
+					commitsBehind: 0,
+					localTestSkipped: true,
+					checkStatus: "pending",
+					testStatus: "unknown",
+				}),
+				makeChild({
+					sha: sha("b"),
+					commitsBehind: 0,
+					localTestSkipped: true,
+					checkStatus: "passed",
+					testStatus: "unknown",
+				}),
+				makeChild({sha: sha("c"), commitsBehind: 0, checkStatus: "passed", testStatus: "unknown"}),
+			],
+			{identity: null, checkedOutBranches: [], onHold: () => false, override: () => undefined},
+		).candidates.map((c) => [c.sha, c.state]);
+
+		expect(states).toStrictEqual([
+			[sha("a"), "unready"],
+			[sha("b"), "ready"],
+			[sha("c"), "unready"],
+		]);
+	});
+});
+
+describe("testStep (patch-id fast path)", () => {
+	const PRE = "1".repeat(40);
+	const POST = "2".repeat(40);
+
+	async function step(
+		input: {trustPatchIdGreen: boolean; replayed: boolean; hasTestConfigured?: boolean},
+		before: "good" | "bad" | "unknown",
+		options: {exitCode?: number; published?: boolean} = {},
+	) {
+		const calls: string[] = [];
+		const outcome = await testStep(
+			{
+				trustPatchIdGreen: input.trustPatchIdGreen,
+				replayed: input.replayed,
+				hasTestConfigured: input.hasTestConfigured ?? true,
+				preReplaySha: PRE,
+				sha: POST,
+			},
+			{
+				results: async (s) => {
+					calls.push(`results ${s.slice(0, 1)}`);
+					return Promise.resolve(before);
+				},
+				run: async (s) => {
+					calls.push(`run ${s.slice(0, 1)}`);
+					return Promise.resolve(options.exitCode ?? 0);
+				},
+				publish: async (s) => {
+					calls.push(`publish ${s.slice(0, 1)}`);
+					return Promise.resolve(options.published ?? true);
+				},
+			},
+		);
+		return {outcome, calls};
+	}
+
+	it("skips git test run, publishes and waits for PR checks on a trusted clean replay green before", async () => {
+		expect(await step({trustPatchIdGreen: true, replayed: true}, "good")).toStrictEqual({
+			outcome: "checks_pending",
+			calls: ["results 1", "publish 2"],
+		});
+	});
+
+	it("runs the test when the setting is off (or the repo lands by fast-forward)", async () => {
+		expect(await step({trustPatchIdGreen: false, replayed: true}, "good")).toStrictEqual({
+			outcome: "ready",
+			calls: ["run 2"],
+		});
+	});
+
+	it("runs the test when the pre-replay sha is unknown or bad", async () => {
+		expect({
+			unknown: await step({trustPatchIdGreen: true, replayed: true}, "unknown", {exitCode: 1}),
+			bad: await step({trustPatchIdGreen: true, replayed: true}, "bad"),
+		}).toStrictEqual({
+			unknown: {outcome: "test_failed", calls: ["results 1", "run 2"]},
+			bad: {outcome: "ready", calls: ["results 1", "run 2"]},
+		});
+	});
+
+	it("runs the test when nothing was replayed, or when publishing fails", async () => {
+		expect({
+			notReplayed: await step({trustPatchIdGreen: true, replayed: false}, "good"),
+			publishFailed: await step({trustPatchIdGreen: true, replayed: true}, "good", {published: false}),
+		}).toStrictEqual({
+			notReplayed: {outcome: "ready", calls: ["run 2"]},
+			publishFailed: {outcome: "ready", calls: ["results 1", "publish 2", "run 2"]},
+		});
+	});
+
+	it("is ready without a run when no test is configured", async () => {
+		expect(await step({trustPatchIdGreen: true, replayed: true, hasTestConfigured: false}, "good")).toStrictEqual({
+			outcome: "ready",
+			calls: [],
 		});
 	});
 });

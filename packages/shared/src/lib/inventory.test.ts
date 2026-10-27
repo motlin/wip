@@ -7,9 +7,11 @@ import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 import {
 	diffInventories,
 	inventoryExists,
+	landingMode,
 	loadInventory,
 	saveInventory,
 	selectTrackedProjects,
+	trustsPatchIdGreen,
 	type ProjectRecord,
 } from "./inventory.js";
 
@@ -110,5 +112,28 @@ describe("selectTrackedProjects", () => {
 			{name: "nested", dir: "/p/nested"},
 			{name: "own", dir: "/p/own"},
 		]);
+	});
+});
+
+function record(overrides: Partial<ProjectRecord>): ProjectRecord {
+	return {name: "r", dir: "/p/r", template: "typescript", kind: "own", ...overrides};
+}
+
+describe("landingMode and trustsPatchIdGreen", () => {
+	it("lands forks by pull request and own repos by fast-forward unless the registry says otherwise", () => {
+		expect({
+			fork: landingMode(record({kind: "fork"})),
+			own: landingMode(record({kind: "own"})),
+			ownPr: landingMode(record({kind: "own", landing: "pull-request"})),
+			forkFf: landingMode(record({kind: "fork", landing: "fast-forward"})),
+		}).toStrictEqual({fork: "pull-request", own: "fast-forward", ownPr: "pull-request", forkFf: "fast-forward"});
+	});
+
+	it("trusts a pre-replay green only with the setting on in a pull-request repo", () => {
+		expect({
+			onPr: trustsPatchIdGreen(record({kind: "fork", trustPatchIdGreen: true})),
+			offPr: trustsPatchIdGreen(record({kind: "fork"})),
+			onFastForward: trustsPatchIdGreen(record({kind: "own", trustPatchIdGreen: true})),
+		}).toStrictEqual({onPr: true, offPr: false, onFastForward: false});
 	});
 });

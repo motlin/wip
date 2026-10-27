@@ -3,17 +3,20 @@ import {
 	bufferRepoFromChildren,
 	createReadyBuffer,
 	readyBufferEnabled,
+	testStep,
 	type AdvanceOutcome,
 	type BufferCandidate,
 	type BufferRepo,
 	type ReadyBuffer,
 } from "./ready-buffer.js";
 import type {OnHoldSignal} from "./ready-buffer-events.js";
+import {markLocalTestSkipped} from "./local-test-skipped.js";
 import {workQueue} from "./shared-work-queue.js";
 
 /**
  * Production wiring for the ready buffer (lean plan 4.6): the snapshot reads each project's
- * cached children, the advance job runs steps 1-3 (baseline, replay, test), a replay conflict gets
+ * cached children, the advance job runs steps 1-3 (baseline, replay, test, or the patch-id fast
+ * path's push and PR when the repo trusts a pre-replay green), a replay conflict gets
  * one silent `/git:conflicts` agent, a test failure one `/build:fix` agent that must commit a
  * separate fixup (recorded as "auto-fixed" until accepted), and the signals
  * (upstreamMoved, landed, task completion, On hold, children refresh, safety tick) trigger pulls.
@@ -35,16 +38,17 @@ async function checkedOut(dir: string): Promise<string[]> {
 }
 
 async function snapshot(): Promise<BufferRepo[]> {
-	const {getCachedChildren, getGitHubIdentity, getPriorityOverride, isOnHold, loadInventory} =
+	const {getCachedChildren, getGitHubIdentity, getPriorityOverride, isOnHold, loadInventory, trustsPatchIdGreen} =
 		await import("@wip/shared");
 	const {getProjects} = await import("./server-fns.js");
 	const identity = await getGitHubIdentity();
-	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r.priority]));
+	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r]));
 	const repos: BufferRepo[] = [];
 	for (const p of await getProjects()) {
 		const children = getCachedChildren(p.name);
 		if (!children) continue;
-		const priority = registry.get(p.dir);
+		const record = registry.get(p.dir);
+		const priority = record?.priority;
 		const needsBranches = children.some((c) => c.kind !== "upstream_ci" && c.branch !== undefined);
 		repos.push(
 			bufferRepoFromChildren(p, children, {
@@ -55,6 +59,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 				checkedOutBranches: needsBranches && !p.dirty ? await checkedOut(p.dir) : [],
 				onHold: (child) => isOnHold(p.name, {sha: child.sha, patchId: child.patchId}),
 				override: (patchId) => getPriorityOverride(p.name, {kind: "commit", key: patchId}),
+				trustPatchIdGreen: record !== undefined && trustsPatchIdGreen(record),
 			}),
 		);
 	}
@@ -97,9 +102,68 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 		sha = replayed;
 	}
 
-	// 3. The exit code of `git test run` decides.
-	if (!p.hasTestConfigured) return "ready";
-	return (await gitTestRun(p.dir, sha, {logDir})).exitCode === 0 ? "ready" : "test_failed";
+	// 3. The exit code of `git test run` decides, unless the patch-id fast path publishes instead.
+	const {branch} = candidate;
+	return testStep(
+		{
+			trustPatchIdGreen: repo.trustPatchIdGreen === true,
+			hasTestConfigured: p.hasTestConfigured,
+			preReplaySha: candidate.sha,
+			sha,
+			replayed: !onUpstream,
+		},
+		{
+			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
+			run: async (s) => (await gitTestRun(p.dir, s, {logDir})).exitCode,
+			publish: async (s) => {
+				if (branch === undefined || !(await publishForChecks(p, branch, candidate.sha))) return false;
+				markLocalTestSkipped(p.name, s);
+				return true;
+			},
+		},
+	);
+}
+
+/**
+ * The fast path's publish: force-push the replayed branch with lease to origin (where PR heads
+ * live) and open a draft PR when the commit had none; an existing PR updates with the push.
+ */
+async function publishForChecks(
+	p: {name: string; dir: string; remote: string; originRemote: string; upstreamBranch: string},
+	branch: string,
+	preReplaySha: string,
+): Promise<boolean> {
+	const {createPullRequest, getCachedChildren, invalidatePrCache} = await import("@wip/shared");
+	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+	const push = await tracedExeca(
+		"git",
+		["-C", p.dir, "push", "--force-with-lease", "origin", `${branch}:${branch}`],
+		{
+			reject: false,
+		},
+	);
+	if (push.exitCode !== 0) {
+		log.general.warn({project: p.name, branch, stderr: push.stderr}, "Ready-buffer fast-path push failed");
+		return false;
+	}
+	invalidatePrCache(p.name);
+	const child = getCachedChildren(p.name)?.find((c) => c.sha === preReplaySha);
+	if (child?.prNumber !== undefined) return true;
+	const [owner, name] = p.remote.split("/");
+	const [originOwner] = p.originRemote.split("/");
+	if (!owner || !name) return false;
+	const created = await createPullRequest({
+		owner,
+		name,
+		baseRefName: p.upstreamBranch,
+		headRefName: p.originRemote !== p.remote && originOwner ? `${originOwner}:${branch}` : branch,
+		title: child?.subject ?? branch,
+		body: "",
+		draft: true,
+	});
+	if (!created.ok)
+		log.general.warn({project: p.name, branch, message: created.message}, "Ready-buffer fast-path PR failed");
+	return created.ok;
 }
 
 /** The candidate's project as the AI rungs see it; null when it is gone or has local changes. */

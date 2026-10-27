@@ -1,4 +1,4 @@
-import type {TestStatus} from "./schemas.js";
+import type {CheckStatus, TestStatus} from "./schemas.js";
 
 /** The injected facts readiness needs about one commit; readiness never shells out. */
 export interface ReadinessCommit {
@@ -6,10 +6,17 @@ export interface ReadinessCommit {
 	testStatus: TestStatus;
 	hasTestConfigured: boolean;
 	onHold: boolean;
+	/** The patch-id fast path skipped the local test (green before replay): PR checks decide instead. */
+	localTestSkipped?: boolean;
+	checkStatus?: CheckStatus;
 }
 
-/** Green = the default git-test passes, or no test is configured (landable with a "no tests" marker). */
+/**
+ * Green = the default git-test passes, or no test is configured (landable with a "no tests" marker).
+ * A commit whose local test the patch-id fast path skipped is green only once its PR checks pass.
+ */
 export function isGreen(commit: ReadinessCommit): boolean {
+	if (commit.localTestSkipped === true) return commit.checkStatus === "passed";
 	return !commit.hasTestConfigured || commit.testStatus === "passed";
 }
 

@@ -1346,6 +1346,17 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					</button>
 				)}
 
+				{/* Patch-id fast path: the local build was skipped after a clean replay; PR checks decide readiness */}
+				{item.localTestSkipped && (
+					<span
+						data-testid="local-test-skipped-marker"
+						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
+						title="The commit was green before a clean replay; it counts as ready once its PR checks pass"
+					>
+						local test skipped (green before replay)
+					</span>
+				)}
+
 				{/* Consider splitting: a large commit stays a candidate; the marker enables the state's split transition */}
 				{item.considerSplitting && (
 					<span

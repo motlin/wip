@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vite-plus/test";
-import {isLandable, readinessOf, type Readiness, type ReadinessCommit} from "./readiness.js";
+import {isGreen, isLandable, readinessOf, type Readiness, type ReadinessCommit} from "./readiness.js";
 
 const UPSTREAM = "1111111111111111111111111111111111111111";
 const STALE = "2222222222222222222222222222222222222222";
@@ -118,5 +118,29 @@ describe("readinessOf", () => {
 		},
 	])("$name", ({graph, expected}) => {
 		expect(Object.fromEntries(readinessOf(new Map(Object.entries(graph)), UPSTREAM))).toStrictEqual(expected);
+	});
+});
+
+describe("isGreen with the patch-id fast path", () => {
+	it.each([
+		{
+			name: "local test skipped, PR checks passed",
+			input: commit({localTestSkipped: true, checkStatus: "passed"}),
+			expected: true,
+		},
+		{
+			name: "local test skipped, PR checks pending",
+			input: commit({localTestSkipped: true, checkStatus: "pending"}),
+			expected: false,
+		},
+		{name: "local test skipped, PR checks unknown", input: commit({localTestSkipped: true}), expected: false},
+		{
+			name: "local test skipped, no tests configured, checks pending",
+			input: commit({localTestSkipped: true, hasTestConfigured: false, checkStatus: "pending"}),
+			expected: false,
+		},
+		{name: "PR checks passed without the fast path", input: commit({checkStatus: "passed"}), expected: false},
+	])("$name -> $expected", ({input, expected}) => {
+		expect(isGreen(input)).toBe(expected);
 	});
 });

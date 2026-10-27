@@ -1,4 +1,4 @@
-import type {EnqueueOptions, GitChildResult, JobHandle, Priority, ProjectInfo} from "@wip/shared";
+import type {EnqueueOptions, GitChildResult, GitTestStatus, JobHandle, Priority, ProjectInfo} from "@wip/shared";
 import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {isGreen} from "@wip/shared/readiness.js";
 import {planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
@@ -52,16 +52,70 @@ export interface BufferRepo {
 	localChanges: boolean;
 	/** Branches checked out in any worktree: the buffer never replays them. */
 	checkedOutBranches: readonly string[];
+	/** The patch-id fast path applies (setting on, pull-request repo): see testStep. */
+	trustPatchIdGreen?: boolean;
 	/** In rank order (shortest remaining job first). */
 	candidates: BufferCandidate[];
 }
 
 /**
  * The item's outcome; `skipped` parks the item like a failure (e.g. it became checked out),
- * `stuck` means an agent could not resolve its replay conflict or fix its test, and `auto_fixed`
- * means a green fixup commit sits on top, awaiting the user's review.
+ * `stuck` means an agent could not resolve its replay conflict or fix its test, `auto_fixed`
+ * means a green fixup commit sits on top, awaiting the user's review, and `checks_pending` means
+ * the patch-id fast path skipped the local test and pushed: the item stays parked, and the children
+ * refresh counts it ready once its PR checks pass.
  */
-export type AdvanceOutcome = "ready" | "rebase_conflicts" | "test_failed" | "skipped" | "stuck" | "auto_fixed";
+export type AdvanceOutcome =
+	| "ready"
+	| "rebase_conflicts"
+	| "test_failed"
+	| "skipped"
+	| "stuck"
+	| "auto_fixed"
+	| "checks_pending";
+
+export interface TestStepInput {
+	/** The repo's patch-id fast path applies (setting on, pull-request repo). */
+	trustPatchIdGreen: boolean;
+	hasTestConfigured: boolean;
+	/** The candidate's sha before the replay. */
+	preReplaySha: string;
+	/** The sha to test: the replayed commit, or the candidate itself when it already sat on upstream. */
+	sha: string;
+	/** A clean replay produced `sha` from `preReplaySha`. */
+	replayed: boolean;
+}
+
+export interface TestStepDeps {
+	/** `git test results` for one sha. */
+	results: (sha: string) => Promise<GitTestStatus>;
+	/** `git test run`; its exit code. */
+	run: (sha: string) => Promise<number>;
+	/** Force-push the replayed commit and open or update its PR; false when that failed. */
+	publish: (sha: string) => Promise<boolean>;
+}
+
+/**
+ * Step 3 of the advance (lean plan 4.2): the exit code of `git test run` decides, except on the
+ * patch-id fast path. There a clean replay of a commit git-test already reported good skips the
+ * local build, publishes, and waits for PR checks; patch-id never marks anything green on its own.
+ * A failed publish falls back to running the test.
+ */
+export async function testStep(
+	input: TestStepInput,
+	deps: TestStepDeps,
+): Promise<"ready" | "test_failed" | "checks_pending"> {
+	if (!input.hasTestConfigured) return "ready";
+	if (
+		input.trustPatchIdGreen &&
+		input.replayed &&
+		(await deps.results(input.preReplaySha)) === "good" &&
+		(await deps.publish(input.sha))
+	) {
+		return "checks_pending";
+	}
+	return (await deps.run(input.sha)) === 0 ? "ready" : "test_failed";
+}
 
 export interface ReadyBufferDeps {
 	queue: {enqueue(options: EnqueueOptions): JobHandle};
@@ -97,6 +151,8 @@ export interface BufferRepoContext {
 	checkedOutBranches: readonly string[];
 	onHold: (child: GitChildResult) => boolean;
 	override: (patchId: string) => Priority | undefined;
+	/** The repo's patch-id fast path applies (setting on, pull-request repo). */
+	trustPatchIdGreen?: boolean;
 }
 
 /**
@@ -118,6 +174,7 @@ export function bufferRepoFromChildren(
 		ownership: context.identity === null ? "foreign" : upstreamOwnership(project.remote, context.identity),
 		localChanges: project.dirty,
 		checkedOutBranches: context.checkedOutBranches,
+		...(context.trustPatchIdGreen === true ? {trustPatchIdGreen: true} : {}),
 		candidates: work.map((child) => {
 			const override = child.patchId === undefined ? undefined : context.override(child.patchId);
 			const green = isGreen({
@@ -125,6 +182,7 @@ export function bufferRepoFromChildren(
 				testStatus: child.testStatus,
 				hasTestConfigured: project.hasTestConfigured,
 				onHold: false,
+				...(child.localTestSkipped === true ? {localTestSkipped: true, checkStatus: child.checkStatus} : {}),
 			});
 			const candidate: BufferCandidate = {
 				id: child.patchId ?? child.sha,

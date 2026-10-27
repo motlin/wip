@@ -22,8 +22,27 @@ export const ProjectRecordSchema = z.object({
 	skipNote: z.string().optional(),
 	/** Ready-slot tier; unset reads as medium (see effectivePriority). */
 	priority: PrioritySchema.optional(),
+	/** How finished work lands; unset derives from kind (see landingMode). */
+	landing: z.enum(["pull-request", "fast-forward"]).optional(),
+	/** Ready-buffer patch-id fast path (lean plan 4.2): off unless set, and only in pull-request repos. */
+	trustPatchIdGreen: z.boolean().optional(),
 });
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
+
+export type LandingMode = "pull-request" | "fast-forward";
+
+/** A fork lands through pull requests; any other repo fast-forwards local main unless the registry says otherwise. */
+export function landingMode(record: Pick<ProjectRecord, "kind" | "landing">): LandingMode {
+	return record.landing ?? (record.kind === "fork" ? "pull-request" : "fast-forward");
+}
+
+/**
+ * Whether a clean replay of a commit green before the replay may skip the local build and let PR
+ * checks verify it: the per-repo setting is on and the repo lands through pull requests.
+ */
+export function trustsPatchIdGreen(record: Pick<ProjectRecord, "kind" | "landing" | "trustPatchIdGreen">): boolean {
+	return record.trustPatchIdGreen === true && landingMode(record) === "pull-request";
+}
 
 export interface InventoryError {
 	index: number;

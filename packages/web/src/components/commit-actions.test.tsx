@@ -591,3 +591,21 @@ describe("auto-fixed marker and the auto-fix review", () => {
 		});
 	});
 });
+
+describe("local test skipped marker", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("shows local test skipped (green before replay) on a fast-path commit, and nothing otherwise", () => {
+		renderBranch(branchItem({testStatus: "unknown", localTestSkipped: true}), "checks_running", [project(true)]);
+		const marked = screen.getAllByTestId("local-test-skipped-marker").map((el) => el.textContent);
+		cleanup();
+		renderBranch(branchItem({testStatus: "unknown"}), "checks_running", [project(true)]);
+
+		expect({marked, unmarked: screen.queryByTestId("local-test-skipped-marker")}).toStrictEqual({
+			marked: ["local test skipped (green before replay)"],
+			unmarked: null,
+		});
+	});
+});

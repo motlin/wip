@@ -104,6 +104,7 @@ import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import type {EnqueueRebaseOptions, LadderAiOptions} from "./task-queue.js";
 import {focusHerdrPane} from "./herdr/focus.js";
+import {isLocalTestSkipped} from "./local-test-skipped.js";
 import type {HerdrResult} from "./herdr/client.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -402,6 +403,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					deletions: facts?.deletions,
 					considerSplitting: facts && considerSplitting(facts, splitThresholdLines) ? true : undefined,
 					autoFixed: facts ? autoFixes.get(facts.patchId) : undefined,
+					localTestSkipped: isLocalTestSkipped(p.name, child.sha) || undefined,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);

@@ -245,17 +245,9 @@ function shellQuote(text: string): string {
 	return `"${text.replace(/(["\\$`])/g, "\\$1")}"`;
 }
 
-/**
- * Resolve rebase conflicts with `claude "/git:conflicts"` in a herdr tab. Returns the new ladder
- * result, or "stuck" when the timeout fires, herdr cannot launch the tab, or a branch that
- * conflicted before still conflicts after the agent ran.
- */
-export async function runAiConflictRung(
-	project: LadderRunProject,
-	stop: LadderStopInfo,
-	overrides: Partial<AiRungDeps> = {},
-): Promise<LadderResult | "stuck"> {
-	const deps: AiRungDeps = {
+/** Production rung deps with optional overrides. */
+export function aiRungDeps(overrides: Partial<AiRungDeps> = {}): AiRungDeps {
+	return {
 		queue: workQueue,
 		launch: launchInHerdr,
 		wait: waitForHerdrAgent,
@@ -266,8 +258,68 @@ export async function runAiConflictRung(
 		timeoutMs: getAiRungTimeoutMs(),
 		...overrides,
 	};
+}
 
+/**
+ * Resolves one branch's rebase conflict with `claude "/git:conflicts <branch>"` in a herdr tab, in a
+ * throwaway worktree stopped on the conflict; runs inside the caller's queue job. "resolved" once the
+ * rebase finished (the branch ref moved), else "stuck": no worktree, a repeated failure signature,
+ * no tab, a timeout, or a rebase the agent left unfinished.
+ */
+export async function resolveBranchConflict(
+	project: LadderRunProject,
+	branch: string,
+	deps: AiRungDeps,
+	signal: AbortSignal,
+): Promise<"resolved" | "stuck"> {
+	const prepared = await deps.prepare(project, branch);
+	if (!prepared) return "stuck";
+	let agentDone = false;
+	let completed = false;
+	try {
+		agentDone = !prepared.conflicted || (await runConflictAgent(project, branch, prepared, deps, signal));
+	} finally {
+		completed = await prepared.finish();
+	}
+	return agentDone && completed ? "resolved" : "stuck";
+}
+
+async function runConflictAgent(
+	project: LadderRunProject,
+	branch: string,
+	prepared: PreparedConflictWorktree,
+	deps: AiRungDeps,
+	signal: AbortSignal,
+): Promise<boolean> {
 	const memory = deps.memory ?? aiRunMemory;
+	const identity = async () => (deps.identity ?? defaultIdentity)(project, branch);
+	const repeated = await repeatedFailure(memory, project.name, identity, "conflicts", prepared.log);
+	if (repeated) {
+		deps.onRepeatedFailure?.(branch, repeated);
+		return false;
+	}
+	const launched = await deps.launch({
+		cwd: prepared.cwd,
+		label: `wip:${project.name}:conflicts`,
+		command: `claude ${shellQuote(`/git:conflicts ${branch}`)}`,
+		focus: false,
+	});
+	if (!launched.ok) return false;
+	deps.onLaunched?.(launched.value);
+	return (await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal})) === "done";
+}
+
+/**
+ * Resolve rebase conflicts with `claude "/git:conflicts"` in a herdr tab. Returns the new ladder
+ * result, or "stuck" when the timeout fires, herdr cannot launch the tab, or a branch that
+ * conflicted before still conflicts after the agent ran.
+ */
+export async function runAiConflictRung(
+	project: LadderRunProject,
+	stop: LadderStopInfo,
+	overrides: Partial<AiRungDeps> = {},
+): Promise<LadderResult | "stuck"> {
+	const deps = aiRungDeps(overrides);
 	let outcome: LadderResult | "stuck" = "stuck";
 	const handle = deps.queue.enqueue({
 		coalesceKey: `ai-rung:conflicts:${project.name}`,
@@ -279,31 +331,7 @@ export async function runAiConflictRung(
 			// One branch per launch, each in its own throwaway worktree stopped on the rebase conflict.
 			/* oxlint-disable no-await-in-loop -- one agent at a time per project */
 			for (const branch of stop.branches) {
-				const prepared = await deps.prepare(project, branch);
-				if (!prepared) return;
-				let completed = true;
-				try {
-					if (!prepared.conflicted) continue;
-					const identity = async () => (deps.identity ?? defaultIdentity)(project, branch);
-					const repeated = await repeatedFailure(memory, project.name, identity, "conflicts", prepared.log);
-					if (repeated) {
-						deps.onRepeatedFailure?.(branch, repeated);
-						return;
-					}
-					const launched = await deps.launch({
-						cwd: prepared.cwd,
-						label: `wip:${project.name}:conflicts`,
-						command: `claude ${shellQuote(`/git:conflicts ${branch}`)}`,
-						focus: false,
-					});
-					if (!launched.ok) return;
-					deps.onLaunched?.(launched.value);
-					const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
-					if (waited !== "done") return;
-				} finally {
-					completed = await prepared.finish();
-				}
-				if (!completed) return;
+				if ((await resolveBranchConflict(project, branch, deps, signal)) === "stuck") return;
 			}
 			/* oxlint-enable no-await-in-loop */
 			const next = await deps.rerun(project, signal);
@@ -326,17 +354,7 @@ export async function runAiTestFixRung(
 	branch: string,
 	overrides: Partial<AiRungDeps> = {},
 ): Promise<"green" | "red" | "stuck"> {
-	const deps: AiRungDeps = {
-		queue: workQueue,
-		launch: launchInHerdr,
-		wait: waitForHerdrAgent,
-		rerun: defaultRerun,
-		results: defaultResults,
-		prepare: prepareConflictWorktree,
-		prepareTestFix: prepareTestFixWorktree,
-		timeoutMs: getAiRungTimeoutMs(),
-		...overrides,
-	};
+	const deps = aiRungDeps(overrides);
 
 	let outcome: "green" | "red" | "stuck" = "stuck";
 	const handle = deps.queue.enqueue({

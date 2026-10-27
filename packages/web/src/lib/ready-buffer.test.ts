@@ -54,6 +54,7 @@ interface Harness {
 	queue: WorkQueue;
 	enqueued: Enqueued[];
 	advanced: string[];
+	resolved: string[];
 	maxConcurrent: () => number;
 }
 
@@ -79,7 +80,9 @@ afterEach(async () => {
 
 function harness(options: {
 	repos: () => BufferRepo[];
-	outcome?: (project: string, id: string) => AdvanceOutcome;
+	outcome?: (project: string, id: string, sha: string) => AdvanceOutcome;
+	/** The conflict agent's result per item: the resolved tip sha, or null when stuck. */
+	resolve?: (project: string, id: string) => string | null;
 	/** Advances wait for release() instead of finishing on the next tick. */
 	gated?: boolean;
 	hotProbe?: boolean;
@@ -96,6 +99,7 @@ function harness(options: {
 	queues.push(queue);
 	const enqueued: Enqueued[] = [];
 	const advanced: string[] = [];
+	const resolved: string[] = [];
 	let concurrent = 0;
 	let maxConcurrent = 0;
 	const spy: Pick<WorkQueue, "enqueue"> = {
@@ -129,7 +133,11 @@ function harness(options: {
 						setTimeout(resolve, 1);
 					}));
 			concurrent -= 1;
-			return options.outcome?.(r.name, candidate.id) ?? "ready";
+			return options.outcome?.(r.name, candidate.id, candidate.sha) ?? "ready";
+		},
+		resolveConflicts: async (r, candidate) => {
+			resolved.push(`${r.name}:${candidate.id}`);
+			return Promise.resolve(options.resolve?.(r.name, candidate.id) ?? null);
 		},
 	});
 	return {
@@ -137,6 +145,7 @@ function harness(options: {
 		queue,
 		enqueued,
 		advanced,
+		resolved,
 		maxConcurrent: () => maxConcurrent,
 	};
 }
@@ -279,7 +288,35 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("records a conflict as rebase_conflicts and pulls the next candidate", async () => {
+	it("resolves a replay conflict with exactly one conflict job, then re-enters at the test and ends ready", async () => {
+		const resolvedSha = "r".repeat(40);
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(1)})],
+			outcome: (_project, id, sha) => (id === "c1" && sha !== resolvedSha ? "rebase_conflicts" : "ready"),
+			resolve: () => resolvedSha,
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({
+			jobs: h.enqueued.map((e) => [e.kind, e.coalesceKey, e.costClass, e.coalesced]),
+			resolved: h.resolved,
+			advanced: h.advanced,
+			outcomes: h.buffer.outcomes("a"),
+		}).toStrictEqual({
+			jobs: [
+				["advance-commit", "ready:a:c1", "build", false],
+				["buffer-conflicts", "conflicts:a:c1", "ai", false],
+				["advance-commit", "ready:a:c1", "build", false],
+			],
+			resolved: ["a:c1"],
+			advanced: ["a:c1", "a:c1"],
+			outcomes: {c1: "ready"},
+		});
+	});
+
+	it("marks an item stuck when the conflict agent fails, and pulls the next candidate", async () => {
 		const h = harness({
 			repos: () => [repo("a")],
 			outcome: (_project, id) => (id === "c1" ? "rebase_conflicts" : "ready"),
@@ -288,9 +325,27 @@ describe("createReadyBuffer", () => {
 		await h.buffer.pull();
 		await h.buffer.idle();
 
-		expect({advanced: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+		expect({resolved: h.resolved, advanced: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			resolved: ["a:c1"],
 			advanced: ["a:c1", "a:c2", "a:c3"],
-			outcomes: {c1: "rebase_conflicts", c2: "ready", c3: "ready"},
+			outcomes: {c1: "stuck", c2: "ready", c3: "ready"},
+		});
+	});
+
+	it("marks an item stuck without a second conflict job when it still conflicts after resolution", async () => {
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(1)})],
+			outcome: () => "rebase_conflicts",
+			resolve: () => "r".repeat(40),
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({resolved: h.resolved, advanced: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			resolved: ["a:c1"],
+			advanced: ["a:c1", "a:c1"],
+			outcomes: {c1: "stuck"},
 		});
 	});
 

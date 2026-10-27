@@ -13,7 +13,8 @@ import {workQueue} from "./shared-work-queue.js";
 
 /**
  * Production wiring for the ready buffer (lean plan 4.6): the snapshot reads each project's
- * cached children, the advance job runs steps 1-3 (baseline, replay, test), and the signals
+ * cached children, the advance job runs steps 1-3 (baseline, replay, test), a replay conflict gets
+ * one silent `/git:conflicts` agent, and the signals
  * (upstreamMoved, landed, task completion, On hold, children refresh, safety tick) trigger pulls.
  */
 
@@ -100,6 +101,36 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	return (await gitTestRun(p.dir, sha, {logDir})).exitCode === 0 ? "ready" : "test_failed";
 }
 
+/**
+ * Step 30: resolve a replay conflict silently with one `/git:conflicts` agent in a throwaway
+ * worktree (no focus); the resolved branch tip re-enters the advance at the test.
+ */
+async function resolveConflicts(
+	repo: BufferRepo,
+	candidate: BufferCandidate,
+	signal: AbortSignal,
+): Promise<string | null> {
+	if (candidate.branch === undefined) return null;
+	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+	const {aiRungDeps, resolveBranchConflict} = await import("./herdr/ai-rungs.js");
+	const {getProjects} = await import("./server-fns.js");
+	const p = (await getProjects()).find((proj) => proj.name === repo.name);
+	if (!p || p.dirty) return null;
+	const project = {
+		name: p.name,
+		path: p.dir,
+		upstreamRemote: p.upstreamRemote,
+		upstreamBranch: p.upstreamBranch,
+		dirty: p.dirty,
+		detached: false,
+		rebaseInProgress: false,
+		offline: false,
+	};
+	if ((await resolveBranchConflict(project, candidate.branch, aiRungDeps(), signal)) === "stuck") return null;
+	const tip = await tracedExeca("git", ["-C", p.dir, "rev-parse", candidate.branch], {reject: false});
+	return tip.exitCode === 0 ? tip.stdout.trim() : null;
+}
+
 let buffer: ReadyBuffer | null = null;
 
 function warnOnFailure(promise: Promise<void>, signal: string): void {
@@ -138,6 +169,12 @@ export async function startReadyBuffer(
 			// The replay and test changed what the cards show.
 			enqueueProjectRefresh(repo.name, {force: true});
 			return outcome;
+		},
+		resolveConflicts: async (repo, candidate, signal) => {
+			const resolved = await resolveConflicts(repo, candidate, signal);
+			log.general.info({project: repo.name, sha: candidate.sha, resolved}, "Ready-buffer conflict resolution");
+			enqueueProjectRefresh(repo.name, {force: true});
+			return resolved;
 		},
 	});
 	buffer = started;

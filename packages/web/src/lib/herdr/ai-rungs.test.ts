@@ -13,6 +13,7 @@ import {
 import {
 	branchVerdict,
 	prepareTestFixWorktree,
+	resolveBranchConflict,
 	runAiConflictRung,
 	runAiTestFixLoop,
 	runAiTestFixRung,
@@ -103,6 +104,59 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 	};
 	return {deps, calls};
 }
+
+describe("resolveBranchConflict", () => {
+	const signal = new AbortController().signal;
+
+	it("runs one silent /git:conflicts agent in the stopped worktree and reports resolved once the rebase finished", async () => {
+		const {deps, calls} = makeDeps();
+		expect({
+			result: await resolveBranchConflict(project, "feat-a", deps, signal),
+			launches: calls.launches,
+			order: calls.order,
+		}).toStrictEqual({
+			result: "resolved",
+			launches: [
+				{
+					cwd: "/tmp/demo",
+					label: "wip:demo:conflicts",
+					command: `claude "/git:conflicts feat-a"`,
+					focus: false,
+				},
+			],
+			order: ["launch", "wait", "finish"],
+		});
+	});
+
+	it("reports stuck when the agent leaves the rebase unfinished, times out, or cannot launch", async () => {
+		const unfinished = makeDeps({
+			prepare: async (p) =>
+				Promise.resolve({cwd: p.path, conflicted: true, log: "", finish: async () => Promise.resolve(false)}),
+		}).deps;
+		const timeout = makeDeps({wait: async () => Promise.resolve("timeout")}).deps;
+		const noLaunch = makeDeps({
+			launch: async () => Promise.resolve({ok: false, code: "unavailable", message: "no herdr"}),
+		}).deps;
+		const noWorktree = makeDeps({prepare: async () => Promise.resolve(null)}).deps;
+		expect({
+			unfinished: await resolveBranchConflict(project, "feat-a", unfinished, signal),
+			timeout: await resolveBranchConflict(project, "feat-a", timeout, signal),
+			noLaunch: await resolveBranchConflict(project, "feat-a", noLaunch, signal),
+			noWorktree: await resolveBranchConflict(project, "feat-a", noWorktree, signal),
+		}).toStrictEqual({unfinished: "stuck", timeout: "stuck", noLaunch: "stuck", noWorktree: "stuck"});
+	});
+
+	it("reports resolved without an agent when the rebase no longer conflicts", async () => {
+		const {deps, calls} = makeDeps({
+			prepare: async (p) =>
+				Promise.resolve({cwd: p.path, conflicted: false, log: "", finish: async () => Promise.resolve(true)}),
+		});
+		expect({
+			result: await resolveBranchConflict(project, "feat-a", deps, signal),
+			launches: calls.launches,
+		}).toStrictEqual({result: "resolved", launches: []});
+	});
+});
 
 describe("runAiConflictRung", () => {
 	it("launches one agent per branch in its own worktree, cleaning up each, then re-runs the ladder", async () => {

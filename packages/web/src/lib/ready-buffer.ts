@@ -13,9 +13,10 @@ import {repoResource} from "./repo-resource.js";
  * then remaining job. Each pull starts advance-commit jobs from the front of that queue while
  * ready + inFlight stays under the global ready target, with at most `capacity` in flight. An
  * item the buffer advanced to ready stays buffered (counting toward the target) until it lands,
- * goes on hold, or upstream moves, which re-advances it. A conflict or test failure parks the
- * item (rebase_conflicts / test_failed) until upstream moves, and the completion pulls the next
- * candidate.
+ * goes on hold, or upstream moves, which re-advances it. A replay conflict gets one silent
+ * `/git:conflicts` job (plan step 30): success re-enters the advance at the test, failure (or a
+ * conflict again) marks the item `stuck`. A test failure or stuck item stays parked until upstream
+ * moves, and the completion pulls the next candidate.
  */
 
 /** One unready or ready unit of work, keyed by patch-id (sha when unknown). */
@@ -50,8 +51,11 @@ export interface BufferRepo {
 	candidates: BufferCandidate[];
 }
 
-/** The job's outcome; `skipped` parks the item like a failure (e.g. it became checked out). */
-export type AdvanceOutcome = "ready" | "rebase_conflicts" | "test_failed" | "skipped";
+/**
+ * The item's outcome; `skipped` parks the item like a failure (e.g. it became checked out), and
+ * `stuck` means the conflict agent could not resolve its replay conflict.
+ */
+export type AdvanceOutcome = "ready" | "rebase_conflicts" | "test_failed" | "skipped" | "stuck";
 
 export interface ReadyBufferDeps {
 	queue: {enqueue(options: EnqueueOptions): JobHandle};
@@ -61,6 +65,8 @@ export interface ReadyBufferDeps {
 	/** How many buffer jobs may be in flight at once (readyBuffer.capacity). */
 	capacity: () => number;
 	advance: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<AdvanceOutcome>;
+	/** Resolves the candidate's replay conflict without user attention; the new tip sha, or null when stuck. */
+	resolveConflicts: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
 }
 
 export interface ReadyBuffer {
@@ -149,9 +155,12 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		return map;
 	};
 
-	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void {
-		const jobs = inFlightOf(repo.name);
-		if (jobs.has(candidate.id)) return;
+	/**
+	 * One advance-commit job; a first replay conflict gets one conflict job, and on success the
+	 * advance re-enters with the resolved tip, which already sits on upstream, so only the test runs.
+	 */
+	async function advanceItem(repo: BufferRepo, candidate: BufferCandidate, conflictTried: boolean): Promise<void> {
+		const done = resultsOf(repo.name);
 		const handle = deps.queue.enqueue({
 			coalesceKey: `ready:${repo.name}:${candidate.id}`,
 			kind: "advance-commit",
@@ -163,11 +172,37 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			buffer: true,
 			run: async (signal) => {
 				if (stopped.has(repo.name)) return;
-				const outcome = await deps.advance(repo, candidate, signal);
-				resultsOf(repo.name).set(candidate.id, outcome);
+				done.set(candidate.id, await deps.advance(repo, candidate, signal));
 			},
 		});
-		const settled = handle.settled.then(async () => {
+		await handle.settled;
+		if (done.get(candidate.id) !== "rebase_conflicts") return undefined;
+		if (conflictTried) {
+			done.set(candidate.id, "stuck");
+			return undefined;
+		}
+		const resolution: {sha: string | null} = {sha: null};
+		await deps.queue.enqueue({
+			coalesceKey: `conflicts:${repo.name}:${candidate.id}`,
+			kind: "buffer-conflicts",
+			project: repo.name,
+			costClass: "ai",
+			resources: [repoResource(repo.name)],
+			run: async (signal) => {
+				resolution.sha = await deps.resolveConflicts(repo, candidate, signal);
+			},
+		}).settled;
+		if (resolution.sha === null) {
+			done.set(candidate.id, "stuck");
+			return undefined;
+		}
+		return advanceItem(repo, {...candidate, sha: resolution.sha}, true);
+	}
+
+	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void {
+		const jobs = inFlightOf(repo.name);
+		if (jobs.has(candidate.id)) return;
+		const settled = advanceItem(repo, candidate, false).then(async () => {
 			jobs.delete(candidate.id);
 			return requestPull();
 		});

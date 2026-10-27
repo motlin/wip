@@ -2,7 +2,7 @@ import {z} from "zod";
 
 import type {TodoItem} from "./schemas.js";
 
-/** A repo's or an item's place in the ready-slot tiers. Client-safe: no node builtins. */
+/** A repo's or an item's place in the ready buffer's global order. Client-safe: no node builtins. */
 export const PrioritySchema = z.enum(["high", "medium", "low"]);
 export type Priority = z.infer<typeof PrioritySchema>;
 

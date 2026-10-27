@@ -13,9 +13,10 @@ import {
 	recordLandingOutcomes,
 	getCommitFacts,
 	loadInventory,
+	getReadyBufferSize,
 } from "@wip/shared";
 import {rankCandidates} from "@wip/shared/candidate-rank.js";
-import {allocateReadySlots} from "@wip/shared/ready-slots.js";
+import {orderReadyQueue} from "@wip/shared/ready-queue.js";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
 
@@ -72,28 +73,31 @@ function emit(event: MergeStatusEvent): void {
 }
 
 /**
- * The pull window: merge-tree runs eagerly only for the top `slots + lookahead` ranked
- * candidates, where slots is the repo's ready-buffer allocation (lean plan 4.6).
+ * The pull window: merge-tree runs eagerly only for this project's children among the first
+ * `readyBuffer.size + lookahead` candidates of the global order (plan decision 27).
  */
 export const MERGE_STATUS_LOOKAHEAD = 2;
 
-/** Each project's not-on-hold children from its last check: the unready work slots are allocated over. */
-const unreadyWork = new Map<string, string[]>();
+/** Each project's not-on-hold children from its last check, in rank order with their remaining job. */
+const unreadyWork = new Map<string, Array<{sha: string; job: number}>>();
 
 /**
- * The project's ready slots across every project checked so far. Readiness isn't known here, so
- * each not-on-hold child counts as unready work; per-item overrides are left to the buffer.
+ * How many of the project's children fall in the head of the global order across every project
+ * checked so far. Readiness isn't known here, so each not-on-hold child counts as unready work;
+ * per-item overrides are left to the buffer.
  */
-function readySlotsFor(project: string, projects: readonly ProjectInfo[]): number {
+function pullWindowFor(project: string, projects: readonly ProjectInfo[]): number {
 	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r.priority]));
 	const repos = projects.map((p) => {
 		const priority = registry.get(p.dir);
 		return priority === undefined ? {name: p.name} : {name: p.name, priority};
 	});
-	const items = [...unreadyWork].flatMap(([repo, shas]) =>
-		shas.map((id) => ({repo, id, state: "unready" as const, onHold: false})),
+	const items = [...unreadyWork].flatMap(([repo, work]) =>
+		work.map(({sha, job}) => ({repo, id: sha, job, state: "unready" as const, onHold: false})),
 	);
-	return allocateReadySlots(repos, items).get(project)?.slots ?? 0;
+	return orderReadyQueue(repos, items)
+		.slice(0, getReadyBufferSize() + MERGE_STATUS_LOOKAHEAD)
+		.filter((item) => item.repo === project).length;
 }
 
 /** Children outside the pull window, in rank order, waiting for one-per-sweep-tick merge-tree checks. */
@@ -110,9 +114,9 @@ export function resetDeferredMergeStatus(): void {
 	unreadyWork.clear();
 }
 
-/** Uncached children ranked shortest job first, by size from the commit_facts cache (filled by the children refresh). */
-async function rankUncached(p: ProjectInfo, shas: string[], window: number): Promise<string[]> {
-	if (shas.length <= window) return shas;
+/** Children ranked shortest job first, by size from the commit_facts cache (filled by the children refresh). */
+async function rankWork(p: ProjectInfo, shas: string[]): Promise<Array<{sha: string; job: number}>> {
+	if (shas.length === 0) return [];
 	const facts = await getCommitFacts(p.dir, p.name, shas);
 	const chains = shas.map((sha) => {
 		const f = facts.get(sha);
@@ -133,7 +137,7 @@ async function rankUncached(p: ProjectInfo, shas: string[], window: number): Pro
 			],
 		};
 	});
-	return rankCandidates(chains).map((c) => c.sha);
+	return rankCandidates(chains).map(({sha, job}) => ({sha, job}));
 }
 
 async function computeAndEmit(p: ProjectInfo, sha: string, upstreamSha: string): Promise<void> {
@@ -162,13 +166,16 @@ async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]
 	const allShas = await getChildren(p.dir, p.upstreamRef);
 	// On hold items get no background merge-tree work.
 	const held = await heldShas(p.dir, p.name, allShas);
-	const childShas = allShas.filter((sha) => !held.has(sha));
-	unreadyWork.set(p.name, childShas);
-	const window = readySlotsFor(p.name, projects) + MERGE_STATUS_LOOKAHEAD;
+	const work = await rankWork(
+		p,
+		allShas.filter((sha) => !held.has(sha)),
+	);
+	unreadyWork.set(p.name, work);
+	const window = pullWindowFor(p.name, projects);
 	const cached = new Map(getCachedMergeStatuses(p.name, upstreamSha).map((ms) => [ms.sha, ms]));
 
 	const uncached: string[] = [];
-	for (const sha of childShas) {
+	for (const {sha} of work) {
 		const ms = cached.get(sha);
 		if (!ms) {
 			uncached.push(sha);
@@ -184,12 +191,11 @@ async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]
 		});
 	}
 
-	const ranked = await rankUncached(p, uncached, window);
-	const rest = ranked.slice(window);
+	const rest = uncached.slice(window);
 	deferred.delete(p.name);
 	if (rest.length > 0) deferred.set(p.name, {upstreamSha, shas: rest});
 
-	for (const sha of ranked.slice(0, window)) {
+	for (const sha of uncached.slice(0, window)) {
 		// Sequential on purpose: each call spawns git subprocesses, so fan-out must stay bounded
 		// eslint-disable-next-line no-await-in-loop
 		await computeAndEmit(p, sha, upstreamSha);

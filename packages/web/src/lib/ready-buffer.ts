@@ -1,7 +1,7 @@
 import type {EnqueueOptions, GitChildResult, JobHandle, Priority, ProjectInfo} from "@wip/shared";
-import {rankGitChildren} from "@wip/shared/candidate-rank.js";
+import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {isGreen} from "@wip/shared/readiness.js";
-import {allocateReadySlots} from "@wip/shared/ready-slots.js";
+import {planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
 import {stopsLine, upstreamOwnership, type GitHubIdentity, type UpstreamOwnership} from "@wip/shared/upstream-red.js";
 import {repoResource} from "./repo-resource.js";
 
@@ -9,11 +9,13 @@ import {repoResource} from "./repo-resource.js";
  * The ready-buffer pull controller (lean plan 4.6). Client-safe: no node builtins; the
  * snapshot and the advance job are injected (ready-buffer-server.ts wires production).
  *
- * Each pull tops every repo up to `slots - ready - inFlight` advance-commit jobs, taking
- * candidates in rank order. An item the buffer advanced to ready stays buffered (holding its
- * slot) until it lands, goes on hold, or upstream moves, which re-advances it. A conflict or
- * test failure parks the item (rebase_conflicts / test_failed) until upstream moves, and the
- * completion pulls the next candidate.
+ * Plan decision 27: one queue of candidates across every repo, ordered by effective priority
+ * then remaining job. Each pull starts advance-commit jobs from the front of that queue while
+ * ready + inFlight stays under the global ready target, with at most `capacity` in flight. An
+ * item the buffer advanced to ready stays buffered (counting toward the target) until it lands,
+ * goes on hold, or upstream moves, which re-advances it. A conflict or test failure parks the
+ * item (rebase_conflicts / test_failed) until upstream moves, and the completion pulls the next
+ * candidate.
  */
 
 /** One unready or ready unit of work, keyed by patch-id (sha when unknown). */
@@ -31,6 +33,8 @@ export interface BufferCandidate {
 	state: "unready" | "ready";
 	onHold: boolean;
 	override?: Priority;
+	/** Remaining job (candidate rank); orders candidates of the same priority across repos. */
+	job?: number;
 }
 
 export interface BufferRepo {
@@ -52,11 +56,15 @@ export type AdvanceOutcome = "ready" | "rebase_conflicts" | "test_failed" | "ski
 export interface ReadyBufferDeps {
 	queue: {enqueue(options: EnqueueOptions): JobHandle};
 	snapshot: () => Promise<BufferRepo[]>;
+	/** How many commits to keep ready across all repos (readyBuffer.size). */
+	target: () => number;
+	/** How many buffer jobs may be in flight at once (readyBuffer.capacity). */
+	capacity: () => number;
 	advance: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<AdvanceOutcome>;
 }
 
 export interface ReadyBuffer {
-	/** Top up every repo. Pulls are serialized; a pull requested mid-pull runs once more after it. */
+	/** Top up the buffer toward its ready target. Pulls are serialized; a pull requested mid-pull runs once more after it. */
 	pull(): Promise<void>;
 	landed(project: string): Promise<void>;
 	onHold(project: string): Promise<void>;
@@ -110,6 +118,7 @@ export function bufferRepoFromChildren(
 				// Unknown merge status is not ready: the advance job finds out cheaply.
 				state: child.commitsBehind === 0 && child.needsRebase !== true && green ? "ready" : "unready",
 				onHold: context.onHold(child),
+				job: gitChildJob(child),
 			};
 			if (child.branch !== undefined) candidate.branch = child.branch;
 			if (override !== undefined) candidate.override = override;
@@ -165,25 +174,27 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		jobs.set(candidate.id, settled);
 	}
 
-	function topUp(repo: BufferRepo, slots: number, pullable: ReadonlySet<string>): void {
+	/** The repo's candidates as global queue items; parked and checked-out work is not pullable. */
+	function queueItems(repo: BufferRepo): ReadyQueueItem[] {
 		const done = resultsOf(repo.name);
 		const jobs = inFlightOf(repo.name);
 		const present = new Set(repo.candidates.map((c) => c.id));
 		// Forget items that left the snapshot (landed or abandoned).
 		for (const id of done.keys()) if (!present.has(id)) done.delete(id);
-
-		const ready = repo.candidates.filter(
-			(c) => !c.onHold && (c.state === "ready" || done.get(c.id) === "ready"),
-		).length;
-		let available = slots - ready - jobs.size;
 		const checkedOut = new Set(repo.checkedOutBranches);
-		for (const candidate of repo.candidates) {
-			if (available <= 0) break;
-			if (!pullable.has(candidate.id) || jobs.has(candidate.id) || done.has(candidate.id)) continue;
-			if (candidate.branch !== undefined && checkedOut.has(candidate.branch)) continue;
-			enqueue(repo, candidate);
-			available -= 1;
-		}
+		return repo.candidates.map((c) => {
+			const ready = c.state === "ready" || done.get(c.id) === "ready";
+			const parked = done.has(c.id) && !ready;
+			const blocked = !ready && c.branch !== undefined && checkedOut.has(c.branch);
+			return {
+				repo: repo.name,
+				id: c.id,
+				state: jobs.has(c.id) ? "inFlight" : ready ? "ready" : "unready",
+				onHold: c.onHold || parked || blocked,
+				...(c.override === undefined ? {} : {override: c.override}),
+				...(c.job === undefined ? {} : {job: c.job}),
+			};
+		});
 	}
 
 	async function runPull(): Promise<void> {
@@ -194,24 +205,20 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			if (stopsLine(repo)) stopped.add(repo.name);
 			else if (!repo.localChanges) active.push(repo);
 		}
-		const allocation = allocateReadySlots(
+		const byName = new Map(active.map((r) => [r.name, r]));
+		const pulls = planReadyPulls(
 			active.map((r) => (r.priority === undefined ? {name: r.name} : {name: r.name, priority: r.priority})),
-			active.flatMap((r) => {
-				const done = resultsOf(r.name);
-				return r.candidates.map((c) => ({
-					repo: r.name,
-					id: c.id,
-					state:
-						c.state === "ready" || done.get(c.id) === "ready" ? ("ready" as const) : ("unready" as const),
-					// Parked items are not pullable work, so they hold no tier.
-					onHold: c.onHold || (done.has(c.id) && done.get(c.id) !== "ready"),
-					...(c.override === undefined ? {} : {override: c.override}),
-				}));
-			}),
+			active.flatMap(queueItems),
+			{
+				target: deps.target(),
+				capacity: deps.capacity(),
+				inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
+			},
 		);
-		for (const repo of active) {
-			const slot = allocation.get(repo.name);
-			if (slot) topUp(repo, slot.slots, new Set(slot.pullable));
+		for (const pull of pulls) {
+			const repo = byName.get(pull.repo);
+			const candidate = repo?.candidates.find((c) => c.id === pull.id);
+			if (repo && candidate) enqueue(repo, candidate);
 		}
 	}
 

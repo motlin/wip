@@ -26,9 +26,9 @@
 			"types": "./src/lib/candidate-rank.ts",
 			"import": "./src/lib/candidate-rank.ts"
 		},
-		"./ready-slots.js": {
-			"types": "./src/lib/ready-slots.ts",
-			"import": "./src/lib/ready-slots.ts"
+		"./ready-queue.js": {
+			"types": "./src/lib/ready-queue.ts",
+			"import": "./src/lib/ready-queue.ts"
 		},
 		"./readiness.js": {
 			"types": "./src/lib/readiness.ts",

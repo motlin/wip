@@ -45,6 +45,10 @@ function repo(name: string, overrides: Partial<BufferRepo> = {}): BufferRepo {
 	};
 }
 
+function seventyMedium(): BufferRepo[] {
+	return Array.from({length: 70}, (_, i) => repo(`r${String(i).padStart(2, "0")}`, {priority: "medium"}));
+}
+
 interface Harness {
 	buffer: ReadyBuffer;
 	queue: WorkQueue;
@@ -79,6 +83,10 @@ function harness(options: {
 	/** Advances wait for release() instead of finishing on the next tick. */
 	gated?: boolean;
 	hotProbe?: boolean;
+	/** The global ready target; 2 unless a test says otherwise. */
+	target?: number;
+	/** How many buffer jobs run at once; 4 unless a test says otherwise. */
+	capacity?: number;
 }): Harness {
 	const queue = createWorkQueue({
 		globalConcurrency: 4,
@@ -109,6 +117,8 @@ function harness(options: {
 	const buffer = createReadyBuffer({
 		queue: spy,
 		snapshot: async () => Promise.resolve(structuredClone(options.repos())),
+		target: () => options.target ?? 2,
+		capacity: () => options.capacity ?? 4,
 		advance: async (r, candidate) => {
 			advanced.push(`${r.name}:${candidate.id}`);
 			concurrent += 1;
@@ -131,10 +141,19 @@ function harness(options: {
 	};
 }
 
+/** Fill a target of 3 from five one-candidate repos at the given capacity. */
+async function fillFiveRepos(capacity: number): Promise<{advanced: string[]; maxConcurrent: number}> {
+	const repos = ["a", "b", "c", "d", "e"].map((name) => repo(name, {candidates: candidates(1)}));
+	const h = harness({repos: () => repos, target: 3, capacity});
+	await h.buffer.pull();
+	await h.buffer.idle();
+	return {advanced: h.advanced, maxConcurrent: h.maxConcurrent()};
+}
+
 const fresh = (enqueued: Enqueued[]): string[] => enqueued.filter((e) => !e.coalesced).map((e) => e.coalesceKey);
 
 describe("createReadyBuffer", () => {
-	it("enqueues exactly 2 advance-commit jobs for 5 candidates with 2 slots, in rank order", async () => {
+	it("enqueues exactly 2 advance-commit jobs for 5 candidates with a ready target of 2, in rank order", async () => {
 		const h = harness({repos: () => [repo("a")], gated: true});
 
 		await h.buffer.pull();
@@ -232,7 +251,7 @@ describe("createReadyBuffer", () => {
 		const h = harness({
 			repos: () => [
 				repo("own-red", {upstreamRed: true, ownership: "own"}),
-				repo("foreign-red", {upstreamRed: true, ownership: "foreign"}),
+				repo("foreign-red", {upstreamRed: true, ownership: "foreign", candidates: candidates(1)}),
 				repo("green"),
 			],
 			gated: true,
@@ -240,12 +259,7 @@ describe("createReadyBuffer", () => {
 
 		await h.buffer.pull();
 
-		expect(fresh(h.enqueued)).toStrictEqual([
-			"ready:foreign-red:c1",
-			"ready:foreign-red:c2",
-			"ready:green:c1",
-			"ready:green:c2",
-		]);
+		expect(fresh(h.enqueued)).toStrictEqual(["ready:foreign-red:c1", "ready:green:c1"]);
 	});
 
 	it("runs one buffer job at a time under a hot probe and still refills over completions", async () => {
@@ -291,6 +305,37 @@ describe("createReadyBuffer", () => {
 		await h.buffer.pull();
 
 		expect(fresh(h.enqueued)).toStrictEqual(["ready:a:c2", "ready:a:c3"]);
+	});
+
+	it("enqueues exactly the ready target across 70 all-medium repos, not two per repo", async () => {
+		const h = harness({repos: seventyMedium, target: 3, gated: true});
+
+		await h.buffer.pull();
+
+		expect(fresh(h.enqueued)).toStrictEqual(["ready:r00:c1", "ready:r00:c2", "ready:r00:c3"]);
+	});
+
+	it("pulls a high item anywhere before every medium, then mediums by shortest job across repos", async () => {
+		const h = harness({
+			repos: () => {
+				const repos = seventyMedium();
+				repos[1] = repo("r01", {priority: "medium", candidates: candidates(1, {c1: {job: 9}})});
+				return [...repos, repo("r70", {candidates: candidates(2, {c2: {override: "high"}})})];
+			},
+			target: 3,
+			gated: true,
+		});
+
+		await h.buffer.pull();
+
+		expect(fresh(h.enqueued)).toStrictEqual(["ready:r70:c2", "ready:r00:c1", "ready:r00:c2"]);
+	});
+
+	it("lets capacity change concurrency but not the ready target or the order", async () => {
+		expect({one: await fillFiveRepos(1), three: await fillFiveRepos(3)}).toStrictEqual({
+			one: {advanced: ["a:c1", "b:c1", "c:c1"], maxConcurrent: 1},
+			three: {advanced: ["a:c1", "b:c1", "c:c1"], maxConcurrent: 3},
+		});
 	});
 
 	it("pulls nothing for a project with local changes", async () => {
@@ -342,10 +387,18 @@ describe("bufferRepoFromChildren", () => {
 			localChanges: false,
 			checkedOutBranches: ["main"],
 			candidates: [
-				{id: "pb", sha: sha("b"), branch: "ready", state: "ready", onHold: false},
-				{id: sha("c"), sha: sha("c"), state: "unready", onHold: false},
-				{id: "pd", sha: sha("d"), branch: "held", state: "unready", onHold: true},
-				{id: "pa", sha: sha("a"), branch: "big", state: "unready", onHold: false, override: "low"},
+				{id: "pb", sha: sha("b"), branch: "ready", state: "ready", onHold: false, job: 0},
+				{id: sha("c"), sha: sha("c"), state: "unready", onHold: false, job: 1},
+				{id: "pd", sha: sha("d"), branch: "held", state: "unready", onHold: true, job: 1},
+				{
+					id: "pa",
+					sha: sha("a"),
+					branch: "big",
+					state: "unready",
+					onHold: false,
+					job: 1 + Math.log2(501),
+					override: "low",
+				},
 			],
 		});
 	});

@@ -33,7 +33,7 @@ export type WorkPriority = "foreground" | "background";
 /** Coarse cost of a job; each class has its own concurrency cap. */
 export type CostClass = "cheap" | "git-write" | "build" | "ai";
 
-const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
+export const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
 
 /**
  * Optional cross-process lock for a resource key. Resolves to a release function once the lock is

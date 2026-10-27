@@ -17,6 +17,9 @@ export {
 	getAiRungTimeoutMs,
 	getAiMaxAttempts,
 	getSplitThresholdLines,
+	getReadyBufferSize,
+	getReadyBufferCapacity,
+	DEFAULT_READY_BUFFER_SIZE,
 	DEFAULT_AI_RUNG_TIMEOUT_MS,
 } from "./lib/config.js";
 export {
@@ -325,11 +328,12 @@ export {
 	todoItemKey,
 } from "./lib/priority.js";
 export {
-	allocateReadySlots,
-	type ReadySlotAllocation,
-	type ReadySlotItem,
-	type ReadySlotRepo,
-} from "./lib/ready-slots.js";
+	orderReadyQueue,
+	planReadyPulls,
+	type ReadyPullLimits,
+	type ReadyQueueItem,
+	type ReadyQueueRepo,
+} from "./lib/ready-queue.js";
 export {
 	type LadderNode,
 	parseAsapLadder,

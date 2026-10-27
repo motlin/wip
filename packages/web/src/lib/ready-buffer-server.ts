@@ -121,7 +121,7 @@ export async function startReadyBuffer(
 		log.general.info("Ready buffer disabled by WIP_READY_BUFFER");
 		return;
 	}
-	const {acquireProcessLock} = await import("@wip/shared");
+	const {acquireProcessLock, getReadyBufferCapacity, getReadyBufferSize} = await import("@wip/shared");
 	if (acquireProcessLock("ready-buffer") === null) {
 		log.general.warn("Ready buffer already running in another wip process; not starting it here");
 		return;
@@ -129,6 +129,9 @@ export async function startReadyBuffer(
 	const started = createReadyBuffer({
 		queue: workQueue,
 		snapshot,
+		// Read per pull so a config change takes effect without a restart.
+		target: () => getReadyBufferSize(),
+		capacity: () => getReadyBufferCapacity(),
 		advance: async (repo, candidate, signal) => {
 			const outcome = await advance(repo, candidate, signal);
 			log.general.info({project: repo.name, sha: candidate.sha, outcome}, "Ready-buffer advance");

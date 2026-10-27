@@ -99,6 +99,11 @@ function gitChildFacts(child: GitChildResult): RankFacts {
 	};
 }
 
+/** A git child's remaining job, the rank key the ready buffer orders its global queue by. */
+export function gitChildJob(child: GitChildResult): number {
+	return remainingJob(gitChildFacts(child));
+}
+
 /**
  * Orders queue items within a category: shortest remaining job, then commit date, then project/sha.
  * First-seen time (the ledger, lean plan step 23) replaces commit date as the first tie-break once
@@ -107,7 +112,7 @@ function gitChildFacts(child: GitChildResult): RankFacts {
 export function rankGitChildren<T extends GitChildResult>(children: readonly T[]): T[] {
 	return (
 		children
-			.map((child) => ({child, job: remainingJob(gitChildFacts(child))}))
+			.map((child) => ({child, job: gitChildJob(child)}))
 			// eslint-disable-next-line unicorn/no-array-sort -- sorts the fresh array produced by map
 			.sort(
 				(a, b) =>

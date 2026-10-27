@@ -4,6 +4,8 @@ import * as path from "node:path";
 import JSON5 from "json5";
 import {z} from "zod";
 
+import {DEFAULT_CLASS_CAPS} from "./work-queue.js";
+
 const APP_NAME = "wip";
 
 export function getConfigDir(): string {
@@ -115,6 +117,29 @@ export function getWorkQueueClassCaps(
 		if (Number.isInteger(parsed) && parsed >= 1) caps[costClass] = parsed;
 	}
 	return caps;
+}
+
+export const DEFAULT_READY_BUFFER_SIZE = 3;
+
+function positiveInt(value: ConfigValue | undefined): number | undefined {
+	if (typeof value !== "string") return undefined;
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
+}
+
+/** How many commits the ready buffer keeps ready across all repos, from config key `readyBuffer.size`. Defaults to 3. */
+export function getReadyBufferSize(config: Record<string, ConfigValue> = readConfig()): number {
+	return positiveInt(config["readyBuffer.size"]) ?? DEFAULT_READY_BUFFER_SIZE;
+}
+
+/**
+ * How many ready-buffer jobs run at once, a hardware budget independent of priority: config key
+ * `readyBuffer.capacity`, else the build class cap (`workQueue.build`), else its default.
+ */
+export function getReadyBufferCapacity(config: Record<string, ConfigValue> = readConfig()): number {
+	return (
+		positiveInt(config["readyBuffer.capacity"]) ?? getWorkQueueClassCaps(config).build ?? DEFAULT_CLASS_CAPS.build
+	);
 }
 
 /** Max milliseconds a user-click git action waits for a busy repo, from config key `actionMaxWaitMs`. Undefined when unset or invalid. */

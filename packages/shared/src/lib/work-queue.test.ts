@@ -621,6 +621,53 @@ describe("resource probe", () => {
 		expect(runs[1]).toHaveBeenCalledTimes(1);
 		gates[1]!.resolve();
 	});
+
+	it("does not admit a background build job while the probe is hot and the queue is busy", async () => {
+		const probe = {loadPerCore: () => 5, freeMemRatio: () => 0.5};
+		makeQueue({globalConcurrency: 4, probe, loadThreshold: 2, memFloor: 0.1});
+
+		const busy = deferred();
+		const busyRun = vi.fn<() => Promise<void>>(async () => busy.promise);
+		const buildRun = vi.fn<() => Promise<void>>(async () => {});
+		queue.enqueue(job("alpha", busyRun));
+		await settle();
+		queue.enqueue(job("beta", buildRun, {costClass: "build", priority: "background"}));
+		await settle();
+
+		expect({busy: busyRun.mock.calls.length, build: buildRun.mock.calls.length}).toStrictEqual({busy: 1, build: 0});
+		busy.resolve();
+		await settle();
+		expect(buildRun).toHaveBeenCalledTimes(1);
+	});
+
+	it("admits a buffer job under a hot probe only while no other buffer job runs", async () => {
+		const probe = {loadPerCore: () => 5, freeMemRatio: () => 0.5};
+		makeQueue({globalConcurrency: 4, probe, loadThreshold: 2, memFloor: 0.1});
+
+		const busy = deferred();
+		const busyRun = vi.fn<() => Promise<void>>(async () => busy.promise);
+		const bufferGates = [deferred(), deferred()];
+		const bufferRuns = bufferGates.map((gate) => vi.fn<() => Promise<void>>(async () => gate.promise));
+		queue.enqueue(job("alpha", busyRun));
+		await settle();
+		queue.enqueue(job("ready-beta", bufferRuns[0], {costClass: "build", buffer: true}));
+		queue.enqueue(job("ready-gamma", bufferRuns[1], {costClass: "build", buffer: true}));
+		await settle();
+
+		const calls = () => ({
+			busy: busyRun.mock.calls.length,
+			firstBuffer: bufferRuns[0]!.mock.calls.length,
+			secondBuffer: bufferRuns[1]!.mock.calls.length,
+		});
+		expect(calls()).toStrictEqual({busy: 1, firstBuffer: 1, secondBuffer: 0});
+
+		bufferGates[0]!.resolve();
+		await settle();
+		expect(calls()).toStrictEqual({busy: 1, firstBuffer: 1, secondBuffer: 1});
+
+		busy.resolve();
+		bufferGates[1]!.resolve();
+	});
 });
 
 describe("state", () => {

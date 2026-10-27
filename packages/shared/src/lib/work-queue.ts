@@ -85,6 +85,8 @@ export interface EnqueueOptions {
 	rank?: number;
 	/** Defaults to "cheap". */
 	costClass?: CostClass;
+	/** Ready-buffer job: admitted under a hot probe even while the queue is busy, one buffer job at a time. */
+	buffer?: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
 }
 
@@ -136,6 +138,7 @@ interface Job {
 	seq: number;
 	enqueuedAt: number;
 	costClass: CostClass;
+	buffer: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
 	controller: AbortController;
 	settle: () => void;
@@ -262,8 +265,14 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 
 		// Resource gate only limits *additional* concurrency. When idle, still
 		// admit a single job so a permanently-loaded machine never deadlocks.
+		// While busy, only a buffer job may start, and only if no other buffer
+		// job runs, so the ready buffer keeps refilling at one job at a time.
+		let bufferOnly = false;
 		if (!resourcesOk()) {
-			if (running.size > 0) return;
+			if (running.size > 0) {
+				if ([...running.values()].some((job) => job.buffer)) return;
+				bufferOnly = true;
+			}
 			slots = 1;
 		}
 
@@ -273,6 +282,10 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		for (let index = 0; index < queued.length && slots > 0;) {
 			const job = queued[index];
 			if (job === undefined) break;
+			if (bufferOnly && !job.buffer) {
+				index += 1;
+				continue;
+			}
 			if (job.resources.some((resource) => resourceFull(resource))) {
 				index += 1;
 				continue;
@@ -363,6 +376,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			seq: nextId,
 			enqueuedAt: now(),
 			costClass: enqueueOptions.costClass ?? "cheap",
+			buffer: enqueueOptions.buffer ?? false,
 			run: enqueueOptions.run,
 			controller: new AbortController(),
 			settle,

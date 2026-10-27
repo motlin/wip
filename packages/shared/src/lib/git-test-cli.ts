@@ -42,14 +42,20 @@ export async function testWorktreePath(dir: string): Promise<string> {
 
 // One git-test run at a time per test worktree, since each one checks commits out in it.
 const worktreeLocks = new Map<string, Promise<unknown>>();
+// Callers queue on a worktree's lock in call order, though each worktree lookup is a subprocess
+// that can finish in any order.
+let lockQueue: Promise<unknown> = Promise.resolve();
 
 /**
  * Run `fn` in the repo's test worktree, created detached on demand the way git-test.just does
  * (`git worktree add --detach`) and never removed, so background tests never check commits out
- * in the user's checkout.
+ * in the user's checkout. Concurrent calls for the same worktree run one at a time, in call order.
  */
 export async function withTestWorktree<T>(dir: string, sha: string, fn: (worktree: string) => Promise<T>): Promise<T> {
-	const worktree = await testWorktreePath(dir);
+	const lookup = testWorktreePath(dir);
+	const queued = lockQueue.then(async () => lookup);
+	lockQueue = queued.catch(() => undefined);
+	const worktree = await queued;
 	const previous = worktreeLocks.get(worktree) ?? Promise.resolve();
 	const run = previous.then(async () => {
 		if (!fs.existsSync(worktree)) {

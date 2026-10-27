@@ -214,6 +214,10 @@ export const createBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => CreateBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).createBranchHandler(data));
 
+export const suggestBranchName = createServerFn({method: "POST"})
+	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+	.handler(async ({data}): Promise<{name: string | null}> => (await serverFns()).suggestBranchNameHandler(data));
+
 export const deleteBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).deleteBranchHandler(data));

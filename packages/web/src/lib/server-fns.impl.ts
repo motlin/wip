@@ -320,27 +320,14 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 			// On hold and snoozed children are returned flagged, not dropped, and get no background jobs.
 			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
 
-			// Collect all children that need branch name suggestions and fetch cached names up front
+			// Show names already suggested; naming itself is lazy (plan step 39): the ready buffer
+			// names a commit entering it in a pull-request repo, and Create Branch names on demand.
 			const defaultBranchPattern = /^(main|master)$/;
 			const namingKeys = uniqueChildren
 				.filter((c) => !snoozes.held.has(c.sha))
 				.filter((c) => !c.branch || defaultBranchPattern.test(c.branch))
-				.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir}));
+				.map((c) => ({sha: c.sha, project: p.name}));
 			const cachedNames = namingKeys.length > 0 ? getBranchNames(namingKeys) : new Map<string, string>();
-
-			const uncachedKeys = namingKeys.filter((k) => !cachedNames.has(`${k.project}:${k.sha}`));
-			for (const request of uncachedKeys) {
-				workQueue.enqueue({
-					coalesceKey: `branch-name:${request.project}:${request.sha}`,
-					laneKey: "branch-name",
-					kind: "branch-name",
-					project: request.project,
-					costClass: "ai",
-					run: async () => {
-						await suggestBranchNames([request]);
-					},
-				});
-			}
 
 			const headSha = (
 				await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})
@@ -1173,6 +1160,18 @@ export async function createBranchHandler(data: CreateBranchInput): Promise<Acti
 
 			return {ok: false, message: `Failed to create branch: ${result.stderr}`};
 		});
+	});
+}
+
+/** Create Branch's on-demand name (plan step 39): the cached suggestion, or one `claude -p` naming. */
+export async function suggestBranchNameHandler(data: {project: string; sha: string}): Promise<{name: string | null}> {
+	return traced("suggestBranchName", async () => {
+		const p = await resolveProject(data.project);
+		const subject = (
+			await tracedExeca("git", ["-C", p.dir, "log", "-1", "--format=%s", data.sha], {reject: false})
+		).stdout.trim();
+		const names = await suggestBranchNames([{sha: data.sha, project: p.name, subject, dir: p.dir}]);
+		return {name: names.get(`${p.name}:${data.sha}`) ?? null};
 	});
 }
 

@@ -3,7 +3,7 @@ import {useState} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, Category} from "@wip/shared";
 import {Diff, GitBranch, Loader2, Info} from "./icons.js";
-import {createBranch} from "../lib/server-fns";
+import {createBranch, suggestBranchName} from "../lib/server-fns";
 import {AnsiText} from "./ansi-text";
 import {CategoryBadge} from "./category-badge";
 import {BranchActions} from "./commit-actions";
@@ -13,6 +13,23 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 	const [branchName, setBranchName] = useState(commit.suggestedBranch ?? "");
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	// Plan step 39: no textbox, and no naming, until the user clicks Create Branch.
+	const [editing, setEditing] = useState(false);
+	const [naming, setNaming] = useState(false);
+
+	const startEditing = async () => {
+		setEditing(true);
+		if (branchName.trim()) return;
+		setNaming(true);
+		try {
+			const {name} = await suggestBranchName({data: {project: commit.project, sha: commit.sha}});
+			if (name) setBranchName((current) => (current.trim() ? current : name));
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Failed to suggest a branch name");
+		} finally {
+			setNaming(false);
+		}
+	};
 
 	const handleCreateBranch = async () => {
 		if (!branchName.trim()) return;
@@ -117,40 +134,53 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 								</span>
 							</div>
 						)}
-						<div className="flex items-center gap-1.5">
-							<GitBranch className="h-3.5 w-3.5 shrink-0 text-text-400" />
-							<input
-								type="text"
-								value={branchName}
-								onChange={(e) => {
-									setBranchName(e.target.value);
-								}}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") void handleCreateBranch();
-								}}
-								placeholder="branch-name"
-								className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"
-							/>
+						{editing ? (
+							<div className="flex items-center gap-1.5">
+								<GitBranch className="h-3.5 w-3.5 shrink-0 text-text-400" />
+								<input
+									type="text"
+									value={branchName}
+									onChange={(e) => {
+										setBranchName(e.target.value);
+									}}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") void handleCreateBranch();
+									}}
+									placeholder={naming ? "naming..." : "branch-name"}
+									className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"
+								/>
+								<button
+									type="button"
+									onClick={() => {
+										void handleCreateBranch();
+									}}
+									disabled={creating || !branchName.trim()}
+									className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
+										creating || !branchName.trim()
+											? "cursor-not-allowed opacity-60 text-text-400"
+											: "bg-blue-600 hover:bg-blue-700 text-white"
+									}`}
+								>
+									{creating ? (
+										<Loader2 className="h-3 w-3 animate-spin" />
+									) : (
+										<GitBranch className="h-3 w-3" />
+									)}
+									{commit.containingBranch ? "Create Split Branch" : "Create Branch"}
+								</button>
+							</div>
+						) : (
 							<button
 								type="button"
 								onClick={() => {
-									void handleCreateBranch();
+									void startEditing();
 								}}
-								disabled={creating || !branchName.trim()}
-								className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors ${
-									creating || !branchName.trim()
-										? "cursor-not-allowed opacity-60 text-text-400"
-										: "bg-blue-600 hover:bg-blue-700 text-white"
-								}`}
+								className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
 							>
-								{creating ? (
-									<Loader2 className="h-3 w-3 animate-spin" />
-								) : (
-									<GitBranch className="h-3 w-3" />
-								)}
+								<GitBranch className="h-3 w-3" />
 								{commit.containingBranch ? "Create Split Branch" : "Create Branch"}
 							</button>
-						</div>
+						)}
 					</>
 				)}
 				{error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}

@@ -42,6 +42,7 @@ import {
 	getProjectChildren,
 	mergePr,
 	createBranch,
+	suggestBranchName,
 	runClaudeCommand,
 } from "../lib/server-fns.js";
 import {projectsQueryOptions, snoozedQueryOptions} from "../lib/queries.js";
@@ -617,8 +618,16 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 
 	const handleCreateBranch = async () => {
 		setError(null);
-		const branchName = item.suggestedBranch ?? item.branch;
 		await runPendingAction("Create branch", setCreatingBranch, async () => {
+			// Plan step 39: names are lazy, so Create branch asks for one when none is cached.
+			const branchName =
+				item.suggestedBranch ??
+				item.branch ??
+				(await suggestBranchName({data: {project: item.project, sha: item.sha}})).name;
+			if (!branchName) {
+				setError("Could not suggest a branch name");
+				return;
+			}
 			const result = await createBranch({
 				data: {
 					project: item.project,

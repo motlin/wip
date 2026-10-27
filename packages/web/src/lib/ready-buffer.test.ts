@@ -59,6 +59,8 @@ interface Harness {
 	advancedAutoFixed: boolean[];
 	resolved: string[];
 	fixed: string[];
+	/** Each branch-naming job the buffer ran, as `project:id`. */
+	named: string[];
 	maxConcurrent: () => number;
 }
 
@@ -108,6 +110,7 @@ function harness(options: {
 	const advancedAutoFixed: boolean[] = [];
 	const resolved: string[] = [];
 	const fixed: string[] = [];
+	const named: string[] = [];
 	let concurrent = 0;
 	let maxConcurrent = 0;
 	const spy: Pick<WorkQueue, "enqueue"> = {
@@ -152,6 +155,10 @@ function harness(options: {
 			fixed.push(`${r.name}:${candidate.id}:${candidate.sha}`);
 			return Promise.resolve(options.fix?.(r.name, candidate.id) ?? null);
 		},
+		nameBranch: async (r, candidate) => {
+			named.push(`${r.name}:${candidate.id}`);
+			return Promise.resolve();
+		},
 	});
 	return {
 		buffer,
@@ -161,6 +168,7 @@ function harness(options: {
 		advancedAutoFixed,
 		resolved,
 		fixed,
+		named,
 		maxConcurrent: () => maxConcurrent,
 	};
 }
@@ -177,6 +185,37 @@ async function fillFiveRepos(capacity: number): Promise<{advanced: string[]; max
 const fresh = (enqueued: Enqueued[]): string[] => enqueued.filter((e) => !e.coalesced).map((e) => e.coalesceKey);
 
 describe("createReadyBuffer", () => {
+	it("names an unnamed commit when it enters the buffer in a pull-request repo, and not in a fast-forward repo", async () => {
+		const repos = [
+			repo("pr", {landing: "pull-request", candidates: candidates(1)}),
+			repo("ff", {landing: "fast-forward", candidates: candidates(1)}),
+			repo("named", {landing: "pull-request", candidates: candidates(1, {c1: {branch: "has-name"}})}),
+		];
+		const h = harness({repos: () => repos, target: 3});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({
+			jobs: h.enqueued.filter((e) => e.kind === "branch-name"),
+			named: h.named,
+		}).toStrictEqual({
+			jobs: [
+				{
+					coalesceKey: `branch-name:pr:${"c1".padEnd(40, "0")}`,
+					kind: "branch-name",
+					project: "pr",
+					costClass: "ai",
+					priority: undefined,
+					resources: undefined,
+					buffer: undefined,
+					coalesced: false,
+				},
+			],
+			named: ["pr:c1"],
+		});
+	});
+
 	it("enqueues exactly 2 advance-commit jobs for 5 candidates with a ready target of 2, in rank order", async () => {
 		const h = harness({repos: () => [repo("a")], gated: true});
 

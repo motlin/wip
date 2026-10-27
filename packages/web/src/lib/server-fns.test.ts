@@ -2054,6 +2054,39 @@ describe("getProjectChildrenHandler", () => {
 		expect(child!.mergeStateStatus).toBe("BLOCKED");
 	});
 
+	it("enqueues no branch-name job on a refresh with 10 unnamed children", async () => {
+		const dir = await createTestGitRepo();
+		// Ten sibling commits on main, each reachable only through a non-branch ref, so none has a name.
+		await Promise.all(
+			Array.from({length: 10}, async (_, i) => {
+				const sha = (
+					await execa("git", ["-C", dir, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", `Unnamed ${i}`])
+				).stdout.trim();
+				await execa("git", ["-C", dir, "update-ref", `refs/unnamed/${i}`, sha]);
+			}),
+		);
+
+		const project = makeProject({name: "lazy-naming-test", dir, upstreamRef: "main"});
+		seedProjectCache([project]);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue").mockImplementation(
+			() =>
+				({
+					settled: Promise.resolve(),
+					coalesced: false,
+				}) as unknown as ReturnType<typeof workQueue.enqueue>,
+		);
+
+		const {refreshProjectChildren} = await import("./server-fns.impl.js");
+		const children = await refreshProjectChildren("lazy-naming-test");
+		const namingJobs = enqueueSpy.mock.calls.filter(([job]) => job.kind === "branch-name");
+		enqueueSpy.mockRestore();
+
+		expect({
+			unnamed: children.filter((c) => c.branch === undefined).length,
+			namingJobs: namingJobs.length,
+		}).toStrictEqual({unnamed: 10, namingJobs: 0});
+	});
+
 	it("returns an On hold child flagged instead of dropping it, and enqueues no branch-name job for it", async () => {
 		const dir = await createTestGitRepo();
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Snoozed commit"]);
@@ -2092,7 +2125,7 @@ describe("getProjectChildrenHandler", () => {
 			namedAfter: namingJobs(),
 		}).toStrictEqual({
 			before: [{sha, onHold: undefined}],
-			namedBefore: [`branch-name:snooze-filter-test:${sha}`],
+			namedBefore: [],
 			after: [{sha, onHold: true}],
 			namedAfter: [],
 		});

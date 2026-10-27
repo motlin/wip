@@ -66,6 +66,7 @@ describe("topUpReadyBuffer", () => {
 						}),
 			resolveConflicts: async () => Promise.resolve(null),
 			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(),
 		});
 
 		const first = await topUpReadyBuffer(buffer);

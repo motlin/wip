@@ -372,6 +372,20 @@ export async function startReadyBuffer(
 			enqueueProjectRefresh(repo.name, {force: true});
 			return fixup;
 		},
+		nameBranch: async (repo, candidate) => {
+			const {getCachedChildren, suggestBranchNames} = await import("@wip/shared");
+			const {getProjects} = await import("./server-fns.js");
+			const p = (await getProjects()).find((proj) => proj.name === repo.name);
+			const child = getCachedChildren(repo.name)?.find((c) => c.sha === candidate.sha);
+			if (!p || !child) return;
+			const names = await suggestBranchNames([
+				{sha: candidate.sha, project: p.name, subject: child.subject, dir: p.dir},
+			]);
+			const name = names.get(`${p.name}:${candidate.sha}`) ?? null;
+			log.general.info({project: repo.name, sha: candidate.sha, name}, "Ready-buffer branch name");
+			// The card shows the suggestion on the next refresh.
+			enqueueProjectRefresh(repo.name, {force: false});
+		},
 	});
 	setReadyBuffer(started);
 

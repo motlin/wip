@@ -298,8 +298,8 @@ describe("RegistryReview", () => {
 		it("labels each bulk action with exactly which rows it covers, every copy in one Skip action", () => {
 			renderReal();
 			expect(bulkLabels()).toEqual([
-				"Skip all 57 copies (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 40 git worktrees)",
-				"Mark all 46 unregistered typescript repos Own",
+				"Skip all 56 copies (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 39 git worktrees)",
+				"Mark all 45 unregistered typescript repos Own",
 				"Mark all 15 unregistered java repos Own",
 				"Mark all 43 unregistered unknown repos Own",
 			]);
@@ -307,11 +307,11 @@ describe("RegistryReview", () => {
 
 		it("skips every copy, the Maven copy of Factorio-FBSR included, with the copies action", () => {
 			renderReal();
-			fireEvent.click(within(question()).getByRole("button", {name: /^Skip all 57 copies/}));
+			fireEvent.click(within(question()).getByRole("button", {name: /^Skip all 56 copies/}));
 			for (const button of screen.getAllByRole("button", {name: /^Show all/})) fireEvent.click(button);
 			const left = card("Unregistered (48)");
 			expect(rowNames(left).filter((name) => name.includes("FBSR"))).toEqual(["Factorio-FBSR"]);
-			expect(rowNames(card("Decided, not saved yet (57)"))).toContain("Factorio-FBSR-maven-3.10.0");
+			expect(rowNames(card("Decided, not saved yet (56)"))).toContain("Factorio-FBSR-maven-3.10.0");
 			expect(realUnregistered.filter((r) => r.skipReason).map((r) => decision(r.project.name))).toEqual(
 				Array.from({length: 57}, () => "Skip"),
 			);
@@ -326,7 +326,7 @@ describe("RegistryReview", () => {
 				const count = Number(/all (\d+)/.exec(label)?.[1]);
 				answer(label);
 				const inbox = screen.getAllByRole("region", {name: /^Unregistered \(/})[0]?.getAttribute("aria-label");
-				expect([label, inbox]).toEqual([label, `Unregistered (${105 - count})`]);
+				expect([label, inbox]).toEqual([label, `Unregistered (${104 - count})`]);
 				cleanup();
 			}
 		});
@@ -391,11 +391,11 @@ describe("RegistryReview", () => {
 			[...question().querySelectorAll("[data-sample] li")].map((li) => li.textContent),
 			question().querySelector("[data-sample-more]")?.textContent,
 		]).toEqual([
-			"Skip the 57 copies of other repos?",
-			"Copies of another repo (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 40 git worktrees). wip ladder --all already updates the original, so a copy only adds work.",
-			"Skip all 57 copies",
+			"Skip the 56 copies of other repos?",
+			"Copies of another repo (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 39 git worktrees). wip ladder --all already updates the original, so a copy only adds work.",
+			"Skip all 56 copies",
 			["Factorio-FBSR-maven-3.10.0", "avalon-online-logs-pr125", "ccp-par-1", "ccp-par-2"],
-			"and 53 more",
+			"and 52 more",
 		]);
 	});
 
@@ -498,5 +498,34 @@ describe("RegistryReview", () => {
 		decide("beta", "Own");
 		decide("beta", "Fork");
 		expect(within(saveBar()).getByRole("button", {name: "No changes yet"})).toHaveProperty("disabled", true);
+	});
+
+	it("lists an automatic test-worktree skip as skipped without counting it as a change to save", () => {
+		const testWorktree: ProjectRecord = {
+			name: "kalshi-test-worktree",
+			dir: "/p/kalshi-test-worktree",
+			template: "typescript",
+			kind: "skip",
+		};
+		render(
+			<RegistryReview
+				candidates={[
+					{project: beta, group: "registered"},
+					{
+						project: testWorktree,
+						group: "skipped",
+						skipReason: {code: "test-worktree", text: "test worktree of kalshi"},
+					},
+				]}
+				current={[beta]}
+				saveLabel={(changes) => `Save ${changes} decisions`}
+				saving={false}
+				onSave={vi.fn<(projects: ProjectRecord[]) => void>()}
+			/>,
+		);
+		expect([rowNames(card("Skipped (1)")), saveBar().textContent]).toEqual([
+			["kalshi-test-worktree"],
+			"0 left to decideNo changes yet",
+		]);
 	});
 });

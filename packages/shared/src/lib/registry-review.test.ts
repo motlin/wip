@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
+import {discoverRegisteredProjects} from "./git.js";
 import type {ProjectRecord} from "./inventory.js";
 import {buildRegistryCandidates, checkInventory, detectTemplate, skipReason} from "./registry-review.js";
 
@@ -108,6 +109,23 @@ describe("skipReason", () => {
 		);
 	});
 
+	it("names a <repo>-test-worktree sibling as the test worktree of its repo, registered or not", () => {
+		const main = realRepo("kalshi");
+		const testWorktree = worktree(main, "kalshi-test-worktree");
+		const reason = {code: "test-worktree", text: "test worktree of kalshi"};
+		expect(skipReason(record("kalshi-test-worktree", testWorktree))).toEqual(reason);
+		expect(skipReason(record("kalshi-test-worktree", testWorktree, "skip"))).toEqual(reason);
+	});
+
+	it("treats a -test-worktree directory of a different repo as a plain worktree", () => {
+		const main = realRepo("herdr");
+		const other = worktree(main, "kalshi-test-worktree");
+		expect(skipReason(record("kalshi-test-worktree", other))).toEqual({
+			code: "worktree",
+			text: "git worktree of herdr",
+		});
+	});
+
 	it("prefers the PR pattern over the plain worktree reason", () => {
 		const main = realRepo("wip");
 		const pr = worktree(main, "wip-pr7");
@@ -199,6 +217,31 @@ describe("registry candidates", () => {
 		});
 	});
 
+	it("is consistent when the only unregistered repo is a test worktree", () => {
+		const main = realRepo("kalshi");
+		worktree(main, "kalshi-test-worktree");
+		expect(checkInventory([record("kalshi", main)], [root])).toEqual({
+			consistent: true,
+			unregistered: [],
+			missing: [],
+			skipped: [],
+			removableSkips: [],
+		});
+	});
+
+	it("skips an unregistered test worktree automatically, outside the unregistered inbox", () => {
+		const main = realRepo("kalshi");
+		const testWorktree = worktree(main, "kalshi-test-worktree");
+		expect(buildRegistryCandidates([record("kalshi", main)], [], [root])).toEqual([
+			{project: record("kalshi", main), group: "registered"},
+			{
+				project: record("kalshi-test-worktree", testWorktree, "skip"),
+				group: "skipped",
+				skipReason: {code: "test-worktree", text: "test worktree of kalshi"},
+			},
+		]);
+	});
+
 	it("is consistent when every skip entry exists on disk", () => {
 		const skipped = repo("skipped");
 		const plain = path.join(root, "plain");
@@ -274,5 +317,20 @@ describe("registry candidates", () => {
 				skipReason: {code: "pr", text: "PR #12 worktree of present"},
 			},
 		]);
+	});
+});
+
+describe("project discovery", () => {
+	it("never scans a <repo>-test-worktree as a project, even when registered", async () => {
+		const main = realRepo("kalshi");
+		git(main, "remote", "add", "upstream", "https://github.com/owner/kalshi.git");
+		git(main, "remote", "add", "origin", "https://github.com/owner/kalshi.git");
+		git(main, "update-ref", "refs/remotes/upstream/main", "HEAD");
+		const testWorktree = worktree(main, "kalshi-test-worktree");
+		const projects = await discoverRegisteredProjects({
+			projects: [record("kalshi", main), record("kalshi-test-worktree", testWorktree)],
+			errors: [],
+		});
+		expect(projects.map((project) => project.name)).toEqual(["kalshi"]);
 	});
 });

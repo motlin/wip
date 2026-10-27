@@ -250,6 +250,7 @@ export type SkipReasonCode =
 	| "template"
 	| "parallel"
 	| "worktree"
+	| "test-worktree"
 	| "not-a-repo"
 	| "missing"
 	| "listed"

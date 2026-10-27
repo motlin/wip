@@ -19,6 +19,7 @@ import {git, parseRemoteUrl} from "./git-exec.js";
 import {getGitTestStatuses} from "./git-test-cli.js";
 import {inventoryExists, loadInventory, type Inventory} from "./inventory.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
+import {testWorktreeOf} from "./registry-review.js";
 import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
 
 const MiseEnvSchema = z.record(z.string(), z.string());
@@ -763,7 +764,10 @@ export async function discoverRegisteredProjects(inventory: Inventory): Promise<
 	for (const error of inventory.errors) {
 		log.general.warn({index: error.index, message: error.message}, "invalid project inventory record");
 	}
-	const records = inventory.projects.filter((record) => record.kind !== "skip");
+	// A <repo>-test-worktree is wip's own place to run git test, never a project, even if registered.
+	const records = inventory.projects.filter(
+		(record) => record.kind !== "skip" && testWorktreeOf(record.dir) === undefined,
+	);
 	const results = await mapWithConcurrency(records, DISCOVERY_CONCURRENCY, async (record) =>
 		gatherProjectInfo(record.name, record.dir, record),
 	);

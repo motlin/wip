@@ -407,8 +407,8 @@ export const realUnregistered: RegistryCandidate[] = [
 			template: "typescript",
 			kind: "skip",
 		},
-		group: "unregistered",
-		skipReason: {code: "worktree", text: "git worktree of kalshi"},
+		group: "skipped",
+		skipReason: {code: "test-worktree", text: "test worktree of kalshi"},
 	},
 	{
 		project: {

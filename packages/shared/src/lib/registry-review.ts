@@ -35,6 +35,8 @@ export interface InventoryCheckResult {
 
 interface InventoryComparison {
 	unregistered: string[];
+	/** Unregistered `<repo>-test-worktree` siblings: skipped automatically, never a question. */
+	testWorktrees: string[];
 	missing: InventoryMissingEntry[];
 	presentSkips: ProjectRecord[];
 	goneSkips: ProjectRecord[];
@@ -69,9 +71,13 @@ function listGitRepos(projectsDir: string): string[] {
  */
 function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): InventoryComparison {
 	const registered = new Set(projects.map((project) => path.resolve(project.dir)));
-	const unregistered = [...new Set(projectsDirs.flatMap((dir) => listGitRepos(path.resolve(dir))))].filter(
-		(dir) => !registered.has(dir),
-	);
+	const unregistered: string[] = [];
+	const testWorktrees: string[] = [];
+	for (const dir of new Set(projectsDirs.flatMap((projectsDir) => listGitRepos(path.resolve(projectsDir))))) {
+		if (registered.has(dir)) continue;
+		if (testWorktreeOf(dir) === undefined) unregistered.push(dir);
+		else testWorktrees.push(dir);
+	}
 	const missing: InventoryMissingEntry[] = [];
 	const presentSkips: ProjectRecord[] = [];
 	const goneSkips: ProjectRecord[] = [];
@@ -89,7 +95,7 @@ function compareInventory(projects: ProjectRecord[], projectsDirs: string[]): In
 			missing.push({name, dir, reason: "not-a-git-repo"});
 		}
 	}
-	return {unregistered, missing, presentSkips, goneSkips};
+	return {unregistered, testWorktrees, missing, presentSkips, goneSkips};
 }
 
 /**
@@ -147,6 +153,17 @@ function worktreeMainRepo(dir: string): string {
 }
 
 /**
+ * The repo a `<repo>-test-worktree` sibling belongs to, the worktree wip runs git test in (see
+ * `testWorktreePath`); undefined for any other directory, including a `-test-worktree` directory that
+ * is not a git worktree of the repo its name points at.
+ */
+export function testWorktreeOf(dir: string): string | undefined {
+	const match = /^(.+)-test-worktree$/.exec(path.basename(dir));
+	if (!match?.[1] || gitEntry(dir)?.isFile() !== true) return undefined;
+	return worktreeMainRepo(dir) === match[1] ? match[1] : undefined;
+}
+
+/**
  * Why a project is, or would be, skipped, in plain words: a name pattern (PR worktree, Maven copy,
  * template, parallel worktree), a git worktree naming its main repo, a directory that is missing or
  * not a git repo, or for an existing skip, the project-template skip list or the user's own choice.
@@ -165,6 +182,8 @@ export function skipReason(project: ProjectRecord): SkipReason | undefined {
 		return {code: "not-a-repo", text: "not a git repo"};
 	}
 	if (entry?.isFile() === true) {
+		const testRepo = testWorktreeOf(dir);
+		if (testRepo !== undefined) return {code: "test-worktree", text: `test worktree of ${testRepo}`};
 		return {code: "worktree", text: `git worktree of ${worktreeMainRepo(dir)}`};
 	}
 	if (kind !== "skip") return undefined;
@@ -197,7 +216,8 @@ function withReason(candidate: RegistryCandidate, reason: SkipReason | undefined
  * Every project the user might want in the registry, each in one review group: the given entries
  * (registered, skipped, or missing), template conflicts, and unregistered git repos under the
  * projects dirs. Skip entries whose directory is gone are left out, so saving the review drops them. Every row carries the skip reason that applies to it, and unregistered repos
- * with one default to skip. Reasons come from the filesystem alone, never a git subprocess, so the
+ * with one default to skip. An unregistered `<repo>-test-worktree` sibling is skipped outright, in
+ * the skipped group rather than the unregistered inbox, so it never asks for a decision. Reasons come from the filesystem alone, never a git subprocess, so the
  * same disk always yields the same candidates whatever the load.
  */
 export function buildRegistryCandidates(
@@ -237,6 +257,10 @@ export function buildRegistryCandidates(
 		const reason = skipReason(own);
 		const project: ProjectRecord = reason ? {...own, kind: "skip"} : own;
 		candidates.push(withReason({project, group: "unregistered"}, reason));
+	}
+	for (const dir of check.testWorktrees) {
+		const project: ProjectRecord = {name: path.basename(dir), dir, template: detectTemplate(dir), kind: "skip"};
+		candidates.push(withReason({project, group: "skipped"}, skipReason(project)));
 	}
 
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array

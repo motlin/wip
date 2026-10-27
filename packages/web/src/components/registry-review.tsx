@@ -39,6 +39,11 @@ interface GroupSpec {
 	explanation?: string;
 }
 
+/** A `<repo>-test-worktree` wip skips on its own; it needs no decision and no registry entry. */
+function isAutomaticSkip(row: RegistryCandidate): boolean {
+	return row.skipReason?.code === "test-worktree" && row.project.kind === "skip";
+}
+
 /** Groups whose rows wait for a decision; a decided row leaves its card. */
 const INBOX: GroupSpec[] = [
 	{group: "unregistered", label: "Unregistered", word: "unregistered"},
@@ -657,8 +662,11 @@ export function RegistryReview({
 		discard();
 	}
 
+	// An automatic test-worktree skip is listed but not written, so it never shows up as a change.
+	const currentDirs = new Set(current.map((project) => project.dir));
 	const projects = rows
 		.filter((row) => row.group !== "unregistered" || decided.has(row.project.dir))
+		.filter((row) => !isAutomaticSkip(row) || currentDirs.has(row.project.dir))
 		.map((row) => row.project);
 	const diff = diffInventories(current, projects);
 	const changes = diff.added.length + diff.removed.length + diff.changed.length;

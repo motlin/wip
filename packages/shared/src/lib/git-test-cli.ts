@@ -74,6 +74,9 @@ export async function withTestWorktree<T>(dir: string, sha: string, fn: (worktre
 	return run;
 }
 
+/** git-test's line for a commit whose result is already stored. */
+const CACHED_RESULT = "is already known to be";
+
 /**
  * Run `git test run <sha>` in the repo's test worktree and report the exit code. A cached good
  * returns 0 fast, a cached bad fails fast, otherwise the test runs. Results land in the shared
@@ -91,7 +94,8 @@ export async function gitTestRun(dir: string, sha: string, opts: GitTestRunOptio
 	fs.mkdirSync(opts.logDir, {recursive: true});
 	const logPath = path.join(opts.logDir, `${sha}.log`);
 	const logContent = [result.stdout, result.stderr].filter(Boolean).join("\n");
-	fs.writeFileSync(logPath, logContent + "\n");
+	// A cached answer carries no test output; keep the log of the run that produced it.
+	if (!(logContent.includes(CACHED_RESULT) && fs.existsSync(logPath))) fs.writeFileSync(logPath, logContent + "\n");
 
 	return {exitCode: result.exitCode, logPath};
 }

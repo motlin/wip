@@ -30,6 +30,10 @@
 			"types": "./src/lib/ready-queue.ts",
 			"import": "./src/lib/ready-queue.ts"
 		},
+		"./baseline-failures.js": {
+			"types": "./src/lib/baseline-failures.ts",
+			"import": "./src/lib/baseline-failures.ts"
+		},
 		"./readiness.js": {
 			"types": "./src/lib/readiness.ts",
 			"import": "./src/lib/readiness.ts"

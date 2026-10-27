@@ -8,6 +8,7 @@ import type {
 	ProjectInfo,
 } from "@wip/shared";
 import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
+import {withinBaseline} from "@wip/shared/baseline-failures.js";
 import {isGreen} from "@wip/shared/readiness.js";
 import {planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
 import {stopsLine, upstreamOwnership, type GitHubIdentity, type UpstreamOwnership} from "@wip/shared/upstream-red.js";
@@ -94,6 +95,8 @@ export interface TestStepInput {
 	sha: string;
 	/** A clean replay produced `sha` from `preReplaySha`. */
 	replayed: boolean;
+	/** Set only on a foreign red upstream: the tests the baseline fails, which a commit may also fail. */
+	baselineFailures?: ReadonlySet<string>;
 }
 
 export interface TestStepDeps {
@@ -103,13 +106,16 @@ export interface TestStepDeps {
 	run: (sha: string) => Promise<number>;
 	/** Force-push the replayed commit and open or update its PR; false when that failed. */
 	publish: (sha: string) => Promise<boolean>;
+	/** The failing tests the sha's run log names; null when it names none. */
+	failedTests: (sha: string) => Promise<ReadonlySet<string> | null>;
 }
 
 /**
  * Step 3 of the advance (lean plan 4.2): the exit code of `git test run` decides, except on the
  * patch-id fast path. There a clean replay of a commit git-test already reported good skips the
  * local build, publishes, and waits for PR checks; patch-id never marks anything green on its own.
- * A failed publish falls back to running the test.
+ * A failed publish falls back to running the test. On a foreign red upstream (plan step 35) a
+ * failing run is still ready when every test it fails also fails on the baseline.
  */
 export async function testStep(
 	input: TestStepInput,
@@ -124,7 +130,9 @@ export async function testStep(
 	) {
 		return "checks_pending";
 	}
-	return (await deps.run(input.sha)) === 0 ? "ready" : "test_failed";
+	if ((await deps.run(input.sha)) === 0) return "ready";
+	if (input.baselineFailures === undefined) return "test_failed";
+	return withinBaseline(input.baselineFailures, await deps.failedTests(input.sha)) ? "ready" : "test_failed";
 }
 
 export interface ReadyBufferDeps {

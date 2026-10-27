@@ -138,6 +138,7 @@ export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
 export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
 export {failureSummary, reconcileAutoFixes, squashFixup} from "./lib/auto-fix.js";
+export {parseFailedTests, withinBaseline} from "./lib/baseline-failures.js";
 export {
 	detectLandings,
 	findLandingSuspects,

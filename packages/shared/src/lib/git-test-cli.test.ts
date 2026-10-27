@@ -137,6 +137,21 @@ describe("gitTestRun", () => {
 		]);
 	});
 
+	it("keeps the earlier log when git-test answers from a cached result, so the per-test detail survives", async () => {
+		fs.mkdirSync(worktree);
+		fs.writeFileSync(path.join(logDir, `${SHA_BAD}.log`), "FAIL  src/a.test.ts > case\n");
+		mockedExeca
+			.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`))
+			.mockResolvedValueOnce(
+				execaResult(1, "", "Tree abc^{tree} is already known to be bad for test 'default'!"),
+			);
+		const result = await gitTestRun(repo, SHA_BAD, {logDir});
+		expect({result, log: fs.readFileSync(path.join(logDir, `${SHA_BAD}.log`), "utf-8")}).toStrictEqual({
+			result: {exitCode: 1, logPath: path.join(logDir, `${SHA_BAD}.log`)},
+			log: "FAIL  src/a.test.ts > case\n",
+		});
+	});
+
 	it("reuses an existing test worktree, passes --retest and the test name only when asked, and returns a failing exit code", async () => {
 		fs.mkdirSync(worktree);
 		mockedExeca

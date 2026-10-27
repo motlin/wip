@@ -85,8 +85,17 @@ async function snapshot(): Promise<BufferRepo[]> {
 
 /** Steps 1-3 of 4.6 for one candidate. Never checks out, adds no worktrees or branches. */
 async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal): Promise<AdvanceOutcome> {
-	const {checkedOutBranches, DEFAULT_GIT_TEST, getTestLogDir, gitTestResults, gitTestRun, replayBranchOnto} =
-		await import("@wip/shared");
+	const fs = await import("node:fs");
+	const path = await import("node:path");
+	const {
+		checkedOutBranches,
+		DEFAULT_GIT_TEST,
+		getTestLogDir,
+		gitTestResults,
+		gitTestRun,
+		parseFailedTests,
+		replayBranchOnto,
+	} = await import("@wip/shared");
 	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
 	const {getProjects} = await import("./server-fns.js");
 	const p = (await getProjects()).find((proj) => proj.name === repo.name);
@@ -97,12 +106,32 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	if (upstream === "") return "skipped";
 	const logDir = getTestLogDir(p.name);
 
-	// 1. A red baseline (unknown is run first) stops this item until upstream moves; the next
-	// children refresh reports it as upstream red.
+	const failedTests = async (s: string): Promise<ReadonlySet<string> | null> => {
+		try {
+			return parseFailedTests(await fs.promises.readFile(path.join(logDir, `${s}.log`), "utf8"));
+		} catch {
+			return null;
+		}
+	};
+
+	// 1. A red baseline (unknown is run first) stops this item until upstream moves when the
+	// upstream is own; the next children refresh reports it as upstream red. A foreign red baseline
+	// whose log names its failing tests becomes the bar instead (step 35): no new failures.
+	let baselineFailures: ReadonlySet<string> | undefined;
 	if (p.hasTestConfigured) {
 		const baseline = (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [upstream])).get(upstream);
-		if (baseline === "bad") return "skipped";
-		if (baseline !== "good" && (await gitTestRun(p.dir, upstream, {logDir})).exitCode !== 0) return "skipped";
+		const red =
+			baseline === "bad" || (baseline !== "good" && (await gitTestRun(p.dir, upstream, {logDir})).exitCode !== 0);
+		if (red) {
+			if (repo.ownership === "own") return "skipped";
+			// A cached bad with no log left: rerun once so the log names the failures.
+			if (!fs.existsSync(path.join(logDir, `${upstream}.log`))) {
+				await gitTestRun(p.dir, upstream, {logDir, retest: true});
+			}
+			const failures = await failedTests(upstream);
+			if (failures === null) return "skipped";
+			baselineFailures = failures;
+		}
 	}
 	if (signal.aborted) return "skipped";
 
@@ -130,6 +159,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 			preReplaySha: candidate.sha,
 			sha,
 			replayed: !onUpstream,
+			...(baselineFailures === undefined ? {} : {baselineFailures}),
 		},
 		{
 			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
@@ -140,6 +170,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 				markLocalTestSkipped(p.name, s);
 				return true;
 			},
+			failedTests,
 		},
 	);
 

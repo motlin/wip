@@ -674,6 +674,10 @@ describe("testStep (patch-id fast path)", () => {
 					calls.push(`publish ${s.slice(0, 1)}`);
 					return Promise.resolve(options.published ?? true);
 				},
+				failedTests: async (s) => {
+					calls.push(`failedTests ${s.slice(0, 1)}`);
+					return Promise.resolve(null);
+				},
 			},
 		);
 		return {outcome, calls};
@@ -717,6 +721,65 @@ describe("testStep (patch-id fast path)", () => {
 		expect(await step({trustPatchIdGreen: true, replayed: true, hasTestConfigured: false}, "good")).toStrictEqual({
 			outcome: "ready",
 			calls: [],
+		});
+	});
+});
+
+describe("testStep (foreign red upstream as the baseline)", () => {
+	const SHA = "2".repeat(40);
+	const BASELINE = new Set(["src/a.test.ts > known broken", "src/b.test.ts > also broken"]);
+
+	async function step(failures: ReadonlySet<string> | null, options: {exitCode?: number; baseline?: boolean} = {}) {
+		const calls: string[] = [];
+		const outcome = await testStep(
+			{
+				trustPatchIdGreen: false,
+				replayed: true,
+				hasTestConfigured: true,
+				preReplaySha: "1".repeat(40),
+				sha: SHA,
+				...(options.baseline === false ? {} : {baselineFailures: BASELINE}),
+			},
+			{
+				results: async () => Promise.resolve("unknown"),
+				run: async (s) => {
+					calls.push(`run ${s.slice(0, 1)}`);
+					return Promise.resolve(options.exitCode ?? 1);
+				},
+				publish: async () => Promise.resolve(false),
+				failedTests: async (s) => {
+					calls.push(`failedTests ${s.slice(0, 1)}`);
+					return Promise.resolve(failures);
+				},
+			},
+		);
+		return {outcome, calls};
+	}
+
+	it("accepts a commit failing only baseline tests", async () => {
+		expect(await step(new Set(["src/a.test.ts > known broken"]))).toStrictEqual({
+			outcome: "ready",
+			calls: ["run 2", "failedTests 2"],
+		});
+	});
+
+	it("makes a commit red with one new failure, or failures it cannot name", async () => {
+		expect({
+			newFailure: await step(new Set(["src/a.test.ts > known broken", "src/c.test.ts > new"])),
+			unnamed: await step(null),
+		}).toStrictEqual({
+			newFailure: {outcome: "test_failed", calls: ["run 2", "failedTests 2"]},
+			unnamed: {outcome: "test_failed", calls: ["run 2", "failedTests 2"]},
+		});
+	});
+
+	it("reads no failures when the run passes or there is no baseline", async () => {
+		expect({
+			passes: await step(new Set(), {exitCode: 0}),
+			noBaseline: await step(new Set(), {baseline: false}),
+		}).toStrictEqual({
+			passes: {outcome: "ready", calls: ["run 2"]},
+			noBaseline: {outcome: "test_failed", calls: ["run 2"]},
 		});
 	});
 });

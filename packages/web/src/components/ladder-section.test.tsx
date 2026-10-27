@@ -103,6 +103,29 @@ describe("LadderSection", () => {
 		expect(row?.textContent).toContain("test/fix stuck (attempt 3)");
 	});
 
+	it("shows the repeated failure signature that stopped a branch or the AI conflict rung", () => {
+		render(
+			<LadderSection
+				inventory={registered}
+				results={[
+					{
+						...passed,
+						testFix: [{branch: "feature-a", status: "stuck", attempts: 2, signature: "0123456789abcdef"}],
+					},
+					ai("stuck", {aiSignature: "fedcba9876543210"}),
+				]}
+				runLadderAll={async () => Promise.resolve([])}
+				focusPane={noFocus}
+			/>,
+		);
+		expect(screen.getByText("alpha").closest("li")?.textContent).toContain(
+			"test/fix stuck (attempt 2)repeated failure 0123456789abcdef",
+		);
+		expect(screen.getByText("beta").closest("li")?.textContent).toContain(
+			"AI stuckrepeated failure fedcba9876543210",
+		);
+	});
+
 	it("reports a failed run only through the toast", async () => {
 		const runLadderAll = vi.fn<() => Promise<unknown>>().mockRejectedValue(new Error("boom"));
 		const {container} = render(

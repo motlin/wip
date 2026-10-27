@@ -3,11 +3,18 @@ import {execSync} from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {createWorkQueue, type LadderResult, type LadderRunProject} from "@wip/shared";
+import {
+	createWorkQueue,
+	normalizeFailureSignature,
+	RunMemory,
+	type LadderResult,
+	type LadderRunProject,
+} from "@wip/shared";
 import {
 	branchVerdict,
 	prepareTestFixWorktree,
 	runAiConflictRung,
+	runAiTestFixLoop,
 	runAiTestFixRung,
 	type AiRungDeps,
 } from "./ai-rungs.js";
@@ -74,6 +81,7 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 			Promise.resolve({
 				cwd: p.path,
 				conflicted: true,
+				log: "",
 				finish: async () => {
 					calls.order.push("finish");
 					return Promise.resolve(true);
@@ -88,6 +96,9 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 				},
 			}),
 		timeoutMs: 1234,
+		memory: new RunMemory(),
+		identity: async (_p, branch) => Promise.resolve(`patch-${branch}`),
+		failureLog: async () => Promise.resolve(""),
 		...overrides,
 	};
 	return {deps, calls};
@@ -149,6 +160,61 @@ describe("runAiConflictRung", () => {
 		const {deps} = makeDeps({queue, wait: slow});
 		await Promise.all([runAiConflictRung(project, stop, deps), runAiConflictRung(project, stop, deps)]);
 		expect(maxActive).toBe(1);
+	});
+});
+
+describe("AI loops stop on a repeated failure signature", () => {
+	it("returns stuck after 2 attempts when different tips fail with the same log", async () => {
+		const log = "FAIL src/foo.test.ts > adds\nAssertionError: expected 1 to be 2";
+		let tipCount = 0;
+		const {deps, calls} = makeDeps({
+			results: async () => Promise.resolve("red"),
+			failureLog: async () => Promise.resolve(log),
+			tip: async () => {
+				tipCount += 1;
+				return Promise.resolve(`tip-${tipCount}`);
+			},
+			maxAttempts: 10,
+		});
+		const result = await runAiTestFixLoop(project, "feat-a", deps);
+		expect(result).toStrictEqual({status: "stuck", attempts: 2, signature: normalizeFailureSignature(log)});
+		expect(calls.launches).toHaveLength(2);
+	});
+
+	it("keeps retrying while each changed tip fails differently", async () => {
+		let attempt = 0;
+		const {deps, calls} = makeDeps({
+			results: async () => Promise.resolve("red"),
+			failureLog: async () => Promise.resolve(`FAIL test number ${["one", "two", "three"][attempt - 1]}`),
+			tip: async () => Promise.resolve(`tip-${attempt}`),
+			onLaunched: () => {
+				attempt += 1;
+			},
+			maxAttempts: 3,
+		});
+		const result = await runAiTestFixLoop(project, "feat-a", deps);
+		expect(result).toStrictEqual({status: "stuck", attempts: 3});
+		expect(calls.launches).toHaveLength(3);
+	});
+
+	it("does not launch the conflict agent again for a repeated conflict signature on the same change", async () => {
+		const log = "CONFLICT (content): Merge conflict in src/app.ts";
+		const signatures: {branch: string; signature: string}[] = [];
+		const memory = new RunMemory();
+		const {deps, calls} = makeDeps({
+			memory,
+			rerun: async () => Promise.resolve(conflicted(["feat-a"])),
+			prepare: async (p) =>
+				Promise.resolve({cwd: p.path, conflicted: true, log, finish: async () => Promise.resolve(true)}),
+			onRepeatedFailure: (branch, signature) => {
+				signatures.push({branch, signature});
+			},
+		});
+		const single = {stop: "conflict" as const, branches: ["feat-a"]};
+		expect(await runAiConflictRung(project, single, deps)).toBe("stuck");
+		expect(await runAiConflictRung(project, single, deps)).toBe("stuck");
+		expect(calls.launches).toHaveLength(1);
+		expect(signatures).toStrictEqual([{branch: "feat-a", signature: normalizeFailureSignature(log)}]);
 	});
 });
 

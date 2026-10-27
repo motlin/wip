@@ -614,6 +614,7 @@ async function runLadderAiFollowUp(task: Task): Promise<void> {
 	}
 
 	let herdr: LadderResult["herdr"];
+	let aiSignature: string | undefined;
 	task.ladderResult = {...result, aiStatus: "queued"};
 	emit(task);
 	const next = await runAiConflictRung(ladderRunProject(task, info), result.stop, {
@@ -623,11 +624,15 @@ async function runLadderAiFollowUp(task: Task): Promise<void> {
 			task.ladderResult = {...(task.ladderResult ?? result), herdr, aiStatus: "running"};
 			emit(task);
 		},
+		onRepeatedFailure: (_branch, signature) => {
+			aiSignature = signature;
+		},
 	});
 	const final = next === "stuck" ? result : next;
 	task.ladderResult = {
 		...final,
 		...(herdr ? {herdr} : {}),
+		...(aiSignature ? {aiSignature} : {}),
 		aiStatus: next === "stuck" || next.stop ? "stuck" : "done",
 	};
 	finishLadderTask(task);

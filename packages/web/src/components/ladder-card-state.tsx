@@ -21,6 +21,7 @@ export function LadderCardState({state}: {state: LadderBranchState}) {
 				<div className="flex items-center gap-1.5">
 					<Bot className="h-3 w-3 shrink-0" aria-hidden="true" />
 					<span>AI {state.aiStatus}</span>
+					{state.aiSignature && <span className="font-mono">repeated failure {state.aiSignature}</span>}
 				</div>
 			)}
 			{state.testFix && (
@@ -29,6 +30,9 @@ export function LadderCardState({state}: {state: LadderBranchState}) {
 					<span>
 						test/fix {state.testFix.status} (attempt {state.testFix.attempts})
 					</span>
+					{state.testFix.signature && (
+						<span className="font-mono">repeated failure {state.testFix.signature}</span>
+					)}
 				</div>
 			)}
 			{needsAiCommand && (

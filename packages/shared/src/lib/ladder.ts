@@ -48,6 +48,8 @@ export interface LadderResult {
 	herdr?: {tabId: string; paneId: string};
 	/** Progress of the AI rung that follows a conflict stop. */
 	aiStatus?: LadderAiStatus;
+	/** The conflict signature that stopped the AI rung because the same change conflicted that way before. */
+	aiSignature?: string;
 	/** Branches the ladder rebased cleanly; the test/fix rung runs on these. */
 	rebased?: string[];
 	/** Test/fix rung progress per branch. */
@@ -59,6 +61,8 @@ export interface LadderTestFix {
 	/** running: agent working; red: tests failed, will retry; green: passing; stuck: gave up. */
 	status: "running" | "green" | "red" | "stuck";
 	attempts: number;
+	/** The failure signature that stopped the branch because the same change failed that way before. */
+	signature?: string;
 }
 
 export type LadderAiStatus = "queued" | "running" | "done" | "stuck";

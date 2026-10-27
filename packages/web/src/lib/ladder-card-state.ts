@@ -3,9 +3,10 @@ import type {LadderResult, LadderStop} from "@wip/shared";
 export interface LadderBranchState {
 	stop?: LadderStop;
 	aiStatus?: LadderResult["aiStatus"];
+	aiSignature?: string;
 	needsAiCommand?: string;
 	paneId?: string;
-	testFix?: {status: "running" | "green" | "red" | "stuck"; attempts: number};
+	testFix?: {status: "running" | "green" | "red" | "stuck"; attempts: number; signature?: string};
 }
 
 /**
@@ -25,8 +26,17 @@ export function ladderStateForBranch(
 	return {
 		...(stop ? {stop} : {}),
 		...(stop && result.aiStatus ? {aiStatus: result.aiStatus} : {}),
+		...(stop && result.aiSignature ? {aiSignature: result.aiSignature} : {}),
 		...(stop && result.needsAi ? {needsAiCommand: result.needsAi.command} : {}),
 		...(stop && result.herdr ? {paneId: result.herdr.paneId} : {}),
-		...(testFix ? {testFix: {status: testFix.status, attempts: testFix.attempts}} : {}),
+		...(testFix
+			? {
+					testFix: {
+						status: testFix.status,
+						attempts: testFix.attempts,
+						...(testFix.signature ? {signature: testFix.signature} : {}),
+					},
+				}
+			: {}),
 	};
 }

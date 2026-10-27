@@ -88,6 +88,9 @@ export function LadderSection({
 								<div className="ml-6 flex items-center gap-1.5 text-xs text-text-400">
 									<Bot className="h-3.5 w-3.5" />
 									<span>AI {result.aiStatus}</span>
+									{result.aiSignature && (
+										<span className="font-mono">repeated failure {result.aiSignature}</span>
+									)}
 								</div>
 							)}
 							{result.testFix?.map((entry) => (
@@ -100,6 +103,9 @@ export function LadderSection({
 									<span>
 										test/fix {entry.status} (attempt {entry.attempts})
 									</span>
+									{entry.signature && (
+										<span className="font-mono">repeated failure {entry.signature}</span>
+									)}
 								</div>
 							))}
 							{result.needsAi && (

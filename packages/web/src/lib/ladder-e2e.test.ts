@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
-import {initDb, resetDb, saveInventory, type LadderResult, type ProjectInfo} from "@wip/shared";
+import {initDb, resetDb, RunMemory, saveInventory, type LadderResult, type ProjectInfo} from "@wip/shared";
 
 import {runAiConflictRung, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server-fns.impl.js";
@@ -106,6 +106,7 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		const mainHeadBefore = git(clone, "rev-parse", "HEAD");
 		const mainStatusBefore = git(clone, "status", "--porcelain");
 		const overrides: Partial<AiRungDeps> = {
+			memory: new RunMemory(),
 			results: async () => Promise.resolve("green"),
 			launch: async (request) => {
 				if (request.label.includes(":test-fix:")) {
@@ -182,6 +183,7 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		const refsBefore = git(clone, "for-each-ref", "--format=%(refname) %(objectname)");
 		const launches: {cwd: string}[] = [];
 		const overrides: Partial<AiRungDeps> = {
+			memory: new RunMemory(),
 			launch: async (request) => {
 				launches.push(request);
 				return Promise.resolve({ok: true, value: {tabId: "tab-1", paneId: "pane-1"}});

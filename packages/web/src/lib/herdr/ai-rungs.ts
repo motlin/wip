@@ -1,11 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+	changeIdentity,
 	DEFAULT_GIT_TEST,
 	getAiMaxAttempts,
 	getAiRungTimeoutMs,
 	getCacheDir,
+	getCommitFacts,
+	getTestLogDir,
 	gitTestResults,
+	normalizeFailureSignature,
+	RunMemory,
 	runLadder,
 	runReplayRung,
 	runRebaseLeftoversRung,
@@ -46,6 +51,39 @@ export interface AiRungDeps {
 	maxAttempts?: number;
 	/** Called with the herdr tab and pane once the agent tab is launched. */
 	onLaunched?: (launched: HerdrLaunchResult) => void;
+	/** Failure signatures seen per change; shared across runs by default, so a repeat stops even in a later run. */
+	memory?: RunMemory;
+	/** A branch's stable change identity (patch-id of its first non-green commit, else branch). */
+	identity?: (project: LadderRunProject, branch: string) => Promise<string>;
+	/** The failure log of a red branch's first bad commit; empty when none is recorded. */
+	failureLog?: (project: LadderRunProject, branch: string) => Promise<string>;
+	/** Called when a repeated failure signature stops a branch, so the red set can show it. */
+	onRepeatedFailure?: (branch: string, signature: string) => void;
+}
+
+/** Process-wide memory of failure signatures per change, shared by the conflict and test/fix rungs. */
+const aiRunMemory = new RunMemory();
+
+/** The signature of output with no failure lines; it identifies nothing, so it never counts as a repeat. */
+const EMPTY_SIGNATURE = normalizeFailureSignature("");
+
+/**
+ * Records a failure signature for a change. Returns the signature when the same change already
+ * failed this way (the AI did not change the outcome, so retrying is pointless), else null.
+ */
+async function repeatedFailure(
+	memory: RunMemory,
+	project: string,
+	identity: () => Promise<string>,
+	kind: "test" | "conflicts",
+	log: string,
+): Promise<string | null> {
+	const signature = normalizeFailureSignature(log);
+	if (signature === EMPTY_SIGNATURE) return null;
+	const unit = {project, changeIdentity: await identity()};
+	if (memory.seen(unit, kind, signature)) return signature;
+	memory.record(unit, kind, signature);
+	return null;
 }
 
 export interface PreparedConflictWorktree {
@@ -53,6 +91,8 @@ export interface PreparedConflictWorktree {
 	cwd: string;
 	/** False when the rebase finished without conflict, so no agent is needed. */
 	conflicted: boolean;
+	/** The rebase's combined output, whose conflict lines form the failure signature. */
+	log: string;
 	/** Aborts an unfinished rebase, detaches, removes the worktree (never --force); false when the rebase was unfinished. */
 	finish: () => Promise<boolean>;
 }
@@ -101,7 +141,8 @@ async function prepareConflictWorktree(
 		await git(project.path, ["worktree", "prune"]);
 		return !unfinished;
 	};
-	return {cwd: dir, conflicted: rebase.exitCode !== 0, finish};
+	const log = [rebase.stdout, rebase.stderr].filter(Boolean).join("\n");
+	return {cwd: dir, conflicted: rebase.exitCode !== 0, log, finish};
 }
 
 /**
@@ -164,6 +205,42 @@ async function defaultResults(project: LadderRunProject, branch: string): Promis
 	}
 }
 
+async function branchShas(project: LadderRunProject, branch: string): Promise<string[]> {
+	const range = `${project.upstreamRemote}/${project.upstreamBranch}..${branch}`;
+	const revList = await git(project.path, ["rev-list", "--reverse", range]);
+	if (revList.exitCode !== 0) return [];
+	return revList.stdout.split("\n").filter((sha) => sha.length > 0);
+}
+
+/** The oldest commit on the branch that git-test does not report good; null when all are good. */
+async function firstNonGood(project: LadderRunProject, branch: string): Promise<string | null> {
+	const shas = await branchShas(project, branch);
+	if (shas.length === 0) return null;
+	try {
+		const statuses = await gitTestResults(project.path, DEFAULT_GIT_TEST, shas);
+		return shas.find((sha) => statuses.get(sha) !== "good") ?? null;
+	} catch {
+		return shas[0] ?? null;
+	}
+}
+
+async function defaultIdentity(project: LadderRunProject, branch: string): Promise<string> {
+	const sha = (await firstNonGood(project, branch)) ?? (await branchShas(project, branch)).at(-1);
+	if (!sha) return branch;
+	const facts = await getCommitFacts(project.path, project.name, [sha]);
+	return changeIdentity({patchId: facts.get(sha)?.patchId ?? "", branch, sha});
+}
+
+async function defaultFailureLog(project: LadderRunProject, branch: string): Promise<string> {
+	const sha = await firstNonGood(project, branch);
+	if (!sha) return "";
+	try {
+		return fs.readFileSync(path.join(getTestLogDir(project.name), `${sha}.log`), "utf8");
+	} catch {
+		return "";
+	}
+}
+
 function shellQuote(text: string): string {
 	return `"${text.replace(/(["\\$`])/g, "\\$1")}"`;
 }
@@ -190,6 +267,7 @@ export async function runAiConflictRung(
 		...overrides,
 	};
 
+	const memory = deps.memory ?? aiRunMemory;
 	let outcome: LadderResult | "stuck" = "stuck";
 	const handle = deps.queue.enqueue({
 		coalesceKey: `ai-rung:conflicts:${project.name}`,
@@ -206,6 +284,12 @@ export async function runAiConflictRung(
 				let completed = true;
 				try {
 					if (!prepared.conflicted) continue;
+					const identity = async () => (deps.identity ?? defaultIdentity)(project, branch);
+					const repeated = await repeatedFailure(memory, project.name, identity, "conflicts", prepared.log);
+					if (repeated) {
+						deps.onRepeatedFailure?.(branch, repeated);
+						return;
+					}
 					const launched = await deps.launch({
 						cwd: prepared.cwd,
 						label: `wip:${project.name}:conflicts`,
@@ -293,12 +377,15 @@ async function defaultTip(project: LadderRunProject, branch: string): Promise<st
 export interface AiTestFixLoopResult {
 	status: "green" | "stuck";
 	attempts: number;
+	/** The normalized failure signature when a repeat of it stopped the loop. */
+	signature?: string;
 }
 
 /**
  * Runs the test/fix rung repeatedly for one branch. A red run is retried while the branch tip keeps
- * changing; the branch is stuck when the same tip comes back red twice, the attempt cap is reached,
- * or a run times out / cannot launch.
+ * changing; the branch is stuck when the same change fails with a signature already seen (even on a
+ * new tip), the same tip comes back red twice, the attempt cap is reached, or a run times out /
+ * cannot launch.
  */
 export async function runAiTestFixLoop(
 	project: LadderRunProject,
@@ -308,6 +395,7 @@ export async function runAiTestFixLoop(
 ): Promise<AiTestFixLoopResult> {
 	const tip = overrides.tip ?? defaultTip;
 	const cap = overrides.maxAttempts ?? getAiMaxAttempts();
+	const memory = overrides.memory ?? aiRunMemory;
 	let lastRedTip: string | undefined;
 	let attempts = 0;
 	/* oxlint-disable no-await-in-loop -- attempts are sequential: each depends on the previous tip */
@@ -317,6 +405,13 @@ export async function runAiTestFixLoop(
 		const outcome = await runAiTestFixRung(project, branch, overrides);
 		if (outcome === "green") return {status: "green", attempts};
 		if (outcome === "stuck") return {status: "stuck", attempts};
+		const identity = async () => (overrides.identity ?? defaultIdentity)(project, branch);
+		const log = await (overrides.failureLog ?? defaultFailureLog)(project, branch);
+		const signature = await repeatedFailure(memory, project.name, identity, "test", log);
+		if (signature) {
+			overrides.onRepeatedFailure?.(branch, signature);
+			return {status: "stuck", attempts, signature};
+		}
 		const redTip = await tip(project, branch);
 		if (redTip === lastRedTip) return {status: "stuck", attempts};
 		lastRedTip = redTip;

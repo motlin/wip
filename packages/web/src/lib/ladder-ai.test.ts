@@ -63,7 +63,12 @@ function makeAi(available: boolean): {
 			overrides: {
 				results: async () => Promise.resolve("green"),
 				prepare: async (project) =>
-					Promise.resolve({cwd: project.path, conflicted: true, finish: async () => Promise.resolve(true)}),
+					Promise.resolve({
+						cwd: project.path,
+						conflicted: true,
+						log: "",
+						finish: async () => Promise.resolve(true),
+					}),
 				prepareTestFix: async (project) =>
 					Promise.resolve({cwd: project.path, finish: async () => Promise.resolve()}),
 				launch: async (request) => {

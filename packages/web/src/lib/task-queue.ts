@@ -2,6 +2,7 @@ import {execa} from "execa";
 import {
 	getCacheDir,
 	getMiseEnv,
+	withTestWorktree,
 	getTestLogDir,
 	invalidateChildrenCache,
 	invalidateMergeStatus,
@@ -358,22 +359,24 @@ async function runProcess({
 }
 
 /** `git test run` args for a test task: a cached result is reused unless the task asks to retest. */
-export function testTaskArgs(task: Pick<Task, "projectDir" | "sha" | "retest">): string[] {
-	return ["-C", task.projectDir, "test", "run", ...(task.retest ? ["--retest"] : []), task.sha];
+export function testTaskArgs(task: Pick<Task, "sha" | "retest">): string[] {
+	return ["test", "run", ...(task.retest ? ["--retest"] : []), task.sha];
 }
 
+/** Runs in the repo's test worktree, so a test never checks commits out in the user's checkout. */
 async function runTestTask(task: Task, signal: AbortSignal): Promise<void> {
 	const miseEnv = await getMiseEnv(task.projectDir);
-	const args = testTaskArgs(task);
 
-	const result = await runProcess({
-		task,
-		cmd: "git",
-		args,
-		logDir: getTestLogDir(task.project),
-		signal,
-		env: miseEnv,
-	});
+	const result = await withTestWorktree(task.projectDir, task.sha, async (worktree) =>
+		runProcess({
+			task,
+			cmd: "git",
+			args: ["-C", worktree, ...testTaskArgs(task)],
+			logDir: getTestLogDir(task.project),
+			signal,
+			env: miseEnv,
+		}),
+	);
 	if (!result) return;
 
 	task.finishedAt = Date.now();

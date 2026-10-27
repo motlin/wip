@@ -199,6 +199,8 @@ export {
 	gitTestResults,
 	gitTestRun,
 	parseGitTestResults,
+	testWorktreePath,
+	withTestWorktree,
 	type GitTestRunOptions,
 	type GitTestRunResult,
 	type GitTestStatus,

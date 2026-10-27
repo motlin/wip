@@ -41,6 +41,7 @@ describe("checkBaseline", () => {
 		if (savedXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = savedXdgCache;
 		rmSync(dir, {recursive: true, force: true});
+		rmSync(`${dir}-test-worktree`, {recursive: true, force: true});
 		rmSync(cacheDir, {recursive: true, force: true});
 		resetDb();
 	});

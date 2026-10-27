@@ -1,7 +1,7 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 import {Polly, type PollyConfig} from "@pollyjs/core";
 import {tmpdir} from "node:os";
-import {mkdir as makeDirectory, mkdtemp, rm, writeFile as writeTestFile} from "node:fs/promises";
+import {mkdir as makeDirectory, mkdtemp, readFile, realpath, rm, writeFile as writeTestFile} from "node:fs/promises";
 import {join} from "node:path";
 import {execa} from "execa";
 
@@ -1167,9 +1167,55 @@ describe("testChild (underlying logic via task-queue)", () => {
 
 		const jobs = getAllJobs();
 		expect([testTaskArgs(jobs.get(redJob.id)!), testTaskArgs(jobs.get(untestedJob.id)!)]).toStrictEqual([
-			["-C", dir, "test", "run", "--retest", red],
-			["-C", dir, "test", "run", untested],
+			["test", "run", "--retest", red],
+			["test", "run", untested],
 		]);
+	});
+
+	it("runs a Run Test task in the sibling test worktree, never in the user's checkout", async () => {
+		const {testChildHandler} = await import("./server-fns.impl.js");
+		const {getAllJobs, waitForTask} = await import("./task-queue.js");
+
+		const dir = await createTestGitRepo();
+		const worktree = `${await realpath(dir)}-test-worktree`;
+		tmpDirs.push(worktree);
+		const scratch = await mkdtemp(join(tmpdir(), "wip-run-test-scratch-"));
+		tmpDirs.push(scratch);
+		await writeTestFile(join(dir, "a.txt"), "tip\n");
+		await execa("git", ["add", "a.txt"], {cwd: dir});
+		await execa("git", ["commit", "-m", "tip"], {cwd: dir});
+		const tip = (await execa("git", ["rev-parse", "HEAD"], {cwd: dir})).stdout.trim();
+		// The user sits on a detached older commit with work in progress.
+		await execa("git", ["checkout", "--detach", "HEAD~1"], {cwd: dir});
+		await writeTestFile(join(dir, "wip.txt"), "in progress\n");
+		const during = join(scratch, "during");
+		await execa("git", [
+			"-C",
+			dir,
+			"config",
+			"test.default.command",
+			`echo "$(git -C ${dir} rev-parse HEAD) $(pwd -P)" >> ${during}`,
+		]);
+		const state = async () => ({
+			head: (await execa("git", ["rev-parse", "HEAD"], {cwd: dir})).stdout,
+			reflog: (await execa("git", ["reflog", "HEAD"], {cwd: dir})).stdout,
+			status: (await execa("git", ["status", "--porcelain"], {cwd: dir})).stdout,
+		});
+		const before = await state();
+		seedProjectCache([makeProject({name: "worktree-proj", dir})]);
+
+		const job = await testChildHandler({project: "worktree-proj", sha: tip});
+		await waitForTask(job.id);
+
+		expect({
+			status: getAllJobs().get(job.id)?.status,
+			after: await state(),
+			during: await readFile(during, "utf8"),
+		}).toStrictEqual({
+			status: "passed",
+			after: before,
+			during: `${before.head} ${worktree}\n`,
+		});
 	});
 
 	it("enqueueTest returns existing job if already queued for same sha+project", async () => {

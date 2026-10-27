@@ -27,15 +27,66 @@ export interface GitTestRunResult {
 }
 
 /**
- * Run `git test run <sha>` and report the exit code. A cached good returns 0 fast,
- * a cached bad fails fast, otherwise the test runs.
+ * The sibling `<repo>-test-worktree` that `just test-branch --worktree` (git-test.just) uses:
+ * next to the main checkout, even when `dir` is itself a linked worktree.
+ */
+export async function testWorktreePath(dir: string): Promise<string> {
+	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+		reject: false,
+	});
+	if (result.exitCode !== 0) {
+		throw new Error(`git rev-parse --git-common-dir failed in ${dir}: ${result.stderr.trim()}`);
+	}
+	return `${path.dirname(result.stdout.trim())}-test-worktree`;
+}
+
+// One git-test run at a time per test worktree, since each one checks commits out in it.
+const worktreeLocks = new Map<string, Promise<unknown>>();
+
+/**
+ * Run `fn` in the repo's test worktree, created detached on demand the way git-test.just does
+ * (`git worktree add --detach`) and never removed, so background tests never check commits out
+ * in the user's checkout.
+ */
+export async function withTestWorktree<T>(dir: string, sha: string, fn: (worktree: string) => Promise<T>): Promise<T> {
+	const worktree = await testWorktreePath(dir);
+	const previous = worktreeLocks.get(worktree) ?? Promise.resolve();
+	const run = previous.then(async () => {
+		if (!fs.existsSync(worktree)) {
+			const added = await tracedExeca("git", ["-C", dir, "worktree", "add", "--detach", worktree, sha], {
+				reject: false,
+			});
+			if (added.exitCode !== 0) {
+				throw new Error(`git worktree add ${worktree} failed: ${added.stderr.trim()}`);
+			}
+		}
+		return fn(worktree);
+	});
+	const settled: Promise<void> = run
+		.then(
+			() => undefined,
+			() => undefined,
+		)
+		.finally(() => {
+			if (worktreeLocks.get(worktree) === settled) worktreeLocks.delete(worktree);
+		});
+	worktreeLocks.set(worktree, settled);
+	return run;
+}
+
+/**
+ * Run `git test run <sha>` in the repo's test worktree and report the exit code. A cached good
+ * returns 0 fast, a cached bad fails fast, otherwise the test runs. Results land in the shared
+ * notes, so `gitTestResults` on the main checkout sees them.
  */
 export async function gitTestRun(dir: string, sha: string, opts: GitTestRunOptions): Promise<GitTestRunResult> {
-	const args = ["-C", dir, "test", "run", "--test", opts.testName ?? DEFAULT_GIT_TEST];
-	if (opts.retest) args.push("--retest");
-	args.push(sha);
+	const testArgs = ["test", "run", "--test", opts.testName ?? DEFAULT_GIT_TEST];
+	if (opts.retest) testArgs.push("--retest");
+	testArgs.push(sha);
 
-	const result = await tracedExeca("git", args, opts.env ? {reject: false, env: opts.env} : {reject: false});
+	const result = await withTestWorktree(dir, sha, async (worktree) =>
+		tracedExeca("git", ["-C", worktree, ...testArgs], opts.env ? {reject: false, env: opts.env} : {reject: false}),
+	);
 
 	fs.mkdirSync(opts.logDir, {recursive: true});
 	const logPath = path.join(opts.logDir, `${sha}.log`);

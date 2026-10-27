@@ -107,34 +107,47 @@ describe("gitTestResults", () => {
 
 describe("gitTestRun", () => {
 	let logDir: string;
+	let repo: string;
+	let worktree: string;
 
 	beforeEach(() => {
 		mockedExeca.mockReset();
 		logDir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-git-test-cli-"));
+		repo = path.join(logDir, "repo");
+		worktree = `${repo}-test-worktree`;
 	});
 
 	afterEach(() => {
 		fs.rmSync(logDir, {recursive: true, force: true});
 	});
 
-	it("runs the default test without --retest and writes the log", async () => {
-		mockedExeca.mockResolvedValue(execaResult(0, "testing...", "ok"));
-		const result = await gitTestRun("/repo", SHA_GOOD, {logDir});
+	it("creates the sibling test worktree, runs the default test there without --retest and writes the log", async () => {
+		mockedExeca
+			.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`))
+			.mockResolvedValueOnce(execaResult(0))
+			.mockResolvedValueOnce(execaResult(0, "testing...", "ok"));
+		const result = await gitTestRun(repo, SHA_GOOD, {logDir});
 		const logPath = path.join(logDir, `${SHA_GOOD}.log`);
 		expect(result).toStrictEqual({exitCode: 0, logPath});
 		expect(fs.readFileSync(logPath, "utf-8")).toBe("testing...\nok\n");
 		expect(mockedExeca.mock.calls).toStrictEqual([
-			["git", ["-C", "/repo", "test", "run", "--test", "default", SHA_GOOD], {reject: false}],
+			["git", ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"], {reject: false}],
+			["git", ["-C", repo, "worktree", "add", "--detach", worktree, SHA_GOOD], {reject: false}],
+			["git", ["-C", worktree, "test", "run", "--test", "default", SHA_GOOD], {reject: false}],
 		]);
 	});
 
-	it("passes --retest and the test name only when asked, and returns a failing exit code", async () => {
-		mockedExeca.mockResolvedValue(execaResult(1, "", "boom"));
+	it("reuses an existing test worktree, passes --retest and the test name only when asked, and returns a failing exit code", async () => {
+		fs.mkdirSync(worktree);
+		mockedExeca
+			.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`))
+			.mockResolvedValueOnce(execaResult(1, "", "boom"));
 		const env = {PATH: "/bin"};
-		const result = await gitTestRun("/repo", SHA_BAD, {logDir, testName: "lint", retest: true, env});
+		const result = await gitTestRun(repo, SHA_BAD, {logDir, testName: "lint", retest: true, env});
 		expect(result).toStrictEqual({exitCode: 1, logPath: path.join(logDir, `${SHA_BAD}.log`)});
 		expect(mockedExeca.mock.calls).toStrictEqual([
-			["git", ["-C", "/repo", "test", "run", "--test", "lint", "--retest", SHA_BAD], {reject: false, env}],
+			["git", ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"], {reject: false}],
+			["git", ["-C", worktree, "test", "run", "--test", "lint", "--retest", SHA_BAD], {reject: false, env}],
 		]);
 	});
 });

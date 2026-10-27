@@ -1,3 +1,4 @@
+import type {GitHubActionsGate} from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {
 	bufferRepoFromChildren,
@@ -10,6 +11,12 @@ import {
 	type ReadyBuffer,
 } from "./ready-buffer.js";
 import type {OnHoldSignal} from "./ready-buffer-events.js";
+import {
+	createBackgroundPusher,
+	publishAfterAdvance,
+	type BackgroundPusher,
+	type PushRequest,
+} from "./background-push.js";
 import {markLocalTestSkipped} from "./local-test-skipped.js";
 import {workQueue} from "./shared-work-queue.js";
 
@@ -20,6 +27,8 @@ import {workQueue} from "./shared-work-queue.js";
  * one silent `/git:conflicts` agent, a test failure one `/build:fix` agent that must commit a
  * separate fixup (recorded as "auto-fixed" until accepted), and the signals
  * (upstreamMoved, landed, task completion, On hold, children refresh, safety tick) trigger pulls.
+ * A ready item in a pull-request repo is force-pushed with lease through the one GitHub Actions
+ * gate (plan step 34); a held push is deferred and retried on the children and tick signals.
  */
 
 const SAFETY_TICK_MS = 45_000;
@@ -38,8 +47,15 @@ async function checkedOut(dir: string): Promise<string[]> {
 }
 
 async function snapshot(): Promise<BufferRepo[]> {
-	const {getCachedChildren, getGitHubIdentity, getPriorityOverride, isOnHold, loadInventory, trustsPatchIdGreen} =
-		await import("@wip/shared");
+	const {
+		getCachedChildren,
+		getGitHubIdentity,
+		getPriorityOverride,
+		isOnHold,
+		landingMode,
+		loadInventory,
+		trustsPatchIdGreen,
+	} = await import("@wip/shared");
 	const {getProjects} = await import("./server-fns.js");
 	const identity = await getGitHubIdentity();
 	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r]));
@@ -60,6 +76,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 				onHold: (child) => isOnHold(p.name, {sha: child.sha, patchId: child.patchId}),
 				override: (patchId) => getPriorityOverride(p.name, {kind: "commit", key: patchId}),
 				trustPatchIdGreen: record !== undefined && trustsPatchIdGreen(record),
+				...(record === undefined ? {} : {landing: landingMode(record)}),
 			}),
 		);
 	}
@@ -104,7 +121,9 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 
 	// 3. The exit code of `git test run` decides, unless the patch-id fast path publishes instead.
 	const {branch} = candidate;
-	return testStep(
+	const pushRequest = (s: string): PushRequest | null =>
+		branch === undefined ? null : {project: p.name, dir: p.dir, repository: p.remote, branch, sha: s};
+	const outcome = await testStep(
 		{
 			trustPatchIdGreen: repo.trustPatchIdGreen === true,
 			hasTestConfigured: p.hasTestConfigured,
@@ -116,34 +135,64 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
 			run: async (s) => (await gitTestRun(p.dir, s, {logDir})).exitCode,
 			publish: async (s) => {
-				if (branch === undefined || !(await publishForChecks(p, branch, candidate.sha))) return false;
+				const request = pushRequest(s);
+				if (request === null || !(await publishForChecks(p, request, candidate.sha))) return false;
 				markLocalTestSkipped(p.name, s);
 				return true;
 			},
 		},
 	);
+
+	// 4. Step 34: a ready item in a pull-request repo is force-pushed with lease through the gate.
+	const request = pushRequest(sha);
+	if (request !== null) {
+		const pushed = await publishAfterAdvance({landing: repo.landing, outcome, request}, backgroundPusher());
+		if (pushed !== null) log.general.info({project: p.name, branch, sha, push: pushed}, "Ready-buffer push");
+	}
+	return outcome;
+}
+
+let gate: GitHubActionsGate | null = null;
+let pusher: BackgroundPusher | null = null;
+
+/** The one pusher, and so the one GitHub Actions gate, for every background push in this process. */
+function backgroundPusher(): BackgroundPusher {
+	pusher ??= createBackgroundPusher({
+		gate: {
+			// Created on first use, so the node-only checks source loads lazily.
+			check: async () => {
+				const {GitHubActionsGate: Gate, githubChecksSource} = await import("@wip/shared");
+				gate ??= new Gate(githubChecksSource);
+				return gate.check();
+			},
+			recordPush: (push) => {
+				gate?.recordPush(push);
+			},
+		},
+		git: async (args) => {
+			const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+			const result = await tracedExeca("git", [...args], {reject: false});
+			return {exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr};
+		},
+	});
+	return pusher;
 }
 
 /**
  * The fast path's publish: force-push the replayed branch with lease to origin (where PR heads
- * live) and open a draft PR when the commit had none; an existing PR updates with the push.
+ * live) through the gate, without deferring a held push (the advance then runs the local test),
+ * and open a draft PR when the commit had none; an existing PR updates with the push.
  */
 async function publishForChecks(
 	p: {name: string; dir: string; remote: string; originRemote: string; upstreamBranch: string},
-	branch: string,
+	request: PushRequest,
 	preReplaySha: string,
 ): Promise<boolean> {
 	const {createPullRequest, getCachedChildren, invalidatePrCache} = await import("@wip/shared");
-	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
-	const push = await tracedExeca(
-		"git",
-		["-C", p.dir, "push", "--force-with-lease", "origin", `${branch}:${branch}`],
-		{
-			reject: false,
-		},
-	);
-	if (push.exitCode !== 0) {
-		log.general.warn({project: p.name, branch, stderr: push.stderr}, "Ready-buffer fast-path push failed");
+	const {branch} = request;
+	const push = await backgroundPusher().push(request, {defer: false});
+	if (push.status === "held" || push.status === "failed") {
+		log.general.warn({project: p.name, branch, push}, "Ready-buffer fast-path push not done");
 		return false;
 	}
 	invalidatePrCache(p.name);
@@ -309,9 +358,11 @@ export async function startReadyBuffer(
 	const {childrenEmitter} = await import("./children-events.js");
 	childrenEmitter.on("children", () => {
 		warnOnFailure(started.pull(), "children");
+		warnOnFailure(backgroundPusher().flush(), "push-flush");
 	});
 	setInterval(() => {
 		warnOnFailure(started.pull(), "tick");
+		warnOnFailure(backgroundPusher().flush(), "push-flush");
 	}, SAFETY_TICK_MS).unref();
 	warnOnFailure(started.pull(), "start");
 }

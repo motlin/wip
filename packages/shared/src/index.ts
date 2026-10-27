@@ -335,6 +335,7 @@ export {
 	GitHubActionsGate,
 	pushGateDecision,
 } from "./lib/gha-gate.js";
+export {githubChecksSource} from "./lib/gha-checks.js";
 export {
 	DEFAULT_PRIORITY,
 	effectivePriority,

@@ -2,6 +2,13 @@ import type {ProjectRecord} from "./inventory.js";
 
 // Client-safe: no node builtins. Paths are handled as POSIX strings.
 
+export type LandingMode = "pull-request" | "fast-forward";
+
+/** A fork lands through pull requests; any other repo fast-forwards local main unless the registry says otherwise. */
+export function landingMode(record: Pick<ProjectRecord, "kind" | "landing">): LandingMode {
+	return record.landing ?? (record.kind === "fork" ? "pull-request" : "fast-forward");
+}
+
 export interface ParsedProjectsYaml {
 	scan?: string;
 	skip?: string[];

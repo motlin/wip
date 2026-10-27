@@ -5,7 +5,7 @@ import JSON5 from "json5";
 import {z} from "zod";
 
 import {getConfigDir} from "./config.js";
-import type {TemplateTexts} from "./inventory-import.js";
+import {landingMode, type TemplateTexts} from "./inventory-import.js";
 import {PrioritySchema} from "./priority.js";
 
 export {diffInventories, type InventoryDiff} from "./inventory-import.js";
@@ -29,12 +29,7 @@ export const ProjectRecordSchema = z.object({
 });
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
 
-export type LandingMode = "pull-request" | "fast-forward";
-
-/** A fork lands through pull requests; any other repo fast-forwards local main unless the registry says otherwise. */
-export function landingMode(record: Pick<ProjectRecord, "kind" | "landing">): LandingMode {
-	return record.landing ?? (record.kind === "fork" ? "pull-request" : "fast-forward");
-}
+export {landingMode, type LandingMode} from "./inventory-import.js";
 
 /**
  * Whether a clean replay of a commit green before the replay may skip the local build and let PR

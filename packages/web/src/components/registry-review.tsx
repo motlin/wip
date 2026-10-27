@@ -3,7 +3,9 @@ import type {ProjectRecord} from "@wip/shared";
 // The client-safe module, so the browser bundle never pulls the node-only registry code.
 import {
 	diffInventories,
+	landingMode,
 	type InventoryDiff,
+	type LandingMode,
 	type RegistryCandidate,
 	type RegistryGroup,
 	type SkipReason,
@@ -29,6 +31,11 @@ const DECISIONS: [Kind, string][] = [
 ];
 
 const TEMPLATES: ProjectRecord["template"][] = ["project", "typescript", "java", "rust", "playdate", "unknown"];
+
+const LANDINGS: [LandingMode, string][] = [
+	["pull-request", "lands via pull request"],
+	["fast-forward", "lands by fast-forward"],
+];
 
 interface GroupSpec {
 	group: RegistryGroup;
@@ -97,6 +104,10 @@ function parseTemplate(value: string): ProjectRecord["template"] | undefined {
 	return TEMPLATES.find((template) => template === value);
 }
 
+function parseLanding(value: string): LandingMode | undefined {
+	return LANDINGS.find(([landing]) => landing === value)?.[0];
+}
+
 /** The project with a new decision; a note only explains a skip, so other kinds drop it. */
 function decide(project: ProjectRecord, kind: Kind): ProjectRecord {
 	if (kind === "skip") return {...project, kind};
@@ -112,6 +123,7 @@ function describeChange({before, after}: InventoryDiff["changed"][number]): stri
 	const changes = (["name", "template", "kind"] as const)
 		.filter((key) => before[key] !== after[key])
 		.map((key) => `${before[key]} → ${after[key]}`);
+	if (before.landing !== after.landing) changes.push(`landing ${landingMode(before)} → ${landingMode(after)}`);
 	if (before.skipNote !== after.skipNote) changes.push(`note "${before.skipNote ?? ""}" → "${after.skipNote ?? ""}"`);
 	return `${before.name}: ${changes.join(", ")}`;
 }
@@ -156,6 +168,7 @@ function CandidateRow({
 	onDecide,
 	onTemplate,
 	onNote,
+	onLanding,
 	onUndo,
 }: {
 	row: RegistryCandidate;
@@ -164,6 +177,8 @@ function CandidateRow({
 	onDecide: (kind: Kind) => void;
 	onTemplate: (template: ProjectRecord["template"]) => void;
 	onNote: (note: string) => void;
+	/** Sets the landing mode explicitly, overriding the default derived from the kind. */
+	onLanding: (landing: LandingMode) => void;
 	/** Returns a decided row to the inbox; only decided inbox rows have it. */
 	onUndo?: () => void;
 }) {
@@ -197,6 +212,31 @@ function CandidateRow({
 						</select>
 					) : (
 						<span className="rounded bg-bg-200 px-1.5 text-[11px] text-text-300">{template}</span>
+					)}
+					{!skipped && (
+						<select
+							aria-label={`Landing for ${name}`}
+							title={
+								row.project.landing === undefined
+									? "Default for the kind: forks land via pull request, other repos by fast-forward. The ready buffer force-pushes ready commits only in pull-request repos."
+									: "Set in the registry. The ready buffer force-pushes ready commits only in pull-request repos."
+							}
+							value={landingMode(row.project)}
+							onChange={(event) => {
+								const next = parseLanding(event.target.value);
+								if (next) onLanding(next);
+							}}
+							className={selectClass}
+						>
+							{LANDINGS.map(([value, label]) => (
+								<option key={value} value={value}>
+									{label}
+									{row.project.landing === undefined && value === landingMode(row.project)
+										? " (default)"
+										: ""}
+								</option>
+							))}
+						</select>
 					)}
 				</div>
 				<span className="block truncate font-mono text-[11px] text-text-500" title={dir}>
@@ -429,6 +469,9 @@ function GroupCard({
 								}}
 								onTemplate={(template) => {
 									edit(only, (project) => ({...project, template}));
+								}}
+								onLanding={(landing) => {
+									edit(only, (project) => ({...project, landing}));
 								}}
 								onNote={(note) => {
 									edit(only, (project) => {

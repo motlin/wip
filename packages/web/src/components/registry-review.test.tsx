@@ -271,6 +271,21 @@ describe("RegistryReview", () => {
 		]);
 	});
 
+	it("shows each kept repo's effective landing mode and saves a correction as an explicit landing", () => {
+		const {onSave} = renderReview();
+		const landing = (name: string) =>
+			within(row(name)).queryByRole<HTMLSelectElement>("combobox", {name: `Landing for ${name}`})?.value ?? null;
+		expect({beta: landing("beta"), gone: landing("gone"), legacy: landing("legacy")}).toStrictEqual({
+			beta: "pull-request",
+			gone: "fast-forward",
+			legacy: null,
+		});
+		fireEvent.change(within(row("gone")).getByRole("combobox", {name: "Landing for gone"}), {
+			target: {value: "pull-request"},
+		});
+		expect(saveAndCapture(onSave, 1)).toEqual([beta, chosen, {...gone, landing: "pull-request"}, legacy]);
+	});
+
 	it("drops the skip note when a skip becomes a kept project", () => {
 		const {onSave} = renderReview();
 		decide("chosen", "Own");

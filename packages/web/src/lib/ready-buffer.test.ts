@@ -600,6 +600,17 @@ describe("bufferRepoFromChildren", () => {
 	});
 });
 
+describe("bufferRepoFromChildren landing mode", () => {
+	it("carries the registry's effective landing mode, so the advance knows whether to push", () => {
+		const base = {identity: null, checkedOutBranches: [], onHold: () => false, override: () => undefined};
+		expect({
+			pr: bufferRepoFromChildren(project("motlin/wip"), [], {...base, landing: "pull-request"}).landing,
+			ff: bufferRepoFromChildren(project("motlin/wip"), [], {...base, landing: "fast-forward"}).landing,
+			unset: bufferRepoFromChildren(project("motlin/wip"), [], base).landing,
+		}).toStrictEqual({pr: "pull-request", ff: "fast-forward", unset: undefined});
+	});
+});
+
 describe("bufferRepoFromChildren with the patch-id fast path", () => {
 	it("counts a commit whose local test was skipped as ready only once its PR checks pass", () => {
 		const states = bufferRepoFromChildren(

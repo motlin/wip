@@ -1,4 +1,12 @@
-import type {EnqueueOptions, GitChildResult, GitTestStatus, JobHandle, Priority, ProjectInfo} from "@wip/shared";
+import type {
+	EnqueueOptions,
+	GitChildResult,
+	GitTestStatus,
+	JobHandle,
+	LandingMode,
+	Priority,
+	ProjectInfo,
+} from "@wip/shared";
 import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {isGreen} from "@wip/shared/readiness.js";
 import {planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
@@ -54,6 +62,8 @@ export interface BufferRepo {
 	checkedOutBranches: readonly string[];
 	/** The patch-id fast path applies (setting on, pull-request repo): see testStep. */
 	trustPatchIdGreen?: boolean;
+	/** The registry's effective landing mode; a ready item in a pull-request repo is force-pushed. */
+	landing?: LandingMode;
 	/** In rank order (shortest remaining job first). */
 	candidates: BufferCandidate[];
 }
@@ -153,6 +163,8 @@ export interface BufferRepoContext {
 	override: (patchId: string) => Priority | undefined;
 	/** The repo's patch-id fast path applies (setting on, pull-request repo). */
 	trustPatchIdGreen?: boolean;
+	/** The registry's effective landing mode; unset when the project isn't registered. */
+	landing?: LandingMode;
 }
 
 /**
@@ -175,6 +187,7 @@ export function bufferRepoFromChildren(
 		localChanges: project.dirty,
 		checkedOutBranches: context.checkedOutBranches,
 		...(context.trustPatchIdGreen === true ? {trustPatchIdGreen: true} : {}),
+		...(context.landing === undefined ? {} : {landing: context.landing}),
 		candidates: work.map((child) => {
 			const override = child.patchId === undefined ? undefined : context.override(child.patchId);
 			const green = isGreen({

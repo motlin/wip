@@ -25,7 +25,6 @@ import type {
 	FileDiff,
 	ProjectChildrenResult,
 	QueueSnapshot,
-	RunAllCounts,
 	SaveRegistryResult,
 	SystemStatus,
 	TestJobStatus,
@@ -40,6 +39,7 @@ import type {
 	RegistryCandidates,
 } from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
+import {EscapeHatchRecipeSchema} from "./escape-hatch.js";
 
 export type {
 	AdvancePlanBranchSummary,
@@ -102,10 +102,13 @@ export const testChild = createServerFn({method: "POST"})
 	.validator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).testChildHandler(data));
 
-export const testAllChildren = createServerFn({method: "POST"}).handler(async () => {
-	(await serverFns()).launchTestAllChildren();
-	return {started: true} as const;
-});
+export const topUpReadyBuffer = createServerFn({method: "POST"}).handler(async (): Promise<{running: boolean}> =>
+	(await serverFns()).topUpReadyBufferHandler(),
+);
+
+export const runEscapeHatch = createServerFn({method: "POST"})
+	.validator((input: unknown) => z.object({recipe: EscapeHatchRecipeSchema}).parse(input))
+	.handler(async ({data}): Promise<TestJobStatus[]> => (await serverFns()).runEscapeHatchHandler(data.recipe));
 
 export const runLadderAll = createServerFn({method: "POST"}).handler(async (): Promise<TestJobStatus[]> =>
 	(await serverFns()).runLadderAllHandler(),
@@ -234,15 +237,6 @@ export const applyFixes = createServerFn({method: "POST"})
 export const rebaseChild = createServerFn({method: "POST"})
 	.validator((input: unknown) => RebaseLocalInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).rebaseChildHandler(data));
-
-export const rebaseAllChildren = createServerFn({method: "POST"}).handler(async () => {
-	(await serverFns()).launchRebaseAllChildren();
-	return {started: true} as const;
-});
-
-export const runAllCounts = createServerFn({method: "GET"}).handler(async (): Promise<RunAllCounts> =>
-	(await serverFns()).runAllCountsHandler(),
-);
 
 export const generateAdvancePlan = createServerFn({method: "POST"})
 	.validator((input: unknown) =>

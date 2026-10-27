@@ -8,7 +8,6 @@ import {
 	type AdvanceOutcome,
 	type BufferCandidate,
 	type BufferRepo,
-	type ReadyBuffer,
 } from "./ready-buffer.js";
 import type {OnHoldSignal} from "./ready-buffer-events.js";
 import {
@@ -19,6 +18,7 @@ import {
 } from "./background-push.js";
 import {markLocalTestSkipped} from "./local-test-skipped.js";
 import {workQueue} from "./shared-work-queue.js";
+import {currentReadyBuffer, setReadyBuffer} from "./ready-buffer-instance.js";
 
 /**
  * Production wiring for the ready buffer (lean plan 4.6): the snapshot reads each project's
@@ -323,8 +323,6 @@ async function fixTest(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	return fixup;
 }
 
-let buffer: ReadyBuffer | null = null;
-
 function warnOnFailure(promise: Promise<void>, signal: string): void {
 	promise.catch((error: unknown) => {
 		log.general.error({error, signal}, "Ready-buffer pull failed");
@@ -339,7 +337,7 @@ function warnOnFailure(promise: Promise<void>, signal: string): void {
 export async function startReadyBuffer(
 	enqueueProjectRefresh: (project: string, options: {force: boolean}) => void,
 ): Promise<void> {
-	if (buffer) return;
+	if (currentReadyBuffer()) return;
 	if (!readyBufferEnabled(process.env)) {
 		log.general.info("Ready buffer disabled by WIP_READY_BUFFER");
 		return;
@@ -375,7 +373,7 @@ export async function startReadyBuffer(
 			return fixup;
 		},
 	});
-	buffer = started;
+	setReadyBuffer(started);
 
 	const {emitter: mergeEmitter} = await import("./merge-queue.js");
 	mergeEmitter.on("upstreamMoved", (event: {project: string}) => {

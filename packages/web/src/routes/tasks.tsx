@@ -2,7 +2,8 @@ import {createFileRoute, Link} from "@tanstack/react-router";
 import {useQuery, useQueryClient, useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
 import {
-	testAllChildren,
+	runEscapeHatch,
+	topUpReadyBuffer,
 	cancelTestFn,
 	pushChild,
 	runLadderAll,
@@ -11,10 +12,11 @@ import {
 } from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import type {TaskQueueJob, TaskType} from "@wip/shared";
-import {useAllTasks, useHasActiveTests, type TaskEvent} from "../lib/server-events-context.js";
+import {useAllTasks, type TaskEvent} from "../lib/server-events-context.js";
 import {LadderSection} from "../components/ladder-section.js";
 import {RegistrySection} from "../components/registry-section.js";
 import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel.js";
+import {BulkActions} from "../components/bulk-actions.js";
 import {
 	Clock,
 	Play,
@@ -37,7 +39,6 @@ import {
 	registryCandidatesQueryOptions,
 	taskQueueQueryOptions,
 } from "../lib/queries.js";
-import {useReadyToTestCount} from "../lib/ready-to-test-count.js";
 import {useHydrated} from "../lib/use-hydrated.js";
 
 export const Route = createFileRoute("/tasks")({
@@ -290,10 +291,7 @@ function Tasks() {
 	const {data: registryCandidates} = useQuery(registryCandidatesQueryOptions());
 	const queryClient = useQueryClient();
 	const {tasks: liveJobs} = useAllTasks();
-	const [testingAll, setTestingAll] = useState(false);
 	const [groupBy, setGroupBy] = useState<GroupBy>("project");
-	const hasActiveTests = useHasActiveTests();
-	const readyToTest = useReadyToTestCount();
 
 	const allJobs = mergeJobs(serverJobs, liveJobs);
 	const groups = groupTasks(allJobs, groupBy);
@@ -303,10 +301,6 @@ function Tasks() {
 		running: allJobs.filter((j) => j.status === "running").length,
 		passed: allJobs.filter((j) => j.status === "passed").length,
 		failed: allJobs.filter((j) => j.status === "failed").length,
-	};
-
-	const handleTestAll = async () => {
-		await runPendingAction("Test all", setTestingAll, async () => testAllChildren());
 	};
 
 	return (
@@ -371,31 +365,10 @@ function Tasks() {
 							By Type
 						</button>
 					</div>
-					<button
-						type="button"
-						onClick={() => {
-							void handleTestAll();
-						}}
-						disabled={testingAll || hasActiveTests}
-						className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-							testingAll || hasActiveTests
-								? "bg-yellow-600/80 text-white"
-								: "bg-yellow-600 hover:bg-yellow-700 text-white"
-						}`}
-					>
-						{testingAll || hasActiveTests ? (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						) : (
-							<Play className="h-4 w-4" />
-						)}
-						{hasActiveTests
-							? "Tasks Running..."
-							: testingAll
-								? "Queueing..."
-								: readyToTest > 0
-									? `Run All Tests (${readyToTest})`
-									: "Run All Tests"}
-					</button>
+					<BulkActions
+						topUp={async () => topUpReadyBuffer()}
+						runRecipe={async (recipe) => runEscapeHatch({data: {recipe}})}
+					/>
 				</div>
 			</div>
 

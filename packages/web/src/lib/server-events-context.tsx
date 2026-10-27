@@ -93,11 +93,6 @@ export function useTestLog(sha: string, project: string): string | undefined {
 	);
 }
 
-export function useHasActiveTests(): boolean {
-	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("tasks", listener), []);
-	return useSyncExternalStore(subscribe, hasActiveTasksSnapshot, () => false);
-}
-
 export function useMergeStatus(sha: string, project: string): MergeStatusEvent | undefined {
 	const subscribe = useCallback(
 		(listener: () => void) => subscribeToStoreKey(`merge:${taskStoreKey(project, sha)}`, listener),

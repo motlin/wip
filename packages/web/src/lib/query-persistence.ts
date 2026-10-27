@@ -23,7 +23,6 @@ const UNPERSISTED_KEYS: ReadonlySet<unknown> = new Set([
 	"ladderResults",
 	"systemStatus",
 	"taskQueue",
-	"runAllCounts",
 	"diff",
 	"testLog",
 	"workingTreeDiff",

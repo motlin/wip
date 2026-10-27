@@ -13,7 +13,6 @@ import {
 	getWorkingTreeDiff,
 	getTestLog,
 	generateAdvancePlan,
-	runAllCounts,
 	getSystemStatus,
 	getInventoryStatus,
 	getRegistryCandidates,
@@ -65,13 +64,6 @@ export const taskQueueQueryOptions = () =>
 		queryKey: ["taskQueue"],
 		queryFn: async () => getTaskQueue(),
 		staleTime: 5_000,
-	});
-
-export const runAllCountsQueryOptions = () =>
-	queryOptions({
-		queryKey: ["runAllCounts"],
-		queryFn: async () => runAllCounts(),
-		staleTime: 10_000,
 	});
 
 export const systemStatusQueryOptions = () =>

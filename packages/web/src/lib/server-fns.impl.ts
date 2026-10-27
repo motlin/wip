@@ -99,10 +99,13 @@ import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOut
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
 import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
+import {runEscapeHatch, topUpReadyBuffer} from "./bulk-actions.js";
+import {currentReadyBuffer} from "./ready-buffer-instance.js";
+import type {EscapeHatchRecipe} from "./escape-hatch.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
-import type {EnqueueRebaseOptions, LadderAiOptions} from "./task-queue.js";
+import type {LadderAiOptions} from "./task-queue.js";
 import {focusHerdrPane} from "./herdr/focus.js";
 import {isLocalTestSkipped} from "./local-test-skipped.js";
 import type {HerdrResult} from "./herdr/client.js";
@@ -929,68 +932,6 @@ export async function drainBackgroundEnqueues(): Promise<void> {
 	}
 }
 
-interface PlannedTest {
-	project: string;
-	projectDir: string;
-	sha: string;
-	shortSha: string;
-	subject: string;
-	branch?: string;
-}
-
-/**
- * How planners read a project's children. Count queries use cached children
- * only (no subprocess or API work on a GET path); the click handlers use the
- * regular cached-or-refresh read so what gets enqueued reflects reality.
- */
-type ChildrenReader = (project: ProjectInfo) => Promise<ProjectChildrenResult>;
-
-const readCachedChildren: ChildrenReader = async (p) => Promise.resolve(getCachedChildren(p.name) ?? []);
-const readFreshChildren: ChildrenReader = async (p) => getProjectChildrenHandler(p.name);
-
-// Discover the untested child commits that "Run All Tests" would enqueue, without
-// touching the task queue. Uses the same classification as the queue UI so the
-// button's (N) always matches what a click actually queues.
-async function planTestAll(readChildren: ChildrenReader): Promise<PlannedTest[]> {
-	const projects = await ensureProjects();
-
-	const planned: PlannedTest[] = [];
-	for (const p of projects) {
-		if (!p.hasTestConfigured) continue;
-
-		// Sequential on purpose: readChildren may spawn git/API work, so fan-out must stay bounded
-		// eslint-disable-next-line no-await-in-loop
-		const children = await readChildren(p);
-		for (const child of children) {
-			if (classifyGitChild(child, p) !== "ready_to_test") continue;
-			planned.push({
-				project: p.name,
-				projectDir: p.dir,
-				sha: child.sha,
-				shortSha: child.shortSha,
-				subject: child.subject,
-				branch: child.branch,
-			});
-		}
-	}
-	return planned;
-}
-
-async function testAllChildrenHandler(): Promise<TestJobStatus[]> {
-	return traced("testAllChildren", async () => {
-		const {enqueueTest} = await import("./task-queue.js");
-		const planned = await planTestAll(readFreshChildren);
-		return planned.map((t) => {
-			const job = enqueueTest(t.project, t.projectDir, t.sha, t.shortSha, t.subject, t.branch);
-			return {id: job.id, status: job.status, message: job.message};
-		});
-	});
-}
-
-export function launchTestAllChildren(): void {
-	launchBackgroundEnqueue("testAllChildren", testAllChildrenHandler);
-}
-
 export type {FileDiff} from "./diff-parser.js";
 
 export async function getCommitDiffHandler(data: {
@@ -1605,81 +1546,34 @@ function isDashboardRepo(dir: string): boolean {
 	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-/**
- * Enqueues one background rebase task per branch that the UI classifies as
- * `needs_rebase` (the same set the "Rebase All (N)" button counts), across all
- * clean projects except the dashboard's own repo. This matches the displayed
- * count rather than rebasing every diverged local branch — abandoned/snoozed/
- * approved branches are excluded by classification. Tasks run serialized per
- * project on the shared task queue, so progress is visible on the Tasks page via
- * SSE instead of blocking the click.
- */
-// Discover the branches that "Rebase All" would enqueue, without touching the task
-// queue. Shared by the background enqueue and the count query.
-async function planRebaseAll(readChildren: ChildrenReader): Promise<EnqueueRebaseOptions[]> {
-	const projects = await ensureProjects();
-
-	const planned: EnqueueRebaseOptions[] = [];
-
-	for (const p of projects) {
-		if (p.dirty || !p.hasTestConfigured) continue;
-		if (isDashboardRepo(p.dir)) continue;
-
-		// Sequential on purpose: readChildren may spawn git/API work, so fan-out must stay bounded
-		// eslint-disable-next-line no-await-in-loop
-		const children = await readChildren(p);
-		for (const child of children) {
-			if (!child.branch) continue;
-			if (classifyGitChild(child, p) !== "needs_rebase") continue;
-
-			planned.push({
-				project: p.name,
-				projectDir: p.dir,
-				sha: child.sha,
-				shortSha: child.shortSha,
-				subject: child.subject,
-				branch: child.branch,
-				upstreamRemote: p.upstreamRemote,
-				upstreamRef: p.upstreamRef,
-				upstreamBranch: p.upstreamBranch,
-				remote: p.remote,
-			});
-		}
-	}
-
-	return planned;
-}
-
-async function rebaseAllChildrenHandler(): Promise<TestJobStatus[]> {
-	return traced("rebaseAllChildren", async () => {
-		const {enqueueRebase} = await import("./task-queue.js");
-		const planned = await planRebaseAll(readFreshChildren);
-		return planned.map((opts) => {
-			const task = enqueueRebase(opts);
-			return {id: task.id, status: task.status, message: task.message};
-		});
+/** Lean plan step 37: the primary bulk action; at most target - ready - inFlight advance jobs. */
+export async function topUpReadyBufferHandler(): Promise<{running: boolean}> {
+	return traced("topUpReadyBuffer", async () => {
+		return topUpReadyBuffer(currentReadyBuffer());
 	});
 }
 
-export function launchRebaseAllChildren(): void {
-	launchBackgroundEnqueue("rebaseAllChildren", rebaseAllChildrenHandler);
-}
-
-export interface RunAllCounts {
-	readyToTest: number;
-	needsRebase: number;
-}
-
-// Read-only estimate of how much work the "Run All Tests" / "Rebase All" buttons will
-// queue, so the tasks page can show the count before the click. Runs the same
-// discovery as the enqueue paths but never mutates the queue.
-export async function runAllCountsHandler(): Promise<RunAllCounts> {
-	return traced("runAllCounts", async () => {
-		const [tests, rebases] = await Promise.all([
-			planTestAll(readCachedChildren),
-			planRebaseAll(readCachedChildren),
-		]);
-		return {readyToTest: tests.length, needsRebase: rebases.length};
+/** The More-menu escape hatch: one of the user's global just recipes, once per project. */
+export async function runEscapeHatchHandler(recipe: EscapeHatchRecipe): Promise<TestJobStatus[]> {
+	return traced("runEscapeHatch", async () => {
+		const handles = runEscapeHatch(recipe, {
+			projects: await ensureProjects(),
+			queue: workQueue,
+			isDashboardRepo,
+			exec: async (run, signal) =>
+				tracedExeca("just", run.args, {
+					cwd: run.cwd,
+					// The global justfile runs `tput` at load time, which fails when TERM is unset.
+					env: {...run.env, TERM: process.env["TERM"] ?? "xterm-256color"},
+					extendEnv: true,
+					reject: false,
+					cancelSignal: signal,
+				}),
+			onError: (project, message) => {
+				workQueue.reportJobError({kind: "escape-hatch", project, message});
+			},
+		});
+		return handles.map((handle) => ({id: handle.id, status: "queued", message: `just ${recipe}`}));
 	});
 }
 

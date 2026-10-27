@@ -1,9 +1,9 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
 import {useSuspenseQuery} from "@tanstack/react-query";
-import {Play, Loader2, GitBranch, ClipboardList} from "../../components/icons.js";
+import {ClipboardList} from "../../components/icons.js";
 import {useState, useMemo, useCallback} from "react";
-import {testAllChildren, rebaseAllChildren} from "../../lib/server-fns";
-import {useHasActiveTests} from "../../lib/server-events-context";
+import {runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
+import {BulkActions} from "../../components/bulk-actions";
 import {projectsQueryOptions} from "../../lib/queries";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
@@ -47,11 +47,6 @@ export const Route = createFileRoute("/_dashboard/queue")({
 function QueueLayout() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
-	const [testingAll, setTestingAll] = useState(false);
-	const [testAllError, setTestAllError] = useState<string | null>(null);
-	const [rebasingAll, setRebasingAll] = useState(false);
-	const [rebaseResult, setRebaseResult] = useState<string | null>(null);
-	const hasActiveTests = useHasActiveTests();
 	const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
@@ -177,34 +172,6 @@ function QueueLayout() {
 		},
 		[selectedProject],
 	);
-
-	const handleTestAll = async () => {
-		setTestingAll(true);
-		setTestAllError(null);
-		try {
-			await testAllChildren();
-		} catch (e) {
-			setTestAllError(e instanceof Error ? e.message : "Failed to enqueue tests");
-		}
-		setTestingAll(false);
-	};
-
-	const handleRebaseAll = async () => {
-		setRebasingAll(true);
-		setRebaseResult(null);
-		try {
-			await rebaseAllChildren();
-			setRebaseResult(
-				needsRebaseCount === 0
-					? "All branches are up to date"
-					: `Enqueuing ${needsRebaseCount} rebase task${needsRebaseCount > 1 ? "s" : ""} — see Tasks`,
-			);
-		} catch (e) {
-			setRebaseResult(e instanceof Error ? e.message : "Rebase failed");
-		} finally {
-			setRebasingAll(false);
-		}
-	};
 
 	const handleCategoryClick = (category: Category | null) => {
 		setSelectedCategory((previous) => (previous === category ? null : category));
@@ -418,58 +385,12 @@ function QueueLayout() {
 								<ClipboardList className="h-4 w-4" />
 								Generate Advance Plan
 							</Link>
-							{needsRebaseCount > 0 && (
-								<button
-									type="button"
-									onClick={() => {
-										void handleRebaseAll();
-									}}
-									disabled={rebasingAll}
-									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-										rebasingAll
-											? "bg-orange-600/80 text-white"
-											: "bg-orange-600 hover:bg-orange-700 text-white"
-									}`}
-								>
-									{rebasingAll ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
-									) : (
-										<GitBranch className="h-4 w-4" />
-									)}
-									{rebasingAll ? "Rebasing..." : `Rebase All (${needsRebaseCount})`}
-								</button>
-							)}
-							{readyToTestCount > 0 && (
-								<button
-									type="button"
-									onClick={() => {
-										void handleTestAll();
-									}}
-									disabled={testingAll || hasActiveTests}
-									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-										testingAll || hasActiveTests
-											? "bg-yellow-600/80 text-white"
-											: "bg-yellow-600 hover:bg-yellow-700 text-white"
-									}`}
-								>
-									{testingAll || hasActiveTests ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
-									) : (
-										<Play className="h-4 w-4" />
-									)}
-									{hasActiveTests ? "Tests Running..." : `Test All (${readyToTestCount})`}
-								</button>
-							)}
+							<BulkActions
+								topUp={async () => topUpReadyBuffer()}
+								runRecipe={async (recipe) => runEscapeHatch({data: {recipe}})}
+							/>
 						</div>
 					</div>
-					{rebaseResult && (
-						<div className="mb-4 rounded-lg bg-bg-200 px-3 py-2 text-sm text-text-200">{rebaseResult}</div>
-					)}
-					{testAllError && (
-						<div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-							{testAllError}
-						</div>
-					)}
 					<Outlet />
 				</main>
 			</div>

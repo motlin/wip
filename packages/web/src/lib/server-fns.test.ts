@@ -2098,25 +2098,6 @@ describe("getProjectChildrenHandler", () => {
 		});
 	});
 
-	it("leaves an On hold child out of the Run All Tests and Rebase All counts", async () => {
-		const {cacheChildren} = await import("@wip/shared");
-		seedProjectCache([makeProject({name: "held-bulk", dir: "/tmp/held-bulk"})]);
-		cacheChildren("held-bulk", [
-			makeChild({project: "held-bulk", sha: "a".repeat(40), branch: undefined, testStatus: "unknown"}),
-			makeChild({
-				project: "held-bulk",
-				sha: "b".repeat(40),
-				branch: undefined,
-				testStatus: "unknown",
-				onHold: true,
-			}),
-		]);
-
-		const {runAllCountsHandler} = await import("./server-fns.impl.js");
-
-		expect(await runAllCountsHandler()).toStrictEqual({readyToTest: 1, needsRebase: 0});
-	});
-
 	it("keeps a commit put On hold flagged after it is reworded to a new sha", async () => {
 		const dir = await createTestGitRepo();
 		await writeTestFile(join(dir, "held.txt"), "held\n");

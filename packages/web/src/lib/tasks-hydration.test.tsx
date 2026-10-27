@@ -19,7 +19,6 @@ import {
 	inventoryStatusQueryOptions,
 	ladderResultsQueryOptions,
 	registryCandidatesQueryOptions,
-	runAllCountsQueryOptions,
 	taskQueueQueryOptions,
 } from "./queries.js";
 import {applySchedulerState, applyTaskEvent, resetServerEventsStore} from "./server-events-store.js";
@@ -122,7 +121,6 @@ describe("/tasks hydration", () => {
 		clientClient.setQueryData(inventoryStatusQueryOptions().queryKey, inventory);
 		clientClient.setQueryData(registryCandidatesQueryOptions().queryKey, candidates);
 		clientClient.setQueryData(ladderResultsQueryOptions().queryKey, ladderResults);
-		clientClient.setQueryData(runAllCountsQueryOptions().queryKey, {readyToTest: 3, needsRebase: 0});
 		applySchedulerState({
 			slots: 2,
 			running: [{id: "1", kind: "children", project: "wip", costClass: "cheap"}],

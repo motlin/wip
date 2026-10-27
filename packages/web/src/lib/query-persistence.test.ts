@@ -144,7 +144,6 @@ describe("shouldPersistQuery", () => {
 			["ladderResults"],
 			["systemStatus"],
 			["taskQueue"],
-			["runAllCounts"],
 			["diff", "wip", "abc"],
 			["testLog", "wip", "abc"],
 			["workingTreeDiff", "wip"],

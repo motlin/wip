@@ -327,6 +327,15 @@ export {
 } from "./lib/schemas.js";
 export {type Readiness, type ReadinessCommit, isGreen, isLandable, readinessOf} from "./lib/readiness.js";
 export {
+	type BackgroundPush,
+	type CheckRunStatus,
+	type ChecksSource,
+	type PushGateDecision,
+	CHECK_REGISTRATION_GRACE_MS,
+	GitHubActionsGate,
+	pushGateDecision,
+} from "./lib/gha-gate.js";
+export {
 	DEFAULT_PRIORITY,
 	effectivePriority,
 	type Priority,

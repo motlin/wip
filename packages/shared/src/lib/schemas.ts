@@ -390,6 +390,8 @@ export const GitChildResultSchema = z.object({
 	deletions: z.number().int().nonnegative().optional(),
 	/** Size above `flow.splitThresholdLines`: shows a marker and enables the state's split transition. */
 	considerSplitting: z.boolean().optional(),
+	/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
+	autoFixed: z.object({failure: z.string(), fixupSha: shaSchema, branch: branchSchema}).optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 
@@ -524,6 +526,12 @@ export const AbortRebaseInputSchema = z.object({
 	project: z.string(),
 });
 export type AbortRebaseInput = z.infer<typeof AbortRebaseInputSchema>;
+
+export const AcceptAutoFixInputSchema = z.object({
+	project: z.string(),
+	sha: shaSchema,
+});
+export type AcceptAutoFixInput = z.infer<typeof AcceptAutoFixInputSchema>;
 
 export const CreateBranchInputSchema = z.object({
 	project: z.string(),

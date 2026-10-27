@@ -11,6 +11,7 @@ const serverFns = vi.hoisted(() => ({
 	testChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	runClaudeCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	abortRebase: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	acceptAutoFix: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	rebaseChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	pushChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	forcePush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -420,6 +421,52 @@ describe("consider splitting marker and Split transition", () => {
 		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
 			disabled: true,
 			title: "Name a branch first: Claude tasks run on a branch checkout",
+		});
+	});
+});
+
+describe("auto-fixed marker and Accept fix", () => {
+	const autoFixed = {failure: "FAIL a.test.ts", fixupSha: "f".repeat(40), branch: "feature/x"};
+
+	afterEach(() => {
+		cleanup();
+		clearToasts();
+		serverFns.acceptAutoFix.mockReset();
+		serverFns.getProjectChildren.mockClear();
+	});
+
+	it("shows auto-fixed: <failure> and Accept fix on an auto-fixed red commit", () => {
+		renderBranch(branchItem({branch: undefined, testStatus: "failed", autoFixed}), "test_failed", [project(true)]);
+
+		expect({
+			markers: screen.getAllByTestId("auto-fixed-marker").map((el) => el.textContent),
+			accept: screen.getAllByRole("button", {name: "Accept fix"}).length,
+		}).toEqual({markers: ["auto-fixed: FAIL a.test.ts"], accept: 1});
+	});
+
+	it("shows neither the marker nor Accept fix without an auto-fix", () => {
+		renderBranch(branchItem({testStatus: "failed"}), "test_failed", [project(true)]);
+
+		expect({
+			marker: screen.queryByTestId("auto-fixed-marker"),
+			accept: screen.queryByRole("button", {name: "Accept fix"}),
+		}).toEqual({marker: null, accept: null});
+	});
+
+	it("accepts the fix and writes the refreshed children into the cache", async () => {
+		serverFns.acceptAutoFix.mockResolvedValue({ok: true, message: "Accepted the fix on feature/x"});
+		renderBranch(branchItem({branch: undefined, testStatus: "failed", autoFixed}), "test_failed", [project(true)]);
+
+		fireEvent.click(screen.getByRole("button", {name: "Accept fix"}));
+
+		await waitFor(() => {
+			expect({
+				accept: serverFns.acceptAutoFix.mock.calls,
+				refreshed: serverFns.getProjectChildren.mock.calls,
+			}).toEqual({
+				accept: [[{data: {project: "wip", sha: "abc123"}}]],
+				refreshed: [[{data: {project: "wip"}}]],
+			});
 		});
 	});
 });

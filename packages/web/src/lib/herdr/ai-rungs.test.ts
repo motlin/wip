@@ -12,6 +12,7 @@ import {
 } from "@wip/shared";
 import {
 	branchVerdict,
+	fixTestAsFixup,
 	prepareTestFixWorktree,
 	resolveBranchConflict,
 	runAiConflictRung,
@@ -410,5 +411,108 @@ describe("prepareTestFixWorktree", () => {
 
 	it("returns null when the branch is checked out in the user's checkout", async () => {
 		expect(await prepareTestFixWorktree({...project, name: "demo", path: dir}, "main")).toBeNull();
+	});
+});
+
+describe("fixTestAsFixup", () => {
+	const signal = new AbortController().signal;
+	let dir: string;
+	let failing: string;
+
+	beforeEach(() => {
+		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-fixup-")));
+		git(dir, "init -b main");
+		git(dir, "config user.email test@test.com");
+		git(dir, "config user.name Test");
+		git(dir, "commit --allow-empty -m base");
+		git(dir, "checkout -b feat-a");
+		fs.writeFileSync(path.join(dir, "a.txt"), "broken\n");
+		git(dir, "add a.txt");
+		git(dir, "commit -m 'Add a'");
+		failing = git(dir, "rev-parse HEAD");
+	});
+
+	afterEach(() => {
+		fs.rmSync(dir, {recursive: true, force: true});
+	});
+
+	/** Deps whose "agent" runs `act` in the branch checkout when launched. */
+	function agentDeps(act: () => void) {
+		return makeDeps({
+			prepareTestFix: async () => Promise.resolve({cwd: dir, finish: async () => Promise.resolve()}),
+			launch: async (request) => {
+				launches.push(request);
+				act();
+				return Promise.resolve({ok: true, value: {tabId: "t1", paneId: "p1"}});
+			},
+		}).deps;
+	}
+	let launches: {cwd: string; label: string; command: string; focus: boolean}[] = [];
+	beforeEach(() => {
+		launches = [];
+	});
+
+	const demo = (): LadderRunProject => ({...project, path: dir});
+
+	it("launches one /build:fix agent told to commit a separate fixup, and returns the fixup on top of the unchanged original", async () => {
+		const deps = agentDeps(() => {
+			fs.writeFileSync(path.join(dir, "a.txt"), "fixed\n");
+			git(dir, `commit -am 'fixup! Add a'`);
+		});
+
+		const fixup = await fixTestAsFixup(demo(), "feat-a", failing, "/logs/x.log", deps, signal);
+
+		expect({
+			fixup,
+			tip: git(dir, "rev-parse feat-a"),
+			parent: git(dir, "rev-parse feat-a~1"),
+			launches,
+		}).toStrictEqual({
+			fixup: git(dir, "rev-parse feat-a"),
+			tip: fixup,
+			parent: failing,
+			launches: [
+				{
+					cwd: dir,
+					label: "wip:demo:test-fix:feat-a",
+					command: `claude "/build:fix The test fails at commit ${failing} (log: /logs/x.log). Commit the fix as a separate commit with git commit --fixup=${failing} on top of it. Do not amend, squash, rebase or fold the fix into ${failing}."`,
+					focus: false,
+				},
+			],
+		});
+	});
+
+	it("returns null when the agent folded the fix into the original, or left no fixup", async () => {
+		const amended = await fixTestAsFixup(
+			demo(),
+			"feat-a",
+			failing,
+			"/logs/x.log",
+			agentDeps(() => {
+				fs.writeFileSync(path.join(dir, "a.txt"), "fixed\n");
+				git(dir, "commit -a --amend --no-edit");
+			}),
+			signal,
+		);
+		const nothing = await fixTestAsFixup(
+			demo(),
+			"feat-a",
+			git(dir, "rev-parse HEAD"),
+			"/logs/x.log",
+			agentDeps(() => {}),
+			signal,
+		);
+
+		expect({amended, nothing}).toStrictEqual({amended: null, nothing: null});
+	});
+
+	it("does not launch the agent again for a failure signature already seen on the same change", async () => {
+		const memory = new RunMemory();
+		const deps = {...agentDeps(() => {}), memory, failureLog: async () => Promise.resolve("FAIL a.test.ts")};
+
+		await fixTestAsFixup(demo(), "feat-a", failing, "/logs/x.log", deps, signal);
+		const second = await fixTestAsFixup(demo(), "feat-a", failing, "/logs/x.log", deps, signal);
+
+		expect({second, launches: launches.length}).toStrictEqual({second: null, launches: 1});
 	});
 });

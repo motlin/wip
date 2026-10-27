@@ -15,8 +15,11 @@ import {repoResource} from "./repo-resource.js";
  * item the buffer advanced to ready stays buffered (counting toward the target) until it lands,
  * goes on hold, or upstream moves, which re-advances it. A replay conflict gets one silent
  * `/git:conflicts` job (plan step 30): success re-enters the advance at the test, failure (or a
- * conflict again) marks the item `stuck`. A test failure or stuck item stays parked until upstream
- * moves, and the completion pulls the next candidate.
+ * conflict again) marks the item `stuck`. A test failure gets one AI fix job (plan step 31) that
+ * must add a separate fixup commit on top; the advance retests that fixup and a green one parks the
+ * item `auto_fixed` until the user accepts the fix, a red one (or no fix) marks it `stuck`. A
+ * stuck or auto-fixed item stays parked until upstream moves (an auto-fix awaiting review stays
+ * parked even then), and the completion pulls the next candidate.
  */
 
 /** One unready or ready unit of work, keyed by patch-id (sha when unknown). */
@@ -36,6 +39,8 @@ export interface BufferCandidate {
 	override?: Priority;
 	/** Remaining job (candidate rank); orders candidates of the same priority across repos. */
 	job?: number;
+	/** An AI fixup awaits the user's review: never pulled or re-advanced. */
+	autoFixed?: boolean;
 }
 
 export interface BufferRepo {
@@ -52,10 +57,11 @@ export interface BufferRepo {
 }
 
 /**
- * The item's outcome; `skipped` parks the item like a failure (e.g. it became checked out), and
- * `stuck` means the conflict agent could not resolve its replay conflict.
+ * The item's outcome; `skipped` parks the item like a failure (e.g. it became checked out),
+ * `stuck` means an agent could not resolve its replay conflict or fix its test, and `auto_fixed`
+ * means a green fixup commit sits on top, awaiting the user's review.
  */
-export type AdvanceOutcome = "ready" | "rebase_conflicts" | "test_failed" | "skipped" | "stuck";
+export type AdvanceOutcome = "ready" | "rebase_conflicts" | "test_failed" | "skipped" | "stuck" | "auto_fixed";
 
 export interface ReadyBufferDeps {
 	queue: {enqueue(options: EnqueueOptions): JobHandle};
@@ -67,6 +73,8 @@ export interface ReadyBufferDeps {
 	advance: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<AdvanceOutcome>;
 	/** Resolves the candidate's replay conflict without user attention; the new tip sha, or null when stuck. */
 	resolveConflicts: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
+	/** Fixes the candidate's failing test as a separate fixup commit on top; the fixup sha, or null when stuck. */
+	fixTest: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
 }
 
 export interface ReadyBuffer {
@@ -128,6 +136,7 @@ export function bufferRepoFromChildren(
 			};
 			if (child.branch !== undefined) candidate.branch = child.branch;
 			if (override !== undefined) candidate.override = override;
+			if (child.autoFixed !== undefined) candidate.autoFixed = true;
 			return candidate;
 		}),
 	};
@@ -155,11 +164,37 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		return map;
 	};
 
+	/** Runs one agent job for a parked item; its result, or null when the agent is stuck. */
+	async function agentJob(
+		repo: BufferRepo,
+		kind: "buffer-conflicts" | "buffer-test-fix",
+		key: string,
+		run: (signal: AbortSignal) => Promise<string | null>,
+	): Promise<string | null> {
+		const result: {sha: string | null} = {sha: null};
+		await deps.queue.enqueue({
+			coalesceKey: key,
+			kind,
+			project: repo.name,
+			costClass: "ai",
+			resources: [repoResource(repo.name)],
+			run: async (signal) => {
+				result.sha = await run(signal);
+			},
+		}).settled;
+		return result.sha;
+	}
+
 	/**
-	 * One advance-commit job; a first replay conflict gets one conflict job, and on success the
-	 * advance re-enters with the resolved tip, which already sits on upstream, so only the test runs.
+	 * One advance-commit job. A first replay conflict gets one conflict job and a first test failure
+	 * one test-fix job; each re-enters the advance with the new tip, which already sits on upstream,
+	 * so only the test runs. A second conflict or failure marks the item stuck.
 	 */
-	async function advanceItem(repo: BufferRepo, candidate: BufferCandidate, conflictTried: boolean): Promise<void> {
+	async function advanceItem(
+		repo: BufferRepo,
+		candidate: BufferCandidate,
+		tried: {conflicts: boolean; fix: boolean},
+	): Promise<void> {
 		const done = resultsOf(repo.name);
 		const handle = deps.queue.enqueue({
 			coalesceKey: `ready:${repo.name}:${candidate.id}`,
@@ -176,33 +211,35 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			},
 		});
 		await handle.settled;
-		if (done.get(candidate.id) !== "rebase_conflicts") return undefined;
-		if (conflictTried) {
+		const outcome = done.get(candidate.id);
+		if (outcome === "ready" && tried.fix) {
+			done.set(candidate.id, "auto_fixed");
+			return undefined;
+		}
+		if (outcome !== "rebase_conflicts" && outcome !== "test_failed") return undefined;
+		const conflict = outcome === "rebase_conflicts";
+		if (conflict ? tried.conflicts : tried.fix) {
 			done.set(candidate.id, "stuck");
 			return undefined;
 		}
-		const resolution: {sha: string | null} = {sha: null};
-		await deps.queue.enqueue({
-			coalesceKey: `conflicts:${repo.name}:${candidate.id}`,
-			kind: "buffer-conflicts",
-			project: repo.name,
-			costClass: "ai",
-			resources: [repoResource(repo.name)],
-			run: async (signal) => {
-				resolution.sha = await deps.resolveConflicts(repo, candidate, signal);
-			},
-		}).settled;
-		if (resolution.sha === null) {
+		const sha = conflict
+			? await agentJob(repo, "buffer-conflicts", `conflicts:${repo.name}:${candidate.id}`, async (signal) =>
+					deps.resolveConflicts(repo, candidate, signal),
+				)
+			: await agentJob(repo, "buffer-test-fix", `test-fix:${repo.name}:${candidate.id}`, async (signal) =>
+					deps.fixTest(repo, candidate, signal),
+				);
+		if (sha === null) {
 			done.set(candidate.id, "stuck");
 			return undefined;
 		}
-		return advanceItem(repo, {...candidate, sha: resolution.sha}, true);
+		return advanceItem(repo, {...candidate, sha}, conflict ? {...tried, conflicts: true} : {...tried, fix: true});
 	}
 
 	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void {
 		const jobs = inFlightOf(repo.name);
 		if (jobs.has(candidate.id)) return;
-		const settled = advanceItem(repo, candidate, false).then(async () => {
+		const settled = advanceItem(repo, candidate, {conflicts: false, fix: false}).then(async () => {
 			jobs.delete(candidate.id);
 			return requestPull();
 		});
@@ -225,7 +262,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				repo: repo.name,
 				id: c.id,
 				state: jobs.has(c.id) ? "inFlight" : ready ? "ready" : "unready",
-				onHold: c.onHold || parked || blocked,
+				onHold: c.onHold || c.autoFixed === true || parked || blocked,
 				...(c.override === undefined ? {} : {override: c.override}),
 				...(c.job === undefined ? {} : {job: c.job}),
 			};
@@ -289,7 +326,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		if (!repo || stopsLine(repo) || repo.localChanges) return undefined;
 		const checkedOut = new Set(repo.checkedOutBranches);
 		for (const candidate of repo.candidates) {
-			if (!buffered.includes(candidate.id) || candidate.onHold) continue;
+			if (!buffered.includes(candidate.id) || candidate.onHold || candidate.autoFixed) continue;
 			if (candidate.branch !== undefined && checkedOut.has(candidate.branch)) continue;
 			enqueue(repo, candidate);
 		}

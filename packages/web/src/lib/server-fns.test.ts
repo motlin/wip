@@ -22,6 +22,9 @@ import {
 	setConfigValue,
 	unsetConfigValue,
 	loadWorkItems,
+	getAutoFixes,
+	getCommitFacts,
+	setAutoFix,
 } from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
@@ -2822,5 +2825,80 @@ describe("getQueueSnapshotHandler", () => {
 			enqueued: ["children:alpha"],
 		});
 		enqueueSpy.mockRestore();
+	});
+});
+
+/** A branch whose original commit has an AI fixup on top, with its auto-fix recorded. */
+async function autoFixedRepo(name: string) {
+	const dir = await createTestGitRepo();
+	const base = await gitOut(dir, "rev-parse", "HEAD");
+	await gitOut(dir, "checkout", "-b", "feat");
+	await writeTestFile(join(dir, "a.txt"), "broken\n");
+	await gitOut(dir, "add", "a.txt");
+	await gitOut(dir, "commit", "-m", "Add a");
+	const original = await gitOut(dir, "rev-parse", "HEAD");
+	await writeTestFile(join(dir, "a.txt"), "fixed\n");
+	await gitOut(dir, "commit", "-am", "fixup! Add a");
+	const fixupSha = await gitOut(dir, "rev-parse", "HEAD");
+	await gitOut(dir, "checkout", "--detach", base);
+	const patchId = (await getCommitFacts(dir, name, [original])).get(original)?.patchId ?? "";
+	setAutoFix(name, patchId, {branch: "feat", fixupSha, failure: "FAIL a.test.ts"});
+	seedProjectCache([makeProject({name, dir, upstreamRef: base})]);
+	return {dir, base, original, fixupSha};
+}
+
+describe("auto-fixed items (lean plan step 31)", () => {
+	it("shows the auto-fixed marker on the original commit with its failure and fixup", async () => {
+		const {original, fixupSha} = await autoFixedRepo("auto-fix-marker");
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const result = await getProjectChildrenHandler("auto-fix-marker");
+
+		expect(result.map((c) => ({sha: c.sha, autoFixed: c.autoFixed}))).toStrictEqual([
+			{sha: original, autoFixed: {branch: "feat", fixupSha, failure: "FAIL a.test.ts"}},
+		]);
+	});
+
+	it("Accept fix squashes the fixup into the original and clears the marker", async () => {
+		const {dir, base, original} = await autoFixedRepo("auto-fix-accept");
+
+		const {acceptAutoFixHandler} = await import("./server-fns.impl.js");
+		const result = await acceptAutoFixHandler({project: "auto-fix-accept", sha: original});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			parent: await gitOut(dir, "rev-parse", "feat~1"),
+			subject: await gitOut(dir, "log", "-1", "--format=%s", "feat"),
+			file: await gitOut(dir, "show", "feat:a.txt"),
+			marker: Object.fromEntries(getAutoFixes("auto-fix-accept")),
+		}).toStrictEqual({
+			ok: true,
+			message: "Accepted the fix on feat",
+			parent: base,
+			subject: "Add a",
+			file: "fixed",
+			marker: {},
+		});
+	});
+
+	it("Accept fix refuses a branch checked out in a worktree and keeps the marker", async () => {
+		const {dir, original, fixupSha} = await autoFixedRepo("auto-fix-checked-out");
+		await gitOut(dir, "checkout", "feat");
+
+		const {acceptAutoFixHandler} = await import("./server-fns.impl.js");
+		const result = await acceptAutoFixHandler({project: "auto-fix-checked-out", sha: original});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			tip: await gitOut(dir, "rev-parse", "feat"),
+			marker: [...getAutoFixes("auto-fix-checked-out").keys()].length,
+		}).toStrictEqual({
+			ok: false,
+			message: "feat is checked out; accept the fix there with git rebase -i --autosquash",
+			tip: fixupSha,
+			marker: 1,
+		});
 	});
 });

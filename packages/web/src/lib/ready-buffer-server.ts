@@ -14,7 +14,8 @@ import {workQueue} from "./shared-work-queue.js";
 /**
  * Production wiring for the ready buffer (lean plan 4.6): the snapshot reads each project's
  * cached children, the advance job runs steps 1-3 (baseline, replay, test), a replay conflict gets
- * one silent `/git:conflicts` agent, and the signals
+ * one silent `/git:conflicts` agent, a test failure one `/build:fix` agent that must commit a
+ * separate fixup (recorded as "auto-fixed" until accepted), and the signals
  * (upstreamMoved, landed, task completion, On hold, children refresh, safety tick) trigger pulls.
  */
 
@@ -101,6 +102,29 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	return (await gitTestRun(p.dir, sha, {logDir})).exitCode === 0 ? "ready" : "test_failed";
 }
 
+/** The candidate's project as the AI rungs see it; null when it is gone or has local changes. */
+async function rungProject(repo: BufferRepo) {
+	const {getProjects} = await import("./server-fns.js");
+	const p = (await getProjects()).find((proj) => proj.name === repo.name);
+	if (!p || p.dirty) return null;
+	return {
+		name: p.name,
+		path: p.dir,
+		upstreamRemote: p.upstreamRemote,
+		upstreamBranch: p.upstreamBranch,
+		dirty: p.dirty,
+		detached: false,
+		rebaseInProgress: false,
+		offline: false,
+	};
+}
+
+async function branchTip(dir: string, branch: string): Promise<string | null> {
+	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+	const tip = await tracedExeca("git", ["-C", dir, "rev-parse", branch], {reject: false});
+	return tip.exitCode === 0 ? tip.stdout.trim() : null;
+}
+
 /**
  * Step 30: resolve a replay conflict silently with one `/git:conflicts` agent in a throwaway
  * worktree (no focus); the resolved branch tip re-enters the advance at the test.
@@ -111,24 +135,41 @@ async function resolveConflicts(
 	signal: AbortSignal,
 ): Promise<string | null> {
 	if (candidate.branch === undefined) return null;
-	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
 	const {aiRungDeps, resolveBranchConflict} = await import("./herdr/ai-rungs.js");
-	const {getProjects} = await import("./server-fns.js");
-	const p = (await getProjects()).find((proj) => proj.name === repo.name);
-	if (!p || p.dirty) return null;
-	const project = {
-		name: p.name,
-		path: p.dir,
-		upstreamRemote: p.upstreamRemote,
-		upstreamBranch: p.upstreamBranch,
-		dirty: p.dirty,
-		detached: false,
-		rebaseInProgress: false,
-		offline: false,
-	};
+	const project = await rungProject(repo);
+	if (!project) return null;
 	if ((await resolveBranchConflict(project, candidate.branch, aiRungDeps(), signal)) === "stuck") return null;
-	const tip = await tracedExeca("git", ["-C", p.dir, "rev-parse", candidate.branch], {reject: false});
-	return tip.exitCode === 0 ? tip.stdout.trim() : null;
+	return branchTip(project.path, candidate.branch);
+}
+
+/**
+ * Step 31: fix the failing test with one `/build:fix` agent that must commit a separate fixup on
+ * top of the failing tip. The failing run's log is the one wip's own `git test run` just wrote,
+ * so the repeated-failure signature is populated. The fixup is recorded as "auto-fixed: <failure>"
+ * by the failing commit's patch-id; the advance then retests the fixup.
+ */
+async function fixTest(repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal): Promise<string | null> {
+	if (candidate.branch === undefined) return null;
+	const fs = await import("node:fs");
+	const path = await import("node:path");
+	const {failureSummary, getCommitFacts, getTestLogDir, setAutoFix} = await import("@wip/shared");
+	const {aiRungDeps, fixTestAsFixup} = await import("./herdr/ai-rungs.js");
+	const project = await rungProject(repo);
+	if (!project) return null;
+	const failing = await branchTip(project.path, candidate.branch);
+	if (failing === null) return null;
+	const logPath = path.join(getTestLogDir(project.name), `${failing}.log`);
+	const fixup = await fixTestAsFixup(project, candidate.branch, failing, logPath, aiRungDeps(), signal);
+	if (fixup === null) return null;
+	let failureLog = "";
+	try {
+		failureLog = fs.readFileSync(logPath, "utf8");
+	} catch {
+		// No log: the marker falls back to a generic failure label.
+	}
+	const patchId = (await getCommitFacts(project.path, project.name, [failing])).get(failing)?.patchId ?? candidate.id;
+	setAutoFix(project.name, patchId, {branch: candidate.branch, fixupSha: fixup, failure: failureSummary(failureLog)});
+	return fixup;
 }
 
 let buffer: ReadyBuffer | null = null;
@@ -175,6 +216,12 @@ export async function startReadyBuffer(
 			log.general.info({project: repo.name, sha: candidate.sha, resolved}, "Ready-buffer conflict resolution");
 			enqueueProjectRefresh(repo.name, {force: true});
 			return resolved;
+		},
+		fixTest: async (repo, candidate, signal) => {
+			const fixup = await fixTest(repo, candidate, signal);
+			log.general.info({project: repo.name, sha: candidate.sha, fixup}, "Ready-buffer test fix");
+			enqueueProjectRefresh(repo.name, {force: true});
+			return fixup;
 		},
 	});
 	buffer = started;

@@ -12,6 +12,7 @@ import {
 	RebaseLocalInputSchema,
 	RefreshChildInputSchema,
 	AbortRebaseInputSchema,
+	AcceptAutoFixInputSchema,
 	RenameBranchInputSchema,
 	RunClaudeCommandInputSchema,
 	SnoozeChildInputSchema,
@@ -188,6 +189,10 @@ export const refreshChild = createServerFn({method: "POST"})
 export const abortRebase = createServerFn({method: "POST"})
 	.validator((input: unknown) => AbortRebaseInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).abortRebaseHandler(data.project));
+
+export const acceptAutoFix = createServerFn({method: "POST"})
+	.validator((input: unknown) => AcceptAutoFixInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).acceptAutoFixHandler(data));
 
 export const createBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => CreateBranchInputSchema.parse(input))

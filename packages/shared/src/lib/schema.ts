@@ -367,6 +367,27 @@ export const priorityOverrides = sqliteTable(
 );
 
 /**
+ * Ready-buffer AI test fixes awaiting review (bitemporal): the failing commit's patch-id, the
+ * branch, and the `fixup!` commit on top of it. Accepting (autosquash) closes the row.
+ */
+export const autoFixes = sqliteTable(
+	"auto_fixes",
+	{
+		project: text("project").notNull(),
+		patchId: text("patch_id").notNull(),
+		branch: text("branch").notNull(),
+		fixupSha: text("fixup_sha").notNull(),
+		failure: text("failure").notNull(),
+		systemFrom: text("system_from").notNull(),
+		systemTo: text("system_to").notNull().default(FAR_FUTURE),
+	},
+	(table) => [
+		primaryKey({columns: [table.project, table.patchId, table.systemTo]}),
+		index("auto_fixes_active_idx").on(table.project, table.systemTo),
+	],
+);
+
+/**
  * Work-item ledger (bitemporal): one live row per change (patch-id) per project. Every state
  * change closes the live row and opens a new one, so closed rows are the state history.
  * `first_seen` is carried forward across rebases; `landed` and `abandoned` are terminal.

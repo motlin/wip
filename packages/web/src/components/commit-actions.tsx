@@ -28,6 +28,7 @@ import {
 	cancelTestFn,
 	refreshChild,
 	abortRebase,
+	acceptAutoFix,
 	deleteBranch,
 	forcePush,
 	renameBranch,
@@ -207,6 +208,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [runningClaude, setRunningClaude] = useState(false);
 	const [addingTest, setAddingTest] = useState(false);
 	const [splitting, setSplitting] = useState(false);
+	const [acceptingFix, setAcceptingFix] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -700,6 +702,16 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			await runClaudeCommand({
 				data: {project: item.project, sha: item.sha, branch, command: SPLIT_BRANCH_COMMAND},
 			});
+		});
+	};
+
+	const handleAcceptFix = async () => {
+		await runPendingAction("Accept fix", setAcceptingFix, async () => {
+			const result = await acceptAutoFix({data: {project: item.project, sha: item.sha}});
+			showActionToasts("Accept fix", result);
+			if (!result.ok) return;
+			const fresh = await getProjectChildren({data: {project: item.project}});
+			queryClient.setQueryData(["children", item.project], fresh);
 		});
 	};
 
@@ -1295,6 +1307,39 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							<Bot className="h-3.5 w-3.5" />
 						)}
 						{addingTest ? "Queuing..." : "Add a test"}
+					</button>
+				)}
+
+				{/* Auto-fixed: the ready buffer's AI fixup sits on top until the user accepts it (autosquash) */}
+				{item.autoFixed && (
+					<span
+						data-testid="auto-fixed-marker"
+						className="inline-flex items-center rounded border border-amber-300/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+						title={`AI fixup ${item.autoFixed.fixupSha.slice(0, 7)} on ${item.autoFixed.branch}`}
+					>
+						auto-fixed: {item.autoFixed.failure}
+					</span>
+				)}
+				{item.autoFixed && (
+					<button
+						type="button"
+						onClick={() => {
+							void handleAcceptFix();
+						}}
+						disabled={acceptingFix}
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+							acceptingFix
+								? "cursor-not-allowed opacity-60 text-text-300"
+								: "text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
+						}`}
+						title={`Squash the fixup into this commit on ${item.autoFixed.branch}`}
+					>
+						{acceptingFix ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Wrench className="h-3.5 w-3.5" />
+						)}
+						{acceptingFix ? "Accepting..." : "Accept fix"}
 					</button>
 				)}
 

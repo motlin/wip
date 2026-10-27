@@ -55,6 +55,7 @@ interface Harness {
 	enqueued: Enqueued[];
 	advanced: string[];
 	resolved: string[];
+	fixed: string[];
 	maxConcurrent: () => number;
 }
 
@@ -83,6 +84,8 @@ function harness(options: {
 	outcome?: (project: string, id: string, sha: string) => AdvanceOutcome;
 	/** The conflict agent's result per item: the resolved tip sha, or null when stuck. */
 	resolve?: (project: string, id: string) => string | null;
+	/** The test-fix agent's result per item: the fixup commit sha, or null when stuck. */
+	fix?: (project: string, id: string) => string | null;
 	/** Advances wait for release() instead of finishing on the next tick. */
 	gated?: boolean;
 	hotProbe?: boolean;
@@ -100,6 +103,7 @@ function harness(options: {
 	const enqueued: Enqueued[] = [];
 	const advanced: string[] = [];
 	const resolved: string[] = [];
+	const fixed: string[] = [];
 	let concurrent = 0;
 	let maxConcurrent = 0;
 	const spy: Pick<WorkQueue, "enqueue"> = {
@@ -139,6 +143,10 @@ function harness(options: {
 			resolved.push(`${r.name}:${candidate.id}`);
 			return Promise.resolve(options.resolve?.(r.name, candidate.id) ?? null);
 		},
+		fixTest: async (r, candidate) => {
+			fixed.push(`${r.name}:${candidate.id}:${candidate.sha}`);
+			return Promise.resolve(options.fix?.(r.name, candidate.id) ?? null);
+		},
 	});
 	return {
 		buffer,
@@ -146,6 +154,7 @@ function harness(options: {
 		enqueued,
 		advanced,
 		resolved,
+		fixed,
 		maxConcurrent: () => maxConcurrent,
 	};
 }
@@ -272,7 +281,7 @@ describe("createReadyBuffer", () => {
 	});
 
 	it("runs one buffer job at a time under a hot probe and still refills over completions", async () => {
-		const h = harness({repos: () => [repo("a")], hotProbe: true, outcome: () => "test_failed"});
+		const h = harness({repos: () => [repo("a")], hotProbe: true, outcome: () => "skipped"});
 
 		await h.buffer.pull();
 		await h.buffer.idle();
@@ -284,7 +293,7 @@ describe("createReadyBuffer", () => {
 		}).toStrictEqual({
 			advanced: ["a:c1", "a:c2", "a:c3", "a:c4", "a:c5"],
 			maxConcurrent: 1,
-			outcomes: {c1: "test_failed", c2: "test_failed", c3: "test_failed", c4: "test_failed", c5: "test_failed"},
+			outcomes: {c1: "skipped", c2: "skipped", c3: "skipped", c4: "skipped", c5: "skipped"},
 		});
 	});
 
@@ -347,6 +356,68 @@ describe("createReadyBuffer", () => {
 			advanced: ["a:c1", "a:c1"],
 			outcomes: {c1: "stuck"},
 		});
+	});
+
+	it("gives a red commit exactly one AI fix job, retests the fixup on top, and parks it auto-fixed", async () => {
+		const fixupSha = "f".repeat(40);
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(1)})],
+			outcome: (_project, _id, sha) => (sha === fixupSha ? "ready" : "test_failed"),
+			fix: () => fixupSha,
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({
+			jobs: h.enqueued.map((e) => [e.kind, e.coalesceKey, e.costClass, e.coalesced]),
+			fixed: h.fixed,
+			advanced: h.advanced,
+			outcomes: h.buffer.outcomes("a"),
+		}).toStrictEqual({
+			jobs: [
+				["advance-commit", "ready:a:c1", "build", false],
+				["buffer-test-fix", "test-fix:a:c1", "ai", false],
+				["advance-commit", "ready:a:c1", "build", false],
+			],
+			fixed: [`a:c1:${"c1".padEnd(40, "0")}`],
+			advanced: ["a:c1", "a:c1"],
+			outcomes: {c1: "auto_fixed"},
+		});
+	});
+
+	it("marks an item stuck without a second fix job when the fixup is still red, or the agent fails", async () => {
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(2)})],
+			outcome: () => "test_failed",
+			fix: (_project, id) => (id === "c1" ? "f".repeat(40) : null),
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({
+			fixes: h.enqueued.filter((e) => e.kind === "buffer-test-fix").map((e) => e.coalesceKey),
+			advanced: h.advanced.toSorted(),
+			outcomes: h.buffer.outcomes("a"),
+		}).toStrictEqual({
+			fixes: ["test-fix:a:c1", "test-fix:a:c2"],
+			advanced: ["a:c1", "a:c1", "a:c2"],
+			outcomes: {c1: "stuck", c2: "stuck"},
+		});
+	});
+
+	it("never pulls an item whose auto-fix awaits review, even after upstream moves", async () => {
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(3, {c1: {autoFixed: true}})})],
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		await h.buffer.upstreamMoved("a");
+		await h.buffer.idle();
+
+		expect(h.advanced).toStrictEqual(["a:c2", "a:c3", "a:c2", "a:c3"]);
 	});
 
 	it("skips a candidate whose branch is checked out in a worktree", async () => {

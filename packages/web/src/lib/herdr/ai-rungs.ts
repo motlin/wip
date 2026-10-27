@@ -387,6 +387,67 @@ export async function runAiTestFixRung(
 	return outcome;
 }
 
+/** The /build:fix prompt override: the fix must land as a separate fixup commit, never folded in. */
+function fixupPrompt(failingSha: string, logPath: string): string {
+	return [
+		`/build:fix The test fails at commit ${failingSha} (log: ${logPath}).`,
+		`Commit the fix as a separate commit with git commit --fixup=${failingSha} on top of it.`,
+		`Do not amend, squash, rebase or fold the fix into ${failingSha}.`,
+	].join(" ");
+}
+
+/**
+ * Lean plan step 31: fix the ready buffer's failing test with one `/build:fix` agent in the
+ * branch's throwaway worktree, told to commit a separate `fixup!` commit on top of `failingSha`.
+ * Runs inside the caller's queue job. Returns the fixup sha only when the branch tip is a new
+ * `fixup!` commit whose parent is the unchanged `failingSha`; null when the agent folded the fix
+ * in, left no fixup, timed out or could not launch, or the same change already failed this way.
+ */
+export async function fixTestAsFixup(
+	project: LadderRunProject,
+	branch: string,
+	failingSha: string,
+	logPath: string,
+	deps: AiRungDeps,
+	signal: AbortSignal,
+): Promise<string | null> {
+	const memory = deps.memory ?? aiRunMemory;
+	const identity = async () => (deps.identity ?? defaultIdentity)(project, branch);
+	const log = deps.failureLog ? await deps.failureLog(project, branch) : readLog(logPath);
+	const repeated = await repeatedFailure(memory, project.name, identity, "test", log);
+	if (repeated) {
+		deps.onRepeatedFailure?.(branch, repeated);
+		return null;
+	}
+	const prepared = await deps.prepareTestFix(project, branch);
+	if (!prepared) return null;
+	try {
+		const launched = await deps.launch({
+			cwd: prepared.cwd,
+			label: `wip:${project.name}:test-fix:${branch}`,
+			command: `claude ${shellQuote(fixupPrompt(failingSha, logPath))}`,
+			focus: false,
+		});
+		if (!launched.ok) return null;
+		deps.onLaunched?.(launched.value);
+		if ((await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal})) !== "done") return null;
+	} finally {
+		await prepared.finish();
+	}
+	const tip = await git(project.path, ["log", "-1", "--format=%H%x00%P%x00%s", branch]);
+	const [sha = "", parents = "", subject = ""] = tip.stdout.trim().split("\0");
+	const isFixup = tip.exitCode === 0 && parents === failingSha && subject.startsWith("fixup! ");
+	return isFixup ? sha : null;
+}
+
+function readLog(logPath: string): string {
+	try {
+		return fs.readFileSync(logPath, "utf8");
+	} catch {
+		return "";
+	}
+}
+
 async function defaultTip(project: LadderRunProject, branch: string): Promise<string> {
 	const out = await git(project.path, ["rev-parse", branch]);
 	return out.stdout.trim();

@@ -1,6 +1,10 @@
 import {
 	applyFixesToBranch,
+	checkedOutBranches,
+	clearAutoFix,
 	clearExpiredSnoozes,
+	getAutoFixes,
+	squashFixup,
 	discoverAllProjects,
 	fetchAssignedIssues,
 	fetchAllProjectItems,
@@ -65,6 +69,7 @@ import {
 	type ApplyFixesInput,
 	type MergePrInput,
 	type RebaseLocalInput,
+	type AcceptAutoFixInput,
 	TaskQueueJobSchema,
 	type TaskQueueJob,
 	planProject,
@@ -303,6 +308,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				uniqueChildren.map((c) => c.sha),
 			);
 			const splitThresholdLines = getSplitThresholdLines();
+			const autoFixes = getAutoFixes(p.name);
 			// On hold and snoozed children are returned flagged, not dropped, and get no background jobs.
 			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
 
@@ -392,6 +398,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					insertions: facts?.insertions,
 					deletions: facts?.deletions,
 					considerSplitting: facts && considerSplitting(facts, splitThresholdLines) ? true : undefined,
+					autoFixed: facts ? autoFixes.get(facts.patchId) : undefined,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);
@@ -1433,6 +1440,36 @@ export async function abortRebaseHandler(project: string): Promise<ActionResult>
 			invalidateChildrenCache(project);
 			invalidateMergeStatus(project);
 			return {ok: true, message: `Aborted ${operation} in ${project}`, rebaseAgainBranch: branch};
+		});
+	});
+}
+
+/**
+ * Accept fix (lean plan step 31): fold the ready buffer's AI `fixup!` commit into the failing
+ * commit with git plumbing (no checkout), as a git-write job holding the repo, and clear the
+ * "auto-fixed" marker. A branch checked out in a worktree is left for the user to autosquash there.
+ */
+export async function acceptAutoFixHandler(data: AcceptAutoFixInput): Promise<ActionResult> {
+	return tracedAction("acceptAutoFix", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "acceptAutoFix", async () => {
+			const patchId = (await getCommitFacts(p.dir, p.name, [data.sha])).get(data.sha)?.patchId;
+			const fix = patchId === undefined ? undefined : getAutoFixes(p.name).get(patchId);
+			if (patchId === undefined || !fix) return {ok: false, message: `No auto-fix to accept for ${data.sha}`};
+			if ((await checkedOutBranches(p.dir)).has(fix.branch)) {
+				return {
+					ok: false,
+					message: `${fix.branch} is checked out; accept the fix there with git rebase -i --autosquash`,
+				};
+			}
+			const squashed = await squashFixup(p.dir, fix.branch, data.sha, fix.fixupSha);
+			if (squashed === null) {
+				return {ok: false, message: `${fix.branch} no longer ends in the fixup on ${data.sha}`};
+			}
+			clearAutoFix(p.name, patchId);
+			invalidateChildrenCache(p.name);
+			invalidateMergeStatus(p.name);
+			return {ok: true, message: `Accepted the fix on ${fix.branch}`};
 		});
 	});
 }

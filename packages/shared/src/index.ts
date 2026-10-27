@@ -117,6 +117,10 @@ export {
 	loadWorkItems,
 	setPriorityOverride,
 	clearPriorityOverride,
+	getAutoFixes,
+	setAutoFix,
+	clearAutoFix,
+	type AutoFix,
 	upsertTaskRecord,
 	loadRecentTaskRecords,
 	type TaskRecord,
@@ -133,6 +137,7 @@ export {renderTree, type NodeStatus, type ReportNode} from "./lib/advance-report
 export {resolveAdvanceConcurrency, parseAdvanceConcurrency, matchesFilters} from "./lib/advance-config.js";
 export {planProject, type AdvanceUnit, type AdvancePlan} from "./lib/advance-plan.js";
 export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
+export {failureSummary, squashFixup} from "./lib/auto-fix.js";
 export {
 	detectLandings,
 	findLandingSuspects,
@@ -302,6 +307,8 @@ export {
 	type CreatePrInput,
 	RefreshChildInputSchema,
 	AbortRebaseInputSchema,
+	AcceptAutoFixInputSchema,
+	type AcceptAutoFixInput,
 	type RefreshChildInput,
 	CreateBranchInputSchema,
 	type CreateBranchInput,

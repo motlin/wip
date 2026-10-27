@@ -31,6 +31,7 @@ import * as schema from "./schema.js";
 import {log} from "../services/logger-pino.js";
 import {
 	advanceConfig,
+	autoFixes,
 	branchNames,
 	cacheFreshness,
 	childrenCache,
@@ -492,6 +493,20 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS priority_overrides_active_idx ON priority_overrides (project, system_to)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS auto_fixes (
+			project TEXT NOT NULL,
+			patch_id TEXT NOT NULL,
+			branch TEXT NOT NULL,
+			fixup_sha TEXT NOT NULL,
+			failure TEXT NOT NULL,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, patch_id, system_to)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS auto_fixes_active_idx ON auto_fixes (project, system_to)`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS work_items (
@@ -1571,6 +1586,51 @@ export function clearPriorityOverride(project: string, item: PriorityItemRef): v
 		.update(priorityOverrides)
 		.set({systemTo: now()})
 		.where(and(priorityOverrideWhere(project, item), eq(priorityOverrides.systemTo, FAR_FUTURE)))
+		.run();
+}
+
+// --- Auto-fixes awaiting review ---
+
+export interface AutoFix {
+	branch: string;
+	fixupSha: string;
+	failure: string;
+}
+
+function autoFixWhere(project: string, patchId: string): SQL | undefined {
+	return and(eq(autoFixes.project, project), eq(autoFixes.patchId, patchId));
+}
+
+/** Active auto-fixes in a project, keyed by the failing commit's patch-id. */
+export function getAutoFixes(project: string): Map<string, AutoFix> {
+	const rows = getDb()
+		.select({
+			patchId: autoFixes.patchId,
+			branch: autoFixes.branch,
+			fixupSha: autoFixes.fixupSha,
+			failure: autoFixes.failure,
+		})
+		.from(autoFixes)
+		.where(and(eq(autoFixes.project, project), eq(autoFixes.systemTo, FAR_FUTURE)))
+		.all();
+	return new Map(rows.map(({patchId, ...fix}) => [patchId, fix]));
+}
+
+export function setAutoFix(project: string, patchId: string, fix: AutoFix): void {
+	temporalUpsert({
+		table: autoFixes,
+		keyWhere: autoFixWhere(project, patchId),
+		isUnchanged: (existing) =>
+			existing.branch === fix.branch && existing.fixupSha === fix.fixupSha && existing.failure === fix.failure,
+		newRow: {project, patchId, ...fix},
+	});
+}
+
+export function clearAutoFix(project: string, patchId: string): void {
+	getDb()
+		.update(autoFixes)
+		.set({systemTo: now()})
+		.where(and(autoFixWhere(project, patchId), eq(autoFixes.systemTo, FAR_FUTURE)))
 		.run();
 }
 

@@ -631,7 +631,7 @@ describe("pruneRemote", () => {
 	});
 });
 
-describe("testBranch", {timeout: 30_000}, () => {
+describe("testBranch", () => {
 	let tempDir: string | undefined;
 	let counterDir: string | undefined;
 
@@ -680,7 +680,7 @@ describe("testBranch", {timeout: 30_000}, () => {
 	});
 });
 
-describe("isDirty", {timeout: 30_000}, () => {
+describe("isDirty", () => {
 	let tempDir: string | undefined;
 
 	afterEach(() => {
@@ -792,7 +792,7 @@ describe("hasTestConfigured", () => {
 	});
 });
 
-describe("computeMergeStatus", {timeout: 30_000}, () => {
+describe("computeMergeStatus", () => {
 	let tempDir: string | undefined;
 
 	afterEach(() => {
@@ -871,7 +871,7 @@ function setupChildrenAlias(dir: string): void {
 	});
 }
 
-describe("getChildren", {timeout: 30_000}, () => {
+describe("getChildren", () => {
 	let tempDir: string | undefined;
 
 	afterEach(() => {
@@ -950,7 +950,7 @@ describe("getChildren", {timeout: 30_000}, () => {
 	});
 });
 
-describe("getNeedsRebaseBranches", {timeout: 30_000}, () => {
+describe("getNeedsRebaseBranches", () => {
 	let tempDir: string | undefined;
 
 	afterEach(() => {

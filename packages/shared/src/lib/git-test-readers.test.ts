@@ -62,7 +62,7 @@ function touchedNotes(): {command: string; args: readonly string[]}[] {
 	return execaCalls.filter(({args}) => args.some((arg) => arg === "notes" || arg.includes("refs/notes")));
 }
 
-describe("readers take test status from git test results", {timeout: 30_000}, () => {
+describe("readers take test status from git test results", () => {
 	let dir: string;
 
 	beforeEach(() => {

@@ -246,7 +246,8 @@ export default defineConfig({
 			GIT_CONFIG_NOSYSTEM: "1",
 			GIT_TERMINAL_PROMPT: "0",
 		},
-		hookTimeout: 30_000,
-		testTimeout: 30_000,
+		// Matches packages/shared/vitest.config.ts: real-subprocess tests ran up to ~48s on a loaded machine.
+		hookTimeout: 120_000,
+		testTimeout: 120_000,
 	},
 });

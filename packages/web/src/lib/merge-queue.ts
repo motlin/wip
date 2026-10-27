@@ -12,8 +12,10 @@ import {
 	markMergedPrs,
 	recordLandingOutcomes,
 	getCommitFacts,
+	loadInventory,
 } from "@wip/shared";
 import {rankCandidates} from "@wip/shared/candidate-rank.js";
+import {allocateReadySlots} from "@wip/shared/ready-slots.js";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
 
@@ -71,11 +73,28 @@ function emit(event: MergeStatusEvent): void {
 
 /**
  * The pull window: merge-tree runs eagerly only for the top `slots + lookahead` ranked
- * candidates. Slots is the most a repo can hold in the ready buffer (lean plan 4.6).
+ * candidates, where slots is the repo's ready-buffer allocation (lean plan 4.6).
  */
-export const READY_SLOTS = 2;
 export const MERGE_STATUS_LOOKAHEAD = 2;
-const MERGE_STATUS_WINDOW = READY_SLOTS + MERGE_STATUS_LOOKAHEAD;
+
+/** Each project's not-on-hold children from its last check: the unready work slots are allocated over. */
+const unreadyWork = new Map<string, string[]>();
+
+/**
+ * The project's ready slots across every project checked so far. Readiness isn't known here, so
+ * each not-on-hold child counts as unready work; per-item overrides are left to the buffer.
+ */
+function readySlotsFor(project: string, projects: readonly ProjectInfo[]): number {
+	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r.priority]));
+	const repos = projects.map((p) => {
+		const priority = registry.get(p.dir);
+		return priority === undefined ? {name: p.name} : {name: p.name, priority};
+	});
+	const items = [...unreadyWork].flatMap(([repo, shas]) =>
+		shas.map((id) => ({repo, id, state: "unready" as const, onHold: false})),
+	);
+	return allocateReadySlots(repos, items).get(project)?.slots ?? 0;
+}
 
 /** Children outside the pull window, in rank order, waiting for one-per-sweep-tick merge-tree checks. */
 const deferred = new Map<string, {upstreamSha: string; shas: string[]}>();
@@ -88,11 +107,12 @@ export function deferredMergeStatusProjects(): string[] {
 /** Test-only: forget every deferred backlog. */
 export function resetDeferredMergeStatus(): void {
 	deferred.clear();
+	unreadyWork.clear();
 }
 
 /** Uncached children ranked shortest job first, by size from the commit_facts cache (filled by the children refresh). */
-async function rankUncached(p: ProjectInfo, shas: string[]): Promise<string[]> {
-	if (shas.length <= MERGE_STATUS_WINDOW) return shas;
+async function rankUncached(p: ProjectInfo, shas: string[], window: number): Promise<string[]> {
+	if (shas.length <= window) return shas;
 	const facts = await getCommitFacts(p.dir, p.name, shas);
 	const chains = shas.map((sha) => {
 		const f = facts.get(sha);
@@ -129,7 +149,7 @@ async function computeAndEmit(p: ProjectInfo, sha: string, upstreamSha: string):
 	});
 }
 
-async function checkProjectInfo(p: ProjectInfo): Promise<void> {
+async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]): Promise<void> {
 	const {changed, from, sha: upstreamSha} = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
 	if (!upstreamSha) return;
 	if (changed) {
@@ -143,6 +163,8 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 	// On hold items get no background merge-tree work.
 	const held = await heldShas(p.dir, p.name, allShas);
 	const childShas = allShas.filter((sha) => !held.has(sha));
+	unreadyWork.set(p.name, childShas);
+	const window = readySlotsFor(p.name, projects) + MERGE_STATUS_LOOKAHEAD;
 	const cached = new Map(getCachedMergeStatuses(p.name, upstreamSha).map((ms) => [ms.sha, ms]));
 
 	const uncached: string[] = [];
@@ -162,12 +184,12 @@ async function checkProjectInfo(p: ProjectInfo): Promise<void> {
 		});
 	}
 
-	const ranked = await rankUncached(p, uncached);
-	const rest = ranked.slice(MERGE_STATUS_WINDOW);
+	const ranked = await rankUncached(p, uncached, window);
+	const rest = ranked.slice(window);
 	deferred.delete(p.name);
 	if (rest.length > 0) deferred.set(p.name, {upstreamSha, shas: rest});
 
-	for (const sha of ranked.slice(0, MERGE_STATUS_WINDOW)) {
+	for (const sha of ranked.slice(0, window)) {
 		// Sequential on purpose: each call spawns git subprocesses, so fan-out must stay bounded
 		// eslint-disable-next-line no-await-in-loop
 		await computeAndEmit(p, sha, upstreamSha);
@@ -196,7 +218,7 @@ export async function checkProject(projectName: string): Promise<void> {
 	// fetchUpstreamRef writes into .git — suppress the watcher so computing
 	// merge status never re-triggers a refresh of the same project.
 	const {suppressWatcherEvents} = await import("./watch-suppression.js");
-	await suppressWatcherEvents(projectName, async () => checkProjectInfo(p));
+	await suppressWatcherEvents(projectName, async () => checkProjectInfo(p, projects));
 }
 
 /** Run one deferred merge-tree check for `projectName` (called once per sweep tick, at background rank). */

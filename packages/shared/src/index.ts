@@ -322,6 +322,12 @@ export {
 	todoItemKey,
 } from "./lib/priority.js";
 export {
+	allocateReadySlots,
+	type ReadySlotAllocation,
+	type ReadySlotItem,
+	type ReadySlotRepo,
+} from "./lib/ready-slots.js";
+export {
 	type LadderNode,
 	parseAsapLadder,
 	type PriorityProposal,

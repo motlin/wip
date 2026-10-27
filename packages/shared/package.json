@@ -26,6 +26,10 @@
 			"types": "./src/lib/candidate-rank.ts",
 			"import": "./src/lib/candidate-rank.ts"
 		},
+		"./ready-slots.js": {
+			"types": "./src/lib/ready-slots.ts",
+			"import": "./src/lib/ready-slots.ts"
+		},
 		"./upstream-red.js": {
 			"types": "./src/lib/upstream-red.ts",
 			"import": "./src/lib/upstream-red.ts"

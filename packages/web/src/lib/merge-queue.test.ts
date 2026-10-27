@@ -13,6 +13,7 @@ vi.mock("@wip/shared", () => ({
 	markMergedPrs: vi.fn<(...args: unknown[]) => unknown>(),
 	recordLandingOutcomes: vi.fn<(...args: unknown[]) => unknown>(),
 	getCommitFacts: vi.fn<(...args: unknown[]) => unknown>(),
+	loadInventory: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
@@ -32,6 +33,7 @@ import {
 	markMergedPrs,
 	recordLandingOutcomes,
 	getCommitFacts,
+	loadInventory,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
@@ -57,6 +59,7 @@ const mockGetMergedPrHeads = getMergedPrHeads as Mock;
 const mockMarkMergedPrs = markMergedPrs as Mock;
 const mockRecordLandingOutcomes = recordLandingOutcomes as Mock;
 const mockGetCommitFacts = getCommitFacts as Mock;
+const mockLoadInventory = loadInventory as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -111,6 +114,7 @@ describe("checkProject", () => {
 		mockGetMergedPrHeads.mockResolvedValue([]);
 		mockMarkMergedPrs.mockImplementation((suspects: unknown) => suspects);
 		mockGetCommitFacts.mockResolvedValue(new Map());
+		mockLoadInventory.mockReturnValue({projects: [], errors: []});
 		resetDeferredMergeStatus();
 		emitter.removeAllListeners();
 	});
@@ -141,6 +145,66 @@ describe("checkProject", () => {
 			projectsAfterFirstPass: ["test-project"],
 			afterOneTick: ["child-19", "child-18", "child-17", "child-16", "child-15"],
 		});
+	});
+
+	it("sizes the pull window from allocateReadySlots: a medium repo gets 1 slot while a high repo has unready work", async () => {
+		mockGetProjects.mockResolvedValue([
+			makeProject({name: "hi", dir: "/tmp/hi"}),
+			makeProject({name: "mid", dir: "/tmp/mid"}),
+		]);
+		mockLoadInventory.mockReturnValue({
+			projects: [{name: "hi", dir: "/tmp/hi", template: "typescript", kind: "own", priority: "high"}],
+			errors: [],
+		});
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockImplementation(async (dir: string) =>
+			Promise.resolve(["a", "b", "c", "d", "e", "f"].map((s) => `${dir}-${s}`)),
+		);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 0, rebaseable: null});
+
+		await checkProject("hi");
+		await checkProject("mid");
+
+		expect(mockComputeMergeStatus.mock.calls.map(([, sha]) => sha as string)).toStrictEqual([
+			"/tmp/hi-a",
+			"/tmp/hi-b",
+			"/tmp/hi-c",
+			"/tmp/hi-d",
+			"/tmp/mid-a",
+			"/tmp/mid-b",
+			"/tmp/mid-c",
+		]);
+	});
+
+	it("cascades slots to the medium repo when the high repo's children are all on hold", async () => {
+		mockGetProjects.mockResolvedValue([
+			makeProject({name: "hi", dir: "/tmp/hi"}),
+			makeProject({name: "mid", dir: "/tmp/mid"}),
+		]);
+		mockLoadInventory.mockReturnValue({
+			projects: [{name: "hi", dir: "/tmp/hi", template: "typescript", kind: "own", priority: "high"}],
+			errors: [],
+		});
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockImplementation(async (dir: string) =>
+			Promise.resolve(["a", "b", "c", "d", "e", "f"].map((s) => `${dir}-${s}`)),
+		);
+		mockHeldShas.mockImplementation(async (dir: string, _project: string, shas: string[]) =>
+			Promise.resolve(dir === "/tmp/hi" ? new Set(shas) : new Set()),
+		);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 0, rebaseable: null});
+
+		await checkProject("hi");
+		await checkProject("mid");
+
+		expect(mockComputeMergeStatus.mock.calls.map(([, sha]) => sha as string)).toStrictEqual([
+			"/tmp/mid-a",
+			"/tmp/mid-b",
+			"/tmp/mid-c",
+			"/tmp/mid-d",
+		]);
 	});
 
 	it("rotates deferred checks across projects", async () => {

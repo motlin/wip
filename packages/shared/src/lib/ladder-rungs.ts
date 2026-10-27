@@ -254,6 +254,7 @@ export async function runLadder(project: LadderRunProject, options: RunLadderOpt
 		detached: project.detached,
 		rebaseInProgress: project.rebaseInProgress,
 		offline: project.offline,
+		backgroundRebase: project.backgroundRebase,
 	});
 	if (options.dryRun) {
 		return {

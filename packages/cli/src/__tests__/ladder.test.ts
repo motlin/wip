@@ -12,6 +12,7 @@ vi.mock("@wip/shared", () => ({
 	createRepoResourceLock: vi.fn<Shared["createRepoResourceLock"]>(() => async () => Promise.resolve(() => {})),
 	createMachineBuildLock: vi.fn<Shared["createMachineBuildLock"]>(() => async () => Promise.resolve(() => {})),
 	matchesFilters: vi.fn<Shared["matchesFilters"]>(() => true),
+	getLadderBackgroundRebase: vi.fn<Shared["getLadderBackgroundRebase"]>(() => false),
 	runLadderAcrossProjects: vi.fn<Shared["runLadderAcrossProjects"]>(),
 	ladderResultsToTree: vi.fn<Shared["ladderResultsToTree"]>(),
 	renderTree: vi.fn<Shared["renderTree"]>(() => "TREE"),
@@ -109,6 +110,7 @@ describe("wip ladder", () => {
 		});
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[0].map((p) => p.name)).toEqual(["a", "b"]);
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[1].dryRun).toBe(false);
+		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[1].backgroundRebase).toBe(false);
 		// --json means stdout holds only the JSON document
 		expect(JSON.parse(c.lines.join("\n"))).toEqual(result);
 	});

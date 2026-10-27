@@ -25,6 +25,8 @@ export interface LadderAllOptions {
 	/** Cross-process machine build budget; each project's ladder may replay and run tests, so it holds a build slot. */
 	buildLock?: ResourceLock;
 	dryRun?: boolean;
+	/** Run the replay and rebase-leftovers rungs (config `ladder.backgroundRebase`); off by default. */
+	backgroundRebase?: boolean;
 	globalConcurrency?: number;
 	loadThreshold?: number;
 	memFloor?: number;
@@ -72,6 +74,7 @@ export async function runLadderAcrossProjects(
 								detached: p.detachedHead,
 								rebaseInProgress: p.rebaseInProgress,
 								offline: false,
+								backgroundRebase: options.backgroundRebase ?? false,
 							},
 							{dryRun: options.dryRun ?? false, signal: aborted},
 						);

@@ -7,6 +7,7 @@ const clean: LadderProjectInfo = {
 	detached: false,
 	rebaseInProgress: false,
 	offline: false,
+	backgroundRebase: true,
 };
 
 const names = (info: LadderProjectInfo) => planLadder(info).map((r) => r.rung);
@@ -24,6 +25,15 @@ describe("LADDER_RUNGS", () => {
 });
 
 describe("planLadder", () => {
+	it("drops replay and rebase-leftovers when background rebase is off", () => {
+		expect(names({...clean, backgroundRebase: false})).toEqual(["fetch", "worktree-prune", "delete-merged-local"]);
+	});
+
+	it("defaults background rebase to off", () => {
+		const {backgroundRebase: _omitted, ...withoutFlag} = clean;
+		expect(names(withoutFlag)).toEqual(["fetch", "worktree-prune", "delete-merged-local"]);
+	});
+
 	it("plans every rung for a clean online project", () => {
 		expect(names(clean)).toEqual(["fetch", "replay", "rebase-leftovers", "worktree-prune", "delete-merged-local"]);
 	});

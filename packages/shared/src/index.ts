@@ -16,6 +16,7 @@ export {
 	getActionMaxWaitMs,
 	getAiRungTimeoutMs,
 	getAiMaxAttempts,
+	getLadderBackgroundRebase,
 	getSplitThresholdLines,
 	getReadyBufferSize,
 	getReadyBufferCapacity,

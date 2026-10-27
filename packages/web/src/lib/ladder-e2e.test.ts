@@ -133,7 +133,10 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			},
 		};
 
-		const [job] = await runLadderAllHandler({ai: {probe: async () => Promise.resolve(true), overrides}});
+		const [job] = await runLadderAllHandler({
+			backgroundRebase: true,
+			ai: {probe: async () => Promise.resolve(true), overrides},
+		});
 		// Resolves once the ladder job and its AI follow-up have both finished, however slow the machine is.
 		await waitForTask(job?.id ?? "");
 

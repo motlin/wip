@@ -12,6 +12,7 @@ const project = {
 	detached: false,
 	rebaseInProgress: false,
 	offline: false,
+	backgroundRebase: true,
 };
 
 function passing(calls: string[], rung: LadderRungName): LadderRunner {

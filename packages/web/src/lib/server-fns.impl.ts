@@ -19,6 +19,7 @@ import {
 	getProjectsDirs,
 	getRemoteBranchInfo,
 	getCommitFacts,
+	getLadderBackgroundRebase,
 	getSplitThresholdLines,
 	getTestLogDir,
 	invalidatePrCache,
@@ -1584,6 +1585,8 @@ export interface RunLadderAllOptions {
 	ai?: LadderAiOptions;
 	/** Project name patterns that never get an AI rung. */
 	exclude?: string[];
+	/** Run the replay and rebase-leftovers rungs; defaults to config `ladder.backgroundRebase` (off). */
+	backgroundRebase?: boolean;
 }
 
 /**
@@ -1599,6 +1602,7 @@ export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Pr
 		}
 		const {enqueueLadder} = await import("./task-queue.js");
 		const projects = selectTrackedProjects(await ensureProjects(), loadInventory().projects);
+		const backgroundRebase = options.backgroundRebase ?? getLadderBackgroundRebase();
 		return projects.map((p) => {
 			const task = enqueueLadder({
 				project: p.name,
@@ -1608,6 +1612,7 @@ export async function runLadderAllHandler(options: RunLadderAllOptions = {}): Pr
 				dirty: p.dirty,
 				detached: p.detachedHead,
 				rebaseInProgress: p.rebaseInProgress,
+				backgroundRebase,
 				runners: options.runners,
 				ai: matchesFilters(p.name, [], options.exclude ?? []) ? (options.ai ?? {}) : undefined,
 			});

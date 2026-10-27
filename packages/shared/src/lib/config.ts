@@ -180,3 +180,8 @@ export function getSplitThresholdLines(config: Record<string, ConfigValue> = rea
 	const parsed = Number(value);
 	return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_SPLIT_THRESHOLD_LINES;
 }
+
+/** Whether the background ladder replays and rebases branches, from config key `ladder.backgroundRebase`. Defaults to off. */
+export function getLadderBackgroundRebase(config: Record<string, ConfigValue> = readConfig()): boolean {
+	return config["ladder.backgroundRebase"] === "true";
+}

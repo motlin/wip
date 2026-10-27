@@ -90,6 +90,8 @@ export interface LadderTaskProject {
 	dirty: boolean;
 	detached: boolean;
 	rebaseInProgress: boolean;
+	/** Config `ladder.backgroundRebase`: run the replay and rebase-leftovers rungs and test/fix what they rebased. */
+	backgroundRebase?: boolean;
 }
 
 let nextId = 1;
@@ -501,6 +503,7 @@ async function runLadderTask(task: Task, signal: AbortSignal): Promise<void> {
 			detached: info.detached,
 			rebaseInProgress: info.rebaseInProgress,
 			offline: false,
+			backgroundRebase: info.backgroundRebase ?? false,
 		},
 		{signal, runners: task.ladderRunners},
 	);
@@ -528,6 +531,7 @@ function ladderRunProject(task: Task, info: LadderTaskProject): LadderRunProject
 		detached: info.detached,
 		rebaseInProgress: info.rebaseInProgress,
 		offline: false,
+		backgroundRebase: info.backgroundRebase ?? false,
 	};
 }
 
@@ -557,7 +561,7 @@ function setTestFix(task: Task, entry: LadderTestFix): void {
 async function runLadderTestFix(task: Task, branches: string[]): Promise<void> {
 	const ai = task.ladderAi;
 	const info = task.ladderProject;
-	if (!ai || !info || branches.length === 0 || !task.ladderResult) return;
+	if (!ai || info?.backgroundRebase !== true || branches.length === 0 || !task.ladderResult) return;
 
 	const available = await (ai.probe ?? (async () => (await probeHerdr()).available))();
 	if (!available) {
@@ -884,6 +888,7 @@ export function enqueueLadder(opts: EnqueueLadderOptions): Task {
 			dirty: opts.dirty,
 			detached: opts.detached,
 			rebaseInProgress: opts.rebaseInProgress,
+			backgroundRebase: opts.backgroundRebase ?? false,
 		},
 		ladderRunners: opts.runners,
 		ladderAi: opts.ai,

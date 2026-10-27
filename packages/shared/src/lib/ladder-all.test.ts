@@ -61,6 +61,7 @@ describe("runLadderAcrossProjects", () => {
 					detached: false,
 					rebaseInProgress: false,
 					offline: false,
+					backgroundRebase: false,
 				},
 				true,
 			],

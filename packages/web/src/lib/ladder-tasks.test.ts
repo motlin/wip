@@ -87,9 +87,22 @@ afterEach(async () => {
 });
 
 describe("runLadderAllHandler", () => {
+	it("runs only fetch, worktree-prune and delete-merged-local when ladder.backgroundRebase is unset", async () => {
+		const calls: string[] = [];
+		await runLadderAllHandler({runners: fakeRunners(calls), ai: noHerdr});
+
+		await settled(2);
+
+		expect(calls.toSorted()).toStrictEqual(
+			["alpha", "beta"]
+				.flatMap((p) => ["fetch", "worktree-prune", "delete-merged-local"].map((r) => `${p}:${r}`))
+				.toSorted(),
+		);
+	});
+
 	it("enqueues one ladder job per registered project and persists each result", async () => {
 		const calls: string[] = [];
-		const statuses = await runLadderAllHandler({runners: fakeRunners(calls), ai: noHerdr});
+		const statuses = await runLadderAllHandler({runners: fakeRunners(calls), ai: noHerdr, backgroundRebase: true});
 		expect(statuses.map((s) => s.status)).toStrictEqual(["queued", "queued"]);
 
 		await settled(2);
@@ -123,11 +136,11 @@ describe("runLadderAllHandler", () => {
 	});
 
 	it("keeps a stop reason across a task-queue reload and returns the latest result per project", async () => {
-		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr});
+		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr, backgroundRebase: true});
 		await settled(2);
-		await runLadderAllHandler({runners: fakeRunners([]), ai: noHerdr});
+		await runLadderAllHandler({runners: fakeRunners([]), ai: noHerdr, backgroundRebase: true});
 		await settled(4);
-		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr});
+		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr, backgroundRebase: true});
 		await settled(6);
 
 		reloadTasksFromDb();

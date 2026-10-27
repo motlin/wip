@@ -116,7 +116,7 @@ afterEach(async () => {
 describe("ladder AI wiring", () => {
 	it("enqueues exactly one AI job per conflicted project and stores the herdr ids", async () => {
 		const {ai, spies} = makeAi(true);
-		await runLadderAllHandler({runners: conflictRunners, ai});
+		await runLadderAllHandler({runners: conflictRunners, ai, backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		const beta = await latestFor("beta");
@@ -139,7 +139,7 @@ describe("ladder AI wiring", () => {
 
 	it("never calls herdr when unavailable and marks needsAi with the exact command", async () => {
 		const {ai, spies} = makeAi(false);
-		await runLadderAllHandler({runners: conflictRunners, ai});
+		await runLadderAllHandler({runners: conflictRunners, ai, backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 
@@ -151,7 +151,7 @@ describe("ladder AI wiring", () => {
 
 	it("does not run the AI rung for excluded projects", async () => {
 		const {ai, spies} = makeAi(true);
-		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		const beta = await latestFor("beta");
@@ -174,7 +174,7 @@ describe("ladder AI wiring", () => {
 			await expect.poll(() => gate.open).toBe(true);
 			return "done";
 		};
-		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"], backgroundRebase: true});
 		await expect.poll(() => seen.length).toBe(1);
 		gate.open = true;
 
@@ -186,7 +186,7 @@ describe("ladder AI wiring", () => {
 	it("reports the AI rung as stuck when the agent times out", async () => {
 		const {ai} = makeAi(true);
 		ai.overrides.wait = async () => Promise.resolve("timeout");
-		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(alpha.aiStatus).toBe("stuck");
@@ -222,7 +222,7 @@ function testFixAi(
 describe("ladder test/fix rung", () => {
 	it("records green when the first test/fix run passes", async () => {
 		const {ai, spies} = testFixAi(true, ["green"], []);
-		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(spies.launches.map((l) => ({cwd: l.cwd, command: l.command}))).toStrictEqual([
@@ -234,7 +234,7 @@ describe("ladder test/fix rung", () => {
 
 	it("retries a red branch while the tip changes, then records green", async () => {
 		const {ai, spies} = testFixAi(true, ["red", "green"], ["tip-1"]);
-		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(spies.launches).toHaveLength(2);
@@ -243,7 +243,7 @@ describe("ladder test/fix rung", () => {
 
 	it("marks the branch stuck when the same tip comes back red twice", async () => {
 		const {ai, spies} = testFixAi(true, ["red", "red", "green"], ["tip-1", "tip-1"]);
-		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(spies.launches).toHaveLength(2);
@@ -252,7 +252,7 @@ describe("ladder test/fix rung", () => {
 
 	it("marks the branch stuck when the attempt cap is hit", async () => {
 		const {ai, spies} = testFixAi(true, ["red", "red", "red", "red"], ["t1", "t2", "t3", "t4"], 3);
-		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(spies.launches).toHaveLength(3);
@@ -262,7 +262,7 @@ describe("ladder test/fix rung", () => {
 	it("marks the branch stuck when the agent times out", async () => {
 		const {ai} = testFixAi(true, ["green"], []);
 		ai.overrides.wait = async () => Promise.resolve("timeout");
-		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(alpha.testFix).toStrictEqual([{branch: "feature", status: "stuck", attempts: 1}]);
@@ -270,7 +270,7 @@ describe("ladder test/fix rung", () => {
 
 	it("hands over the exact command and never calls herdr when unavailable", async () => {
 		const {ai, spies} = testFixAi(false, ["green"], []);
-		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: rebasedRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(spies.launches).toStrictEqual([]);
@@ -280,7 +280,7 @@ describe("ladder test/fix rung", () => {
 
 	it("tests the conflicted branch after the conflict rung resolves it", async () => {
 		const {ai, spies} = testFixAi(true, ["green"], []);
-		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"]});
+		await runLadderAllHandler({runners: conflictRunners, ai, exclude: ["beta"], backgroundRebase: true});
 
 		const alpha = await latestFor("alpha");
 		expect(spies.launches.map((l) => l.command)).toStrictEqual([

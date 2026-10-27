@@ -73,12 +73,20 @@ export interface LadderProjectInfo {
 	detached: boolean;
 	rebaseInProgress: boolean;
 	offline: boolean;
+	/**
+	 * Config `ladder.backgroundRebase`: when not true, the ladder skips the replay and rebase-leftovers
+	 * rungs (and so the chained test/fix of rebased branches); the ready buffer readies commits instead.
+	 */
+	backgroundRebase?: boolean;
 }
+
+const REBASE_RUNGS: ReadonlySet<LadderRungName> = new Set(["replay", "rebase-leftovers"]);
 
 /** Returns the rungs that apply to a project, in ladder order. */
 export function planLadder(info: LadderProjectInfo): LadderRung[] {
 	const treeUnsafe = info.dirty || info.detached || info.rebaseInProgress;
 	return LADDER_RUNGS.filter((r) => {
+		if (REBASE_RUNGS.has(r.rung) && info.backgroundRebase !== true) return false;
 		if (r.rung === "fetch" && info.offline) return false;
 		if (r.rung === "replay" && info.rebaseInProgress) return false;
 		if (r.needsCleanTree && treeUnsafe) return false;

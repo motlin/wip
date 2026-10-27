@@ -20,10 +20,11 @@ import {
 	getRemoteBranchInfo,
 	pruneRemote,
 	testBranch,
+	createBranchForChild,
 } from "./git.js";
 import {sorted} from "../test/sorted.js";
 import {getPrStatuses} from "./github-pr-status.js";
-import {initDb, resetDb} from "./db.js";
+import {getBranchName, initDb, resetDb, setBranchName} from "./db.js";
 import {setGitHubClient, resetGitHubClient, createTestClient} from "../services/github-client.js";
 import {setupPolly} from "../test/setup-polly.js";
 import {resetGitHubRateLimit, markGitHubRateLimited} from "./rate-limit.js";
@@ -1012,5 +1013,72 @@ describe("getNeedsRebaseBranches", () => {
 		const result = await getNeedsRebaseBranches(tempDir, "upstream-ref");
 		const branchNames = result.map((c) => c.branch);
 		expect(branchNames).toContain("stale-branch");
+	});
+});
+
+function branchTips(dir: string): string {
+	return execSync("git for-each-ref --format='%(refname:short) %(objectname)' refs/heads", {cwd: dir})
+		.toString()
+		.trim();
+}
+
+describe("createBranchForChild", () => {
+	let tempDir: string | undefined;
+
+	beforeEach(() => {
+		initDb(":memory:");
+	});
+
+	afterEach(() => {
+		resetDb();
+		if (tempDir) {
+			rmSync(tempDir, {recursive: true, force: true});
+			tempDir = undefined;
+		}
+	});
+
+	function setupTwoCommits(): {dir: string; base: string; child: string} {
+		const dir = createTestGitRepo("owner", "repo");
+		tempDir = dir;
+		execSync("git commit --allow-empty -m base", {cwd: dir, stdio: "ignore"});
+		const base = execSync("git rev-parse HEAD", {cwd: dir}).toString().trim();
+		execSync("git commit --allow-empty -m child", {cwd: dir, stdio: "ignore"});
+		const child = execSync("git rev-parse HEAD", {cwd: dir}).toString().trim();
+		return {dir, base, child};
+	}
+
+	it("creates a local branch at the commit under its cached name", async () => {
+		const {dir, child} = setupTwoCommits();
+		setBranchName(child, "proj", "add-the-child-commit");
+
+		const name = await createBranchForChild(
+			dir,
+			{sha: child, shortSha: child.slice(0, 7), subject: "child"},
+			"proj",
+		);
+
+		expect({name, tips: branchTips(dir), cached: getBranchName(child, "proj")}).toStrictEqual({
+			name: "add-the-child-commit",
+			tips: [`add-the-child-commit ${child}`, `main ${child}`].join("\n"),
+			cached: "add-the-child-commit",
+		});
+	});
+
+	it("never overwrites an existing branch at a different sha and picks the next name", async () => {
+		const {dir, base, child} = setupTwoCommits();
+		execSync(`git branch add-the-child-commit ${base}`, {cwd: dir, stdio: "ignore"});
+		setBranchName(child, "proj", "add-the-child-commit");
+
+		const name = await createBranchForChild(
+			dir,
+			{sha: child, shortSha: child.slice(0, 7), subject: "child"},
+			"proj",
+		);
+
+		expect({name, tips: branchTips(dir), cached: getBranchName(child, "proj")}).toStrictEqual({
+			name: "add-the-child-commit-2",
+			tips: [`add-the-child-commit ${base}`, `add-the-child-commit-2 ${child}`, `main ${child}`].join("\n"),
+			cached: "add-the-child-commit-2",
+		});
 	});
 });

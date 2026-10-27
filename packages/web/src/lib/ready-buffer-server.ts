@@ -373,18 +373,32 @@ export async function startReadyBuffer(
 			return fixup;
 		},
 		nameBranch: async (repo, candidate) => {
-			const {getCachedChildren, suggestBranchNames} = await import("@wip/shared");
+			const {createBranchForChild, getCachedChildren, suggestBranchNames} = await import("@wip/shared");
 			const {getProjects} = await import("./server-fns.js");
 			const p = (await getProjects()).find((proj) => proj.name === repo.name);
 			const child = getCachedChildren(repo.name)?.find((c) => c.sha === candidate.sha);
-			if (!p || !child) return;
+			if (!p || !child) return null;
+			// suggestBranchNames caches the name and honors the failed-naming cooldown.
 			const names = await suggestBranchNames([
 				{sha: candidate.sha, project: p.name, subject: child.subject, dir: p.dir},
 			]);
-			const name = names.get(`${p.name}:${candidate.sha}`) ?? null;
-			log.general.info({project: repo.name, sha: candidate.sha, name}, "Ready-buffer branch name");
-			// The card shows the suggestion on the next refresh.
+			if (!names.has(`${p.name}:${candidate.sha}`)) return null;
+			// A local ref only: the advance replays and pushes it. A taken name picks the next one.
+			const branch = await createBranchForChild(
+				p.dir,
+				{sha: candidate.sha, shortSha: child.shortSha, subject: child.subject},
+				p.name,
+			).catch((error: unknown) => {
+				log.general.warn(
+					{project: repo.name, sha: candidate.sha, err: error},
+					"Ready-buffer branch not created",
+				);
+				return null;
+			});
+			log.general.info({project: repo.name, sha: candidate.sha, branch}, "Ready-buffer branch created");
+			// The card shows the branch on the next refresh.
 			enqueueProjectRefresh(repo.name, {force: false});
+			return branch;
 		},
 	});
 	setReadyBuffer(started);

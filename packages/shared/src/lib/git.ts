@@ -559,23 +559,48 @@ export async function getChildCommits(
 	return children;
 }
 
-export async function createBranchForChild(dir: string, child: ChildCommit, project: string): Promise<string> {
+/** How many numbered alternatives (`name-2`, `name-3`, ...) to try when a name is taken. */
+const BRANCH_NAME_ALTERNATIVES = 20;
+
+/** Where `refs/heads/<name>` points, or null when no such local branch exists. */
+async function localBranchSha(dir: string, name: string): Promise<string | null> {
+	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", "--quiet", `refs/heads/${name}`], {
+		reject: false,
+	});
+	return result.exitCode === 0 ? result.stdout.trim() : null;
+}
+
+/**
+ * Creates a local branch (never pushed) at the child under its cached or generated name. A branch
+ * already at that sha is reused; one at a different sha is never overwritten: the next numbered
+ * name is taken instead and cached as the commit's name.
+ */
+export async function createBranchForChild(
+	dir: string,
+	child: Pick<ChildCommit, "sha" | "shortSha" | "subject" | "branch">,
+	project: string,
+): Promise<string> {
 	if (child.branch) return child.branch;
 
-	const cached = getBranchName(child.sha, project);
-	if (cached) {
-		await tracedExeca("git", ["-C", dir, "branch", cached, child.sha], {reject: false});
-		return cached;
-	}
-
-	const branchName = await nameBranch({sha: child.sha, project, subject: child.subject, dir});
-	if (!branchName) {
+	const suggested =
+		getBranchName(child.sha, project) ?? (await nameBranch({sha: child.sha, project, subject: child.subject, dir}));
+	if (!suggested) {
 		throw new Error(`Failed to generate branch name for ${child.shortSha} (${child.subject})`);
 	}
 
-	setBranchName(child.sha, project, branchName);
-	await tracedExeca("git", ["-C", dir, "branch", branchName, child.sha], {reject: false});
-	return branchName;
+	for (let i = 1; i <= BRANCH_NAME_ALTERNATIVES; i++) {
+		const name = i === 1 ? suggested : `${suggested}-${i}`;
+		// eslint-disable-next-line no-await-in-loop -- each candidate name depends on the previous being taken
+		const existing = await localBranchSha(dir, name);
+		if (existing !== null && existing !== child.sha) continue;
+		if (existing === null) {
+			// eslint-disable-next-line no-await-in-loop -- see above
+			await tracedExeca("git", ["-C", dir, "branch", name, child.sha]);
+		}
+		setBranchName(child.sha, project, name);
+		return name;
+	}
+	throw new Error(`Every branch name for ${child.shortSha} starting with ${suggested} is taken`);
 }
 
 export async function testBranch(

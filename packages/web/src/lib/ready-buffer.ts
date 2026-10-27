@@ -151,8 +151,11 @@ export interface ReadyBufferDeps {
 	resolveConflicts: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
 	/** Fixes the candidate's failing test as a separate fixup commit on top; the fixup sha, or null when stuck. */
 	fixTest: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
-	/** Suggests (and caches) a branch name for an unnamed candidate entering the buffer in a pull-request repo. */
-	nameBranch: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<void>;
+	/**
+	 * Names an unnamed candidate entering the buffer in a pull-request repo and creates its local
+	 * branch (never pushed); the branch, or null when naming failed.
+	 */
+	nameBranch: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
 }
 
 export interface ReadyBuffer {
@@ -326,24 +329,36 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		);
 	}
 
+	/**
+	 * Plan step 39: naming is lazy, only for a commit entering the buffer in a pull-request repo,
+	 * whose advance needs a local branch to replay and push. The candidate carrying its new branch,
+	 * or unchanged (and skipped by the advance) when naming failed.
+	 */
+	async function named(repo: BufferRepo, candidate: BufferCandidate): Promise<BufferCandidate> {
+		if (candidate.branch !== undefined || repo.landing !== "pull-request") return candidate;
+		const result: {branch: string | null} = {branch: null};
+		await deps.queue.enqueue({
+			coalesceKey: `branch-name:${repo.name}:${candidate.sha}`,
+			laneKey: "branch-name",
+			kind: "branch-name",
+			project: repo.name,
+			costClass: "ai",
+			run: async (signal) => {
+				result.branch = await deps.nameBranch(repo, candidate, signal);
+			},
+		}).settled;
+		return result.branch === null ? candidate : {...candidate, branch: result.branch};
+	}
+
 	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void {
 		const jobs = inFlightOf(repo.name);
 		if (jobs.has(candidate.id)) return;
-		// Plan step 39: naming is lazy, only for a commit entering the buffer in a pull-request repo.
-		if (candidate.branch === undefined && repo.landing === "pull-request") {
-			deps.queue.enqueue({
-				coalesceKey: `branch-name:${repo.name}:${candidate.sha}`,
-				laneKey: "branch-name",
-				kind: "branch-name",
-				project: repo.name,
-				costClass: "ai",
-				run: async (signal) => deps.nameBranch(repo, candidate, signal),
+		const settled = named(repo, candidate)
+			.then(async (ready) => advanceItem(repo, ready, {conflicts: false, fix: false}))
+			.then(async () => {
+				jobs.delete(candidate.id);
+				return requestPull();
 			});
-		}
-		const settled = advanceItem(repo, candidate, {conflicts: false, fix: false}).then(async () => {
-			jobs.delete(candidate.id);
-			return requestPull();
-		});
 		jobs.set(candidate.id, settled);
 	}
 

@@ -61,6 +61,8 @@ interface Harness {
 	fixed: string[];
 	/** Each branch-naming job the buffer ran, as `project:id`. */
 	named: string[];
+	/** Per advance, the branch the candidate carried, as `project:id:branch` (`-` when unnamed). */
+	advancedBranches: string[];
 	maxConcurrent: () => number;
 }
 
@@ -98,6 +100,8 @@ function harness(options: {
 	target?: number;
 	/** How many buffer jobs run at once; 4 unless a test says otherwise. */
 	capacity?: number;
+	/** The local branch the naming job creates per item; `<id>-branch` unless a test says otherwise. */
+	name?: (project: string, id: string) => string | null;
 }): Harness {
 	const queue = createWorkQueue({
 		globalConcurrency: 4,
@@ -111,6 +115,7 @@ function harness(options: {
 	const resolved: string[] = [];
 	const fixed: string[] = [];
 	const named: string[] = [];
+	const advancedBranches: string[] = [];
 	let concurrent = 0;
 	let maxConcurrent = 0;
 	const spy: Pick<WorkQueue, "enqueue"> = {
@@ -137,6 +142,7 @@ function harness(options: {
 		advance: async (r, candidate) => {
 			advanced.push(`${r.name}:${candidate.id}`);
 			advancedAutoFixed.push(candidate.autoFixed === true);
+			advancedBranches.push(`${r.name}:${candidate.id}:${candidate.branch ?? "-"}`);
 			concurrent += 1;
 			maxConcurrent = Math.max(maxConcurrent, concurrent);
 			await (options.gated
@@ -157,7 +163,7 @@ function harness(options: {
 		},
 		nameBranch: async (r, candidate) => {
 			named.push(`${r.name}:${candidate.id}`);
-			return Promise.resolve();
+			return Promise.resolve(options.name ? options.name(r.name, candidate.id) : `${candidate.id}-branch`);
 		},
 	});
 	return {
@@ -169,6 +175,7 @@ function harness(options: {
 		resolved,
 		fixed,
 		named,
+		advancedBranches,
 		maxConcurrent: () => maxConcurrent,
 	};
 }
@@ -199,6 +206,8 @@ describe("createReadyBuffer", () => {
 		expect({
 			jobs: h.enqueued.filter((e) => e.kind === "branch-name"),
 			named: h.named,
+			advanced: h.advancedBranches.toSorted(),
+			outcomes: [h.buffer.outcomes("pr"), h.buffer.outcomes("ff"), h.buffer.outcomes("named")],
 		}).toStrictEqual({
 			jobs: [
 				{
@@ -213,6 +222,21 @@ describe("createReadyBuffer", () => {
 				},
 			],
 			named: ["pr:c1"],
+			advanced: ["ff:c1:-", "named:c1:has-name", "pr:c1:c1-branch"],
+			outcomes: [{c1: "ready"}, {c1: "ready"}, {c1: "ready"}],
+		});
+	});
+
+	it("advances an unnamed pull-request candidate unnamed when naming creates no branch", async () => {
+		const repos = [repo("pr", {landing: "pull-request", candidates: candidates(1)})];
+		const h = harness({repos: () => repos, target: 1, name: () => null});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({named: h.named, advanced: h.advancedBranches}).toStrictEqual({
+			named: ["pr:c1"],
+			advanced: ["pr:c1:-"],
 		});
 	});
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
-import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 
@@ -12,6 +12,18 @@ const serverFns = vi.hoisted(() => ({
 	runClaudeCommand: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	abortRebase: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	acceptAutoFix: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	assignAutoFix: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	dropAutoFixBranch: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	snoozeChildFn: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	getAutoFixReview: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () =>
+		Promise.resolve({
+			branch: "feature/x",
+			fixupSha: "f".repeat(40),
+			failure: "FAIL a.test.ts",
+			diff: "diff --git a/a.txt b/a.txt\n-broken\n+fixed",
+			failureLog: "running\nFAIL a.test.ts\n",
+		}),
+	),
 	rebaseChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	pushChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	forcePush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -425,39 +437,96 @@ describe("consider splitting marker and Split transition", () => {
 	});
 });
 
-describe("auto-fixed marker and Accept fix", () => {
+/** Opens the auto-fixed item's review and scopes queries to the review panel. */
+async function openReview() {
+	fireEvent.click(screen.getByRole("button", {name: "Review fix"}));
+	return within(await screen.findByTestId("auto-fix-review"));
+}
+
+describe("auto-fixed marker and the auto-fix review", () => {
 	const autoFixed = {failure: "FAIL a.test.ts", fixupSha: "f".repeat(40), branch: "feature/x"};
+	const review = {
+		branch: "feature/x",
+		fixupSha: "f".repeat(40),
+		failure: "FAIL a.test.ts",
+		diff: "diff --git a/a.txt b/a.txt\n-broken\n+fixed",
+		failureLog: "running\nFAIL a.test.ts\n",
+	};
+	const renderAutoFixed = (fix: GitChildResult["autoFixed"] = autoFixed) => {
+		renderBranch(branchItem({branch: undefined, testStatus: "failed", autoFixed: fix}), "test_failed", [
+			project(true),
+		]);
+	};
 
 	afterEach(() => {
 		cleanup();
 		clearToasts();
-		serverFns.acceptAutoFix.mockReset();
+		for (const fn of [
+			serverFns.acceptAutoFix,
+			serverFns.assignAutoFix,
+			serverFns.dropAutoFixBranch,
+			serverFns.snoozeChildFn,
+		]) {
+			fn.mockReset();
+		}
+		serverFns.getAutoFixReview.mockClear();
 		serverFns.getProjectChildren.mockClear();
 	});
 
-	it("shows auto-fixed: <failure> and Accept fix on an auto-fixed red commit", () => {
-		renderBranch(branchItem({branch: undefined, testStatus: "failed", autoFixed}), "test_failed", [project(true)]);
+	it("shows auto-fixed: <failure> with Review fix as the primary action, and no bare Drop fix", () => {
+		renderAutoFixed();
 
 		expect({
 			markers: screen.getAllByTestId("auto-fixed-marker").map((el) => el.textContent),
-			accept: screen.getAllByRole("button", {name: "Accept fix"}).length,
-		}).toEqual({markers: ["auto-fixed: FAIL a.test.ts"], accept: 1});
+			review: screen.getAllByRole("button", {name: "Review fix"}).length,
+			accept: screen.queryByRole("button", {name: "Accept fix"}),
+			dropFix: screen.queryByRole("button", {name: "Drop fix"}),
+		}).toEqual({markers: ["auto-fixed: FAIL a.test.ts"], review: 1, accept: null, dropFix: null});
 	});
 
-	it("shows neither the marker nor Accept fix without an auto-fix", () => {
+	it("shows neither the marker nor Review fix without an auto-fix", () => {
 		renderBranch(branchItem({testStatus: "failed"}), "test_failed", [project(true)]);
 
 		expect({
 			marker: screen.queryByTestId("auto-fixed-marker"),
-			accept: screen.queryByRole("button", {name: "Accept fix"}),
-		}).toEqual({marker: null, accept: null});
+			review: screen.queryByRole("button", {name: "Review fix"}),
+		}).toEqual({marker: null, review: null});
 	});
 
-	it("accepts the fix and writes the refreshed children into the cache", async () => {
-		serverFns.acceptAutoFix.mockResolvedValue({ok: true, message: "Accepted the fix on feature/x"});
-		renderBranch(branchItem({branch: undefined, testStatus: "failed", autoFixed}), "test_failed", [project(true)]);
+	it("marks an item the user took over as theirs to fix", () => {
+		renderAutoFixed({...autoFixed, assigned: true});
 
-		fireEvent.click(screen.getByRole("button", {name: "Accept fix"}));
+		expect(screen.getAllByTestId("auto-fixed-marker").map((el) => el.textContent)).toEqual([
+			"yours to fix: FAIL a.test.ts",
+		]);
+	});
+
+	it("the review shows the fixup's diff and the failure it fixed, then exactly the four actions", async () => {
+		renderAutoFixed();
+
+		const panel = await openReview();
+
+		await waitFor(() => {
+			expect({
+				request: serverFns.getAutoFixReview.mock.calls,
+				diff: panel.getByTestId("auto-fix-diff").textContent,
+				failure: panel.getByTestId("auto-fix-failure").textContent,
+				actions: panel.getAllByRole("button").map((el) => el.textContent),
+			}).toEqual({
+				request: [[{data: {project: "wip", sha: "abc123"}}]],
+				diff: review.diff,
+				failure: review.failureLog,
+				actions: ["Accept fix", "Fix it myself", "On hold", "Drop branch"],
+			});
+		});
+	});
+
+	it("Accept fix squashes and writes the refreshed children into the cache", async () => {
+		serverFns.acceptAutoFix.mockResolvedValue({ok: true, message: "Accepted the fix on feature/x"});
+		renderAutoFixed();
+		const panel = await openReview();
+
+		fireEvent.click(await panel.findByRole("button", {name: "Accept fix"}));
 
 		await waitFor(() => {
 			expect({
@@ -466,6 +535,58 @@ describe("auto-fixed marker and Accept fix", () => {
 			}).toEqual({
 				accept: [[{data: {project: "wip", sha: "abc123"}}]],
 				refreshed: [[{data: {project: "wip"}}]],
+			});
+		});
+	});
+
+	it("Fix it myself assigns the item to the user and refreshes the children", async () => {
+		serverFns.assignAutoFix.mockResolvedValue({ok: true, message: "The fix on feature/x is yours"});
+		renderAutoFixed();
+		const panel = await openReview();
+
+		fireEvent.click(await panel.findByRole("button", {name: "Fix it myself"}));
+
+		await waitFor(() => {
+			expect({
+				assign: serverFns.assignAutoFix.mock.calls,
+				refreshed: serverFns.getProjectChildren.mock.calls,
+			}).toEqual({
+				assign: [[{data: {project: "wip", sha: "abc123"}}]],
+				refreshed: [[{data: {project: "wip"}}]],
+			});
+		});
+	});
+
+	it("On hold puts the item on the patch-id hold", async () => {
+		serverFns.snoozeChildFn.mockResolvedValue({ok: true, message: "On hold"});
+		renderAutoFixed();
+		const panel = await openReview();
+
+		fireEvent.click(await panel.findByRole("button", {name: "On hold"}));
+
+		await waitFor(() => {
+			expect(serverFns.snoozeChildFn.mock.calls).toEqual([
+				[{data: {project: "wip", sha: "abc123", until: null}}],
+			]);
+		});
+	});
+
+	it("Drop branch asks for confirmation before deleting the local branch", async () => {
+		serverFns.dropAutoFixBranch.mockResolvedValue({ok: true, message: "Deleted local branch feature/x"});
+		renderAutoFixed();
+		const panel = await openReview();
+
+		fireEvent.click(await panel.findByRole("button", {name: "Drop branch"}));
+		const asked = {
+			prompt: panel.getByTestId("drop-branch-confirm").textContent,
+			dropped: [...serverFns.dropAutoFixBranch.mock.calls],
+		};
+		fireEvent.click(panel.getByRole("button", {name: "Delete local branch"}));
+
+		await waitFor(() => {
+			expect({asked, dropped: serverFns.dropAutoFixBranch.mock.calls}).toEqual({
+				asked: {prompt: "Delete the local branch feature/x? Remote branches are kept.", dropped: []},
+				dropped: [[{data: {project: "wip", sha: "abc123"}}]],
 			});
 		});
 	});

@@ -391,7 +391,15 @@ export const GitChildResultSchema = z.object({
 	/** Size above `flow.splitThresholdLines`: shows a marker and enables the state's split transition. */
 	considerSplitting: z.boolean().optional(),
 	/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
-	autoFixed: z.object({failure: z.string(), fixupSha: shaSchema, branch: branchSchema}).optional(),
+	autoFixed: z
+		.object({
+			failure: z.string(),
+			fixupSha: shaSchema,
+			branch: branchSchema,
+			/** Fix it myself: the user took the failure over; the fixup stays until they decide. */
+			assigned: z.literal(true).optional(),
+		})
+		.optional(),
 });
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 
@@ -527,11 +535,12 @@ export const AbortRebaseInputSchema = z.object({
 });
 export type AbortRebaseInput = z.infer<typeof AbortRebaseInputSchema>;
 
-export const AcceptAutoFixInputSchema = z.object({
+/** An auto-fixed item (the failing commit): Accept fix, Fix it myself, Drop branch and the review. */
+export const AutoFixInputSchema = z.object({
 	project: z.string(),
 	sha: shaSchema,
 });
-export type AcceptAutoFixInput = z.infer<typeof AcceptAutoFixInputSchema>;
+export type AutoFixInput = z.infer<typeof AutoFixInputSchema>;
 
 export const CreateBranchInputSchema = z.object({
 	project: z.string(),

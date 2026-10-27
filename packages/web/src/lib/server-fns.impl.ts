@@ -4,6 +4,8 @@ import {
 	clearAutoFix,
 	clearExpiredSnoozes,
 	getAutoFixes,
+	reconcileAutoFixes,
+	setAutoFix,
 	squashFixup,
 	discoverAllProjects,
 	fetchAssignedIssues,
@@ -69,7 +71,8 @@ import {
 	type ApplyFixesInput,
 	type MergePrInput,
 	type RebaseLocalInput,
-	type AcceptAutoFixInput,
+	type AutoFixInput,
+	type AutoFix,
 	TaskQueueJobSchema,
 	type TaskQueueJob,
 	planProject,
@@ -308,7 +311,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				uniqueChildren.map((c) => c.sha),
 			);
 			const splitThresholdLines = getSplitThresholdLines();
-			const autoFixes = getAutoFixes(p.name);
+			const autoFixes = await reconcileAutoFixes(p.dir, p.name);
 			// On hold and snoozed children are returned flagged, not dropped, and get no background jobs.
 			const snoozes = await resolveSnoozedChildren(p.dir, p.name, uniqueChildren);
 
@@ -1444,18 +1447,91 @@ export async function abortRebaseHandler(project: string): Promise<ActionResult>
 	});
 }
 
+/** The auto-fix recorded for the failing commit `sha` (by its patch-id), or null. */
+async function findAutoFix(dir: string, project: string, sha: string): Promise<{patchId: string; fix: AutoFix} | null> {
+	const patchId = (await getCommitFacts(dir, project, [sha])).get(sha)?.patchId;
+	const fix = patchId === undefined ? undefined : getAutoFixes(project).get(patchId);
+	return patchId === undefined || !fix ? null : {patchId, fix};
+}
+
+export interface AutoFixReview {
+	branch: string;
+	fixupSha: string;
+	failure: string;
+	/** The fixup commit's patch. */
+	diff: string;
+	/** The failing run's test log (the failure the fixup fixed); null when it is gone. */
+	failureLog: string | null;
+}
+
+/** The auto-fix review: the fixup's diff and the failure it fixed; null without an auto-fix. */
+export async function getAutoFixReviewHandler(data: AutoFixInput): Promise<AutoFixReview | null> {
+	return traced("getAutoFixReview", async () => {
+		const p = await resolveProject(data.project);
+		const found = await findAutoFix(p.dir, p.name, data.sha);
+		if (!found) return null;
+		const {fix} = found;
+		const show = await tracedExeca("git", ["-C", p.dir, "show", "--format=", fix.fixupSha], {reject: false});
+		const logPath = path.join(getTestLogDir(p.name), `${data.sha}.log`);
+		return {
+			branch: fix.branch,
+			fixupSha: fix.fixupSha,
+			failure: fix.failure,
+			diff: show.exitCode === 0 ? show.stdout.trim() : `git show failed: ${show.stderr}`,
+			failureLog: fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf-8") : null,
+		};
+	});
+}
+
+/**
+ * Fix it myself: the user takes the failure over. The item stays red, the buffer leaves it alone
+ * (an auto-fixed item is never pulled or re-advanced), and the fixup stays until the user decides.
+ */
+export async function assignAutoFixHandler(data: AutoFixInput): Promise<ActionResult> {
+	return tracedAction("assignAutoFix", async () => {
+		const p = await resolveProject(data.project);
+		const found = await findAutoFix(p.dir, p.name, data.sha);
+		if (!found) return {ok: false, message: `No auto-fix for ${data.sha}`};
+		setAutoFix(p.name, found.patchId, {...found.fix, assigned: true});
+		invalidateChildrenCache(p.name);
+		return {ok: true, message: `The fix on ${found.fix.branch} is yours; the fixup stays until you decide`};
+	});
+}
+
+/** Drop branch: delete the auto-fixed item's local branch (never a remote one) and clear its marker. */
+export async function dropAutoFixBranchHandler(data: AutoFixInput): Promise<ActionResult> {
+	return tracedAction("dropAutoFixBranch", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "dropAutoFixBranch", async () => {
+			const found = await findAutoFix(p.dir, p.name, data.sha);
+			if (!found) return {ok: false, message: `No auto-fix for ${data.sha}`};
+			const {patchId, fix} = found;
+			if ((await checkedOutBranches(p.dir)).has(fix.branch)) {
+				return {ok: false, message: `${fix.branch} is checked out; switch away from it before dropping it`};
+			}
+			const deleted = await tracedExeca("git", ["-C", p.dir, "branch", "-D", fix.branch], {reject: false});
+			if (deleted.exitCode !== 0) return {ok: false, message: `Failed to delete branch: ${deleted.stderr}`};
+			clearAutoFix(p.name, patchId);
+			invalidatePrCache(p.name);
+			invalidateChildrenCache(p.name);
+			invalidateMergeStatus(p.name);
+			return {ok: true, message: `Deleted local branch ${fix.branch}`};
+		});
+	});
+}
+
 /**
  * Accept fix (lean plan step 31): fold the ready buffer's AI `fixup!` commit into the failing
  * commit with git plumbing (no checkout), as a git-write job holding the repo, and clear the
  * "auto-fixed" marker. A branch checked out in a worktree is left for the user to autosquash there.
  */
-export async function acceptAutoFixHandler(data: AcceptAutoFixInput): Promise<ActionResult> {
+export async function acceptAutoFixHandler(data: AutoFixInput): Promise<ActionResult> {
 	return tracedAction("acceptAutoFix", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, "acceptAutoFix", async () => {
-			const patchId = (await getCommitFacts(p.dir, p.name, [data.sha])).get(data.sha)?.patchId;
-			const fix = patchId === undefined ? undefined : getAutoFixes(p.name).get(patchId);
-			if (patchId === undefined || !fix) return {ok: false, message: `No auto-fix to accept for ${data.sha}`};
+			const found = await findAutoFix(p.dir, p.name, data.sha);
+			if (!found) return {ok: false, message: `No auto-fix to accept for ${data.sha}`};
+			const {patchId, fix} = found;
 			if ((await checkedOutBranches(p.dir)).has(fix.branch)) {
 				return {
 					ok: false,

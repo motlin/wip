@@ -378,6 +378,8 @@ export const autoFixes = sqliteTable(
 		branch: text("branch").notNull(),
 		fixupSha: text("fixup_sha").notNull(),
 		failure: text("failure").notNull(),
+		/** Fix it myself: the user took the failure over; the buffer leaves it and the fixup alone. */
+		assigned: integer("assigned", {mode: "boolean"}).notNull().default(false),
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},

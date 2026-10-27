@@ -501,11 +501,15 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			branch TEXT NOT NULL,
 			fixup_sha TEXT NOT NULL,
 			failure TEXT NOT NULL,
+			assigned INTEGER NOT NULL DEFAULT 0,
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (project, patch_id, system_to)
 		)
 	`);
+	if (!tableInfo(sqlite, "auto_fixes").some((c) => c.name === "assigned")) {
+		sqlite.exec("ALTER TABLE auto_fixes ADD COLUMN assigned INTEGER NOT NULL DEFAULT 0");
+	}
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS auto_fixes_active_idx ON auto_fixes (project, system_to)`);
 
 	sqlite.exec(`
@@ -1595,6 +1599,8 @@ export interface AutoFix {
 	branch: string;
 	fixupSha: string;
 	failure: string;
+	/** Fix it myself: the user took the failure over (present only when true). */
+	assigned?: true;
 }
 
 function autoFixWhere(project: string, patchId: string): SQL | undefined {
@@ -1609,11 +1615,14 @@ export function getAutoFixes(project: string): Map<string, AutoFix> {
 			branch: autoFixes.branch,
 			fixupSha: autoFixes.fixupSha,
 			failure: autoFixes.failure,
+			assigned: autoFixes.assigned,
 		})
 		.from(autoFixes)
 		.where(and(eq(autoFixes.project, project), eq(autoFixes.systemTo, FAR_FUTURE)))
 		.all();
-	return new Map(rows.map(({patchId, ...fix}) => [patchId, fix]));
+	return new Map(
+		rows.map(({patchId, assigned, ...fix}) => [patchId, assigned ? {...fix, assigned: true as const} : fix]),
+	);
 }
 
 export function setAutoFix(project: string, patchId: string, fix: AutoFix): void {
@@ -1621,8 +1630,18 @@ export function setAutoFix(project: string, patchId: string, fix: AutoFix): void
 		table: autoFixes,
 		keyWhere: autoFixWhere(project, patchId),
 		isUnchanged: (existing) =>
-			existing.branch === fix.branch && existing.fixupSha === fix.fixupSha && existing.failure === fix.failure,
-		newRow: {project, patchId, ...fix},
+			existing.branch === fix.branch &&
+			existing.fixupSha === fix.fixupSha &&
+			existing.failure === fix.failure &&
+			existing.assigned === (fix.assigned === true),
+		newRow: {
+			project,
+			patchId,
+			branch: fix.branch,
+			fixupSha: fix.fixupSha,
+			failure: fix.failure,
+			assigned: fix.assigned === true,
+		},
 	});
 }
 

@@ -2902,3 +2902,129 @@ describe("auto-fixed items (lean plan step 31)", () => {
 		});
 	});
 });
+
+describe("auto-fix review and its actions (lean plan step 31 follow-up)", () => {
+	let savedXdgCache: string | undefined;
+
+	beforeEach(async () => {
+		savedXdgCache = process.env.XDG_CACHE_HOME;
+		const cache = await mkdtemp(join(tmpdir(), "wip-auto-fix-cache-"));
+		tmpDirs.push(cache);
+		process.env.XDG_CACHE_HOME = cache;
+	});
+
+	afterEach(() => {
+		if (savedXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
+		else process.env.XDG_CACHE_HOME = savedXdgCache;
+	});
+
+	it("the review returns the fixup's diff and the failure it fixed from the test log", async () => {
+		const {dir, original, fixupSha} = await autoFixedRepo("auto-fix-review");
+		const {getTestLogDir} = await import("@wip/shared");
+		await makeDirectory(getTestLogDir("auto-fix-review"), {recursive: true});
+		await writeTestFile(join(getTestLogDir("auto-fix-review"), `${original}.log`), "running\nFAIL a.test.ts\n");
+
+		const {getAutoFixReviewHandler} = await import("./server-fns.impl.js");
+		const review = await getAutoFixReviewHandler({project: "auto-fix-review", sha: original});
+
+		expect(review).toStrictEqual({
+			branch: "feat",
+			fixupSha,
+			failure: "FAIL a.test.ts",
+			diff: await gitOut(dir, "show", "--format=", fixupSha),
+			failureLog: "running\nFAIL a.test.ts\n",
+		});
+	});
+
+	it("the review is null without an auto-fix", async () => {
+		const {base} = await autoFixedRepo("auto-fix-review-none");
+
+		const {getAutoFixReviewHandler} = await import("./server-fns.impl.js");
+
+		expect(await getAutoFixReviewHandler({project: "auto-fix-review-none", sha: base})).toBeNull();
+	});
+
+	it("Fix it myself assigns the item to the user, keeping the fixup and the red marker", async () => {
+		const {dir, original, fixupSha} = await autoFixedRepo("auto-fix-mine");
+
+		const {assignAutoFixHandler, getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const result = await assignAutoFixHandler({project: "auto-fix-mine", sha: original});
+		const children = await getProjectChildrenHandler("auto-fix-mine");
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			tip: await gitOut(dir, "rev-parse", "feat"),
+			children: children.map((c) => ({sha: c.sha, autoFixed: c.autoFixed})),
+		}).toStrictEqual({
+			ok: true,
+			message: "The fix on feat is yours; the fixup stays until you decide",
+			tip: fixupSha,
+			children: [
+				{sha: original, autoFixed: {branch: "feat", fixupSha, failure: "FAIL a.test.ts", assigned: true}},
+			],
+		});
+	});
+
+	it("Drop branch deletes the local branch, never the remote one, and clears the marker", async () => {
+		const {dir, original, fixupSha} = await autoFixedRepo("auto-fix-drop");
+		const remote = await mkdtemp(join(tmpdir(), "wip-auto-fix-remote-"));
+		tmpDirs.push(remote);
+		await execa("git", ["init", "--bare", remote]);
+		await gitOut(dir, "remote", "add", "mirror", remote);
+		await gitOut(dir, "push", "mirror", "feat");
+
+		const {dropAutoFixBranchHandler} = await import("./server-fns.impl.js");
+		const result = await dropAutoFixBranchHandler({project: "auto-fix-drop", sha: original});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			local: await gitOut(dir, "branch", "--list", "feat"),
+			remote: await gitOut(remote, "rev-parse", "refs/heads/feat"),
+			marker: Object.fromEntries(getAutoFixes("auto-fix-drop")),
+		}).toStrictEqual({
+			ok: true,
+			message: "Deleted local branch feat",
+			local: "",
+			remote: fixupSha,
+			marker: {},
+		});
+	});
+
+	it("Drop branch refuses a branch checked out in a worktree", async () => {
+		const {dir, original, fixupSha} = await autoFixedRepo("auto-fix-drop-checked-out");
+		await gitOut(dir, "checkout", "feat");
+
+		const {dropAutoFixBranchHandler} = await import("./server-fns.impl.js");
+		const result = await dropAutoFixBranchHandler({project: "auto-fix-drop-checked-out", sha: original});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			tip: await gitOut(dir, "rev-parse", "feat"),
+			marker: [...getAutoFixes("auto-fix-drop-checked-out").keys()].length,
+		}).toStrictEqual({
+			ok: false,
+			message: "feat is checked out; switch away from it before dropping it",
+			tip: fixupSha,
+			marker: 1,
+		});
+	});
+
+	it("a refresh clears the marker when the branch no longer ends in the recorded fixup", async () => {
+		const {dir, original} = await autoFixedRepo("auto-fix-stale");
+		await gitOut(dir, "branch", "-f", "feat", original);
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const children = await getProjectChildrenHandler("auto-fix-stale");
+
+		expect({
+			children: children.map((c) => ({sha: c.sha, autoFixed: c.autoFixed})),
+			marker: Object.fromEntries(getAutoFixes("auto-fix-stale")),
+		}).toStrictEqual({
+			children: [{sha: original, autoFixed: undefined}],
+			marker: {},
+		});
+	});
+});

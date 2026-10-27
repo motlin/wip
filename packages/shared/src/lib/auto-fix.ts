@@ -1,4 +1,5 @@
 import {tracedExeca} from "../services/traced-execa.js";
+import {clearAutoFix, getAutoFixes, type AutoFix} from "./db.js";
 
 /**
  * The ready buffer's AI test fix (lean plan step 31) lands as a separate `fixup!` commit on top of
@@ -56,4 +57,26 @@ export async function squashFixup(
 	const squashed = created.stdout.trim();
 	const update = await git(dir, ["update-ref", `refs/heads/${branch}`, squashed, fixupSha]);
 	return update.exitCode === 0 ? squashed : null;
+}
+
+/**
+ * The project's active auto-fixes, keyed by the failing commit's patch-id, after clearing every
+ * marker whose branch no longer ends in the recorded fixup (the user dropped, squashed or moved it).
+ */
+export async function reconcileAutoFixes(dir: string, project: string): Promise<Map<string, AutoFix>> {
+	const fixes = getAutoFixes(project);
+	if (fixes.size === 0) return fixes;
+	const refs = await git(dir, ["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
+	if (refs.exitCode !== 0) return fixes;
+	const tips = new Map<string, string>();
+	for (const line of refs.stdout.split("\n")) {
+		const [name = "", sha = ""] = line.split("\0");
+		if (name !== "") tips.set(name, sha);
+	}
+	for (const [patchId, fix] of fixes) {
+		if (tips.get(fix.branch) === fix.fixupSha) continue;
+		clearAutoFix(project, patchId);
+		fixes.delete(patchId);
+	}
+	return fixes;
 }

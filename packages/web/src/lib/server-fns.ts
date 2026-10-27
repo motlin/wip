@@ -12,7 +12,7 @@ import {
 	RebaseLocalInputSchema,
 	RefreshChildInputSchema,
 	AbortRebaseInputSchema,
-	AcceptAutoFixInputSchema,
+	AutoFixInputSchema,
 	RenameBranchInputSchema,
 	RunClaudeCommandInputSchema,
 	SnoozeChildInputSchema,
@@ -21,6 +21,7 @@ import {
 } from "@wip/shared/schemas.js";
 import type {
 	AdvancePlanSummary,
+	AutoFixReview,
 	FileDiff,
 	ProjectChildrenResult,
 	QueueSnapshot,
@@ -191,8 +192,20 @@ export const abortRebase = createServerFn({method: "POST"})
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).abortRebaseHandler(data.project));
 
 export const acceptAutoFix = createServerFn({method: "POST"})
-	.validator((input: unknown) => AcceptAutoFixInputSchema.parse(input))
+	.validator((input: unknown) => AutoFixInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).acceptAutoFixHandler(data));
+
+export const getAutoFixReview = createServerFn({method: "GET"})
+	.validator((input: unknown) => AutoFixInputSchema.parse(input))
+	.handler(async ({data}): Promise<AutoFixReview | null> => (await serverFns()).getAutoFixReviewHandler(data));
+
+export const assignAutoFix = createServerFn({method: "POST"})
+	.validator((input: unknown) => AutoFixInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).assignAutoFixHandler(data));
+
+export const dropAutoFixBranch = createServerFn({method: "POST"})
+	.validator((input: unknown) => AutoFixInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).dropAutoFixBranchHandler(data));
 
 export const createBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => CreateBranchInputSchema.parse(input))

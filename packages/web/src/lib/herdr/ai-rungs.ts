@@ -38,6 +38,8 @@ export interface AiRungDeps {
 	timeoutMs: number;
 	/** Creates the throwaway worktree with the rebase stopped on its conflict; null when it cannot. */
 	prepare: (project: LadderRunProject, branch: string) => Promise<PreparedConflictWorktree | null>;
+	/** Creates the throwaway worktree with the branch checked out for the test/fix agent; null when it cannot. */
+	prepareTestFix: (project: LadderRunProject, branch: string) => Promise<PreparedTestFixWorktree | null>;
 	/** Resolves a branch tip sha; used to detect a test/fix run that left the same red tip. Defaults to git rev-parse. */
 	tip?: (project: LadderRunProject, branch: string) => Promise<string>;
 	/** Cap on test/fix attempts per branch (defaults to config aiMaxAttempts, 10). */
@@ -53,6 +55,13 @@ export interface PreparedConflictWorktree {
 	conflicted: boolean;
 	/** Aborts an unfinished rebase, detaches, removes the worktree (never --force); false when the rebase was unfinished. */
 	finish: () => Promise<boolean>;
+}
+
+export interface PreparedTestFixWorktree {
+	/** Worktree directory with the branch checked out; the agent's cwd. */
+	cwd: string;
+	/** Detaches and removes the worktree without --force, so one the agent left dirty stays. */
+	finish: () => Promise<void>;
 }
 
 async function git(dir: string, args: string[]) {
@@ -93,6 +102,31 @@ async function prepareConflictWorktree(
 		return !unfinished;
 	};
 	return {cwd: dir, conflicted: rebase.exitCode !== 0, finish};
+}
+
+/**
+ * Checks the branch out in a throwaway worktree under the wip cache dir, so the test/fix agent's
+ * `git test run` never checks commits out in the user's checkout. Null when git refuses, e.g.
+ * because the branch is checked out there.
+ */
+export async function prepareTestFixWorktree(
+	project: LadderRunProject,
+	branch: string,
+): Promise<PreparedTestFixWorktree | null> {
+	const base = path.join(getCacheDir(), "test-fix-worktrees", project.name);
+	fs.mkdirSync(base, {recursive: true});
+	const dir = fs.mkdtempSync(path.join(base, "wt-"));
+	const added = await git(project.path, ["worktree", "add", dir, branch]);
+	if (added.exitCode !== 0) {
+		fs.rmSync(dir, {recursive: true, force: true});
+		return null;
+	}
+	const finish = async (): Promise<void> => {
+		await git(dir, ["checkout", "--detach", "-q"]);
+		await git(project.path, ["worktree", "remove", dir]);
+		await git(project.path, ["worktree", "prune"]);
+	};
+	return {cwd: dir, finish};
 }
 
 const noop = async (project: {name: string}): Promise<LadderResult> =>
@@ -151,6 +185,7 @@ export async function runAiConflictRung(
 		rerun: defaultRerun,
 		results: defaultResults,
 		prepare: prepareConflictWorktree,
+		prepareTestFix: prepareTestFixWorktree,
 		timeoutMs: getAiRungTimeoutMs(),
 		...overrides,
 	};
@@ -197,7 +232,8 @@ export async function runAiConflictRung(
 }
 
 /**
- * Test and fix a branch with `claude "/build:test-branch"` in a herdr tab. Afterwards reads
+ * Test and fix a branch with `claude "/build:test-branch"` in a herdr tab, in the branch's own
+ * throwaway worktree so the user's checkout is never touched. Afterwards reads
  * `git test results` for the branch: "green" or "red", or "stuck" when the timeout fires or
  * herdr cannot launch the tab.
  */
@@ -213,6 +249,7 @@ export async function runAiTestFixRung(
 		rerun: defaultRerun,
 		results: defaultResults,
 		prepare: prepareConflictWorktree,
+		prepareTestFix: prepareTestFixWorktree,
 		timeoutMs: getAiRungTimeoutMs(),
 		...overrides,
 	};
@@ -225,17 +262,23 @@ export async function runAiTestFixRung(
 		project: project.name,
 		costClass: "ai",
 		run: async (signal) => {
-			const launched = await deps.launch({
-				cwd: project.path,
-				label: `wip:${project.name}:test-fix:${branch}`,
-				command: `claude ${shellQuote("/build:test-branch")}`,
-				focus: false,
-			});
-			if (!launched.ok) return;
-			deps.onLaunched?.(launched.value);
-			const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
-			if (waited !== "done") return;
-			outcome = await deps.results(project, branch);
+			const prepared = await deps.prepareTestFix(project, branch);
+			if (!prepared) return;
+			try {
+				const launched = await deps.launch({
+					cwd: prepared.cwd,
+					label: `wip:${project.name}:test-fix:${branch}`,
+					command: `claude ${shellQuote("/build:test-branch")}`,
+					focus: false,
+				});
+				if (!launched.ok) return;
+				deps.onLaunched?.(launched.value);
+				const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
+				if (waited !== "done") return;
+				outcome = await deps.results(project, branch);
+			} finally {
+				await prepared.finish();
+			}
 		},
 	});
 	await handle.settled;

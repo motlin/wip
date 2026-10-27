@@ -1,6 +1,16 @@
-import {describe, expect, it} from "vite-plus/test";
+import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
+import {execSync} from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {createWorkQueue, type LadderResult, type LadderRunProject} from "@wip/shared";
-import {branchVerdict, runAiConflictRung, runAiTestFixRung, type AiRungDeps} from "./ai-rungs.js";
+import {
+	branchVerdict,
+	prepareTestFixWorktree,
+	runAiConflictRung,
+	runAiTestFixRung,
+	type AiRungDeps,
+} from "./ai-rungs.js";
 
 const project: LadderRunProject = {
 	name: "demo",
@@ -67,6 +77,14 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 				finish: async () => {
 					calls.order.push("finish");
 					return Promise.resolve(true);
+				},
+			}),
+		prepareTestFix: async (p, branch) =>
+			Promise.resolve({
+				cwd: `${p.path}-test-fix/${branch}`,
+				finish: async () => {
+					calls.order.push("finish");
+					return Promise.resolve();
 				},
 			}),
 		timeoutMs: 1234,
@@ -165,13 +183,13 @@ describe("branchVerdict", () => {
 });
 
 describe("runAiTestFixRung", () => {
-	it("launches claude /build:test-branch, waits, then reads git test results", async () => {
+	it("launches claude /build:test-branch in the branch's own worktree, waits, reads git test results, then cleans up", async () => {
 		const {deps, calls} = makeDeps();
 		const result = await runAiTestFixRung(project, "feat-a", deps);
 		expect(result).toBe("green");
 		expect(calls.launches).toEqual([
 			{
-				cwd: "/tmp/demo",
+				cwd: "/tmp/demo-test-fix/feat-a",
 				label: "wip:demo:test-fix:feat-a",
 				command: `claude "/build:test-branch"`,
 				focus: false,
@@ -179,7 +197,13 @@ describe("runAiTestFixRung", () => {
 		]);
 		expect(calls.waits).toEqual([{paneId: "p1", timeoutMs: 1234}]);
 		expect(calls.resultsCalls).toEqual([{project: "demo", branch: "feat-a"}]);
-		expect(calls.order).toEqual(["launch", "wait", "results"]);
+		expect(calls.order).toEqual(["launch", "wait", "results", "finish"]);
+	});
+
+	it("returns stuck without launching when the branch cannot get its own worktree", async () => {
+		const {deps, calls} = makeDeps({prepareTestFix: async () => Promise.resolve(null)});
+		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
+		expect(calls.order).toEqual([]);
 	});
 
 	it("returns red when results are not all good", async () => {
@@ -191,6 +215,7 @@ describe("runAiTestFixRung", () => {
 		const {deps, calls} = makeDeps({wait: async () => Promise.resolve("timeout")});
 		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
 		expect(calls.resultsCalls).toEqual([]);
+		expect(calls.order).toEqual(["launch", "finish"]);
 	});
 
 	it("returns stuck when herdr cannot launch the tab", async () => {
@@ -199,5 +224,71 @@ describe("runAiTestFixRung", () => {
 		});
 		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
 		expect(calls.resultsCalls).toEqual([]);
+	});
+});
+
+function git(cwd: string, command: string): string {
+	return execSync(`git ${command}`, {cwd, stdio: ["ignore", "pipe", "ignore"]})
+		.toString()
+		.trim();
+}
+
+describe("prepareTestFixWorktree", () => {
+	let dir: string;
+	let cache: string;
+	let savedXdgCache: string | undefined;
+
+	function checkoutState(): {head: string; reflog: string; status: string} {
+		return {
+			head: git(dir, "rev-parse HEAD"),
+			reflog: git(dir, "reflog HEAD"),
+			status: git(dir, "status --porcelain"),
+		};
+	}
+
+	beforeEach(() => {
+		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-ai-rung-")));
+		cache = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-ai-rung-cache-")));
+		savedXdgCache = process.env.XDG_CACHE_HOME;
+		process.env.XDG_CACHE_HOME = cache;
+		git(dir, "init -b main");
+		git(dir, "config user.email test@test.com");
+		git(dir, "config user.name Test");
+		git(dir, "commit --allow-empty -m base");
+		git(dir, "branch feat-a");
+		fs.writeFileSync(path.join(dir, "wip.txt"), "in progress\n");
+	});
+
+	afterEach(() => {
+		if (savedXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
+		else process.env.XDG_CACHE_HOME = savedXdgCache;
+		fs.rmSync(dir, {recursive: true, force: true});
+		fs.rmSync(cache, {recursive: true, force: true});
+	});
+
+	it("checks the branch out in a throwaway worktree, leaves the user's checkout alone, and removes it when clean", async () => {
+		const before = checkoutState();
+		const prepared = await prepareTestFixWorktree({...project, name: "demo", path: dir}, "feat-a");
+		if (!prepared) throw new Error("expected a worktree");
+		const branchThere = git(prepared.cwd, "branch --show-current");
+		await prepared.finish();
+		expect({
+			underCache: prepared.cwd.startsWith(path.join(cache, "wip", "test-fix-worktrees", "demo")),
+			branchThere,
+			after: checkoutState(),
+			exists: fs.existsSync(prepared.cwd),
+		}).toStrictEqual({underCache: true, branchThere: "feat-a", after: before, exists: false});
+	});
+
+	it("never removes a worktree the agent left dirty", async () => {
+		const prepared = await prepareTestFixWorktree({...project, name: "demo", path: dir}, "feat-a");
+		if (!prepared) throw new Error("expected a worktree");
+		fs.writeFileSync(path.join(prepared.cwd, "unsaved.txt"), "fix in progress\n");
+		await prepared.finish();
+		expect(fs.readFileSync(path.join(prepared.cwd, "unsaved.txt"), "utf8")).toBe("fix in progress\n");
+	});
+
+	it("returns null when the branch is checked out in the user's checkout", async () => {
+		expect(await prepareTestFixWorktree({...project, name: "demo", path: dir}, "main")).toBeNull();
 	});
 });

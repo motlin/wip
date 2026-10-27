@@ -64,6 +64,8 @@ function makeAi(available: boolean): {
 				results: async () => Promise.resolve("green"),
 				prepare: async (project) =>
 					Promise.resolve({cwd: project.path, conflicted: true, finish: async () => Promise.resolve(true)}),
+				prepareTestFix: async (project) =>
+					Promise.resolve({cwd: project.path, finish: async () => Promise.resolve()}),
 				launch: async (request) => {
 					spies.launches.push(request);
 					const n = spies.launches.length;

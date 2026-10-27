@@ -1128,6 +1128,9 @@ export async function snoozeChildHandler(data: SnoozeChildInput): Promise<Action
 		log.subprocess.debug({project: data.project, sha: data.sha, patchId}, "Snoozing work item");
 
 		snoozeItem(data.sha, data.project, shortSha, subject, data.until, patchId);
+		// On hold frees the item's ready slot; one pull refills it.
+		const {readyBufferEmitter} = await import("./ready-buffer-events.js");
+		readyBufferEmitter.emit("onHold", {project: data.project});
 		return {ok: true, message: data.until ? `Snoozed until ${data.until}` : "On hold"};
 	});
 }

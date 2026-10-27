@@ -133,6 +133,7 @@ export {getCommitFacts, type CommitFacts} from "./lib/commit-facts.js";
 export {
 	detectLandings,
 	findLandingSuspects,
+	checkedOutBranches,
 	landedPatchIds,
 	markMergedPrs,
 	type DetectLandingsInput,
@@ -356,6 +357,8 @@ export {
 	upstreamOwnership,
 	upstreamRedCommand,
 } from "./lib/upstream-red.js";
+export {getGitHubIdentity, resetGitHubIdentityForTests} from "./lib/github-identity.js";
+export {replayBranchOnto} from "./lib/buffer-replay.js";
 export {
 	isGitChildUpstreamCi,
 	isGitChildPullRequest,

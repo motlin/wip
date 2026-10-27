@@ -30,6 +30,10 @@
 			"types": "./src/lib/ready-slots.ts",
 			"import": "./src/lib/ready-slots.ts"
 		},
+		"./readiness.js": {
+			"types": "./src/lib/readiness.ts",
+			"import": "./src/lib/readiness.ts"
+		},
 		"./upstream-red.js": {
 			"types": "./src/lib/upstream-red.ts",
 			"import": "./src/lib/upstream-red.ts"

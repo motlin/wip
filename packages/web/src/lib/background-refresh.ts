@@ -159,6 +159,11 @@ export function ensureBackgroundRefresh(): void {
 				});
 			},
 		});
+
+		// The ready buffer pulls on upstreamMoved, landed, task completion, On hold, children
+		// refreshes and its own safety tick (lean plan 4.6).
+		const {startReadyBuffer} = await import("./ready-buffer-server.js");
+		await startReadyBuffer(enqueueProjectRefresh);
 	})().catch((error: unknown) => {
 		started = false;
 		log.general.error({error}, "Background refresh bootstrap failed");

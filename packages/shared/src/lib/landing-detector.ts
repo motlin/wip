@@ -55,7 +55,8 @@ function lines(output: string): string[] {
 	return output.split("\n").filter(Boolean);
 }
 
-async function checkedOutBranches(dir: string): Promise<Set<string>> {
+/** Branches checked out in any worktree of `dir`. */
+export async function checkedOutBranches(dir: string): Promise<Set<string>> {
 	const output = await git(dir, "worktree", "list", "--porcelain");
 	const branches = new Set<string>();
 	for (const line of lines(output)) {
@@ -116,7 +117,7 @@ export async function landedPatchIds(
 const PROBE_REF = "refs/wip/landing-probe";
 
 /** Replays `to..tip` onto `to` without updating any ref; returns the new tip, or null on conflict. */
-async function replayOnto(dir: string, tip: string, to: string): Promise<string | null> {
+export async function replayOnto(dir: string, tip: string, to: string): Promise<string | null> {
 	const result = await tracedExeca(
 		"git",
 		["-C", dir, "replay", "--ref-action=print", `--ref=${PROBE_REF}`, `--onto=${to}`, `${to}..${tip}`],

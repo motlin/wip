@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {getCacheDir} from "./config.js";
-import type {ResourceLock} from "./work-queue.js";
+import {MACHINE_BUILD_RESOURCE, type ResourceLock} from "./work-queue.js";
 
 const REPO_RESOURCE_PREFIX = "repo:";
 const DEFAULT_POLL_MS = 100;
@@ -125,6 +125,53 @@ export function createRepoResourceLock(options: RepoResourceLockOptions = {}): R
 		}
 		/* oxlint-enable no-await-in-loop */
 
+		return () => {
+			if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
+		};
+	};
+}
+
+/** Machine-wide build slots shared by every wip process (CLI advance, CLI ladder, the server). */
+export const DEFAULT_MACHINE_BUILD_CAP = 2;
+
+export interface MachineBuildLockOptions {
+	/** Directory holding lock files; defaults to <cache dir>/locks. */
+	lockDir?: string;
+	/** Slots across all processes; defaults to DEFAULT_MACHINE_BUILD_CAP. */
+	cap?: number;
+	pollMs?: number;
+}
+
+/**
+ * Cross-process counted lock for MACHINE_BUILD_RESOURCE: `cap` slot files, each created exclusively and
+ * holding the owner pid. A job takes the first free slot, polling while all are held; a dead owner's
+ * slot is reclaimed. Other resources pass through unlocked.
+ */
+export function createMachineBuildLock(options: MachineBuildLockOptions = {}): ResourceLock {
+	const lockDir = options.lockDir ?? path.join(getCacheDir(), "locks");
+	const cap = Math.max(1, options.cap ?? DEFAULT_MACHINE_BUILD_CAP);
+	const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
+	const slots = Array.from({length: cap}, (_, index) => path.join(lockDir, `machine_build_${index}.lock`));
+
+	function tryAnySlot(): string | undefined {
+		return slots.find((file) => tryCreate(file));
+	}
+
+	return async (resource, signal) => {
+		if (resource !== MACHINE_BUILD_RESOURCE) return () => {};
+		fs.mkdirSync(lockDir, {recursive: true});
+
+		let held = tryAnySlot();
+		/* oxlint-disable no-await-in-loop -- polling for a slot is inherently sequential */
+		while (held === undefined) {
+			if (signal.aborted) throw new Error(`Aborted waiting for ${resource} lock`);
+			for (const file of slots) reclaimIfStale(file);
+			held = tryAnySlot();
+			if (held === undefined) await sleep(pollMs);
+		}
+		/* oxlint-enable no-await-in-loop */
+
+		const file = held;
 		return () => {
 			if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
 		};

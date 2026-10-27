@@ -22,6 +22,8 @@ export interface LadderAllOptions {
 	probe: WorkResourceProbe;
 	/** Cross-process repo lock so the CLI and web server never ladder the same repo at once. */
 	resourceLock?: ResourceLock;
+	/** Cross-process machine build budget; each project's ladder may replay and run tests, so it holds a build slot. */
+	buildLock?: ResourceLock;
 	dryRun?: boolean;
 	globalConcurrency?: number;
 	loadThreshold?: number;
@@ -40,9 +42,10 @@ export async function runLadderAcrossProjects(
 	const concurrency = options.globalConcurrency ?? 2;
 	const queue = createWorkQueue({
 		globalConcurrency: concurrency,
-		classCaps: {"git-write": concurrency},
+		classCaps: {build: concurrency},
 		probe: options.probe,
 		resourceLock: options.resourceLock ?? null,
+		buildLock: options.buildLock ?? null,
 		...(options.loadThreshold === undefined ? {} : {loadThreshold: options.loadThreshold}),
 		...(options.memFloor === undefined ? {} : {memFloor: options.memFloor}),
 	});
@@ -54,7 +57,7 @@ export async function runLadderAcrossProjects(
 				resources: [`repo:${p.name}`],
 				kind: "ladder",
 				project: p.name,
-				costClass: "git-write",
+				costClass: "build",
 				run: async (signal) => {
 					const aborted = options.signal ?? signal;
 					let result: LadderResult;

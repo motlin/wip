@@ -1,4 +1,11 @@
-import {createRepoResourceLock, createSystemProbe, createWorkQueue, type CostClass, type WorkQueue} from "@wip/shared";
+import {
+	createMachineBuildLock,
+	createRepoResourceLock,
+	createSystemProbe,
+	createWorkQueue,
+	type CostClass,
+	type WorkQueue,
+} from "@wip/shared";
 
 /**
  * Process-wide queue for CLI commands that run git/test subprocesses. Same cost-class caps and
@@ -12,6 +19,7 @@ function getQueue(): WorkQueue {
 		globalConcurrency: 2,
 		probe: createSystemProbe(),
 		resourceLock: createRepoResourceLock(),
+		buildLock: createMachineBuildLock(),
 	});
 	return queue;
 }

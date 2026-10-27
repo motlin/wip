@@ -13,6 +13,7 @@ export async function installResourceProbe(probe?: WorkResourceProbe): Promise<v
 	const shared = await import("@wip/shared");
 	workQueue.setProbe(probe ?? shared.createSystemProbe());
 	workQueue.setResourceLock(shared.createRepoResourceLock());
+	workQueue.setBuildLock(shared.createMachineBuildLock());
 	workQueue.setClassCaps(shared.getWorkQueueClassCaps());
 	const maxWait = shared.getActionMaxWaitMs();
 	if (maxWait !== undefined) setActionMaxWaitMs(maxWait);

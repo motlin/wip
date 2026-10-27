@@ -4,8 +4,9 @@ import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {acquireProcessLock, createRepoResourceLock, isPidAlive} from "./repo-lock.js";
-import {createWorkQueue, type WorkQueue} from "./work-queue.js";
+import {fakeCountedLock} from "../test/fake-counted-lock.js";
+import {acquireProcessLock, createMachineBuildLock, createRepoResourceLock, isPidAlive} from "./repo-lock.js";
+import {createWorkQueue, MACHINE_BUILD_RESOURCE, type CostClass, type WorkQueue} from "./work-queue.js";
 
 let lockDir: string;
 const queues: WorkQueue[] = [];
@@ -140,5 +141,71 @@ describe("process lock", () => {
 		release?.();
 
 		expect({acquired: typeof release, owner}).toEqual({acquired: "function", owner: String(process.pid)});
+	});
+});
+
+/** Enqueue `count` jobs of a cost class split across two queues; resolves with the peak number running at once. */
+async function peakAcross(queuesUnderTest: WorkQueue[], count: number, costClass: CostClass): Promise<number> {
+	let active = 0;
+	let peak = 0;
+	const handles = Array.from({length: count}, (_, index) => {
+		const target = queuesUnderTest[index % queuesUnderTest.length];
+		if (target === undefined) throw new Error("no queue");
+		return target.enqueue({
+			coalesceKey: `${costClass}-${index}`,
+			kind: costClass,
+			project: `p${index}`,
+			costClass,
+			run: async () => {
+				active += 1;
+				peak = Math.max(peak, active);
+				await sleep(10);
+				active -= 1;
+			},
+		});
+	});
+	await Promise.all(handles.map(async (h) => h.settled));
+	return peak;
+}
+
+describe("machine-wide build budget", () => {
+	it("two queues sharing a fake build lock never exceed its cap together, and only build jobs take it", async () => {
+		const {lock, requested} = fakeCountedLock(2);
+		const cli = createWorkQueue({globalConcurrency: 3, classCaps: {build: 3, cheap: 3}, buildLock: lock});
+		const server = createWorkQueue({globalConcurrency: 3, classCaps: {build: 3, cheap: 3}, buildLock: lock});
+		queues.push(cli, server);
+
+		const buildPeak = await peakAcross([cli, server], 6, "build");
+		const buildRequests = requested.length;
+		const cheapPeak = await peakAcross([cli, server], 6, "cheap");
+
+		expect({buildPeak, cheapPeak, buildRequests, resources: [...new Set(requested)]}).toEqual({
+			buildPeak: 2,
+			cheapPeak: 6,
+			buildRequests: 6,
+			resources: [MACHINE_BUILD_RESOURCE],
+		});
+	});
+
+	it("the file-backed machine build lock caps build jobs across two queues and cleans up", async () => {
+		const lock = createMachineBuildLock({lockDir, cap: 2, pollMs: 2});
+		const cli = createWorkQueue({globalConcurrency: 3, classCaps: {build: 3}, buildLock: lock});
+		const server = createWorkQueue({globalConcurrency: 3, classCaps: {build: 3}, buildLock: lock});
+		queues.push(cli, server);
+
+		const peak = await peakAcross([cli, server], 6, "build");
+
+		expect({peak, left: fs.readdirSync(lockDir)}).toEqual({peak: 2, left: []});
+	});
+
+	it("reclaims a machine build slot left by a dead pid", async () => {
+		fs.writeFileSync(path.join(lockDir, "machine_build_0.lock"), String(deadPid()));
+		const lock = createMachineBuildLock({lockDir, cap: 1, pollMs: 2});
+		const queue = createWorkQueue({globalConcurrency: 1, buildLock: lock});
+		queues.push(queue);
+
+		const peak = await peakAcross([queue], 1, "build");
+
+		expect({peak, left: fs.readdirSync(lockDir)}).toEqual({peak: 1, left: []});
 	});
 });

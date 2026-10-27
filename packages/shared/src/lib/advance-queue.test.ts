@@ -1,6 +1,7 @@
 import {describe, it, expect} from "vite-plus/test";
 
 import {runAdvanceUnits, type AdvanceQueueOptions, type SchedulableUnit} from "./advance-queue.js";
+import {fakeCountedLock} from "../test/fake-counted-lock.js";
 import type {WorkResourceProbe} from "./work-queue.js";
 
 const idleProbe: WorkResourceProbe = {loadPerCore: () => 0, freeMemRatio: () => 1};
@@ -145,5 +146,30 @@ describe("runAdvanceUnits", () => {
 		await expect(
 			runAdvanceUnits(units(["a", "p", []]), async () => Promise.reject(new Error("boom")), options()),
 		).rejects.toThrow("boom");
+	});
+});
+
+describe("runAdvanceUnits machine build budget", () => {
+	it("holds the shared build lock around every unit so a cap of 1 serializes units across repos", async () => {
+		let peak = 0;
+		const {lock: buildLock, requested} = fakeCountedLock(1);
+		let active = 0;
+		const outcomes = await runAdvanceUnits(
+			units(["a", "pa", []], ["b", "pb", []], ["c", "pc", []]),
+			async () => {
+				active += 1;
+				peak = Math.max(peak, active);
+				await sleep(10);
+				active -= 1;
+				return true;
+			},
+			{...options({globalConcurrency: 3}), buildLock},
+		);
+
+		expect({outcomes, peak, requested}).toEqual({
+			outcomes: {a: "green", b: "green", c: "green"},
+			peak: 1,
+			requested: ["machine:build", "machine:build", "machine:build"],
+		});
 	});
 });

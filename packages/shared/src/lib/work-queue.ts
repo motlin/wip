@@ -42,6 +42,13 @@ export const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-wri
  */
 export type ResourceLock = (resource: string, signal: AbortSignal) => Promise<() => void>;
 
+/**
+ * The cross-process counted resource every "build" job holds through `buildLock`, so the CLI's advance and
+ * ladder queues and the server's queue share one machine-wide build budget. It sorts before `repo:` keys,
+ * and is always taken first, so two processes never wait on each other's locks in opposite orders.
+ */
+export const MACHINE_BUILD_RESOURCE = "machine:build";
+
 export interface WorkJobSummary {
 	/** Unique per enqueued job; distinct jobs can share a kind and project (e.g. branch-name per sha). */
 	id: string;
@@ -99,6 +106,8 @@ export interface WorkQueueOptions {
 	probe?: WorkResourceProbe | null;
 	/** Held (in sorted resource order) around each job's run, in addition to the in-process resource count. */
 	resourceLock?: ResourceLock | null;
+	/** Held as MACHINE_BUILD_RESOURCE around every "build" job's run, before resourceLock; shared across processes. */
+	buildLock?: ResourceLock | null;
 	loadThreshold?: number;
 	memFloor?: number;
 	stateCoalesceMs?: number;
@@ -115,6 +124,8 @@ export interface WorkQueue {
 	setProbe(probe: WorkResourceProbe | null): void;
 	/** Install (or replace) the cross-process resource lock after creation (node-only, so injected late like the probe). */
 	setResourceLock(lock: ResourceLock | null): void;
+	/** Install (or replace) the cross-process machine build lock after creation (node-only, so injected late). */
+	setBuildLock(lock: ResourceLock | null): void;
 	/** Override per-class concurrency caps after creation (the server bootstrap applies config.json5 values). */
 	setClassCaps(caps: Partial<Record<CostClass, number>>): void;
 	getState(): WorkQueueState;
@@ -157,6 +168,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	let classCaps: Record<CostClass, number> = {...DEFAULT_CLASS_CAPS, ...options.classCaps};
 	let probe = options.probe ?? null;
 	let resourceLock = options.resourceLock ?? null;
+	let buildLock = options.buildLock ?? null;
 	const loadThreshold = options.loadThreshold ?? DEFAULT_LOAD_THRESHOLD;
 	const memFloor = options.memFloor ?? DEFAULT_MEM_FLOOR;
 	const stateCoalesceMs = options.stateCoalesceMs ?? DEFAULT_STATE_COALESCE_MS;
@@ -305,9 +317,11 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			// The async wrapper turns a synchronous throw from run() into a rejection,
 			// so it reaches the catch/finally release path instead of escaping pump().
 			const lock = resourceLock;
+			const machineLock = job.costClass === "build" ? buildLock : null;
 			const promise = (async () => {
 				const releases: Array<() => void> = [];
 				try {
+					if (machineLock) releases.push(await machineLock(MACHINE_BUILD_RESOURCE, job.controller.signal));
 					if (lock) {
 						// Sorted so two processes acquiring overlapping sets cannot deadlock.
 						// oxlint-disable-next-line unicorn/no-array-sort -- toSorted is not in the build lib target
@@ -445,6 +459,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		},
 		setResourceLock: (nextLock) => {
 			resourceLock = nextLock;
+		},
+		setBuildLock: (nextLock) => {
+			buildLock = nextLock;
 		},
 		getState,
 		onStateChange: (listener) => {

@@ -3,6 +3,7 @@ import {describe, expect, it} from "vite-plus/test";
 import {renderTree} from "./advance-report.js";
 import {ladderResultsToTree, runLadderAcrossProjects, type LadderAllProject} from "./ladder-all.js";
 import type {LadderResult} from "./ladder.js";
+import {fakeCountedLock} from "../test/fake-counted-lock.js";
 import type {WorkResourceProbe} from "./work-queue.js";
 
 const probe: WorkResourceProbe = {loadPerCore: () => 0, freeMemRatio: () => 1};
@@ -130,6 +131,34 @@ describe("ladderResultsToTree", () => {
 			label: "ladder (dry run)",
 			status: "green",
 			children: [{label: "a", status: "skipped", detail: "would run: fetch", children: []}],
+		});
+	});
+});
+
+describe("runLadderAcrossProjects machine build budget", () => {
+	it("holds the shared build lock around every project's ladder", async () => {
+		let active = 0;
+		let peak = 0;
+		const {lock: buildLock, requested} = fakeCountedLock(1);
+		const results = await runLadderAcrossProjects([project("a"), project("b")], {
+			probe,
+			globalConcurrency: 2,
+			buildLock,
+			runLadder: async (p) => {
+				active += 1;
+				peak = Math.max(peak, active);
+				await new Promise((resolve) => {
+					setTimeout(resolve, 10);
+				});
+				active -= 1;
+				return passed(p.name);
+			},
+		});
+
+		expect({results, peak, requested}).toEqual({
+			results: [passed("a"), passed("b")],
+			peak: 1,
+			requested: ["machine:build", "machine:build"],
 		});
 	});
 });

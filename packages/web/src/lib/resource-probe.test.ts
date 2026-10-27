@@ -47,6 +47,8 @@ function enqueueJob(key: string, run: () => Promise<void>): void {
 
 afterEach(async () => {
 	workQueue.setProbe(null);
+	workQueue.setResourceLock(null);
+	workQueue.setBuildLock(null);
 	await workQueue.reset();
 });
 

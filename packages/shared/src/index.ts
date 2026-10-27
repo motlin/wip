@@ -432,6 +432,7 @@ export {
 	type WorkJobSummary,
 	type WorkPriority,
 	type ResourceLock,
+	MACHINE_BUILD_RESOURCE,
 	type WorkQueue,
 	type WorkQueueOptions,
 	type WorkQueueState,
@@ -439,8 +440,11 @@ export {
 } from "./lib/work-queue.js";
 export {
 	acquireProcessLock,
+	createMachineBuildLock,
 	createRepoResourceLock,
+	DEFAULT_MACHINE_BUILD_CAP,
 	isPidAlive,
+	type MachineBuildLockOptions,
 	type ProcessLockOptions,
 	type RepoResourceLockOptions,
 } from "./lib/repo-lock.js";

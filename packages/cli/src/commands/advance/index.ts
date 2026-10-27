@@ -4,6 +4,7 @@ import chalk from "chalk";
 import {
 	advanceProject,
 	createGitActions,
+	createMachineBuildLock,
 	createRepoResourceLock,
 	discoverAllProjects,
 	getProjectsDirs,
@@ -92,6 +93,7 @@ export default class Advance extends Command {
 				loadThreshold: Number.parseFloat(flags["load-threshold"]),
 				memFloor: Number.parseFloat(flags["mem-floor"]),
 				resourceLock: createRepoResourceLock(),
+				buildLock: createMachineBuildLock(),
 				onEvent,
 			});
 			children.push(node);

@@ -26,6 +26,8 @@ export interface AdvanceQueueOptions {
 	probe: WorkResourceProbe;
 	/** Cross-process repo lock; only valid when per-repo concurrency is 1 since the lock is exclusive. */
 	resourceLock?: ResourceLock;
+	/** Cross-process machine build budget, held around every unit (each unit is a "build" job). */
+	buildLock?: ResourceLock;
 }
 
 const REPO_RESOURCE_PREFIX = "repo:";
@@ -53,6 +55,7 @@ export async function runAdvanceUnits(
 		},
 		probe: options.probe,
 		resourceLock: options.resourceLock ?? null,
+		buildLock: options.buildLock ?? null,
 		loadThreshold: options.loadThreshold,
 		memFloor: options.memFloor,
 	});

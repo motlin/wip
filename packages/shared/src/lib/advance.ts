@@ -56,6 +56,8 @@ export interface AdvanceProjectOptions {
 	probe?: WorkResourceProbe;
 	/** Cross-process repo lock; applied only when perRepoConcurrency is 1 (the lock is exclusive). */
 	resourceLock?: ResourceLock;
+	/** Cross-process machine build budget, held around every unit regardless of per-repo concurrency. */
+	buildLock?: ResourceLock;
 	onEvent?: (event: AdvanceEvent) => void;
 }
 
@@ -304,6 +306,7 @@ export async function advanceProject(
 			perRepoConcurrency: () => perRepo,
 			probe: options.probe ?? createSystemProbe(),
 			...(options.resourceLock && perRepo <= 1 ? {resourceLock: options.resourceLock} : {}),
+			...(options.buildLock ? {buildLock: options.buildLock} : {}),
 		},
 	);
 

@@ -312,7 +312,7 @@ export {
 	MergePrInputSchema,
 	type MergePrInput,
 } from "./lib/schemas.js";
-export {type ReadinessCommit, isGreen, isLandable} from "./lib/readiness.js";
+export {type Readiness, type ReadinessCommit, isGreen, isLandable, readinessOf} from "./lib/readiness.js";
 export {
 	DEFAULT_PRIORITY,
 	effectivePriority,

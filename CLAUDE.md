@@ -22,6 +22,7 @@
 - `just serve` -- production build on port 3456 (wip.m4.notlin.com), database `~/.local/share/wip/wip.db`
 - `just dev` -- dev server on port 3457 (wip-dev.m4.notlin.com), database `~/.local/share/wip/wip-dev.db`
 - `WIP_DB_PATH` overrides the database file (`resolveDbPath` in `packages/shared/src/lib/db.ts`); `just dev` sets it so dev and production never share a database. Both scan state from disk independently.
+- `WIP_READY_BUFFER=false` (also `0`, `off`) keeps the ready buffer (`readyBufferEnabled` in `packages/web/src/lib/ready-buffer.ts`) from starting; it is on by default in production and `just dev` turns it off. A process lock (`~/.cache/wip/locks/ready-buffer.lock`) stops a second process from running it on the same repos even when both have it enabled.
 
 ## Testing
 

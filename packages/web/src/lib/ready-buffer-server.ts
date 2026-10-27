@@ -2,6 +2,7 @@ import {log} from "@wip/shared/services/logger-pino.js";
 import {
 	bufferRepoFromChildren,
 	createReadyBuffer,
+	readyBufferEnabled,
 	type AdvanceOutcome,
 	type BufferCandidate,
 	type BufferRepo,
@@ -107,11 +108,24 @@ function warnOnFailure(promise: Promise<void>, signal: string): void {
 	});
 }
 
-/** Once-only: create the controller and subscribe it to every pull signal. */
+/**
+ * Once-only: create the controller and subscribe it to every pull signal. Skipped when
+ * WIP_READY_BUFFER turns it off, or when another wip process already runs it (a process lock
+ * under the shared cache dir), so two servers never replay and test the same repos.
+ */
 export async function startReadyBuffer(
 	enqueueProjectRefresh: (project: string, options: {force: boolean}) => void,
 ): Promise<void> {
 	if (buffer) return;
+	if (!readyBufferEnabled(process.env)) {
+		log.general.info("Ready buffer disabled by WIP_READY_BUFFER");
+		return;
+	}
+	const {acquireProcessLock} = await import("@wip/shared");
+	if (acquireProcessLock("ready-buffer") === null) {
+		log.general.warn("Ready buffer already running in another wip process; not starting it here");
+		return;
+	}
 	const started = createReadyBuffer({
 		queue: workQueue,
 		snapshot,

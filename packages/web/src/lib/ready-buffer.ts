@@ -17,6 +17,13 @@ import {repoResource} from "./repo-resource.js";
  */
 
 /** One unready or ready unit of work, keyed by patch-id (sha when unknown). */
+const READY_BUFFER_OFF = new Set(["false", "0", "off"]);
+
+/** On by default (production); `just dev` sets WIP_READY_BUFFER=false so only one server replays real repos. */
+export function readyBufferEnabled(env: Record<string, string | undefined>): boolean {
+	return !READY_BUFFER_OFF.has((env.WIP_READY_BUFFER ?? "").toLowerCase());
+}
+
 export interface BufferCandidate {
 	id: string;
 	sha: string;

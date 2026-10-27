@@ -84,6 +84,28 @@ function reclaimIfStale(file: string): void {
 	fs.rmSync(aside, {force: true});
 }
 
+export interface ProcessLockOptions {
+	/** Directory holding lock files; defaults to <cache dir>/locks, shared by every wip process. */
+	lockDir?: string;
+}
+
+/**
+ * Non-blocking whole-process lock: returns a release function when this process now owns
+ * `<name>.lock`, or null while another live process holds it. A dead owner's lock is reclaimed.
+ */
+export function acquireProcessLock(name: string, options: ProcessLockOptions = {}): (() => void) | null {
+	const lockDir = options.lockDir ?? path.join(getCacheDir(), "locks");
+	fs.mkdirSync(lockDir, {recursive: true});
+	const file = path.join(lockDir, `${name}.lock`);
+	if (!tryCreate(file)) {
+		reclaimIfStale(file);
+		if (!tryCreate(file)) return null;
+	}
+	return () => {
+		if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
+	};
+}
+
 export function createRepoResourceLock(options: RepoResourceLockOptions = {}): ResourceLock {
 	const lockDir = options.lockDir ?? path.join(getCacheDir(), "locks");
 	const pollMs = options.pollMs ?? DEFAULT_POLL_MS;

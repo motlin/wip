@@ -413,7 +413,13 @@ export {
 	type WorkQueueState,
 	type WorkResourceProbe,
 } from "./lib/work-queue.js";
-export {createRepoResourceLock, isPidAlive, type RepoResourceLockOptions} from "./lib/repo-lock.js";
+export {
+	acquireProcessLock,
+	createRepoResourceLock,
+	isPidAlive,
+	type ProcessLockOptions,
+	type RepoResourceLockOptions,
+} from "./lib/repo-lock.js";
 export {
 	type Inventory,
 	type InventoryDiff,

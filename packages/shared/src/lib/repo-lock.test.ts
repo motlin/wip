@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {createRepoResourceLock, isPidAlive} from "./repo-lock.js";
+import {acquireProcessLock, createRepoResourceLock, isPidAlive} from "./repo-lock.js";
 import {createWorkQueue, type WorkQueue} from "./work-queue.js";
 
 let lockDir: string;
@@ -106,5 +106,39 @@ describe("repo resource lock", () => {
 		fs.rmSync(path.join(lockDir, "repo_gamma.lock"));
 		await handle.settled;
 		expect(ran).toBe(true);
+	});
+});
+
+describe("process lock", () => {
+	it("lets only one holder take the named lock until it releases, then the next holder", () => {
+		const first = acquireProcessLock("ready-buffer", {lockDir});
+		const second = acquireProcessLock("ready-buffer", {lockDir});
+		const filesWhileHeld = fs.readdirSync(lockDir);
+		first?.();
+		const third = acquireProcessLock("ready-buffer", {lockDir});
+		third?.();
+
+		expect({
+			first: typeof first,
+			second,
+			filesWhileHeld,
+			third: typeof third,
+			left: fs.readdirSync(lockDir),
+		}).toEqual({
+			first: "function",
+			second: null,
+			filesWhileHeld: ["ready-buffer.lock"],
+			third: "function",
+			left: [],
+		});
+	});
+
+	it("reclaims a process lock left by a dead pid", () => {
+		fs.writeFileSync(path.join(lockDir, "ready-buffer.lock"), String(deadPid()));
+		const release = acquireProcessLock("ready-buffer", {lockDir});
+		const owner = fs.readFileSync(path.join(lockDir, "ready-buffer.lock"), "utf8");
+		release?.();
+
+		expect({acquired: typeof release, owner}).toEqual({acquired: "function", owner: String(process.pid)});
 	});
 });

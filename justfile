@@ -111,10 +111,10 @@ precommit quick="": (verify quick)
 
 dev_db := env("XDG_DATA_HOME", env("HOME", "") / ".local/share") / "wip/wip-dev.db"
 
-# Run dev server on its own database
+# Run dev server on its own database, without the ready buffer
 [group('web')]
 dev *args: build-shared
-    WIP_DB_PATH="{{ dev_db }}" vp exec pnpm --filter @wip/web dev {{ args }}
+    WIP_DB_PATH="{{ dev_db }}" WIP_READY_BUFFER=false vp exec pnpm --filter @wip/web dev {{ args }}
 
 # Start web dashboard (production build)
 [group('web')]

@@ -5,6 +5,7 @@ import {makeChild} from "./test-factories.js";
 import {
 	bufferRepoFromChildren,
 	createReadyBuffer,
+	readyBufferEnabled,
 	type AdvanceOutcome,
 	type BufferCandidate,
 	type BufferRepo,
@@ -400,5 +401,23 @@ describe("bufferRepoFromChildren", () => {
 			localChanges: true,
 			upstreamRed: false,
 		});
+	});
+});
+
+describe("readyBufferEnabled", () => {
+	it("is on unless WIP_READY_BUFFER turns it off", () => {
+		const values = [undefined, "", "true", "1", "false", "0", "off", "FALSE"];
+		expect(
+			values.map((value) => [value, readyBufferEnabled(value === undefined ? {} : {WIP_READY_BUFFER: value})]),
+		).toEqual([
+			[undefined, true],
+			["", true],
+			["true", true],
+			["1", true],
+			["false", false],
+			["0", false],
+			["off", false],
+			["FALSE", false],
+		]);
 	});
 });

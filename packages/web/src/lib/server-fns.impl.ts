@@ -609,17 +609,18 @@ export async function runTodoTaskHandler(data: RunTodoTaskInput): Promise<TestJo
 		const branch = (await tracedExeca("git", ["-C", p.dir, "branch", "--show-current"])).stdout.trim();
 		if (!branch) throw new Error(`${data.project} has a detached HEAD: check out a branch to run a todo`);
 		const sha = (await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"])).stdout.trim();
-		const {enqueueTask} = await import("./task-queue.js");
-		const task = enqueueTask(
-			"claude",
-			data.project,
-			p.dir,
+		const {enqueueTodoTask} = await import("./task-queue.js");
+		// Keyed by the todo, so a second todo queues behind the first instead of returning it.
+		const task = enqueueTodoTask({
+			project: data.project,
+			projectDir: p.dir,
 			sha,
-			sha.slice(0, 7),
-			data.title,
+			shortSha: sha.slice(0, 7),
 			branch,
-			doTodoTaskPrompt(data.title, path.relative(p.dir, data.sourceFile)),
-		);
+			sourceFile: data.sourceFile,
+			title: data.title,
+			command: doTodoTaskPrompt(data.title, path.relative(p.dir, data.sourceFile)),
+		});
 		return {id: task.id, status: task.status, message: task.message};
 	});
 }

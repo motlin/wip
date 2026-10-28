@@ -15,16 +15,16 @@ import {
 	unsnoozeTodoHandler,
 } from "./server-fns.impl.js";
 
-const enqueueTask = vi.hoisted(() =>
+const enqueueTodoTask = vi.hoisted(() =>
 	vi.fn<(...args: unknown[]) => {id: string; status: string; message?: string}>(() => ({
 		id: "7",
 		status: "queued",
-		message: "queued",
+		message: 'Queued after "First task"',
 	})),
 );
 vi.mock("./task-queue.js", async (importOriginal) => ({
 	...(await importOriginal<typeof import("./task-queue.js")>()),
-	enqueueTask,
+	enqueueTodoTask,
 }));
 
 let dir: string;
@@ -61,29 +61,32 @@ beforeEach(async () => {
 afterEach(async () => {
 	resetProjectCache();
 	resetDb();
-	enqueueTask.mockClear();
+	enqueueTodoTask.mockClear();
 	await rm(dir, {recursive: true, force: true});
 });
 
 describe("todo actions", () => {
-	it("queues a Claude task on the project's checked-out branch that does the clicked todo, not the first one", async () => {
+	it("queues a Claude task on the project's checked-out branch that does the clicked todo, not the first one, and reports what it queued behind", async () => {
 		const head = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
 		const todoFile = join(dir, ".llm", "todo.md");
 
 		const status = await runTodoTaskHandler({project: "todo-actions", sourceFile: todoFile, title: "Second task"});
 
-		expect({status, calls: enqueueTask.mock.calls}).toStrictEqual({
-			status: {id: "7", status: "queued", message: "queued"},
+		expect({status, calls: enqueueTodoTask.mock.calls}).toStrictEqual({
+			status: {id: "7", status: "queued", message: 'Queued after "First task"'},
 			calls: [
 				[
-					"claude",
-					"todo-actions",
-					dir,
-					head,
-					head.slice(0, 7),
-					"Second task",
-					"feature/todos",
-					'Follow the markdown-tasks:do-one-task skill, but implement the task titled "Second task" in .llm/todo.md instead of the first incomplete task, and mark it complete with task_mark.py --title "Second task".',
+					{
+						project: "todo-actions",
+						projectDir: dir,
+						sha: head,
+						shortSha: head.slice(0, 7),
+						branch: "feature/todos",
+						sourceFile: todoFile,
+						title: "Second task",
+						command:
+							'Follow the markdown-tasks:do-one-task skill, but implement the task titled "Second task" in .llm/todo.md instead of the first incomplete task, and mark it complete with task_mark.py --title "Second task".',
+					},
 				],
 			],
 		});

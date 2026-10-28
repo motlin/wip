@@ -10,6 +10,7 @@ import {
 	loadRecentTaskRecords,
 	rebaseBranchOntoUpstream,
 	runLadder,
+	todoItemKey,
 	upsertTaskRecord,
 	TaskTypeSchema,
 	LadderResultSchema,
@@ -52,6 +53,8 @@ export interface Task {
 	subject: string;
 	branch?: string;
 	command?: string;
+	/** Todo tasks: the todoItemKey of the todo being done, so different todos on one HEAD are different tasks. */
+	todoKey?: string;
 	upstreamRemote?: string;
 	upstreamRef?: string;
 	upstreamBranch?: string;
@@ -712,7 +715,7 @@ function registerTask(task: Task): Task {
 	emit(task);
 
 	const handle = workQueue.enqueue({
-		coalesceKey: `task:${task.taskType}:${task.project}:${task.sha}`,
+		coalesceKey: `task:${task.taskType}:${task.project}:${task.sha}${task.todoKey ? `:${task.todoKey}` : ""}`,
 		// Every type, push included, holds the shared per-repo resource, so a test,
 		// a rebase, a push and a refresh never touch the same repo at once.
 		resources: [repoResource(task.project)],
@@ -782,6 +785,51 @@ export function enqueueTask(
 		command,
 		...(retest ? {retest} : {}),
 		status: "queued",
+		queuedAt: Date.now(),
+	});
+}
+
+export interface EnqueueTodoTaskOptions {
+	project: string;
+	projectDir: string;
+	sha: string;
+	shortSha: string;
+	branch: string;
+	sourceFile: string;
+	title: string;
+	command: string;
+}
+
+/**
+ * Queues a Claude task that does one todo. The same todo dedupes; a different todo is its own task, and
+ * because it holds the same repo resource it waits behind any Claude task already active on the project.
+ */
+export function enqueueTodoTask(opts: EnqueueTodoTaskOptions): Task {
+	ensureLoaded();
+	const todoKey = todoItemKey(opts);
+	const existing = findTask(opts.sha, opts.project, "claude", todoKey);
+	if (existing && (existing.status === "queued" || existing.status === "running")) {
+		return existing;
+	}
+
+	const ahead = Array.from(tasks.values()).findLast(
+		(t) =>
+			t.project === opts.project && t.taskType === "claude" && (t.status === "queued" || t.status === "running"),
+	);
+
+	return registerTask({
+		id: String(nextId++),
+		taskType: "claude",
+		project: opts.project,
+		projectDir: opts.projectDir,
+		sha: opts.sha,
+		shortSha: opts.shortSha,
+		subject: opts.title,
+		branch: opts.branch,
+		command: opts.command,
+		todoKey,
+		status: "queued",
+		message: ahead ? `Queued after "${ahead.subject}"` : "Queued",
 		queuedAt: Date.now(),
 	});
 }
@@ -909,9 +957,9 @@ export function getLatestLadderResults(): LadderResult[] {
 	return [...latest.values()].flatMap((t) => (t.ladderResult ? [t.ladderResult] : []));
 }
 
-function findTask(sha: string, project: string, taskType?: TaskType): Task | undefined {
+function findTask(sha: string, project: string, taskType?: TaskType, todoKey?: string): Task | undefined {
 	for (const task of tasks.values()) {
-		if (task.sha === sha && task.project === project) {
+		if (task.sha === sha && task.project === project && task.todoKey === todoKey) {
 			if (taskType === undefined || task.taskType === taskType) return task;
 		}
 	}

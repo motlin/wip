@@ -7,6 +7,7 @@ import {
 	cancelTest,
 	enqueuePush,
 	enqueueRebase,
+	enqueueTodoTask,
 	getAllTasks,
 	pruneTerminalTasks,
 	reloadTasksFromDb,
@@ -297,6 +298,66 @@ describe("push tasks hold the repo resource", () => {
 			expect(first.status).toBe("passed");
 		});
 		expect(execaMock.fn).toHaveBeenCalledTimes(1);
+		await resetScheduler();
+		await resetQueue();
+	});
+});
+
+function todoOptions(title: string) {
+	return {
+		project: "alpha",
+		projectDir: "/tmp/alpha",
+		sha: "c".repeat(40),
+		shortSha: "ccccccc",
+		branch: "feature",
+		sourceFile: "/tmp/alpha/.llm/todo.md",
+		title,
+		command: `do ${title}`,
+	};
+}
+
+describe("todo tasks", () => {
+	it("dedupes the same todo but queues a different todo behind the first and says so", async () => {
+		let releaseRebase!: () => void;
+		shared.rebaseBranchOntoUpstream.mockImplementation(
+			async () =>
+				new Promise((resolve) => {
+					releaseRebase = () => {
+						resolve({status: "rebased"});
+					};
+				}),
+		);
+		await resetScheduler();
+		await resetQueue();
+
+		// A rebase holds the repo resource so the todo tasks stay queued and no claude process starts.
+		enqueueRebase(rebaseOptions("alpha"));
+		await tick();
+
+		const first = enqueueTodoTask(todoOptions("First task"));
+		const again = enqueueTodoTask(todoOptions("First task"));
+		const second = enqueueTodoTask(todoOptions("Second task"));
+
+		expect({
+			againIsFirst: again === first,
+			secondIsFirst: second === first,
+			first: {status: first.status, subject: first.subject, command: first.command, message: first.message},
+			second: {status: second.status, subject: second.subject, command: second.command, message: second.message},
+		}).toStrictEqual({
+			againIsFirst: true,
+			secondIsFirst: false,
+			first: {status: "queued", subject: "First task", command: "do First task", message: "Queued"},
+			second: {
+				status: "queued",
+				subject: "Second task",
+				command: "do Second task",
+				message: 'Queued after "First task"',
+			},
+		});
+
+		cancelTest(first.id);
+		cancelTest(second.id);
+		releaseRebase();
 		await resetScheduler();
 		await resetQueue();
 	});

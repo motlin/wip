@@ -408,6 +408,21 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("carries a stacked item's parent sha into the state, landing its parent first", async () => {
+		const stack = candidates(2, {
+			c1: {state: "ready", sha: paddedSha("c1")},
+			c2: {state: "ready", sha: paddedSha("c2"), parentSha: paddedSha("c1")},
+		});
+		const h = harness({repos: () => [repo("a", {candidates: [stack[1]!, stack[0]!]})], gated: true});
+
+		await h.buffer.pull();
+
+		expect(h.buffer.state().ready).toStrictEqual([
+			{project: "a", id: "c1", sha: paddedSha("c1")},
+			{project: "a", id: "c2", sha: paddedSha("c2"), parentSha: paddedSha("c1")},
+		]);
+	});
+
 	it("runs one buffer job at a time under a hot probe and still refills over completions", async () => {
 		const h = harness({repos: () => [repo("a")], hotProbe: true, outcome: () => "skipped"});
 
@@ -674,6 +689,25 @@ describe("bufferRepoFromChildren", () => {
 				},
 			],
 		});
+	});
+
+	it("carries each child's parent sha onto its candidate", () => {
+		const children = [
+			makeChild({sha: sha("a"), parentSha: sha("u"), commitsBehind: 0, patchId: "pa"}),
+			makeChild({sha: sha("b"), parentSha: sha("a"), commitsBehind: 0, patchId: "pb"}),
+		];
+
+		const mapped = bufferRepoFromChildren(project("motlin/wip"), children, {
+			identity,
+			checkedOutBranches: [],
+			onHold: () => false,
+			override: () => undefined,
+		});
+
+		expect(mapped.candidates.map((c) => ({id: c.id, parentSha: c.parentSha}))).toStrictEqual([
+			{id: "pa", parentSha: sha("u")},
+			{id: "pb", parentSha: sha("a")},
+		]);
 	});
 
 	it("computes ownership from the upstream owner, not write access, and treats an unknown identity as foreign", () => {

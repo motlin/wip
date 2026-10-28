@@ -44,6 +44,8 @@ export interface BufferCandidate {
 	id: string;
 	sha: string;
 	branch?: string;
+	/** First parent; another candidate's sha when this one is stacked on it. */
+	parentSha?: string;
 	state: "unready" | "ready";
 	onHold: boolean;
 	override?: Priority;
@@ -230,6 +232,7 @@ export function bufferRepoFromChildren(
 				job: gitChildJob(child),
 			};
 			if (child.branch !== undefined) candidate.branch = child.branch;
+			if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
 			if (override !== undefined) candidate.override = override;
 			if (child.autoFixed !== undefined) candidate.autoFixed = true;
 			return candidate;
@@ -434,6 +437,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			id: candidate.id,
 			sha: candidate.sha,
 			...(candidate.branch === undefined ? {} : {branch: candidate.branch}),
+			...(candidate.parentSha === undefined ? {} : {parentSha: candidate.parentSha}),
 			...(repo.landing === undefined ? {} : {landing: repo.landing}),
 			...(firstSeen === undefined ? {} : {firstSeen}),
 		};

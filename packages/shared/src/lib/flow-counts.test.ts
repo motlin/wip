@@ -99,4 +99,23 @@ describe("flowCounts", () => {
 			}),
 		).toStrictEqual({wip: 7, commits: 7, todos: 0, red: 0, blocked: 0, ready: 2, slots: 2});
 	});
+
+	it("counts a stacked commit ready only when its parent is ready (real readiness over parent shas)", () => {
+		const up = "u".repeat(40);
+		expect(
+			flowCounts({
+				projects: [project],
+				gitChildren: [
+					child("a", {testStatus: "passed", parentSha: up}),
+					child("b", {testStatus: "passed", parentSha: "a".repeat(40)}),
+					child("c", {testStatus: "failed", parentSha: up}),
+					child("d", {testStatus: "passed", parentSha: "c".repeat(40)}),
+					child("e", {testStatus: "passed", parentSha: up, onHold: true}),
+					child("f", {testStatus: "passed", parentSha: "e".repeat(40)}),
+				],
+				todos: [],
+				slots: 3,
+			}),
+		).toStrictEqual({wip: 5, commits: 5, todos: 0, red: 1, blocked: 0, ready: 2, slots: 3});
+	});
 });

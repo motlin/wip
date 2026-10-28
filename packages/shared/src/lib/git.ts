@@ -206,7 +206,7 @@ export async function getNeedsRebaseBranches(
 	if (nonMainBranches.length === 0) return [];
 
 	const needsRebase: ChildCommit[] = [];
-	const format = "%H%x00%h%x00%s%x00%B%x00%ai";
+	const format = "%H%x00%h%x00%s%x00%B%x00%ai%x00%P";
 
 	for (const branch of nonMainBranches) {
 		// Sequential by design: bounds concurrent git subprocesses across many branches.
@@ -222,7 +222,7 @@ export async function getNeedsRebaseBranches(
 		if (logResult.exitCode !== 0) continue;
 
 		const fields = logResult.stdout.trim().split("\0");
-		if (fields.length < 5) continue;
+		if (fields.length < 6) continue;
 
 		const sha = fields[0] ?? "";
 		const shortSha = fields[1] ?? "";
@@ -230,6 +230,7 @@ export async function getNeedsRebaseBranches(
 		const fullMessage = fields[3] ?? "";
 		const rawDate = fields[4] ?? "";
 		const date = rawDate.trim().split(" ")[0] ?? "";
+		const parentSha = firstParent(fields[5]);
 
 		const pushedToRemote = remoteBranches ? remoteBranches.has(branch) : false;
 		const reviewStatus = prStatuses ? (prStatuses.review.get(branch) ?? ("no_pr" as const)) : ("no_pr" as const);
@@ -255,6 +256,7 @@ export async function getNeedsRebaseBranches(
 		needsRebase.push({
 			sha,
 			shortSha,
+			parentSha,
 			subject,
 			date,
 			branch,
@@ -417,6 +419,12 @@ export async function computeMergeStatus(
 	return {commitsAhead, commitsBehind, rebaseable};
 }
 
+/** The first parent from a `%P` field (space-separated parents); undefined for a root commit. */
+function firstParent(field: string | undefined): string | undefined {
+	const parent = field?.trim().split(" ")[0];
+	return parent === undefined || parent === "" ? undefined : parent;
+}
+
 export async function getChildCommits(
 	dir: string,
 	upstreamRef: string,
@@ -432,7 +440,7 @@ export async function getChildCommits(
 	const RS = "\x1e";
 
 	const start = performance.now();
-	const format = "%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x00%ae%x1e";
+	const format = "%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x00%ae%x00%P%x1e";
 	const [logResult, remoteBranchOutput, userEmail] = await Promise.all([
 		tracedExeca(
 			"git",
@@ -469,7 +477,7 @@ export async function getChildCommits(
 	for (const record of records) {
 		const trimmedRecord = record.replace(/^\n+/, "");
 		const fields = trimmedRecord.split("\0");
-		if (fields.length < 7) continue;
+		if (fields.length < 8) continue;
 
 		const sha = fields[0] ?? "";
 		const shortSha = fields[1] ?? "";
@@ -478,6 +486,7 @@ export async function getChildCommits(
 		const rawDate = fields[4] ?? "";
 		const decoration = fields[5] ?? "";
 		const authorEmail = fields[6] ?? "";
+		const parentSha = firstParent(fields[7]);
 
 		// Filter out commits from other authors (e.g. dependabot, renovate)
 		if (userEmail && authorEmail.trim() !== userEmail) continue;
@@ -533,6 +542,7 @@ export async function getChildCommits(
 		children.push({
 			sha,
 			shortSha,
+			parentSha,
 			subject,
 			date,
 			branch,

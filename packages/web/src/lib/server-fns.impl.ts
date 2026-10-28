@@ -359,6 +359,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					originRemote: p.originRemote,
 					sha: child.sha,
 					shortSha: child.shortSha,
+					parentSha: child.parentSha,
 					subject: child.subject,
 					date: child.date,
 					branch: child.branch,

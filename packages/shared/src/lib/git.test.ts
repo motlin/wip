@@ -949,6 +949,24 @@ describe("getChildren", () => {
 		expect(firstChild?.branch).toBeUndefined();
 		expect(firstChild?.containingBranch).toBe("feature-stack");
 	});
+
+	it("records each child's parent sha from the same log call", async () => {
+		tempDir = createTestGitRepo("owner", "repo");
+		writeFileSync(join(tempDir, "file.txt"), "hello");
+		execSync("git add . && git commit -m 'initial'", {cwd: tempDir, stdio: "ignore"});
+		setupChildrenAlias(tempDir);
+		const upstreamSha = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
+		execSync("git checkout -b parented", {cwd: tempDir, stdio: "ignore"});
+		writeFileSync(join(tempDir, "child.txt"), "child");
+		execSync("git add . && git commit -m 'child'", {cwd: tempDir, stdio: "ignore"});
+		const childSha = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
+
+		const result = await getChildCommits(tempDir, upstreamSha, false);
+
+		expect(result.map((c) => ({sha: c.sha, parentSha: c.parentSha}))).toStrictEqual([
+			{sha: childSha, parentSha: upstreamSha},
+		]);
+	});
 });
 
 describe("getNeedsRebaseBranches", () => {
@@ -1013,6 +1031,27 @@ describe("getNeedsRebaseBranches", () => {
 		const result = await getNeedsRebaseBranches(tempDir, "upstream-ref");
 		const branchNames = result.map((c) => c.branch);
 		expect(branchNames).toContain("stale-branch");
+	});
+
+	it("records the stale branch tip's parent sha", async () => {
+		tempDir = createTestGitRepo("owner", "repo");
+		writeFileSync(join(tempDir, "file.txt"), "hello");
+		execSync("git add . && git commit -m 'initial'", {cwd: tempDir, stdio: "ignore"});
+		const base = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
+		execSync("git checkout -b stale-branch", {cwd: tempDir, stdio: "ignore"});
+		writeFileSync(join(tempDir, "feature.txt"), "feature");
+		execSync("git add . && git commit -m 'feature work'", {cwd: tempDir, stdio: "ignore"});
+		const staleSha = execSync("git rev-parse HEAD", {cwd: tempDir}).toString().trim();
+		execSync("git checkout main", {cwd: tempDir, stdio: "ignore"});
+		writeFileSync(join(tempDir, "main-update.txt"), "updated");
+		execSync("git add . && git commit -m 'main moves forward'", {cwd: tempDir, stdio: "ignore"});
+		execSync("git tag upstream-ref HEAD", {cwd: tempDir, stdio: "ignore"});
+
+		const result = await getNeedsRebaseBranches(tempDir, "upstream-ref");
+
+		expect(result.map((c) => ({sha: c.sha, parentSha: c.parentSha}))).toStrictEqual([
+			{sha: staleSha, parentSha: base},
+		]);
 	});
 });
 

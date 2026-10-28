@@ -286,6 +286,8 @@ export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 export const ChildCommitSchema = z.object({
 	sha: shaSchema,
 	shortSha: shortShaSchema,
+	/** First parent (`%P`); a stacked commit's parent is another child. */
+	parentSha: shaSchema.optional(),
 	subject: z.string(),
 	date: dateSchema,
 	branch: branchSchema.optional(),
@@ -354,6 +356,8 @@ export const GitChildResultSchema = z.object({
 	originRemote: z.string(),
 	sha: shaSchema,
 	shortSha: shortShaSchema,
+	/** First parent: the upstream tip for a commit directly on it, another child for a stacked one. */
+	parentSha: shaSchema.optional(),
 	subject: z.string(),
 	date: dateSchema,
 	branch: branchSchema.optional(),

@@ -1824,6 +1824,20 @@ describe("getProjectChildrenHandler", () => {
 		).toStrictEqual([{subject: "Sized commit", files: 2, insertions: 4, deletions: 0}]);
 	});
 
+	it("carries each child's parent sha, so stacks are visible to readiness and landing order", async () => {
+		const dir = await createTestGitRepo();
+		const base = await gitOut(dir, "rev-parse", "main");
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Parented commit"]);
+		seedProjectCache([makeProject({name: "parent-sha-test", dir, upstreamRef: "main~1"})]);
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const result = await getProjectChildrenHandler("parent-sha-test");
+
+		expect(result.map((c) => ({subject: c.subject, parentSha: c.parentSha}))).toStrictEqual([
+			{subject: "Parented commit", parentSha: base},
+		]);
+	});
+
 	it("reconciles the work-item ledger from the children set, keeping one item across a reword", async () => {
 		const dir = await createTestGitRepo();
 		await writeTestFile(join(dir, "ledger.txt"), "ledger\n");

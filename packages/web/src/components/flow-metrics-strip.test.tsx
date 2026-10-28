@@ -8,7 +8,7 @@ describe("FlowMetricsStrip", () => {
 		cleanup();
 	});
 
-	it("shows WIP, landings per day over 7 and 28 days, median lead time and the Little's-law estimate", () => {
+	it("shows landings per day over 7 and 28 days, median lead time and the Little's-law estimate, but no second WIP beside the flow strip's", () => {
 		render(
 			<FlowMetricsStrip
 				metrics={{
@@ -22,7 +22,7 @@ describe("FlowMetricsStrip", () => {
 			/>,
 		);
 		expect(screen.getByTestId("flow-metrics-strip").textContent).toBe(
-			"WIP 6 · landings/day 0.4 (7d) · 0.3 (28d) · median lead time 2.3d · Little's law 21.0d",
+			"landings/day 0.4 (7d) · 0.3 (28d) · median lead time 2.3d · Little's law 21.0d",
 		);
 	});
 
@@ -40,7 +40,7 @@ describe("FlowMetricsStrip", () => {
 			/>,
 		);
 		expect(screen.getByTestId("flow-metrics-strip").textContent).toBe(
-			"WIP 2 · landings/day 0.0 (7d) · 0.0 (28d) · median lead time – · Little's law –",
+			"landings/day 0.0 (7d) · 0.0 (28d) · median lead time – · Little's law –",
 		);
 	});
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
-import {cleanup, fireEvent, render, screen} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {ReactNode} from "react";
 
@@ -66,5 +66,47 @@ describe("CommitCard lazy branch naming", () => {
 			value: screen.getByRole<HTMLInputElement>("textbox").value,
 			suggestCalls: serverFns.suggestBranchName.mock.calls.length,
 		}).toStrictEqual({before: null, value: "cached-name", suggestCalls: 0});
+	});
+});
+
+function renderAged(firstSeen: string | undefined) {
+	const child = makeChild({sha: "b".repeat(40), shortSha: "bbbbbbb", subject: "Aged commit"});
+	if (firstSeen !== undefined) child.firstSeen = firstSeen;
+	render(
+		<QueryClientProvider client={new QueryClient()}>
+			<CommitCard commit={child} />
+		</QueryClientProvider>,
+	);
+}
+
+describe("CommitCard age", () => {
+	afterEach(() => {
+		cleanup();
+		vi.useRealTimers();
+	});
+
+	it("shows in wip Nd from first seen as plain text, with no age-based styling", async () => {
+		vi.useFakeTimers({now: Date.parse("2026-10-28T12:00:00Z"), toFake: ["Date", "setTimeout", "setInterval"]});
+		renderAged("2026-10-28T09:00:00.000Z");
+		renderAged("2026-09-20T12:00:00.000Z");
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1);
+		});
+
+		const ages = screen.getAllByTestId("wip-age");
+		expect(ages.map((age) => ({text: age.textContent, className: age.className}))).toStrictEqual([
+			{text: "in wip 0d", className: "text-xs text-text-500"},
+			{text: "in wip 38d", className: "text-xs text-text-500"},
+		]);
+	});
+
+	it("shows no age when the ledger has no first seen for the commit", async () => {
+		vi.useFakeTimers({now: Date.parse("2026-10-28T12:00:00Z"), toFake: ["Date", "setTimeout", "setInterval"]});
+		renderAged(undefined);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1);
+		});
+
+		expect(screen.queryByTestId("wip-age")).toBeNull();
 	});
 });

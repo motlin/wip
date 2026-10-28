@@ -42,6 +42,7 @@ import {
 	getCachedChildren,
 	cacheChildren,
 	reconcileWorkItemsWithUpstream,
+	loadWorkItems,
 	invalidateChildrenCache,
 	isCacheFresh,
 	getCacheFreshnessByPrefix,
@@ -447,6 +448,11 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					return [{patchId, sha: child.sha, subject: child.subject, state: classifyGitChild(child, p)}];
 				}),
 			);
+			const firstSeen = new Map(loadWorkItems(p.name).map((item) => [item.patchId, item.firstSeen]));
+			for (const child of results) {
+				const childFirstSeen = firstSeen.get(commitFacts.get(child.sha)?.patchId ?? "");
+				if (child.kind !== "upstream_ci" && childFirstSeen !== undefined) child.firstSeen = childFirstSeen;
+			}
 			cacheChildren(projectName, results);
 			const {childrenEmitter} = await import("./children-events.js");
 			childrenEmitter.emit("children", {project: projectName, children: results});

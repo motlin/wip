@@ -3,8 +3,17 @@
  * are stored as "YYYY-MM-DD HH:MM:SS.SSS" in UTC.
  */
 
+/** Parses a DB timestamp (UTC, no zone) or an ISO timestamp that carries its own zone (the ledger's). */
 export function parseDbTimestamp(timestamp: string): number {
+	if (/(?:Z|[+-]\d\d:\d\d)$/.test(timestamp)) return Date.parse(timestamp);
 	return Date.parse(`${timestamp.replace(" ", "T")}Z`);
+}
+
+const DAY_MS = 86_400_000;
+
+/** "in wip Nd": whole days since the work item's first seen (lean plan step 44); never styled by age. */
+export function wipAgeText(firstSeen: string, nowMs: number): string {
+	return `in wip ${Math.floor(Math.max(0, nowMs - parseDbTimestamp(firstSeen)) / DAY_MS)}d`;
 }
 
 export function formatRelativeAge(dbTimestamp: string, nowMs: number): string {

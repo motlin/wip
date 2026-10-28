@@ -1,5 +1,5 @@
 import {useQueryClient} from "@tanstack/react-query";
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, Category} from "@wip/shared";
 import {Diff, GitBranch, Loader2, Info} from "./icons.js";
@@ -7,6 +7,7 @@ import {createBranch, suggestBranchName} from "../lib/server-fns";
 import {AnsiText} from "./ansi-text";
 import {CategoryBadge} from "./category-badge";
 import {BranchActions} from "./commit-actions";
+import {wipAgeText} from "../lib/staleness";
 
 export function CommitCard({commit, category}: {commit: GitChildResult; category?: Category}) {
 	const queryClient = useQueryClient();
@@ -16,6 +17,20 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 	// Plan step 39: no textbox, and no naming, until the user clicks Create Branch.
 	const [editing, setEditing] = useState(false);
 	const [naming, setNaming] = useState(false);
+	// Ages come from the client clock, set after mount so hydration matches the server render.
+	const [now, setNow] = useState<number | null>(null);
+	useEffect(() => {
+		if (commit.firstSeen === undefined) return undefined;
+		const tick = () => {
+			setNow(Date.now());
+		};
+		const first = setTimeout(tick, 0);
+		const timer = setInterval(tick, 60 * 60_000);
+		return () => {
+			clearTimeout(first);
+			clearInterval(timer);
+		};
+	}, [commit.firstSeen]);
 
 	const startEditing = async () => {
 		setEditing(true);
@@ -94,6 +109,11 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 					>
 						<Diff className="h-3.5 w-3.5" aria-hidden="true" />
 					</a>
+					{commit.firstSeen !== undefined && now !== null && (
+						<span data-testid="wip-age" className="text-xs text-text-500">
+							{wipAgeText(commit.firstSeen, now)}
+						</span>
+					)}
 					{commit.date && <span className="text-xs text-text-500">{commit.date}</span>}
 				</div>
 			</div>

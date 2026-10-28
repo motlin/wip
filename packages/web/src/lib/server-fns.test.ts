@@ -1865,6 +1865,31 @@ describe("getProjectChildrenHandler", () => {
 		]);
 	});
 
+	it("carries the ledger's first seen onto the child, unchanged across a reword", async () => {
+		const dir = await createTestGitRepo();
+		await writeTestFile(join(dir, "age.txt"), "age\n");
+		await execa("git", ["-C", dir, "add", "age.txt"]);
+		await execa("git", ["-C", dir, "commit", "-m", "Aged commit"]);
+		const project = makeProject({name: "age-test", dir, upstreamRef: "main~1"});
+		seedProjectCache([project]);
+
+		const {refreshProjectChildren} = await import("./server-fns.impl.js");
+		const before = await refreshProjectChildren("age-test");
+		const [ledgerItem] = loadWorkItems("age-test");
+		await execa("git", ["-C", dir, "commit", "--amend", "-m", "Aged commit reworded"]);
+		const after = await refreshProjectChildren("age-test");
+
+		expect({
+			before: before.map((c) => ({subject: c.subject, firstSeen: c.firstSeen})),
+			after: after.map((c) => ({subject: c.subject, firstSeen: c.firstSeen})),
+			ledgerHasFirstSeen: typeof ledgerItem?.firstSeen,
+		}).toStrictEqual({
+			before: [{subject: "Aged commit", firstSeen: ledgerItem?.firstSeen}],
+			after: [{subject: "Aged commit reworded", firstSeen: ledgerItem?.firstSeen}],
+			ledgerHasFirstSeen: "string",
+		});
+	});
+
 	it("records an unnamed child that leaves the children set by fast-forward as landed", async () => {
 		const dir = await createTestGitRepo();
 		const {stdout: base} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);

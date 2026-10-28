@@ -1,8 +1,6 @@
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {landingOrder, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
-import {parseDbTimestamp} from "../lib/staleness";
-
-const DAY_MS = 86_400_000;
+import {wipAgeText} from "../lib/staleness";
 
 const MARKER_CLASS =
 	"inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400";
@@ -66,10 +64,7 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 					const size = sizeText(commit);
 					const action = landingAction(item, commit);
 					const noTests = projectMap.get(item.project)?.hasTestConfigured === false;
-					const ageDays =
-						now === null || item.firstSeen === undefined
-							? null
-							: Math.floor(Math.max(0, now - parseDbTimestamp(item.firstSeen)) / DAY_MS);
+					const age = now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now);
 					return (
 						<li
 							key={`${item.project}:${item.id}`}
@@ -94,7 +89,7 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 							{commit?.considerSplitting === true && (
 								<span className={MARKER_CLASS}>consider splitting</span>
 							)}
-							{ageDays !== null && <span className="text-xs text-text-500">in wip {ageDays}d</span>}
+							{age !== null && <span className="text-xs text-text-500">{age}</span>}
 							{action !== null && (
 								<button
 									type="button"

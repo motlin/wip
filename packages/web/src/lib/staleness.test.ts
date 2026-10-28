@@ -1,12 +1,16 @@
 import {describe, expect, it} from "vite-plus/test";
 
-import {formatRelativeAge, oldestTimestamp, parseDbTimestamp} from "./staleness";
+import {formatRelativeAge, oldestTimestamp, parseDbTimestamp, wipAgeText} from "./staleness";
 
 const NOW = Date.parse("2026-07-04T12:00:00Z");
 
 describe("parseDbTimestamp", () => {
 	it("parses DB timestamps as UTC", () => {
 		expect(parseDbTimestamp("2026-07-04 11:59:00.000")).toBe(Date.parse("2026-07-04T11:59:00.000Z"));
+	});
+
+	it("parses ISO timestamps that already carry a zone, as the ledger writes them", () => {
+		expect(parseDbTimestamp("2026-07-04T11:59:00.000Z")).toBe(Date.parse("2026-07-04T11:59:00.000Z"));
 	});
 });
 
@@ -37,5 +41,16 @@ describe("oldestTimestamp", () => {
 
 	it("returns null for an empty list", () => {
 		expect(oldestTimestamp([])).toBeNull();
+	});
+});
+
+describe("wipAgeText", () => {
+	it("counts whole days in wip from first seen, for ledger and DB timestamps alike", () => {
+		expect([
+			wipAgeText("2026-07-04T11:00:00.000Z", NOW),
+			wipAgeText("2026-07-01T09:00:00.000Z", NOW),
+			wipAgeText("2026-06-04 12:00:00.000", NOW),
+			wipAgeText("2026-07-05T00:00:00.000Z", NOW),
+		]).toStrictEqual(["in wip 0d", "in wip 3d", "in wip 30d", "in wip 0d"]);
 	});
 });

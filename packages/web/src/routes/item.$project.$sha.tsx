@@ -372,7 +372,7 @@ function ItemDetail() {
 											</span>
 										</Link>
 									)}
-									{child.date && <span>Last updated {child.date}</span>}
+									{child.date && <span>Committed {child.date}</span>}
 								</div>
 							</div>
 						</div>

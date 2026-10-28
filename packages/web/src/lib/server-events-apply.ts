@@ -1,5 +1,6 @@
 import type {QueryClient} from "@tanstack/react-query";
 import type {GitChildResult, SnoozedChild, TestStatus, TodoItem} from "@wip/shared";
+import {actionEventToast, taskEventToast} from "./action-messages.js";
 import {createQueryUpdateBatcher} from "./query-update-batcher.js";
 import type {ProjectChildrenResult} from "./server-fns.js";
 import type {ServerEvent, TaskEvent} from "./server-events-schema.js";
@@ -66,20 +67,10 @@ function applyTaskSideEffects(queryClient: QueryClient, data: TaskEvent) {
 			pushing,
 			...(data.status === "passed" ? {pushedToRemote: true, localAhead: false} : {}),
 		});
-		if (data.status === "passed") {
-			pushToast({level: "success", message: data.message ?? "Push complete", detail: data.compareUrl});
-		} else if (data.status === "failed") {
-			pushToast({level: "error", message: "Push failed", detail: data.message});
-		}
 	}
 
-	if (data.taskType === "rebase") {
-		if (data.status === "passed") {
-			pushToast({level: "success", message: data.message ?? "Rebase complete"});
-		} else if (data.status === "failed") {
-			pushToast({level: "error", message: "Rebase failed", detail: data.message});
-		}
-	}
+	const toast = taskEventToast(data);
+	if (toast) pushToast(toast);
 }
 
 export interface ServerEventApplier {
@@ -143,20 +134,8 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				return;
 			}
 			case "action": {
-				const {label, project, status, waitingFor} = event.data;
-				if (status === "waiting") {
-					pushToast({
-						level: "info",
-						message: `${label} queued for ${project}`,
-						detail: waitingFor ? `Waiting for ${waitingFor} to finish` : undefined,
-					});
-				} else if (status === "busy") {
-					pushToast({
-						level: "error",
-						message: `${label} not run: repo busy`,
-						detail: `${waitingFor ?? "Another job"} is still running on ${project}; try again shortly`,
-					});
-				}
+				const toast = actionEventToast(event.data);
+				if (toast) pushToast(toast);
 				return;
 			}
 			case "refresh-state": {
@@ -170,7 +149,10 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 			case "refresh-error": {
 				pushToast({
 					level: "error",
-					message: `Background ${event.data.kind} refresh failed for ${event.data.project}`,
+					message:
+						event.data.kind === "escape-hatch"
+							? `A More menu recipe failed in ${event.data.project}`
+							: `Background ${event.data.kind} refresh failed for ${event.data.project}`,
 					detail: event.data.message,
 				});
 				return;

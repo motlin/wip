@@ -461,6 +461,9 @@ export const ActionResultSchema = z.object({
 	ok: z.boolean(),
 	message: z.string(),
 	compareUrl: z.url().optional(),
+	// Set by Open PR and Merge PR so the client can link the PR and update the row in place
+	prNumber: z.number().optional(),
+	prUrl: z.url().optional(),
 	logs: z.array(ActionLogEntrySchema).optional(),
 	// Set by Abort rebase: the branch whose rebase was backed out, whose next action is "Rebase again"
 	rebaseAgainBranch: z.string().optional(),

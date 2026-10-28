@@ -58,6 +58,7 @@ import {
 	type PrimaryAction,
 } from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
+import {actionResultToast} from "../lib/action-messages.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import {unverifiedPushReason} from "../lib/push-verification.js";
 import {AutoFixReview} from "./auto-fix-review.js";
@@ -96,23 +97,13 @@ function isPullRequest(item: ActionableItem): boolean {
 }
 
 /**
- * Surface subprocess logs and the summary message from an action as toasts.
- * - Always shows subprocess logs (if any) emitted by the action.
- * - For failed actions, emits a final error toast with the summary message.
- * - For successful actions with no subprocess logs, emits a single success toast.
+ * Toast an action's result in plain words with a link to where it landed (or to
+ * the log on failure). Subprocess logs are surfaced only for warnings and errors;
+ * the raw git/gh chatter is jargon and lives on the logs page.
  */
 function showActionToasts(action: string, result: ActionResult): void {
-	const logs = result.logs ?? [];
-	if (logs.length > 0) {
-		toastLogs(logs);
-	}
-	if (!result.ok) {
-		pushToast({level: "error", message: action, detail: result.message});
-		return;
-	}
-	if (logs.length === 0) {
-		pushToast({level: "success", message: result.message});
-	}
+	toastLogs((result.logs ?? []).filter((entry) => entry.level >= 40));
+	pushToast(actionResultToast(action, result));
 }
 
 function showActionError(action: string, error: unknown): void {
@@ -120,6 +111,7 @@ function showActionError(action: string, error: unknown): void {
 		level: "error",
 		message: action,
 		detail: error instanceof Error ? error.message : String(error),
+		link: {href: "/debug/logs", label: "See the log"},
 	});
 }
 
@@ -443,17 +435,14 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					draft: true,
 				},
 			});
-			showActionToasts("Create PR", result);
+			showActionToasts("Open PR", result);
 			if (result.ok) {
-				const prUrl = result.compareUrl ?? "";
-				const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
-				const prNumber = prNumberMatch ? Number(prNumberMatch[1]) : 0;
-				cache.promoteToPr(item.sha, prUrl, prNumber);
+				cache.promoteToPr(item.sha, result.prUrl ?? "", result.prNumber ?? 0);
 			} else {
 				setError(result.message);
 			}
 		} catch (e) {
-			showActionError("Create PR", e);
+			showActionError("Open PR", e);
 			setError(e instanceof Error ? e.message : "Failed to create PR");
 		} finally {
 			setCreatingPr(false);

@@ -16,6 +16,10 @@ const LEVEL_ICON: Record<ToastLevel, typeof Info> = {
 	error: AlertCircle,
 };
 
+function isExternal(href: string): boolean {
+	return /^https?:\/\//.test(href);
+}
+
 export function Toaster() {
 	const [toasts, setToasts] = useState<readonly Toast[]>(() => getToasts());
 
@@ -45,6 +49,15 @@ export function Toaster() {
 						<div className="min-w-0 flex-1">
 							<p className="break-words font-medium">{toast.message}</p>
 							{toast.detail && <p className="mt-0.5 break-words opacity-80">{toast.detail}</p>}
+							{toast.link && (
+								<a
+									href={toast.link.href}
+									{...(isExternal(toast.link.href) ? {target: "_blank", rel: "noreferrer"} : {})}
+									className="mt-1 inline-block font-medium underline underline-offset-2 hover:opacity-80"
+								>
+									{toast.link.label}
+								</a>
+							)}
 						</div>
 						<button
 							type="button"

@@ -2,11 +2,25 @@ import type {ActionLogEntry} from "@wip/shared";
 
 export type ToastLevel = "info" | "success" | "warning" | "error";
 
+/** Where the user finds an action's result: a GitHub page or an in-app route such as a log. */
+export interface ToastLink {
+	href: string;
+	label: string;
+}
+
+export interface ToastInput {
+	level: ToastLevel;
+	message: string;
+	detail?: string;
+	link?: ToastLink;
+}
+
 export interface Toast {
 	id: string;
 	level: ToastLevel;
 	message: string;
 	detail?: string;
+	link?: ToastLink;
 	/** Milliseconds since epoch when this toast was created. */
 	createdAt: number;
 }
@@ -43,13 +57,14 @@ function scheduleDismiss(id: string, level: ToastLevel): void {
 	timers.set(id, timer);
 }
 
-export function pushToast(input: {level: ToastLevel; message: string; detail?: string}): Toast {
+export function pushToast(input: ToastInput): Toast {
 	nextId += 1;
 	const toast: Toast = {
 		id: `toast-${nextId}`,
 		level: input.level,
 		message: input.message,
 		detail: input.detail,
+		...(input.link ? {link: input.link} : {}),
 		createdAt: Date.now(),
 	};
 	toasts = [...toasts, toast];

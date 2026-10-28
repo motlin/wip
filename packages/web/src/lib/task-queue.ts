@@ -681,7 +681,7 @@ async function runPushTask(task: Task, signal: AbortSignal): Promise<void> {
 		invalidatePrCache(task.project);
 		invalidateChildrenCache(task.project);
 		task.status = "passed";
-		task.message = `Pushed ${task.shortSha} to ${task.branch}`;
+		task.message = `Pushed ${task.branch} to ${task.upstreamRemote}`;
 		if (task.remote) {
 			task.compareUrl = `https://github.com/${task.remote}/compare/${task.branch}?expand=1`;
 		}

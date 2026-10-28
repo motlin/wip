@@ -3,6 +3,7 @@ import {useState} from "react";
 import {Loader2, RefreshCw} from "./icons.js";
 import {ESCAPE_HATCH_RECIPES, type EscapeHatchRecipe} from "../lib/escape-hatch.js";
 import {runPendingAction} from "../lib/pending-action.js";
+import {pushToast} from "../lib/toast-store.js";
 
 export interface BulkActionsProps {
 	topUp: () => Promise<{running: boolean}>;
@@ -22,13 +23,17 @@ export function BulkActions({topUp, runRecipe}: BulkActionsProps) {
 		setStatus(null);
 		await runPendingAction("Top up ready buffer", setToppingUp, async () => {
 			const {running} = await topUp();
-			if (!running) setStatus("The ready buffer is not running in this server");
+			if (running) pushToast({level: "info", message: "Topping up the ready buffer…"});
+			else setStatus("The ready buffer is not running in this server");
 		});
 	};
 
 	const handleRecipe = async (recipe: EscapeHatchRecipe, label: string) => {
 		setMenuOpen(false);
-		await runPendingAction(label, undefined, async () => runRecipe(recipe));
+		await runPendingAction(label, undefined, async () => {
+			await runRecipe(recipe);
+			pushToast({level: "info", message: `Running "${label}" in every repo…`});
+		});
 	};
 
 	return (

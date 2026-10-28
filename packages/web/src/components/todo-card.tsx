@@ -38,7 +38,7 @@ export function TodoCard({
 	const handleDoTask = async () => {
 		await runPendingAction("Do task", setQueuing, async () => {
 			const status = await runTodoTask({data: key});
-			pushToast({level: "info", message: `Queued "${todo.title}"`, detail: status.message});
+			pushToast({level: "info", message: `Working on "${todo.title}"…`, detail: status.message});
 		});
 	};
 	const handleSnooze = async (hours: number | null) => {

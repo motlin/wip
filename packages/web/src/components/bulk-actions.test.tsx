@@ -4,10 +4,14 @@ import {act, cleanup, fireEvent, render, screen} from "@testing-library/react";
 
 import {BulkActions} from "./bulk-actions.js";
 import type {EscapeHatchRecipe} from "../lib/escape-hatch.js";
+import {clearToasts, getToasts} from "../lib/toast-store.js";
 
 afterEach(() => {
 	cleanup();
+	clearToasts();
 });
+
+const toastMessages = (): string[] => getToasts().map((t) => t.message);
 
 function setup(running = true) {
 	const calls: string[] = [];
@@ -43,9 +47,14 @@ describe("BulkActions", () => {
 			await Promise.resolve();
 		});
 
-		expect({calls, status: screen.queryByRole("status")?.textContent ?? null}).toStrictEqual({
+		expect({
+			calls,
+			status: screen.queryByRole("status")?.textContent ?? null,
+			toasts: toastMessages(),
+		}).toStrictEqual({
 			calls: ["top-up"],
 			status: null,
+			toasts: ["Topping up the ready buffer…"],
 		});
 	});
 
@@ -80,5 +89,6 @@ describe("BulkActions", () => {
 			calls: ["recipe:rebase-all"],
 			menuOpen: false,
 		});
+		expect(toastMessages()).toStrictEqual(['Running "Rebase all" in every repo…']);
 	});
 });

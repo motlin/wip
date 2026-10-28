@@ -88,31 +88,78 @@ describe("task events", () => {
 		expect(children?.[0]?.testStatus).toBe("unknown");
 	});
 
-	it("marks a passed push in the cache and toasts success", () => {
+	it("marks a passed push in the cache and toasts where it went", () => {
 		queryClient.setQueryData(["children", "wip"], [makeChild({pushing: true})]);
 
 		applier.apply({
 			channel: "task",
-			data: makeTaskEvent({taskType: "push", status: "passed", message: "Pushed a1b2c3d"}),
+			data: makeTaskEvent({
+				taskType: "push",
+				status: "passed",
+				message: "Pushed feature/x to upstream",
+				compareUrl: "https://github.com/craig/wip/compare/feature/x?expand=1",
+			}),
 		});
 
 		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
 		expect(child?.pushing).toBe(false);
 		expect(child?.pushedToRemote).toBe(true);
-		expect(getToasts().at(-1)).toMatchObject({level: "success", message: "Pushed a1b2c3d"});
+		expect(getToasts().map(({level, message, detail, link}) => ({level, message, detail, link}))).toStrictEqual([
+			{
+				level: "success",
+				message: "Pushed feature/x to upstream",
+				detail: undefined,
+				link: {href: "https://github.com/craig/wip/compare/feature/x?expand=1", label: "View on GitHub"},
+			},
+		]);
 	});
 
-	it("toasts an error for a failed rebase", () => {
+	it("toasts an error for a failed rebase with a link to its log", () => {
 		applier.apply({
 			channel: "task",
 			data: makeTaskEvent({taskType: "rebase", status: "failed", message: "conflicts"}),
 		});
 
-		expect(getToasts().at(-1)).toMatchObject({
-			level: "error",
-			message: "Rebase failed",
-			detail: "conflicts",
+		expect(getToasts().map(({level, message, detail, link}) => ({level, message, detail, link}))).toStrictEqual([
+			{
+				level: "error",
+				message: "Rebase failed",
+				detail: "conflicts",
+				link: {href: `/log/wip/${SHA}`, label: "See the log"},
+			},
+		]);
+	});
+
+	it("toasts when a Claude task finishes", () => {
+		applier.apply({channel: "task", data: makeTaskEvent({taskType: "claude", status: "passed"})});
+
+		expect(getToasts().map(({level, message}) => ({level, message}))).toStrictEqual([
+			{level: "success", message: 'Finished "Add work queue"'},
+		]);
+	});
+});
+
+describe("action events", () => {
+	it("toasts a queued action in plain words", () => {
+		applier.apply({
+			channel: "action",
+			data: {
+				id: "action-1",
+				project: "wip",
+				label: "createPr",
+				target: "Add work queue",
+				status: "waiting",
+				waitingFor: "rebase",
+			},
 		});
+
+		expect(getToasts().map(({level, message, detail}) => ({level, message, detail}))).toStrictEqual([
+			{
+				level: "info",
+				message: "Opening a pull request for Add work queue…",
+				detail: "Waiting for a rebase in wip to finish",
+			},
+		]);
 	});
 });
 

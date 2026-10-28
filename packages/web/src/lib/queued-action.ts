@@ -54,14 +54,18 @@ export function setActionMaxWaitMs(ms: number): void {
  * the same working directory. Resolves (or rejects) with the action's own
  * outcome, so callers keep their return shapes and only wait when the repo is
  * busy. Queue state changes reach clients through the usual queue events.
+ * `action` is the internal label, optionally with the commit, branch or PR it
+ * acts on; the client turns both into a plain-language toast.
  */
 export async function runQueuedAction<T>(
 	project: string,
-	label: string,
+	action: string | {label: string; target?: string},
 	fn: () => Promise<T>,
 	costClass: CostClass = "git-write",
 	maxWaitMs: number = defaultMaxWaitMs,
 ): Promise<T> {
+	const {label, target} = typeof action === "string" ? {label: action, target: undefined} : action;
+	const named = target === undefined ? {label} : {label, target};
 	const id = `action-${nextActionId++}`;
 	const gate = logGate.getStore();
 	if (gate) gate.active = false;
@@ -77,7 +81,7 @@ export async function runQueuedAction<T>(
 		run: async () => {
 			if (state.abandoned) return;
 			state.started = true;
-			actionEmitter.emit("action", {id, project, label, status: "running"});
+			actionEmitter.emit("action", {id, project, ...named, status: "running"});
 			if (gate) gate.active = true;
 			try {
 				outcome = {ok: true, value: await fn()};
@@ -90,7 +94,13 @@ export async function runQueuedAction<T>(
 	});
 	const running = workQueue.getState().running.find((job) => job.project === project);
 	if (!state.started) {
-		actionEmitter.emit("action", {id, project, label, status: "waiting", waitingFor: describeHolder(running)});
+		actionEmitter.emit("action", {
+			id,
+			project,
+			...named,
+			status: "waiting",
+			waitingFor: describeHolder(running),
+		});
 	}
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -107,12 +117,12 @@ export async function runQueuedAction<T>(
 		if (gate) gate.active = true;
 		handle.cancel();
 		const holder = describeHolder(workQueue.getState().running.find((job) => job.project === project) ?? running);
-		actionEmitter.emit("action", {id, project, label, status: "busy", waitingFor: holder});
+		actionEmitter.emit("action", {id, project, ...named, status: "busy", waitingFor: holder});
 		throw new Error(`repo busy: ${holder ?? "another job"} is running on ${project}; try again shortly`);
 	}
 	await handle.settled;
 	if (gate) gate.active = true;
-	actionEmitter.emit("action", {id, project, label, status: "done"});
+	actionEmitter.emit("action", {id, project, ...named, status: "done"});
 	if (!outcome) throw new Error(`${label} was cancelled before it ran`);
 	if (!outcome.ok) throw outcome.error;
 	return outcome.value;

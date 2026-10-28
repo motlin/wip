@@ -63,6 +63,8 @@ const ActionEventSchema = z.object({
 	id: z.string(),
 	project: z.string(),
 	label: z.string(),
+	/** What the action acts on (a commit subject, branch or PR), for the client's plain-language toast. */
+	target: z.string().optional(),
 	status: z.enum(["waiting", "running", "done", "busy"]),
 	/** Kind of the job holding the repo while this action waits (or timed out). */
 	waitingFor: z.string().optional(),

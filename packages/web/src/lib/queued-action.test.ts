@@ -104,6 +104,26 @@ describe("runQueuedAction", () => {
 		expect(new Set(events.map((event) => event.id)).size).toBe(1);
 	});
 
+	it("carries the action's target on its events so the client can name what it acts on", async () => {
+		const events: ActionEvent[] = [];
+		const listener = (event: ActionEvent) => events.push(event);
+		actionEmitter.on("action", listener);
+		const release = holdRepo("alpha");
+		await tick();
+		const pending = runQueuedAction("alpha", {label: "createPr", target: "Add work queue"}, async () =>
+			Promise.resolve("ran"),
+		);
+		await tick();
+		release();
+		await pending;
+		actionEmitter.off("action", listener);
+		expect(events.map((event) => [event.label, event.target, event.status])).toStrictEqual([
+			["createPr", "Add work queue", "waiting"],
+			["createPr", "Add work queue", "running"],
+			["createPr", "Add work queue", "done"],
+		]);
+	});
+
 	it("rejects with a busy error past the wait limit and never runs the action later", async () => {
 		const events: ActionEvent[] = [];
 		const listener = (event: ActionEvent) => events.push(event);

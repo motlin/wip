@@ -2336,10 +2336,12 @@ describe("createPrHandler", () => {
 			body: "",
 			draft: true,
 		});
-		expect(result).toMatchObject({
+		expect(result).toStrictEqual({
 			ok: true,
-			message: "Created PR: https://example.com/alice/example-repo/pull/100",
-			compareUrl: "https://example.com/alice/example-repo/pull/100",
+			message: "Opened PR #100",
+			prNumber: 100,
+			prUrl: "https://example.com/alice/example-repo/pull/100",
+			logs: expect.any(Array),
 		});
 	});
 });
@@ -2741,6 +2743,26 @@ describe("queued git actions", () => {
 		);
 		expect(whileHeld).toEqual([]);
 		expect(afterRelease.map((c) => [c.command, c.args.slice(0, 3)])).toContainEqual(["gh", ["pr", "merge", "1"]]);
+	});
+
+	it("mergePrHandler returns the merged PR's number and GitHub URL", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "merge-pr-result", dir, remote: "alice/example-repo"})]);
+		fakeExeca.handler = (command, args) => ({
+			stdout: command === "mise" ? "{}" : "",
+			stderr: "",
+			exitCode: 0,
+			failed: false,
+			command: [command, ...args].join(" "),
+		});
+		const {mergePrHandler} = await import("./server-fns.impl.js");
+		const result = await mergePrHandler({project: "merge-pr-result", prNumber: 42});
+		expect({ok: result.ok, message: result.message, prNumber: result.prNumber, prUrl: result.prUrl}).toStrictEqual({
+			ok: true,
+			message: "Merged PR #42",
+			prNumber: 42,
+			prUrl: "https://github.com/alice/example-repo/pull/42",
+		});
 	});
 
 	it("createPrHandler waits for a running job on the same project", async () => {

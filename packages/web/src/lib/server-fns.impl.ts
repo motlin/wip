@@ -836,7 +836,7 @@ export async function pushChildHandler(data: PushChildInput): Promise<TestJobSta
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "createPr", async () => {
+		return runQueuedAction(data.project, {label: "createPr", target: data.title}, async () => {
 			const env = await getMiseEnv(p.dir);
 
 			const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
@@ -908,7 +908,13 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 			if (result.ok) {
 				invalidatePrCache(data.project);
 				invalidateChildrenCache(data.project);
-				return {ok: true, message: `Created PR: ${result.prUrl}`, compareUrl: result.prUrl};
+				const prNumber = Number(/\/pull\/(\d+)/.exec(result.prUrl)?.[1]);
+				return {
+					ok: true,
+					message: Number.isNaN(prNumber) ? `Opened ${result.prUrl}` : `Opened PR #${prNumber}`,
+					...(Number.isNaN(prNumber) ? {} : {prNumber}),
+					prUrl: result.prUrl,
+				};
 			}
 
 			return {ok: false, message: result.message};
@@ -1219,7 +1225,7 @@ export async function refreshChildHandler(project: string): Promise<ActionResult
 export async function createBranchHandler(data: CreateBranchInput): Promise<ActionResult> {
 	return tracedAction("createBranch", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "createBranch", async () => {
+		return runQueuedAction(data.project, {label: "createBranch", target: data.branchName}, async () => {
 			const result = await tracedExeca("git", ["-C", p.dir, "checkout", "-b", data.branchName, data.sha], {
 				reject: false,
 			});
@@ -1248,7 +1254,7 @@ export async function suggestBranchNameHandler(data: {project: string; sha: stri
 export async function deleteBranchHandler(data: DeleteBranchInput): Promise<ActionResult> {
 	return tracedAction("deleteBranch", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "deleteBranch", async () => {
+		return runQueuedAction(data.project, {label: "deleteBranch", target: data.branch}, async () => {
 			const result = await tracedExeca("git", ["-C", p.dir, "branch", "-D", data.branch], {
 				reject: false,
 			});
@@ -1267,7 +1273,7 @@ export async function deleteBranchHandler(data: DeleteBranchInput): Promise<Acti
 export async function forcePushHandler(data: ForcePushInput): Promise<ActionResult> {
 	return tracedAction("forcePush", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "forcePush", async () => {
+		return runQueuedAction(data.project, {label: "forcePush", target: data.branch}, async () => {
 			const result = await tracedExeca(
 				"git",
 				[
@@ -1295,7 +1301,7 @@ export async function forcePushHandler(data: ForcePushInput): Promise<ActionResu
 export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> {
 	return tracedAction("mergePr", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "mergePr", async () => {
+		return runQueuedAction(data.project, {label: "mergePr", target: `PR #${data.prNumber}`}, async () => {
 			const {execa} = await import("execa");
 			const env = await getMiseEnv(p.dir);
 			const result = await execa(
@@ -1307,7 +1313,12 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 			if (result.exitCode === 0) {
 				invalidatePrCache(data.project);
 				invalidateMergeStatus(data.project);
-				return {ok: true, message: `Merged PR #${data.prNumber}`};
+				return {
+					ok: true,
+					message: `Merged PR #${data.prNumber}`,
+					prNumber: data.prNumber,
+					prUrl: `https://github.com/${p.remote}/pull/${data.prNumber}`,
+				};
 			}
 
 			return {ok: false, message: `Failed to merge PR: ${result.stderr}`};
@@ -1356,7 +1367,7 @@ async function fastForwardLocalBranch(dir: string, branch: string, sha: string):
 export async function landFastForwardHandler(data: LandFastForwardInput): Promise<ActionResult> {
 	return tracedAction("landFastForward", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "landFastForward", async () => {
+		return runQueuedAction(data.project, {label: "landFastForward", target: data.sha.slice(0, 7)}, async () => {
 			const refused = await fastForwardLocalBranch(p.dir, p.upstreamBranch, data.sha);
 			if (refused !== null) return {ok: false, message: refused};
 			const ref = `refs/heads/${p.upstreamBranch}`;
@@ -1374,7 +1385,7 @@ export async function landFastForwardHandler(data: LandFastForwardInput): Promis
 export async function renameBranchHandler(data: RenameBranchInput): Promise<ActionResult> {
 	return tracedAction("renameBranch", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "renameBranch", async () => {
+		return runQueuedAction(data.project, {label: "renameBranch", target: data.oldBranch}, async () => {
 			const result = await tracedExeca("git", ["-C", p.dir, "branch", "-m", data.oldBranch, data.newBranch], {
 				reject: false,
 			});
@@ -1394,7 +1405,7 @@ export async function applyFixesHandler(data: ApplyFixesInput): Promise<ActionRe
 	return tracedAction("applyFixes", async () => {
 		const p = await resolveProject(data.project);
 
-		return runQueuedAction(data.project, "applyFixes", async () => {
+		return runQueuedAction(data.project, {label: "applyFixes", target: data.branch}, async () => {
 			const env = await getMiseEnv(p.dir);
 
 			const result = await applyFixesToBranch(p.dir, {branch: data.branch, prNumber: data.prNumber, env});
@@ -1411,7 +1422,7 @@ export async function rebaseLocalHandler(data: RebaseLocalInput): Promise<Action
 	return tracedAction("rebaseLocal", async () => {
 		const p = await resolveProject(data.project);
 
-		return runQueuedAction(data.project, "rebaseLocal", async () => {
+		return runQueuedAction(data.project, {label: "rebaseLocal", target: data.branch}, async () => {
 			const env = await getMiseEnv(p.dir);
 
 			// Validate transition: rebase is allowed from needs_rebase state
@@ -1571,7 +1582,7 @@ export async function assignAutoFixHandler(data: AutoFixInput): Promise<ActionRe
 export async function dropAutoFixBranchHandler(data: AutoFixInput): Promise<ActionResult> {
 	return tracedAction("dropAutoFixBranch", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "dropAutoFixBranch", async () => {
+		return runQueuedAction(data.project, {label: "dropAutoFixBranch", target: data.sha.slice(0, 7)}, async () => {
 			const found = await findAutoFix(p.dir, p.name, data.sha);
 			if (!found) return {ok: false, message: `No auto-fix for ${data.sha}`};
 			const {patchId, fix} = found;
@@ -1597,7 +1608,7 @@ export async function dropAutoFixBranchHandler(data: AutoFixInput): Promise<Acti
 export async function acceptAutoFixHandler(data: AutoFixInput): Promise<ActionResult> {
 	return tracedAction("acceptAutoFix", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, "acceptAutoFix", async () => {
+		return runQueuedAction(data.project, {label: "acceptAutoFix", target: data.sha.slice(0, 7)}, async () => {
 			const found = await findAutoFix(p.dir, p.name, data.sha);
 			if (!found) return {ok: false, message: `No auto-fix to accept for ${data.sha}`};
 			const {patchId, fix} = found;

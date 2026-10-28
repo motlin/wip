@@ -4,7 +4,10 @@ import type {ReadyToLandItem} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult} from "@wip/shared/schemas.js";
 import {landingAction} from "../components/ready-to-land-section";
 import {createPr, landFastForward, mergePr, type ProjectChildrenResult} from "./server-fns";
+import {actionResultToast} from "./action-messages";
 import {pushToast} from "./toast-store";
+
+const LANDING_ACTION_NAMES = {"merge-pr": "Merge PR", "open-pr": "Open PR", "fast-forward": "Fast-forward"} as const;
 
 /** Runs a ready commit's landing action (merge PR, open PR or fast-forward) and toasts the result. */
 export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResult | undefined) => void {
@@ -26,16 +29,12 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 							})
 						: landFastForward({data: {project: item.project, sha: item.sha}});
 			void landing.then((result) => {
-				pushToast({level: result.ok ? "success" : "error", message: result.message});
-				const prNumber = result.compareUrl?.match(/\/pull\/(\d+)/)?.[1];
+				pushToast(actionResultToast(LANDING_ACTION_NAMES[action.kind], result));
+				const {prNumber, prUrl} = result;
 				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {
 					// The row's next step becomes "Merge PR #N" without a refetch.
 					queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], (old) =>
-						old?.map((c) =>
-							c.sha === item.sha
-								? {...c, pushedToRemote: true, prUrl: result.compareUrl, prNumber: Number(prNumber)}
-								: c,
-						),
+						old?.map((c) => (c.sha === item.sha ? {...c, pushedToRemote: true, prUrl, prNumber} : c)),
 					);
 				}
 				return undefined;

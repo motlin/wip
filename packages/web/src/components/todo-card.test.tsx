@@ -5,7 +5,7 @@ import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {TodoItem} from "@wip/shared";
 
 import {TodoCard} from "./todo-card.js";
-import {clearToasts} from "../lib/toast-store.js";
+import {clearToasts, getToasts} from "../lib/toast-store.js";
 
 const serverFns = vi.hoisted(() => ({
 	runTodoTask: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -60,6 +60,19 @@ describe("TodoCard actions", () => {
 		await waitFor(() => {
 			expect(serverFns.runTodoTask.mock.calls).toStrictEqual([
 				[{data: {project: "wip", sourceFile: "/repo/wip/.llm/todo.md", title: "Write the docs"}}],
+			]);
+		});
+	});
+
+	it("says in plain words that it is working on the todo", async () => {
+		serverFns.runTodoTask.mockResolvedValue({id: "t1", status: "queued", message: 'Queued after "Other"'});
+		renderTodo(todo);
+
+		fireEvent.click(primaryButtons()[0]!);
+
+		await waitFor(() => {
+			expect(getToasts().map(({level, message, detail}) => ({level, message, detail}))).toStrictEqual([
+				{level: "info", message: 'Working on "Write the docs"…', detail: 'Queued after "Other"'},
 			]);
 		});
 	});

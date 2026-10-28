@@ -26,6 +26,7 @@ function contextFor(selectedCategory: Category | null): QueueContextValue {
 		selectedProject: null,
 		filterByProject: (items) => items,
 		visibleCategories: selectedCategory ? [selectedCategory] : CATEGORY_PRIORITY,
+		commitsWaiting: false,
 	};
 }
 

@@ -12,7 +12,16 @@ import {pushToast} from "../lib/toast-store.js";
 
 const MENU_ITEM = "block w-full rounded px-2 py-1 text-left text-xs text-text-300 transition-colors hover:bg-bg-200";
 
-export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}) {
+export function TodoCard({
+	todo,
+	category,
+	finishFirst = false,
+}: {
+	todo: TodoItem;
+	category?: Category;
+	/** Lean plan step 49: commits are waiting, so starting this todo is secondary-styled but enabled. */
+	finishFirst?: boolean;
+}) {
 	const queryClient = useQueryClient();
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [queuing, setQueuing] = useState(false);
@@ -61,6 +70,7 @@ export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}
 					<button
 						type="button"
 						data-primary="true"
+						data-variant={finishFirst ? "secondary" : "primary"}
 						onClick={() => {
 							void handleDoTask();
 						}}
@@ -69,7 +79,9 @@ export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							queuing
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-purple-600 hover:bg-purple-700 text-white"
+								: finishFirst
+									? "border border-border-300 text-text-300 hover:bg-bg-200"
+									: "bg-purple-600 hover:bg-purple-700 text-white"
 						}`}
 					>
 						{queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}

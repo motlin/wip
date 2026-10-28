@@ -29,6 +29,7 @@ import {SystemStatus} from "../../components/system-status";
 import {FlowStrip} from "../../components/flow-strip";
 import {FlowMetricsStrip} from "../../components/flow-metrics-strip";
 import {flowCounts} from "@wip/shared/flow-counts.js";
+import {commitsWaiting} from "../../lib/finish-before-starting";
 import {CategoryBadge} from "../../components/category-badge";
 import {sidebarProjects} from "../../lib/sidebar-projects";
 import type {Category} from "@wip/shared";
@@ -120,6 +121,7 @@ function QueueLayout() {
 		() => flowCounts({projects, gitChildren: workItems.gitChildren, todos: workItems.todos, slots: readySlots}),
 		[projects, workItems, readySlots],
 	);
+	const waiting = commitsWaiting(counts, readyToLand);
 
 	const {categoryCounts, projectCounts} = useMemo(() => {
 		const catCounts: Partial<Record<Category, number>> = {};
@@ -194,6 +196,7 @@ function QueueLayout() {
 			selectedProject,
 			filterByProject,
 			visibleCategories,
+			commitsWaiting: waiting,
 		}),
 		[
 			grouped,
@@ -205,6 +208,7 @@ function QueueLayout() {
 			selectedProject,
 			filterByProject,
 			visibleCategories,
+			waiting,
 		],
 	);
 

@@ -12,6 +12,8 @@ export interface QueueContextValue {
 	selectedProject: string | null;
 	filterByProject: (items: ColumnItems) => ColumnItems;
 	visibleCategories: Category[];
+	/** Lean plan step 49: a commit is red, ready or in the ready buffer, so todos wait. */
+	commitsWaiting: boolean;
 }
 
 export const QueueContext = createContext<QueueContextValue | null>(null);

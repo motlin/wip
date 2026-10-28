@@ -3066,7 +3066,7 @@ async function repoWithRemote(): Promise<{dir: string; remote: string; base: str
 }
 
 describe("landFastForwardHandler", () => {
-	it("fast-forwards the upstream branch to a ready commit on its tip, without force", async () => {
+	it("fast-forwards local main to a ready commit, then pushes main without force", async () => {
 		const {dir, remote} = await repoWithRemote();
 		await gitOut(dir, "checkout", "-b", "feature");
 		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
@@ -3076,9 +3076,83 @@ describe("landFastForwardHandler", () => {
 		const {landFastForwardHandler} = await import("./server-fns.impl.js");
 		const result = await landFastForwardHandler({project: "land-ff", sha});
 
-		expect({ok: result.ok, message: result.message, remoteMain: await gitOut(remote, "rev-parse", "main")}).toEqual(
-			{ok: true, message: `Landed ${sha.slice(0, 7)} on origin/main`, remoteMain: sha},
-		);
+		expect({
+			ok: result.ok,
+			message: result.message,
+			localMain: await gitOut(dir, "rev-parse", "main"),
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toEqual({ok: true, message: `Landed ${sha.slice(0, 7)} on origin/main`, localMain: sha, remoteMain: sha});
+	});
+
+	it("fast-forwards a checked-out, clean main in its worktree", async () => {
+		const {dir, remote} = await repoWithRemote();
+		await gitOut(dir, "checkout", "-b", "feature");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
+		const sha = await gitOut(dir, "rev-parse", "feature");
+		await gitOut(dir, "checkout", "main");
+		seedProjectCache([makeProject({name: "land-checked-out", dir})]);
+
+		const {landFastForwardHandler} = await import("./server-fns.impl.js");
+		const result = await landFastForwardHandler({project: "land-checked-out", sha});
+
+		expect({
+			ok: result.ok,
+			head: await gitOut(dir, "rev-parse", "HEAD"),
+			localMain: await gitOut(dir, "rev-parse", "main"),
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+			status: await gitOut(dir, "status", "--porcelain"),
+		}).toEqual({ok: true, head: sha, localMain: sha, remoteMain: sha, status: ""});
+	});
+
+	it("refuses when main is checked out with local changes, leaving local and upstream main unchanged", async () => {
+		const {dir, remote, base} = await repoWithRemote();
+		await gitOut(dir, "checkout", "-b", "feature");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
+		const sha = await gitOut(dir, "rev-parse", "feature");
+		await gitOut(dir, "checkout", "main");
+		await writeTestFile(join(dir, "README.md"), "local edit\n");
+		await gitOut(dir, "add", "README.md");
+		seedProjectCache([makeProject({name: "land-dirty", dir})]);
+
+		const {landFastForwardHandler} = await import("./server-fns.impl.js");
+		const result = await landFastForwardHandler({project: "land-dirty", sha});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			localMain: await gitOut(dir, "rev-parse", "main"),
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toEqual({
+			ok: false,
+			message: `main is checked out with local changes in ${await realpath(dir)}; commit or stash them first`,
+			localMain: base,
+			remoteMain: base,
+		});
+	});
+
+	it("refuses when local main is not an ancestor of the commit, leaving local and upstream main unchanged", async () => {
+		const {dir, remote, base} = await repoWithRemote();
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Local-only main commit");
+		const localMain = await gitOut(dir, "rev-parse", "main");
+		await gitOut(dir, "checkout", "-b", "feature", base);
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
+		const sha = await gitOut(dir, "rev-parse", "feature");
+		seedProjectCache([makeProject({name: "land-diverged", dir})]);
+
+		const {landFastForwardHandler} = await import("./server-fns.impl.js");
+		const result = await landFastForwardHandler({project: "land-diverged", sha});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			localMain: await gitOut(dir, "rev-parse", "main"),
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toEqual({
+			ok: false,
+			message: `${sha.slice(0, 7)} is not a fast-forward of local main`,
+			localMain,
+			remoteMain: base,
+		});
 	});
 
 	it("refuses a commit that is not a fast-forward of the upstream branch and leaves it unchanged", async () => {
@@ -3094,9 +3168,10 @@ describe("landFastForwardHandler", () => {
 		const {landFastForwardHandler} = await import("./server-fns.impl.js");
 		const result = await landFastForwardHandler({project: "land-stale", sha});
 
-		expect({ok: result.ok, remoteMain: await gitOut(remote, "rev-parse", "main")}).toEqual({
-			ok: false,
-			remoteMain: moved,
-		});
+		expect({
+			ok: result.ok,
+			localMain: await gitOut(dir, "rev-parse", "main"),
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toEqual({ok: false, localMain: moved, remoteMain: moved});
 	});
 });

@@ -96,6 +96,7 @@ import {
 	type RegistryCandidates,
 	type SaveRegistryInput,
 	classifyGitChild,
+	parseWorktreeList,
 } from "@wip/shared";
 import {considerSplitting} from "@wip/shared/candidate-rank.js";
 import {log} from "@wip/shared/services/logger-pino.js";
@@ -1251,21 +1252,56 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 }
 
 /**
- * The fast-forward repo's landing action (lean plan step 42): push the ready commit to the
- * upstream branch without force, so git refuses anything that is not a fast-forward.
+ * Moves local `branch` forward to `sha` (the user's rule: local main only fast-forwards to verified
+ * commits). Checked out in a worktree, it runs `git merge --ff-only` there, only when that worktree
+ * has no local changes; otherwise `git update-ref` with the old value, so a concurrent move fails.
+ * Null on success, else the reason it refused.
+ */
+async function fastForwardLocalBranch(dir: string, branch: string, sha: string): Promise<string | null> {
+	const ref = `refs/heads/${branch}`;
+	const old = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", "--quiet", ref], {reject: false});
+	if (old.exitCode !== 0) return `No local ${branch} to fast-forward`;
+	const oldSha = old.stdout.trim();
+	const ancestor = await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", oldSha, sha], {
+		reject: false,
+	});
+	if (ancestor.exitCode !== 0) return `${sha.slice(0, 7)} is not a fast-forward of local ${branch}`;
+	const worktrees = await tracedExeca("git", ["-C", dir, "worktree", "list", "--porcelain"], {reject: false});
+	const checkedOut = parseWorktreeList(worktrees.stdout).find((w) => w.branch === branch);
+	if (checkedOut === undefined) {
+		const update = await tracedExeca("git", ["-C", dir, "update-ref", ref, sha, oldSha], {reject: false});
+		return update.exitCode === 0 ? null : `Failed to fast-forward local ${branch}: ${update.stderr}`;
+	}
+	const status = await tracedExeca("git", ["-C", checkedOut.dir, "status", "--porcelain", "--untracked-files=no"], {
+		reject: false,
+	});
+	if (status.exitCode !== 0 || status.stdout.trim() !== "") {
+		return `${branch} is checked out with local changes in ${checkedOut.dir}; commit or stash them first`;
+	}
+	const merge = await tracedExeca("git", ["-C", checkedOut.dir, "merge", "--ff-only", "--quiet", sha], {
+		reject: false,
+	});
+	return merge.exitCode === 0 ? null : `Failed to fast-forward local ${branch}: ${merge.stderr}`;
+}
+
+/**
+ * The fast-forward repo's landing action (lean plan step 42): fast-forward local main to the ready
+ * commit first, then push main to the upstream branch without force, so git refuses anything that
+ * is not a fast-forward and local main never falls behind what landed.
  */
 export async function landFastForwardHandler(data: LandFastForwardInput): Promise<ActionResult> {
 	return tracedAction("landFastForward", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, "landFastForward", async () => {
-			const result = await tracedExeca(
-				"git",
-				["-C", p.dir, "push", p.upstreamRemote, `${data.sha}:refs/heads/${p.upstreamBranch}`],
-				{reject: false},
-			);
-			if (result.exitCode !== 0) return {ok: false, message: `Failed to land: ${result.stderr}`};
+			const refused = await fastForwardLocalBranch(p.dir, p.upstreamBranch, data.sha);
+			if (refused !== null) return {ok: false, message: refused};
+			const ref = `refs/heads/${p.upstreamBranch}`;
+			const result = await tracedExeca("git", ["-C", p.dir, "push", p.upstreamRemote, `${ref}:${ref}`], {
+				reject: false,
+			});
 			invalidateChildrenCache(data.project);
 			invalidateMergeStatus(data.project);
+			if (result.exitCode !== 0) return {ok: false, message: `Failed to land: ${result.stderr}`};
 			return {ok: true, message: `Landed ${data.sha.slice(0, 7)} on ${p.upstreamRemote}/${p.upstreamBranch}`};
 		});
 	});

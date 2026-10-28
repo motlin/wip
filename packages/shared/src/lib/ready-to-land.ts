@@ -11,6 +11,8 @@ export const ReadyToLandItemSchema = z.object({
 	id: z.string(),
 	sha: z.string(),
 	branch: z.string().optional(),
+	/** Branches at other shas carrying the same patch-id: one row names them all. */
+	otherBranches: z.array(z.string()).optional(),
 	/** Set for a stacked commit: it lands after its parent. */
 	parentSha: z.string().optional(),
 	landing: z.enum(["pull-request", "fast-forward"]).optional(),

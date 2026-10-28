@@ -123,6 +123,27 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
+	it("names every branch carrying the change on its one row", () => {
+		render(
+			<ReadyToLandSection
+				state={{
+					...state,
+					ready: [{project: "a", id: "pa1", sha: sha("a1"), branch: "one", otherBranches: ["two"]}],
+					inFlight: [],
+					stoppedProjects: [],
+				}}
+				commits={commits}
+				projects={[project("a")]}
+				now={now}
+				onLand={() => undefined}
+			/>,
+		);
+
+		expect(screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent)).toStrictEqual([
+			"Add parsera+10 −2 · 1 filebranches one, twoReviewFast-forward",
+		]);
+	});
+
 	it("lands the item it was clicked on", () => {
 		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
 		render(

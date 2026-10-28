@@ -44,6 +44,8 @@ export interface BufferCandidate {
 	id: string;
 	sha: string;
 	branch?: string;
+	/** Branches at other shas carrying the same patch-id, folded into this one candidate. */
+	otherBranches?: string[];
 	/** First parent; another candidate's sha when this one is stacked on it. */
 	parentSha?: string;
 	state: "unready" | "ready";
@@ -214,30 +216,59 @@ export function bufferRepoFromChildren(
 		checkedOutBranches: context.checkedOutBranches,
 		...(context.trustPatchIdGreen === true ? {trustPatchIdGreen: true} : {}),
 		...(context.landing === undefined ? {} : {landing: context.landing}),
-		candidates: work.map((child) => {
-			const override = child.patchId === undefined ? undefined : context.override(child.patchId);
-			const green = isGreen({
-				parentSha: "",
-				testStatus: child.testStatus,
-				hasTestConfigured: project.hasTestConfigured,
-				onHold: false,
-				...(child.localTestSkipped === true ? {localTestSkipped: true, checkStatus: child.checkStatus} : {}),
-			});
-			const candidate: BufferCandidate = {
-				id: child.patchId ?? child.sha,
-				sha: child.sha,
-				// Unknown merge status is not ready: the advance job finds out cheaply.
-				state: child.commitsBehind === 0 && child.needsRebase !== true && green ? "ready" : "unready",
-				onHold: context.onHold(child),
-				job: gitChildJob(child),
-			};
-			if (child.branch !== undefined) candidate.branch = child.branch;
-			if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
-			if (override !== undefined) candidate.override = override;
-			if (child.autoFixed !== undefined) candidate.autoFixed = true;
-			return candidate;
-		}),
+		candidates: onePerPatchId(
+			work.map((child) => {
+				const override = child.patchId === undefined ? undefined : context.override(child.patchId);
+				const green = isGreen({
+					parentSha: "",
+					testStatus: child.testStatus,
+					hasTestConfigured: project.hasTestConfigured,
+					onHold: false,
+					...(child.localTestSkipped === true
+						? {localTestSkipped: true, checkStatus: child.checkStatus}
+						: {}),
+				});
+				const candidate: BufferCandidate = {
+					id: child.patchId ?? child.sha,
+					sha: child.sha,
+					// Unknown merge status is not ready: the advance job finds out cheaply.
+					state: child.commitsBehind === 0 && child.needsRebase !== true && green ? "ready" : "unready",
+					onHold: context.onHold(child),
+					job: gitChildJob(child),
+				};
+				if (child.branch !== undefined) candidate.branch = child.branch;
+				if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
+				if (override !== undefined) candidate.override = override;
+				if (child.autoFixed !== undefined) candidate.autoFixed = true;
+				return candidate;
+			}),
+		),
 	};
+}
+
+/**
+ * One candidate per change: the same patch-id can sit at several shas (an unnamed stack base and a
+ * rebased branch tip, or two branches). Keeps the first in rank order, preferring a sha another
+ * candidate is stacked on (so the stack keeps its parent), then a named branch; the dropped
+ * duplicates' branch names ride along as otherBranches.
+ */
+function onePerPatchId(candidates: BufferCandidate[]): BufferCandidate[] {
+	const stackedOn = new Set(candidates.flatMap((c) => (c.parentSha === undefined ? [] : [c.parentSha])));
+	const preference = (c: BufferCandidate): number => (stackedOn.has(c.sha) ? 0 : c.branch === undefined ? 2 : 1);
+	const groups = new Map<string, BufferCandidate[]>();
+	for (const c of candidates) {
+		const group = groups.get(c.id);
+		if (group) group.push(c);
+		else groups.set(c.id, [c]);
+	}
+	return [...groups.values()].map((group) => {
+		const [kept, ...rest] = group.toSorted((a, b) => preference(a) - preference(b));
+		if (kept === undefined) throw new Error("empty patch-id group");
+		const others = rest.flatMap((c) => (c.branch === undefined ? [] : [c.branch]));
+		// The candidates are fresh objects built by bufferRepoFromChildren.
+		if (others.length > 0) kept.otherBranches = others;
+		return kept;
+	});
 }
 
 /** Ranked ahead of other background work (default rank 0) in the shared queue. */
@@ -437,6 +468,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			id: candidate.id,
 			sha: candidate.sha,
 			...(candidate.branch === undefined ? {} : {branch: candidate.branch}),
+			...(candidate.otherBranches === undefined ? {} : {otherBranches: candidate.otherBranches}),
 			...(candidate.parentSha === undefined ? {} : {parentSha: candidate.parentSha}),
 			...(repo.landing === undefined ? {} : {landing: repo.landing}),
 			...(firstSeen === undefined ? {} : {firstSeen}),

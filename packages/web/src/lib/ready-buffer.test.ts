@@ -426,6 +426,17 @@ describe("createReadyBuffer", () => {
 		]);
 	});
 
+	it("carries a ready item's other branch names into the state", async () => {
+		const [named] = candidates(1, {c1: {state: "ready", branch: "one", otherBranches: ["two"]}});
+		const h = harness({repos: () => [repo("a", {candidates: [named!]})], gated: true});
+
+		await h.buffer.pull();
+
+		expect(h.buffer.state().ready).toStrictEqual([
+			{project: "a", id: "c1", sha: paddedSha("c1"), branch: "one", otherBranches: ["two"]},
+		]);
+	});
+
 	it("runs one buffer job at a time under a hot probe and still refills over completions", async () => {
 		const h = harness({repos: () => [repo("a")], hotProbe: true, outcome: () => "skipped"});
 
@@ -710,6 +721,37 @@ describe("bufferRepoFromChildren", () => {
 		expect(mapped.candidates.map((c) => ({id: c.id, parentSha: c.parentSha}))).toStrictEqual([
 			{id: "pa", parentSha: sha("u")},
 			{id: "pb", parentSha: sha("a")},
+		]);
+	});
+
+	it("keeps one candidate per patch-id, preferring the stack base, then a branch, and carrying the other branch names", () => {
+		const children = [
+			// The same change as an unnamed child and as a branch tip (two shas, one patch-id).
+			makeChild({sha: sha("a"), parentSha: sha("u"), branch: undefined, commitsBehind: 0, patchId: "same"}),
+			makeChild({sha: sha("b"), parentSha: sha("u"), branch: "hooks", commitsBehind: 0, patchId: "same"}),
+			// Two branches at one change: one row naming both.
+			makeChild({sha: sha("c"), parentSha: sha("u"), branch: "one", commitsBehind: 0, patchId: "pc"}),
+			makeChild({sha: sha("d"), parentSha: sha("u"), branch: "two", commitsBehind: 0, patchId: "pc"}),
+			// A stack base wins over a branch tip so its stacked commit keeps its parent.
+			makeChild({sha: sha("e"), parentSha: sha("u"), branch: "tip", commitsBehind: 0, patchId: "pe"}),
+			makeChild({sha: sha("f"), parentSha: sha("u"), branch: undefined, commitsBehind: 0, patchId: "pe"}),
+			makeChild({sha: sha("g"), parentSha: sha("f"), branch: undefined, commitsBehind: 0, patchId: "pg"}),
+		];
+
+		const mapped = bufferRepoFromChildren(project("motlin/wip"), children, {
+			identity,
+			checkedOutBranches: [],
+			onHold: () => false,
+			override: () => undefined,
+		});
+
+		expect(
+			mapped.candidates.map((c) => ({id: c.id, sha: c.sha, branch: c.branch, otherBranches: c.otherBranches})),
+		).toStrictEqual([
+			{id: "same", sha: sha("b"), branch: "hooks", otherBranches: undefined},
+			{id: "pc", sha: sha("c"), branch: "one", otherBranches: ["two"]},
+			{id: "pe", sha: sha("f"), branch: undefined, otherBranches: ["tip"]},
+			{id: "pg", sha: sha("g"), branch: undefined, otherBranches: undefined},
 		]);
 	});
 

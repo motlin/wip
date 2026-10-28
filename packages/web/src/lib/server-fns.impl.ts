@@ -408,7 +408,8 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 							? `cd ${p.dir} && claude --permission-mode acceptEdits /git:commit`
 							: undefined,
 					isHead: child.sha === headSha,
-					patchId: snoozes.patchIds.get(child.sha),
+					// Every child carries its patch-id: the ready buffer keys one row per change by it.
+					patchId: facts?.patchId === undefined || facts.patchId === "" ? undefined : facts.patchId,
 					onHold: snoozes.held.has(child.sha) || undefined,
 					files: facts?.files,
 					insertions: facts?.insertions,

@@ -199,6 +199,9 @@ function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 						<span>{item.project}</span>
 						{size !== null && <span>{size}</span>}
 						{age !== null && <span>{age}</span>}
+						{item.otherBranches !== undefined && (
+							<span>branches {[item.branch, ...item.otherBranches].filter(Boolean).join(", ")}</span>
+						)}
 					</div>
 					{hasChips && (
 						<div className="mt-1.5 flex flex-wrap items-center gap-1.5">

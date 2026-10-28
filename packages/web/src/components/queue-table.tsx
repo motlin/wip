@@ -4,7 +4,8 @@ import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem}
 import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi} from "@wip/shared/git-child-discriminators.js";
 import {upstreamRedCommand} from "@wip/shared/upstream-red.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../lib/category-actions.js";
-import {useQueueContext, bucketCount} from "../lib/queue-context.js";
+import {useQueueContext} from "../lib/queue-context.js";
+import {bucketCount} from "../lib/grouping.js";
 
 type ItemType = "ci" | "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
 

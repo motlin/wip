@@ -1,12 +1,16 @@
 import {describe, it, expect, vi} from "vite-plus/test";
 import {renderToStaticMarkup} from "react-dom/server";
 import type {IssueResult} from "@wip/shared";
+import {makeChild} from "../lib/test-factories.js";
 
 import {KanbanColumn} from "./kanban-column.js";
 import {SECTION_PAGE_SIZE} from "../lib/visible-items.js";
 
 vi.mock("./issue-card", () => ({
 	IssueCard: () => <span data-card="" />,
+}));
+vi.mock("./commit-card", () => ({
+	CommitCard: ({category}: {category?: string}) => <span data-commit-category={category ?? "none"} />,
 }));
 
 function issues(count: number): IssueResult[] {
@@ -30,5 +34,14 @@ describe("KanbanColumn", () => {
 
 		expect(markup.match(/data-card=/g)?.length ?? 0).toBe(3);
 		expect(markup).not.toContain("more</button>");
+	});
+
+	it("passes its category to commit cards", () => {
+		const commit = makeChild({branch: undefined});
+		const markup = renderToStaticMarkup(
+			<KanbanColumn category="test_failed" items={{gitChildren: [commit]}} count={1} />,
+		);
+
+		expect(markup).toEqual(expect.stringContaining('data-commit-category="test_failed"'));
 	});
 });

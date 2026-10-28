@@ -23,13 +23,13 @@ import type {ReadyToLandItem} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult} from "@wip/shared/schemas.js";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
-import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
+import {QueueContext, type QueueContextValue} from "../../lib/queue-context";
+import {buildGrouped, bucketCount} from "../../lib/grouping";
 import {SystemStatus} from "../../components/system-status";
 import {FlowStrip} from "../../components/flow-strip";
 import {FlowMetricsStrip} from "../../components/flow-metrics-strip";
 import {flowCounts} from "@wip/shared/flow-counts.js";
 import {CategoryBadge} from "../../components/category-badge";
-import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared/classify.js";
 import {sidebarProjects} from "../../lib/sidebar-projects";
 import type {Category} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotClass} from "../../lib/category-actions";
@@ -50,59 +50,7 @@ function QueueLayout() {
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
-		const g: Record<Category, ColumnItems> = {
-			upstream_red: {},
-			untriaged: {},
-			triaged: {},
-			blocked: {},
-			skippable: {},
-			snoozed: {},
-			no_test: {},
-			detached_head: {},
-			local_changes: {},
-			ready_to_test: {},
-			test_running: {},
-			test_failed: {},
-			needs_rebase: {},
-			rebase_unknown: {},
-			rebase_conflicts: {},
-			rebase_stuck: {},
-			ready_to_push: {},
-			pushing: {},
-			pushed_no_pr: {},
-			checks_unknown: {},
-			checks_running: {},
-			checks_failed: {},
-			checks_passed: {},
-			review_comments: {},
-			changes_requested: {},
-			approved: {},
-			landed: {},
-		};
-
-		const projectMap = new Map(projects.map((p) => [p.name, p]));
-
-		for (const child of workItems.gitChildren) {
-			const p = projectMap.get(child.project);
-			if (!p) continue;
-			const cat = classifyGitChild(child, p);
-			g[cat].gitChildren = g[cat].gitChildren ?? [];
-			g[cat].gitChildren.push(child);
-		}
-
-		for (const issue of workItems.issues) {
-			const cat = classifyIssue(issue);
-			g[cat].issues = g[cat].issues ?? [];
-			g[cat].issues.push(issue);
-		}
-
-		for (const todo of workItems.todos) {
-			const cat = classifyTodo(todo);
-			g[cat].todos = g[cat].todos ?? [];
-			g[cat].todos.push(todo);
-		}
-
-		g.untriaged.projectItems = workItems.projectItems;
+		const g = buildGrouped(workItems, projects);
 
 		// On hold and snoozed items are not WIP.
 		let total = 0;

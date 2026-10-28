@@ -3,23 +3,12 @@ import {useSuspenseQuery} from "@tanstack/react-query";
 import {RefreshCw} from "../../components/icons.js";
 import {useState, useMemo} from "react";
 import {KanbanColumn} from "../../components/kanban-column.js";
-import type {ColumnItems} from "../../components/kanban-column.js";
 import {refreshAll} from "../../lib/server-fns.js";
 import {projectsQueryOptions} from "../../lib/queries.js";
 import {useWorkItems} from "../../lib/use-work-items.js";
-import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared/classify.js";
+import {buildGrouped, bucketCount} from "../../lib/grouping.js";
 import {runPendingAction} from "../../lib/pending-action.js";
 import {CATEGORY_PRIORITY} from "../../lib/category-actions.js";
-import type {Category} from "@wip/shared";
-
-function bucketCount(items: ColumnItems): number {
-	return (
-		(items.gitChildren?.length ?? 0) +
-		(items.issues?.length ?? 0) +
-		(items.projectItems?.length ?? 0) +
-		(items.todos?.length ?? 0)
-	);
-}
 
 export const Route = createFileRoute("/_dashboard/kanban")({
 	head: () => ({
@@ -34,61 +23,7 @@ function Kanban() {
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
 	const {grouped, totalCount} = useMemo(() => {
-		const g: Record<Category, ColumnItems> = {
-			upstream_red: {},
-			untriaged: {},
-			triaged: {},
-			blocked: {},
-			skippable: {},
-			snoozed: {},
-			no_test: {},
-			detached_head: {},
-			local_changes: {},
-			ready_to_test: {},
-			test_running: {},
-			test_failed: {},
-			needs_rebase: {},
-			rebase_unknown: {},
-			rebase_conflicts: {},
-			rebase_stuck: {},
-			ready_to_push: {},
-			pushing: {},
-			pushed_no_pr: {},
-			checks_unknown: {},
-			checks_running: {},
-			checks_failed: {},
-			checks_passed: {},
-			review_comments: {},
-			changes_requested: {},
-			approved: {},
-			landed: {},
-		};
-
-		const projectMap = new Map(projects.map((p) => [p.name, p]));
-
-		for (const child of workItems.gitChildren) {
-			const p = projectMap.get(child.project);
-			if (!p) continue;
-			const cat = classifyGitChild(child, p);
-			g[cat].gitChildren = g[cat].gitChildren ?? [];
-			g[cat].gitChildren.push(child);
-		}
-		// Issues and todos are always triaged.
-		for (const issue of workItems.issues) {
-			const cat = classifyIssue(issue);
-			g[cat].issues = g[cat].issues ?? [];
-			g[cat].issues.push(issue);
-		}
-
-		for (const todo of workItems.todos) {
-			const cat = classifyTodo(todo);
-			g[cat].todos = g[cat].todos ?? [];
-			g[cat].todos.push(todo);
-		}
-
-		// Project items lack assignment info, so they are untriaged.
-		g.untriaged.projectItems = workItems.projectItems;
-
+		const g = buildGrouped(workItems, projects);
 		let total = 0;
 		for (const cat of CATEGORY_PRIORITY) total += bucketCount(g[cat]);
 		return {grouped: g, totalCount: total};

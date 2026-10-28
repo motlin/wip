@@ -11,7 +11,8 @@ import {ProjectBoardItemCard} from "../../../components/project-board-item-card.
 import {TodoCard} from "../../../components/todo-card.js";
 import {UpstreamCiCard} from "../../../components/upstream-ci-card.js";
 import {QueueSection} from "../../../components/queue-section.js";
-import {useQueueContext, bucketCount} from "../../../lib/queue-context.js";
+import {useQueueContext} from "../../../lib/queue-context.js";
+import {bucketCount} from "../../../lib/grouping.js";
 import type {Category} from "@wip/shared";
 import type {ColumnItems} from "../../../components/kanban-column.js";
 

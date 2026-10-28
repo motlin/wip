@@ -46,7 +46,7 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 		...branches
 			.filter((b) => b.commitsAhead === 1)
 			.map((b) => <BranchCard key={b.sha} branch={b} category={category} />),
-		...commits.map((c) => <CommitCard key={c.sha} commit={c} />),
+		...commits.map((c) => <CommitCard key={c.sha} commit={c} category={category} />),
 		...branches
 			.filter((b) => b.commitsAhead !== 1)
 			.map((b) => <BranchCard key={b.sha} branch={b} category={category} />),

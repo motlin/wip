@@ -2,15 +2,6 @@ import {createContext, useContext} from "react";
 import type {Category} from "@wip/shared";
 import type {ColumnItems} from "../components/kanban-column";
 
-export function bucketCount(items: ColumnItems): number {
-	return (
-		(items.gitChildren?.length ?? 0) +
-		(items.issues?.length ?? 0) +
-		(items.projectItems?.length ?? 0) +
-		(items.todos?.length ?? 0)
-	);
-}
-
 export interface QueueContextValue {
 	grouped: Record<Category, ColumnItems>;
 	totalCount: number;

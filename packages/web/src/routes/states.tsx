@@ -3,6 +3,7 @@ import {useQuery} from "@tanstack/react-query";
 import {z} from "zod";
 import {ArrowLeft} from "../components/icons.js";
 import {flowMetricsQueryOptions} from "../lib/queries";
+import {useHydrated} from "../lib/use-hydrated.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../lib/category-actions";
 import {CATEGORY_COLUMNS, STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
 
@@ -370,7 +371,11 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 
 function StatesPage() {
 	const {state: activeState} = Route.useSearch();
-	const {data: metrics} = useQuery(flowMetricsQueryOptions());
+	// Client-only query restored by the persister before hydration; apply it once hydrated
+	// so the hydration render matches the server HTML.
+	const hydrated = useHydrated();
+	const {data} = useQuery(flowMetricsQueryOptions());
+	const metrics = hydrated ? data : undefined;
 
 	return (
 		<div className="mx-auto max-w-7xl p-6">

@@ -1,6 +1,6 @@
 import type {FlowCounts} from "@wip/shared/flow-counts.js";
 
-/** The nav strip (plan 4.8): "WIP n (c commits + t todos) · red n · blocked n · ready n/slots". */
+/** The nav strip (plan 4.8): "WIP n (c commits + t todos) · red n · blocked n · ready n (target slots)"; ready can exceed the target, so it is not a fraction. */
 export function FlowStrip({counts}: {counts: FlowCounts}) {
 	const {wip, commits, todos, red, blocked, ready, slots} = counts;
 	return (
@@ -8,7 +8,7 @@ export function FlowStrip({counts}: {counts: FlowCounts}) {
 			<span className="font-medium text-text-200">WIP {wip}</span> ({commits} commits + {todos} todos) ·{" "}
 			<span className={red > 0 ? "font-medium text-status-red" : undefined}>red {red}</span> · blocked {blocked} ·
 			ready {ready}
-			{slots === undefined ? "" : `/${slots}`}
+			{slots === undefined ? "" : ` (target ${slots})`}
 		</div>
 	);
 }

@@ -78,7 +78,7 @@ describe("ReadyToLandSection", () => {
 			heading: screen.getByTestId("ready-to-land-heading").textContent,
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
 		}).toStrictEqual({
-			heading: "Ready to land6/3 ready · 1 readying",
+			heading: "Ready to land6 ready (target 3) · 1 readying",
 			rows: [
 				"Add parsera+10 −2 · 1 filein wip 1dFast-forward",
 				"Use parsera+3 −0 · 2 filesFast-forward",

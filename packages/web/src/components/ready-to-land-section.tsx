@@ -69,7 +69,7 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 			<h2 data-testid="ready-to-land-heading" className="mb-3 flex items-baseline gap-2 text-sm font-semibold">
 				<span>Ready to land</span>
 				<span className="text-xs font-normal tabular-nums text-text-500">
-					{state.ready.length}/{state.slots} ready · {state.inFlight.length} readying
+					{state.ready.length} ready (target {state.slots}) · {state.inFlight.length} readying
 				</span>
 			</h2>
 			<ul className="flex flex-col gap-1.5">

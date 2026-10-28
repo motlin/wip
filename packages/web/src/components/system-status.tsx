@@ -1,10 +1,11 @@
 import {useQuery} from "@tanstack/react-query";
 import {useEffect, useState} from "react";
 import {systemStatusQueryOptions} from "../lib/queries";
-import {formatRelativeAge, oldestTimestamp, parseDbTimestamp} from "../lib/staleness";
+import {oldestTimestamp} from "../lib/staleness";
+import {StalenessIndicator} from "./staleness-indicator";
 
 /**
- * Data-trust line for the dashboard header: how old the cached data is, and a
+ * Data-trust line for the dashboard header: how old the last completed sweep is, and a
  * loud banner while GitHub is rate limiting us. Ages are computed from the
  * client clock, so everything renders only after mount (SSR renders nothing)
  * to keep hydration deterministic.
@@ -29,9 +30,8 @@ export function SystemStatus() {
 
 	const rateLimitedUntil =
 		status.rateLimitedUntil !== null && status.rateLimitedUntil > nowMs ? status.rateLimitedUntil : null;
-	const timestamps = Object.values(status.childrenRefreshedAt);
-	const oldest = oldestTimestamp(timestamps);
-	const staleCount = timestamps.filter((t) => nowMs - parseDbTimestamp(t) > 15 * 60_000).length;
+	// A sweep completes once every project is refreshed, so the oldest refresh is the last completed sweep.
+	const lastSweep = oldestTimestamp(Object.values(status.childrenRefreshedAt));
 
 	return (
 		<div className="flex flex-col gap-1">
@@ -45,15 +45,7 @@ export function SystemStatus() {
 					— showing cached data
 				</div>
 			)}
-			{oldest && (
-				<span
-					className={`text-xs ${staleCount > 0 ? "text-amber-500" : "text-text-500"}`}
-					title={`${staleCount} project${staleCount === 1 ? "" : "s"} older than 15m`}
-				>
-					oldest data {formatRelativeAge(oldest, nowMs)}
-					{staleCount > 0 ? ` · ${staleCount} stale` : ""}
-				</span>
-			)}
+			<StalenessIndicator refreshedAt={lastSweep} staleAfterMinutes={status.staleAfterMinutes} />
 		</div>
 	);
 }

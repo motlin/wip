@@ -19,6 +19,7 @@ export {
 	getLadderBackgroundRebase,
 	getSplitThresholdLines,
 	getReadyBufferSize,
+	getFlowStaleAfterMinutes,
 	getReadyBufferCapacity,
 	DEFAULT_READY_BUFFER_SIZE,
 	DEFAULT_AI_RUNG_TIMEOUT_MS,

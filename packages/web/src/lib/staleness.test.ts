@@ -16,7 +16,7 @@ describe("formatRelativeAge", () => {
 	});
 
 	it("formats minutes", () => {
-		expect(formatRelativeAge("2026-07-04 11:12:00.000", NOW)).toBe("48m ago");
+		expect(formatRelativeAge("2026-07-04 11:12:00.000", NOW)).toBe("48 min ago");
 	});
 
 	it("formats hours", () => {

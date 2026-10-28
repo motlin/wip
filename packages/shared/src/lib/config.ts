@@ -132,6 +132,13 @@ export function getReadyBufferSize(config: Record<string, ConfigValue> = readCon
 	return positiveInt(config["readyBuffer.size"]) ?? DEFAULT_READY_BUFFER_SIZE;
 }
 
+const DEFAULT_FLOW_STALE_AFTER_MINUTES = 15;
+
+/** Minutes after the last completed scan before the nav's staleness indicator turns prominent, from config key `flow.staleAfterMinutes`. Defaults to 15. */
+export function getFlowStaleAfterMinutes(config: Record<string, ConfigValue> = readConfig()): number {
+	return positiveInt(config["flow.staleAfterMinutes"]) ?? DEFAULT_FLOW_STALE_AFTER_MINUTES;
+}
+
 /**
  * How many ready-buffer jobs run at once, a hardware budget independent of priority: config key
  * `readyBuffer.capacity`, else the build class cap (`workQueue.build`), else its default.

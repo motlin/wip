@@ -22,6 +22,7 @@ import {
 	getLadderBackgroundRebase,
 	getSplitThresholdLines,
 	getReadyBufferSize,
+	getFlowStaleAfterMinutes,
 	getTestLogDir,
 	invalidatePrCache,
 	invalidateIssuesCache,
@@ -1895,6 +1896,8 @@ export interface SystemStatus {
 	childrenRefreshedAt: Record<string, string>;
 	/** How many commits the ready buffer keeps ready (readyBuffer.size): the nav strip's "ready n/slots". */
 	readySlots: number;
+	/** Minutes after the last completed scan before the staleness indicator turns prominent (flow.staleAfterMinutes). */
+	staleAfterMinutes: number;
 }
 
 export async function getSystemStatusHandler(): Promise<SystemStatus> {
@@ -1904,6 +1907,7 @@ export async function getSystemStatusHandler(): Promise<SystemStatus> {
 			rateLimitedUntil: rateLimit.until,
 			childrenRefreshedAt: Object.fromEntries(getCacheFreshnessByPrefix("children:")),
 			readySlots: getReadyBufferSize(),
+			staleAfterMinutes: getFlowStaleAfterMinutes(),
 		});
 	});
 }

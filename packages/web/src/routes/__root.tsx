@@ -7,6 +7,7 @@ import appCss from "../styles/globals.css?url";
 import {ServerEventsProvider} from "../lib/server-events-context";
 import {useTheme} from "../lib/use-theme";
 import {Toaster} from "../components/toaster";
+import {AndonBanner} from "../components/andon-banner";
 
 type AgentationComponent = typeof import("agentation").Agentation;
 
@@ -79,6 +80,7 @@ function RootComponent() {
 							{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
 						</button>
 					</nav>
+					<AndonBanner />
 					<Outlet />
 					<Toaster />
 					<DevelopmentAgentation />

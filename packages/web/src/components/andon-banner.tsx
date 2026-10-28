@@ -1,0 +1,21 @@
+import {useQuery} from "@tanstack/react-query";
+import {readyToLandQueryOptions} from "../lib/queries";
+
+/**
+ * The andon: on every page, the projects whose own upstream is red (stopsLine), as the ready
+ * buffer last reported them. A foreign red upstream is the baseline and never shows here.
+ */
+export function AndonBanner() {
+	const {data} = useQuery(readyToLandQueryOptions());
+	const stopped = data?.stoppedProjects ?? [];
+	if (stopped.length === 0) return null;
+
+	return (
+		<div
+			role="alert"
+			className="border-b border-status-red/50 bg-status-red/10 px-6 py-2 text-sm font-medium text-status-red"
+		>
+			Line stopped: upstream red in {stopped.join(", ")}
+		</div>
+	);
+}

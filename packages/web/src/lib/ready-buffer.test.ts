@@ -351,7 +351,10 @@ describe("createReadyBuffer", () => {
 
 		await h.buffer.pull();
 
-		expect(fresh(h.enqueued)).toStrictEqual(["ready:foreign-red:c1", "ready:green:c1"]);
+		expect({enqueued: fresh(h.enqueued), stopped: h.buffer.state().stoppedProjects}).toStrictEqual({
+			enqueued: ["ready:foreign-red:c1", "ready:green:c1"],
+			stopped: ["own-red"],
+		});
 	});
 
 	it("exposes slots, ready, in-flight, next and stopped projects for the Ready to land section", async () => {

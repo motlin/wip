@@ -41,6 +41,7 @@ import type {
 } from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
 import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import type {FlowMetrics} from "@wip/shared/flow-metrics.js";
 import {EscapeHatchRecipeSchema} from "./escape-hatch.js";
 
 export type {
@@ -103,6 +104,10 @@ export const createPr = createServerFn({method: "POST"})
 export const testChild = createServerFn({method: "POST"})
 	.validator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).testChildHandler(data));
+
+export const getFlowMetrics = createServerFn({method: "GET"}).handler(async (): Promise<FlowMetrics> =>
+	(await serverFns()).getFlowMetricsHandler(),
+);
 
 export const getReadyToLand = createServerFn({method: "GET"}).handler(async (): Promise<ReadyToLandState | null> =>
 	(await serverFns()).getReadyToLandHandler(),

@@ -1,6 +1,8 @@
 import {createFileRoute, Link, useNavigate} from "@tanstack/react-router";
+import {useQuery} from "@tanstack/react-query";
 import {z} from "zod";
 import {ArrowLeft} from "../components/icons.js";
+import {flowMetricsQueryOptions} from "../lib/queries";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../lib/category-actions";
 import {CATEGORY_COLUMNS, STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
 
@@ -96,7 +98,14 @@ function edgePath(from: NodePos, to: NodePos): string {
 	return `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
 }
 
-function StateGraph({activeState}: {activeState: string | undefined}) {
+function StateGraph({
+	activeState,
+	stateCounts,
+}: {
+	activeState: string | undefined;
+	/** Live count of WIP items per state, from the ledger; states with none show no badge. */
+	stateCounts: Readonly<Record<string, number>>;
+}) {
 	const navigate = useNavigate();
 
 	// Deduplicate edges: group by from->to, collect transition labels and track kind
@@ -234,6 +243,24 @@ function StateGraph({activeState}: {activeState: string | undefined}) {
 							>
 								{CATEGORIES[cat].label}
 							</text>
+							{(stateCounts[cat] ?? 0) > 0 && (
+								<g>
+									<circle cx={pos.x + NODE_W} cy={pos.y} r={10} fill="#fbbf24" stroke="#1e1e2e" />
+									<text
+										data-testid={`state-count-${cat}`}
+										x={pos.x + NODE_W}
+										y={pos.y}
+										textAnchor="middle"
+										dominantBaseline="central"
+										fill="#000"
+										fontSize={10}
+										fontWeight={700}
+										fontFamily="Inter, system-ui, sans-serif"
+									>
+										{stateCounts[cat]}
+									</text>
+								</g>
+							)}
 						</g>
 					);
 				})}
@@ -343,6 +370,7 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 
 function StatesPage() {
 	const {state: activeState} = Route.useSearch();
+	const {data: metrics} = useQuery(flowMetricsQueryOptions());
 
 	return (
 		<div className="mx-auto max-w-7xl p-6">
@@ -373,7 +401,7 @@ function StatesPage() {
 			</div>
 
 			<div className="mb-8">
-				<StateGraph activeState={activeState} />
+				<StateGraph activeState={activeState} stateCounts={metrics?.stateCounts ?? {}} />
 				<div className="mt-3 flex items-center gap-6 text-xs text-text-400">
 					<div className="flex items-center gap-2">
 						<svg width="32" height="2">

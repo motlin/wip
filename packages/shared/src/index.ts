@@ -116,7 +116,9 @@ export {
 	getPriorityOverride,
 	getPriorityOverrides,
 	getWorkItemHistory,
+	loadAllWorkItems,
 	loadWorkItems,
+	writeWorkItems,
 	setPriorityOverride,
 	clearPriorityOverride,
 	getAutoFixes,
@@ -163,6 +165,7 @@ export {
 	type TerminalWorkState,
 	type WorkItem,
 } from "./lib/work-ledger.js";
+export {flowMetrics, type FlowMetrics} from "./lib/flow-metrics.js";
 export {
 	backfillSnoozedPatchIds,
 	heldShas,

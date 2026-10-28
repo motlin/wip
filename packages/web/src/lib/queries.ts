@@ -18,6 +18,7 @@ import {
 	getRegistryCandidates,
 	getLadderResults,
 	getReadyToLand,
+	getFlowMetrics,
 } from "./server-fns.js";
 import {isStaleBundleError} from "./stale-bundle.js";
 
@@ -81,6 +82,15 @@ export const readyToLandQueryOptions = () =>
 		queryKey: ["readyToLand"],
 		queryFn: async () => getReadyToLand(),
 		staleTime: Infinity,
+	});
+
+/** Ledger flow metrics; polled like systemStatus, since the ledger changes on every children refresh. */
+export const flowMetricsQueryOptions = () =>
+	queryOptions({
+		queryKey: ["flowMetrics"],
+		queryFn: async () => getFlowMetrics(),
+		staleTime: 30_000,
+		refetchInterval: 60_000,
 	});
 
 export const advancePlanQueryOptions = () =>

@@ -1674,6 +1674,11 @@ export function loadWorkItems(project: string): WorkItem[] {
 		.all();
 }
 
+/** The live ledger rows across every project, terminal ones included: the flow metrics' input. */
+export function loadAllWorkItems(): WorkItem[] {
+	return getDb().select(workItemColumns).from(workItems).where(eq(workItems.systemTo, FAR_FUTURE)).all();
+}
+
 /** Every row ever written for one change, oldest first: its state history. */
 export function getWorkItemHistory(project: string, patchId: string) {
 	return getDb()

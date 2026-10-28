@@ -43,6 +43,9 @@ import {
 	cacheChildren,
 	reconcileWorkItemsWithUpstream,
 	loadWorkItems,
+	loadAllWorkItems,
+	flowMetrics,
+	type FlowMetrics,
 	invalidateChildrenCache,
 	isCacheFresh,
 	getCacheFreshnessByPrefix,
@@ -1964,6 +1967,11 @@ export interface SystemStatus {
 	readySlots: number;
 	/** Minutes after the last completed scan before the staleness indicator turns prominent (flow.staleAfterMinutes). */
 	staleAfterMinutes: number;
+}
+
+/** Flow metrics over every project's work-item ledger (plan step 45): the /queue strip and /states counts. */
+export async function getFlowMetricsHandler(): Promise<FlowMetrics> {
+	return Promise.resolve(flowMetrics(loadAllWorkItems(), Date.now()));
 }
 
 /** The ready buffer's state for the Ready to land section; null when this process runs no buffer. */

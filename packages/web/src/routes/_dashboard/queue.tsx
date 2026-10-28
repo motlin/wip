@@ -11,7 +11,12 @@ import {
 	type ProjectChildrenResult,
 } from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
-import {projectsQueryOptions, readyToLandQueryOptions, systemStatusQueryOptions} from "../../lib/queries";
+import {
+	flowMetricsQueryOptions,
+	projectsQueryOptions,
+	readyToLandQueryOptions,
+	systemStatusQueryOptions,
+} from "../../lib/queries";
 import {ReadyToLandSection, landingAction} from "../../components/ready-to-land-section";
 import {pushToast} from "../../lib/toast-store";
 import type {ReadyToLandItem} from "@wip/shared/ready-to-land.js";
@@ -21,6 +26,7 @@ import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
 import {SystemStatus} from "../../components/system-status";
 import {FlowStrip} from "../../components/flow-strip";
+import {FlowMetricsStrip} from "../../components/flow-metrics-strip";
 import {flowCounts} from "@wip/shared/flow-counts.js";
 import {CategoryBadge} from "../../components/category-badge";
 import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared/classify.js";
@@ -111,6 +117,7 @@ function QueueLayout() {
 	}, [workItems, projects]);
 
 	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
+	const {data: flowMetrics} = useQuery(flowMetricsQueryOptions());
 	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
 	// Ages come from the client clock, set after mount so hydration matches the server render.
 	const [now, setNow] = useState<number | null>(null);
@@ -388,6 +395,7 @@ function QueueLayout() {
 								{totalCount} items across {workItems.projectCount} projects
 							</span>
 							<FlowStrip counts={counts} />
+							{flowMetrics && <FlowMetricsStrip metrics={flowMetrics} />}
 							<SystemStatus />
 						</div>
 						<div className="flex items-center gap-2">

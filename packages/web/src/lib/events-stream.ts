@@ -14,6 +14,8 @@ export async function createEventsResponse(): Promise<Response> {
 	const {getSchedulerState, onRefreshError, onSchedulerStateChange} = await import("./refresh-scheduler.js");
 	const {ensureBackgroundRefresh} = await import("./background-refresh.js");
 	const {getProjects} = await import("./server-fns.js");
+	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
+	const {currentReadyBuffer} = await import("./ready-buffer-instance.js");
 	const {log} = await import("@wip/shared/services/logger-pino.js");
 	ensureBackgroundRefresh();
 
@@ -61,6 +63,8 @@ export async function createEventsResponse(): Promise<Response> {
 					log.general.error({error}, "events stream: initial project send failed");
 				});
 			send("refresh-state", getSchedulerState());
+			const readyBuffer = currentReadyBuffer();
+			if (readyBuffer) send("ready-buffer", readyBuffer.state());
 
 			// A failed initial send already ran cleanup(); register nothing then.
 			if (closed) return;
@@ -89,6 +93,9 @@ export async function createEventsResponse(): Promise<Response> {
 			const onAction = (event: unknown) => {
 				send("action", event);
 			};
+			const onReadyBuffer = (event: unknown) => {
+				send("ready-buffer", event);
+			};
 			taskEmitter.on("task", onTask);
 			actionEmitter.on("action", onAction);
 			mergeEmitter.on("mergeStatus", onMerge);
@@ -97,7 +104,9 @@ export async function createEventsResponse(): Promise<Response> {
 			todoEmitter.on("todos", onTodos);
 			githubEmitter.on("issues", onIssues);
 			githubEmitter.on("projectItems", onProjectItems);
+			readyBufferEmitter.on("state", onReadyBuffer);
 			disposers.push(
+				() => readyBufferEmitter.off("state", onReadyBuffer),
 				() => taskEmitter.off("task", onTask),
 				() => actionEmitter.off("action", onAction),
 				() => mergeEmitter.off("mergeStatus", onMerge),

@@ -7,6 +7,7 @@ import {
 	CreatePrInputSchema,
 	DeleteBranchInputSchema,
 	ForcePushInputSchema,
+	LandFastForwardInputSchema,
 	MergePrInputSchema,
 	PushChildInputSchema,
 	RebaseLocalInputSchema,
@@ -39,6 +40,7 @@ import type {
 	RegistryCandidates,
 } from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
+import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import {EscapeHatchRecipeSchema} from "./escape-hatch.js";
 
 export type {
@@ -101,6 +103,10 @@ export const createPr = createServerFn({method: "POST"})
 export const testChild = createServerFn({method: "POST"})
 	.validator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).testChildHandler(data));
+
+export const getReadyToLand = createServerFn({method: "GET"}).handler(async (): Promise<ReadyToLandState | null> =>
+	(await serverFns()).getReadyToLandHandler(),
+);
 
 export const topUpReadyBuffer = createServerFn({method: "POST"}).handler(async (): Promise<{running: boolean}> =>
 	(await serverFns()).topUpReadyBufferHandler(),
@@ -229,6 +235,10 @@ export const forcePush = createServerFn({method: "POST"})
 export const mergePr = createServerFn({method: "POST"})
 	.validator((input: unknown) => MergePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).mergePrHandler(data));
+
+export const landFastForward = createServerFn({method: "POST"})
+	.validator((input: unknown) => LandFastForwardInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).landFastForwardHandler(data));
 
 export const renameBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => RenameBranchInputSchema.parse(input))

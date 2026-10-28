@@ -102,6 +102,8 @@ function harness(options: {
 	capacity?: number;
 	/** The local branch the naming job creates per item; `<id>-branch` unless a test says otherwise. */
 	name?: (project: string, id: string) => string | null;
+	/** The ledger's first-seen time per item. */
+	firstSeen?: (project: string, id: string) => string | undefined;
 }): Harness {
 	const queue = createWorkQueue({
 		globalConcurrency: 4,
@@ -165,6 +167,7 @@ function harness(options: {
 			named.push(`${r.name}:${candidate.id}`);
 			return Promise.resolve(options.name ? options.name(r.name, candidate.id) : `${candidate.id}-branch`);
 		},
+		...(options.firstSeen === undefined ? {} : {firstSeen: options.firstSeen}),
 	});
 	return {
 		buffer,
@@ -188,6 +191,8 @@ async function fillFiveRepos(capacity: number): Promise<{advanced: string[]; max
 	await h.buffer.idle();
 	return {advanced: h.advanced, maxConcurrent: h.maxConcurrent()};
 }
+
+const paddedSha = (id: string): string => id.padEnd(40, "0");
 
 const fresh = (enqueued: Enqueued[]): string[] => enqueued.filter((e) => !e.coalesced).map((e) => e.coalesceKey);
 
@@ -347,6 +352,60 @@ describe("createReadyBuffer", () => {
 		await h.buffer.pull();
 
 		expect(fresh(h.enqueued)).toStrictEqual(["ready:foreign-red:c1", "ready:green:c1"]);
+	});
+
+	it("exposes slots, ready, in-flight, next and stopped projects for the Ready to land section", async () => {
+		const repos = [
+			repo("red", {upstreamRed: true, candidates: candidates(1, {c1: {state: "ready", branch: "red-fix"}})}),
+			repo("a", {landing: "fast-forward"}),
+		];
+		const h = harness({
+			repos: () => repos,
+			gated: true,
+			firstSeen: (name, id) => `2026-10-2${id.at(-1)} ${name}`,
+		});
+		const seen: number[] = [];
+		h.buffer.onStateChange((state) => {
+			seen.push(state.inFlight.length);
+		});
+
+		await h.buffer.pull();
+		const filling = h.buffer.state();
+		// Release the running advances, and let the ones not yet started finish at once.
+		draining = true;
+		for (const release of gates.splice(0)) release();
+		await h.buffer.idle();
+
+		const a = (id: string) => ({
+			project: "a",
+			id,
+			sha: paddedSha(id),
+			landing: "fast-forward",
+			firstSeen: `2026-10-2${id.at(-1)} a`,
+		});
+		expect({filling, full: h.buffer.state(), lastSeen: seen.at(-1)}).toStrictEqual({
+			filling: {
+				slots: 2,
+				ready: [
+					{project: "red", id: "c1", sha: paddedSha("c1"), branch: "red-fix", firstSeen: "2026-10-21 red"},
+				],
+				inFlight: [a("c1"), a("c2")],
+				next: [a("c3"), a("c4")],
+				stoppedProjects: ["red"],
+			},
+			full: {
+				slots: 2,
+				ready: [
+					{project: "red", id: "c1", sha: paddedSha("c1"), branch: "red-fix", firstSeen: "2026-10-21 red"},
+					a("c1"),
+					a("c2"),
+				],
+				inFlight: [],
+				next: [a("c3"), a("c4")],
+				stoppedProjects: ["red"],
+			},
+			lastSeen: 0,
+		});
 	});
 
 	it("runs one buffer job at a time under a hot probe and still refills over completions", async () => {

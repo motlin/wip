@@ -234,6 +234,18 @@ describe("other channels", () => {
 		expect(queryClient.getQueryData(["projects"])).toStrictEqual([]);
 	});
 
+	it("writes the ready buffer's state into the cache for the Ready to land section", () => {
+		const state = {
+			slots: 2,
+			ready: [{project: "a", id: "p1", sha: "1".repeat(40)}],
+			inFlight: [],
+			next: [],
+			stoppedProjects: ["red"],
+		};
+		applier.apply({channel: "ready-buffer", data: state});
+		expect(queryClient.getQueryData(["readyToLand"])).toStrictEqual(state);
+	});
+
 	it("writes refreshed issues and project items straight into the cache", () => {
 		const issue = {
 			number: 3,

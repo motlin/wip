@@ -17,6 +17,7 @@ import {
 	getInventoryStatus,
 	getRegistryCandidates,
 	getLadderResults,
+	getReadyToLand,
 } from "./server-fns.js";
 import {isStaleBundleError} from "./stale-bundle.js";
 
@@ -72,6 +73,14 @@ export const systemStatusQueryOptions = () =>
 		queryFn: async () => getSystemStatus(),
 		staleTime: 30_000,
 		refetchInterval: 60_000,
+	});
+
+/** Loaded once; the SSE "ready-buffer" channel writes every later state with setQueryData. */
+export const readyToLandQueryOptions = () =>
+	queryOptions({
+		queryKey: ["readyToLand"],
+		queryFn: async () => getReadyToLand(),
+		staleTime: Infinity,
 	});
 
 export const advancePlanQueryOptions = () =>

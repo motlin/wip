@@ -551,6 +551,13 @@ export const CreateBranchInputSchema = z.object({
 });
 export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
 
+/** Land a ready commit in a fast-forward repo: push it to the upstream branch, never forced. */
+export const LandFastForwardInputSchema = z.object({
+	project: z.string(),
+	sha: shaSchema,
+});
+export type LandFastForwardInput = z.infer<typeof LandFastForwardInputSchema>;
+
 export const MergePrInputSchema = z.object({
 	project: z.string(),
 	prNumber: z.number(),

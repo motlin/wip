@@ -327,6 +327,8 @@ export {
 	type RebaseLocalInput,
 	MergePrInputSchema,
 	type MergePrInput,
+	LandFastForwardInputSchema,
+	type LandFastForwardInput,
 } from "./lib/schemas.js";
 export {type Readiness, type ReadinessCommit, isGreen, isLandable, readinessOf} from "./lib/readiness.js";
 export {

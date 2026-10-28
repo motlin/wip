@@ -73,6 +73,7 @@ import {
 	type RenameBranchInput,
 	type ApplyFixesInput,
 	type MergePrInput,
+	type LandFastForwardInput,
 	type RebaseLocalInput,
 	type AutoFixInput,
 	type AutoFix,
@@ -104,6 +105,7 @@ import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import {runEscapeHatch, topUpReadyBuffer} from "./bulk-actions.js";
 import {currentReadyBuffer} from "./ready-buffer-instance.js";
+import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {EscapeHatchRecipe} from "./escape-hatch.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
@@ -1247,6 +1249,27 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 	});
 }
 
+/**
+ * The fast-forward repo's landing action (lean plan step 42): push the ready commit to the
+ * upstream branch without force, so git refuses anything that is not a fast-forward.
+ */
+export async function landFastForwardHandler(data: LandFastForwardInput): Promise<ActionResult> {
+	return tracedAction("landFastForward", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, "landFastForward", async () => {
+			const result = await tracedExeca(
+				"git",
+				["-C", p.dir, "push", p.upstreamRemote, `${data.sha}:refs/heads/${p.upstreamBranch}`],
+				{reject: false},
+			);
+			if (result.exitCode !== 0) return {ok: false, message: `Failed to land: ${result.stderr}`};
+			invalidateChildrenCache(data.project);
+			invalidateMergeStatus(data.project);
+			return {ok: true, message: `Landed ${data.sha.slice(0, 7)} on ${p.upstreamRemote}/${p.upstreamBranch}`};
+		});
+	});
+}
+
 export async function renameBranchHandler(data: RenameBranchInput): Promise<ActionResult> {
 	return tracedAction("renameBranch", async () => {
 		const p = await resolveProject(data.project);
@@ -1898,6 +1921,11 @@ export interface SystemStatus {
 	readySlots: number;
 	/** Minutes after the last completed scan before the staleness indicator turns prominent (flow.staleAfterMinutes). */
 	staleAfterMinutes: number;
+}
+
+/** The ready buffer's state for the Ready to land section; null when this process runs no buffer. */
+export async function getReadyToLandHandler(): Promise<ReadyToLandState | null> {
+	return Promise.resolve(currentReadyBuffer()?.state() ?? null);
 }
 
 export async function getSystemStatusHandler(): Promise<SystemStatus> {

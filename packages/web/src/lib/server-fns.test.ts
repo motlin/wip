@@ -3042,3 +3042,47 @@ describe("auto-fix review and its actions (lean plan step 31 follow-up)", () => 
 		});
 	});
 });
+
+async function repoWithRemote(): Promise<{dir: string; remote: string; base: string}> {
+	const dir = await createTestGitRepo();
+	const remote = await createBareRemote();
+	await gitOut(dir, "remote", "add", "origin", remote);
+	await gitOut(dir, "push", "origin", "main");
+	return {dir, remote, base: await gitOut(dir, "rev-parse", "main")};
+}
+
+describe("landFastForwardHandler", () => {
+	it("fast-forwards the upstream branch to a ready commit on its tip, without force", async () => {
+		const {dir, remote} = await repoWithRemote();
+		await gitOut(dir, "checkout", "-b", "feature");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
+		const sha = await gitOut(dir, "rev-parse", "feature");
+		seedProjectCache([makeProject({name: "land-ff", dir})]);
+
+		const {landFastForwardHandler} = await import("./server-fns.impl.js");
+		const result = await landFastForwardHandler({project: "land-ff", sha});
+
+		expect({ok: result.ok, message: result.message, remoteMain: await gitOut(remote, "rev-parse", "main")}).toEqual(
+			{ok: true, message: `Landed ${sha.slice(0, 7)} on origin/main`, remoteMain: sha},
+		);
+	});
+
+	it("refuses a commit that is not a fast-forward of the upstream branch and leaves it unchanged", async () => {
+		const {dir, remote} = await repoWithRemote();
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Upstream moved");
+		await gitOut(dir, "push", "origin", "main");
+		const moved = await gitOut(dir, "rev-parse", "main");
+		await gitOut(dir, "checkout", "-b", "stale", "main~1");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Stale commit");
+		const sha = await gitOut(dir, "rev-parse", "stale");
+		seedProjectCache([makeProject({name: "land-stale", dir})]);
+
+		const {landFastForwardHandler} = await import("./server-fns.impl.js");
+		const result = await landFastForwardHandler({project: "land-stale", sha});
+
+		expect({ok: result.ok, remoteMain: await gitOut(remote, "rev-parse", "main")}).toEqual({
+			ok: false,
+			remoteMain: moved,
+		});
+	});
+});

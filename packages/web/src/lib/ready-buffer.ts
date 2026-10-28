@@ -10,7 +10,8 @@ import type {
 import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {withinBaseline} from "@wip/shared/baseline-failures.js";
 import {isGreen} from "@wip/shared/readiness.js";
-import {planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
+import {orderReadyQueue, planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
+import {landingOrder, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import {stopsLine, upstreamOwnership, type GitHubIdentity, type UpstreamOwnership} from "@wip/shared/upstream-red.js";
 import {repoResource} from "./repo-resource.js";
 
@@ -156,6 +157,8 @@ export interface ReadyBufferDeps {
 	 * branch (never pushed); the branch, or null when naming failed.
 	 */
 	nameBranch: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
+	/** The work-item ledger's first-seen time for an item, shown as its age. */
+	firstSeen?: (project: string, id: string) => string | undefined;
 }
 
 export interface ReadyBuffer {
@@ -169,6 +172,10 @@ export interface ReadyBuffer {
 	outcomes(project: string): Record<string, AdvanceOutcome>;
 	/** Resolves once no pull is pending and no buffer job is in flight. */
 	idle(): Promise<void>;
+	/** What the "Ready to land" section shows, as of the last pull. */
+	state(): ReadyToLandState;
+	/** Called with the new state after every pull. Returns an unsubscribe function. */
+	onStateChange(listener: (state: ReadyToLandState) => void): () => void;
 }
 
 export interface BufferRepoContext {
@@ -240,6 +247,10 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	const inFlight = new Map<string, Map<string, Promise<void>>>();
 	/** Repos whose own upstream is red as of the last pull; their queued jobs stop on start. */
 	const stopped = new Set<string>();
+	/** The last pull's snapshot and the candidates it would pull next, for state(). */
+	let lastRepos: BufferRepo[] = [];
+	let lastNext: ReadyQueueItem[] = [];
+	const listeners = new Set<(state: ReadyToLandState) => void>();
 
 	const resultsOf = (project: string): Map<string, AdvanceOutcome> => {
 		const map = results.get(project) ?? new Map<string, AdvanceOutcome>();
@@ -394,20 +405,77 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			else if (!repo.localChanges) active.push(repo);
 		}
 		const byName = new Map(active.map((r) => [r.name, r]));
-		const pulls = planReadyPulls(
-			active.map((r) => (r.priority === undefined ? {name: r.name} : {name: r.name, priority: r.priority})),
-			active.flatMap(queueItems),
-			{
-				target: deps.target(),
-				capacity: deps.capacity(),
-				inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
-			},
+		const queueRepos = active.map((r) =>
+			r.priority === undefined ? {name: r.name} : {name: r.name, priority: r.priority},
 		);
+		const items = active.flatMap(queueItems);
+		const pulls = planReadyPulls(queueRepos, items, {
+			target: deps.target(),
+			capacity: deps.capacity(),
+			inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
+		});
 		for (const pull of pulls) {
 			const repo = byName.get(pull.repo);
 			const candidate = repo?.candidates.find((c) => c.id === pull.id);
 			if (repo && candidate) enqueue(repo, candidate);
 		}
+		const pulled = new Set(pulls);
+		lastRepos = repos;
+		lastNext = orderReadyQueue(queueRepos, items)
+			.filter((it) => !pulled.has(it))
+			.slice(0, deps.target());
+		notify();
+	}
+
+	function stateItem(repo: BufferRepo, candidate: BufferCandidate): ReadyToLandItem {
+		const firstSeen = deps.firstSeen?.(repo.name, candidate.id);
+		return {
+			project: repo.name,
+			id: candidate.id,
+			sha: candidate.sha,
+			...(candidate.branch === undefined ? {} : {branch: candidate.branch}),
+			...(repo.landing === undefined ? {} : {landing: repo.landing}),
+			...(firstSeen === undefined ? {} : {firstSeen}),
+		};
+	}
+
+	/**
+	 * Ready = known ready or advanced to ready, and not on hold or awaiting an auto-fix review; a
+	 * stopped repo's ready items stay listed (the section marks them upstream red).
+	 */
+	function state(): ReadyToLandState {
+		type Entry = [BufferRepo, BufferCandidate];
+		const ready: Entry[] = [];
+		const running: Entry[] = [];
+		const byKey = new Map<string, Entry>();
+		for (const repo of lastRepos) {
+			const done = resultsOf(repo.name);
+			const jobs = inFlightOf(repo.name);
+			for (const c of repo.candidates) {
+				byKey.set(`${repo.name}:${c.id}`, [repo, c]);
+				if (jobs.has(c.id)) running.push([repo, c]);
+				else if ((c.state === "ready" || done.get(c.id) === "ready") && !c.onHold && c.autoFixed !== true) {
+					ready.push([repo, c]);
+				}
+			}
+		}
+		// The ledger is read only for the items shown.
+		const items = (entries: Entry[]) => entries.map(([repo, c]) => stateItem(repo, c));
+		return {
+			slots: deps.target(),
+			ready: landingOrder(items(ready)),
+			inFlight: items(running),
+			next: items(
+				lastNext.map((it) => byKey.get(`${it.repo}:${it.id}`)).filter((e): e is Entry => e !== undefined),
+			),
+			stoppedProjects: lastRepos.filter((r) => stopped.has(r.name)).map((r) => r.name),
+		};
+	}
+
+	function notify(): void {
+		if (listeners.size === 0) return;
+		const current = state();
+		for (const listener of listeners) listener(current);
 	}
 
 	let current: Promise<void> | null = null;
@@ -466,5 +534,12 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		upstreamMoved,
 		outcomes: (project) => Object.fromEntries(resultsOf(project)),
 		idle,
+		state,
+		onStateChange: (listener) => {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 	};
 }

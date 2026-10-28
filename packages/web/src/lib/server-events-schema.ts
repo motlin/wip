@@ -8,6 +8,7 @@ import {
 	TodoItemSchema,
 	TransitionSchema,
 } from "@wip/shared/schemas.js";
+import {ReadyToLandStateSchema} from "@wip/shared/ready-to-land.js";
 
 /**
  * The SSE wire contract: every {channel, data} envelope the /api/events stream
@@ -95,5 +96,6 @@ export const ServerEventSchema = z.discriminatedUnion("channel", [
 	z.object({channel: z.literal("action"), data: ActionEventSchema}),
 	z.object({channel: z.literal("refresh-error"), data: RefreshErrorEventSchema}),
 	z.object({channel: z.literal("refresh-state"), data: WorkQueueStateEventSchema}),
+	z.object({channel: z.literal("ready-buffer"), data: ReadyToLandStateSchema}),
 ]);
 export type ServerEvent = z.infer<typeof ServerEventSchema>;

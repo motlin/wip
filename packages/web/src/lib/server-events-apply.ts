@@ -163,6 +163,10 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				applySchedulerState(event.data);
 				return;
 			}
+			case "ready-buffer": {
+				queryClient.setQueryData(["readyToLand"], event.data);
+				return;
+			}
 			case "refresh-error": {
 				pushToast({
 					level: "error",

@@ -342,7 +342,9 @@ export async function startReadyBuffer(
 		log.general.info("Ready buffer disabled by WIP_READY_BUFFER");
 		return;
 	}
-	const {acquireProcessLock, getReadyBufferCapacity, getReadyBufferSize} = await import("@wip/shared");
+	const {acquireProcessLock, getReadyBufferCapacity, getReadyBufferSize, loadWorkItems} = await import("@wip/shared");
+	const firstSeenOf = (project: string, id: string): string | undefined =>
+		loadWorkItems(project).find((item) => item.patchId === id)?.firstSeen;
 	if (acquireProcessLock("ready-buffer") === null) {
 		log.general.warn("Ready buffer already running in another wip process; not starting it here");
 		return;
@@ -372,6 +374,7 @@ export async function startReadyBuffer(
 			enqueueProjectRefresh(repo.name, {force: true});
 			return fixup;
 		},
+		firstSeen: (project, id) => firstSeenOf(project, id),
 		nameBranch: async (repo, candidate) => {
 			const {createBranchForChild, getCachedChildren, suggestBranchNames} = await import("@wip/shared");
 			const {getProjects} = await import("./server-fns.js");
@@ -403,6 +406,12 @@ export async function startReadyBuffer(
 	});
 	setReadyBuffer(started);
 
+	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
+	// The Ready to land section reads this over the SSE stream.
+	started.onStateChange((state) => {
+		readyBufferEmitter.emit("state", state);
+	});
+
 	const {emitter: mergeEmitter} = await import("./merge-queue.js");
 	mergeEmitter.on("upstreamMoved", (event: {project: string}) => {
 		warnOnFailure(started.upstreamMoved(event.project), "upstreamMoved");
@@ -415,7 +424,6 @@ export async function startReadyBuffer(
 		if (event.type !== "status" || event.status === "queued" || event.status === "running") return;
 		warnOnFailure(started.pull(), "task");
 	});
-	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
 	readyBufferEmitter.on("onHold", (event: OnHoldSignal) => {
 		warnOnFailure(started.onHold(event.project), "onHold");
 	});

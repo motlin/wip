@@ -1,10 +1,14 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
 import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {ClipboardList} from "../../components/icons.js";
-import {useState, useMemo, useCallback} from "react";
-import {runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
+import {useState, useMemo, useCallback, useEffect} from "react";
+import {landFastForward, mergePr, runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
-import {projectsQueryOptions, systemStatusQueryOptions} from "../../lib/queries";
+import {projectsQueryOptions, readyToLandQueryOptions, systemStatusQueryOptions} from "../../lib/queries";
+import {ReadyToLandSection} from "../../components/ready-to-land-section";
+import {pushToast} from "../../lib/toast-store";
+import type {ReadyToLandItem} from "@wip/shared/ready-to-land.js";
+import type {GitChildResult} from "@wip/shared/schemas.js";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
@@ -100,6 +104,32 @@ function QueueLayout() {
 	}, [workItems, projects]);
 
 	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
+	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
+	// Ages come from the client clock, set after mount so hydration matches the server render.
+	const [now, setNow] = useState<number | null>(null);
+	useEffect(() => {
+		const tick = () => {
+			setNow(Date.now());
+		};
+		const first = setTimeout(tick, 0);
+		const timer = setInterval(tick, 60_000);
+		return () => {
+			clearTimeout(first);
+			clearInterval(timer);
+		};
+	}, []);
+	const land = useCallback((item: ReadyToLandItem, commit: GitChildResult | undefined) => {
+		const landing =
+			item.landing === "pull-request"
+				? commit?.prNumber === undefined
+					? null
+					: mergePr({data: {project: item.project, prNumber: commit.prNumber}})
+				: landFastForward({data: {project: item.project, sha: item.sha}});
+		void landing?.then((result) => {
+			pushToast({level: result.ok ? "success" : "error", message: result.message});
+			return undefined;
+		});
+	}, []);
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
 		() => flowCounts({projects, gitChildren: workItems.gitChildren, todos: workItems.todos, slots: readySlots}),
@@ -360,6 +390,13 @@ function QueueLayout() {
 							/>
 						</div>
 					</div>
+					<ReadyToLandSection
+						state={readyToLand}
+						commits={workItems.gitChildren}
+						projects={projects}
+						now={now}
+						onLand={land}
+					/>
 					<Outlet />
 				</main>
 			</div>

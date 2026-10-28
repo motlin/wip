@@ -2041,11 +2041,17 @@ export async function getReadyToLandHandler(): Promise<ReadyToLandState | null> 
 export async function getSystemStatusHandler(): Promise<SystemStatus> {
 	return traced("getSystemStatus", async () => {
 		const rateLimit = getGitHubRateLimitState();
-		return Promise.resolve({
+		// Freshness rows outlive projects that left the registry or became kind "skip"; those never
+		// refresh again, so only current projects count toward how old the data is.
+		const projectNames = new Set((await ensureProjects()).map((p) => p.name));
+		const childrenRefreshedAt = [...getCacheFreshnessByPrefix("children:")].filter(([name]) =>
+			projectNames.has(name),
+		);
+		return {
 			rateLimitedUntil: rateLimit.until,
-			childrenRefreshedAt: Object.fromEntries(getCacheFreshnessByPrefix("children:")),
+			childrenRefreshedAt: Object.fromEntries(childrenRefreshedAt),
 			readySlots: getReadyBufferSize(),
 			staleAfterMinutes: getFlowStaleAfterMinutes(),
-		});
+		};
 	});
 }

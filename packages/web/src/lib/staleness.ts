@@ -26,7 +26,20 @@ export function formatRelativeAge(dbTimestamp: string, nowMs: number): string {
 	return `${Math.floor(hours / 24)}d ago`;
 }
 
-export function oldestTimestamp(timestamps: readonly string[]): string | null {
-	if (timestamps.length === 0) return null;
-	return timestamps.reduce((oldest, candidate) => (candidate < oldest ? candidate : oldest));
+/**
+ * How fresh the per-project children data is: the median refresh (the older middle one for an even
+ * count), so a single project that stopped refreshing cannot make the whole page look stale, plus
+ * the projects older than staleAfterMinutes, by name.
+ */
+export function freshnessSummary(
+	projectRefreshedAt: Readonly<Record<string, string>>,
+	nowMs: number,
+	staleAfterMinutes: number,
+): {refreshedAt: string | null; staleProjects: string[]} {
+	const timestamps = Object.values(projectRefreshedAt).toSorted();
+	const staleProjects = Object.entries(projectRefreshedAt)
+		.filter(([, timestamp]) => nowMs - parseDbTimestamp(timestamp) > staleAfterMinutes * 60_000)
+		.map(([project]) => project)
+		.toSorted();
+	return {refreshedAt: timestamps[Math.floor((timestamps.length - 1) / 2)] ?? null, staleProjects};
 }

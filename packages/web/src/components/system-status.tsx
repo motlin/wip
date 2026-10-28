@@ -1,11 +1,10 @@
 import {useQuery} from "@tanstack/react-query";
 import {useEffect, useState} from "react";
 import {systemStatusQueryOptions} from "../lib/queries";
-import {oldestTimestamp} from "../lib/staleness";
 import {StalenessIndicator} from "./staleness-indicator";
 
 /**
- * Data-trust line for the dashboard header: how old the last completed sweep is, and a
+ * Data-trust line for the dashboard header: how old the median project refresh is, and a
  * loud banner while GitHub is rate limiting us. Ages are computed from the
  * client clock, so everything renders only after mount (SSR renders nothing)
  * to keep hydration deterministic.
@@ -30,8 +29,6 @@ export function SystemStatus() {
 
 	const rateLimitedUntil =
 		status.rateLimitedUntil !== null && status.rateLimitedUntil > nowMs ? status.rateLimitedUntil : null;
-	// A sweep completes once every project is refreshed, so the oldest refresh is the last completed sweep.
-	const lastSweep = oldestTimestamp(Object.values(status.childrenRefreshedAt));
 
 	return (
 		<div className="flex flex-col gap-1">
@@ -45,7 +42,10 @@ export function SystemStatus() {
 					— showing cached data
 				</div>
 			)}
-			<StalenessIndicator refreshedAt={lastSweep} staleAfterMinutes={status.staleAfterMinutes} />
+			<StalenessIndicator
+				projectRefreshedAt={status.childrenRefreshedAt}
+				staleAfterMinutes={status.staleAfterMinutes}
+			/>
 		</div>
 	);
 }

@@ -1,16 +1,16 @@
 import {useEffect, useState} from "react";
-import {formatRelativeAge, parseDbTimestamp} from "../lib/staleness";
+import {formatRelativeAge, freshnessSummary, parseDbTimestamp} from "../lib/staleness";
 
 /**
- * "data from N min ago" for the last completed scan: quiet by default, prominent once the data is
- * older than flow.staleAfterMinutes. The age comes from the client clock, so it renders only after
+ * "data from N min ago" for the median project refresh: quiet by default, prominent once that is
+ * older than flow.staleAfterMinutes; the tooltip names any project older than the threshold. The age comes from the client clock, so it renders only after
  * mount (SSR renders nothing) to keep hydration deterministic.
  */
 export function StalenessIndicator({
-	refreshedAt,
+	projectRefreshedAt,
 	staleAfterMinutes,
 }: {
-	refreshedAt: string | null;
+	projectRefreshedAt: Readonly<Record<string, string>>;
 	staleAfterMinutes: number;
 }) {
 	const [nowMs, setNowMs] = useState<number | null>(null);
@@ -27,9 +27,19 @@ export function StalenessIndicator({
 		};
 	}, []);
 
-	if (refreshedAt === null || nowMs === null) return null;
+	if (nowMs === null) return null;
+	const {refreshedAt, staleProjects} = freshnessSummary(projectRefreshedAt, nowMs, staleAfterMinutes);
+	if (refreshedAt === null) return null;
 
 	const stale = nowMs - parseDbTimestamp(refreshedAt) > staleAfterMinutes * 60_000;
+	const titleLines = [
+		...(stale ? [`Older than ${staleAfterMinutes} min`] : []),
+		...(staleProjects.length > 0
+			? [
+					`${staleProjects.length} project${staleProjects.length === 1 ? "" : "s"} not refreshed in ${staleAfterMinutes}+ min: ${staleProjects.join(", ")}`,
+				]
+			: []),
+	];
 
 	return (
 		<span
@@ -40,7 +50,7 @@ export function StalenessIndicator({
 					? "rounded bg-amber-500/15 px-1.5 text-xs font-medium text-amber-600 dark:text-amber-400"
 					: "text-xs text-text-500"
 			}
-			title={stale ? `Older than ${staleAfterMinutes} min` : undefined}
+			title={titleLines.length > 0 ? titleLines.join("\n") : undefined}
 		>
 			data from {formatRelativeAge(refreshedAt, nowMs)}
 		</span>

@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 
-import {formatRelativeAge, oldestTimestamp, parseDbTimestamp, wipAgeText} from "./staleness";
+import {formatRelativeAge, freshnessSummary, parseDbTimestamp, wipAgeText} from "./staleness";
 
 const NOW = Date.parse("2026-07-04T12:00:00Z");
 
@@ -32,15 +32,32 @@ describe("formatRelativeAge", () => {
 	});
 });
 
-describe("oldestTimestamp", () => {
-	it("returns the oldest of the timestamps", () => {
-		expect(oldestTimestamp(["2026-07-04 11:00:00.000", "2026-07-03 11:00:00.000", "2026-07-04 11:30:00.000"])).toBe(
-			"2026-07-03 11:00:00.000",
-		);
+describe("freshnessSummary", () => {
+	it("takes the median refresh, so one long-stale project cannot age the whole page, and lists the stale projects", () => {
+		expect(
+			freshnessSummary(
+				{
+					zeta: "2026-07-04 11:58:00.000",
+					alpha: "2026-07-04 11:50:00.000",
+					kempt: "2026-01-09 13:58:00.000",
+					beta: "2026-07-04 11:30:00.000",
+					gamma: "2026-07-04 11:55:00.000",
+				},
+				NOW,
+				15,
+			),
+		).toStrictEqual({refreshedAt: "2026-07-04 11:50:00.000", staleProjects: ["beta", "kempt"]});
 	});
 
-	it("returns null for an empty list", () => {
-		expect(oldestTimestamp([])).toBeNull();
+	it("takes the older of the two middle refreshes for an even count", () => {
+		expect(freshnessSummary({a: "2026-07-04 11:58:00.000", b: "2026-07-04 11:50:00.000"}, NOW, 15)).toStrictEqual({
+			refreshedAt: "2026-07-04 11:50:00.000",
+			staleProjects: [],
+		});
+	});
+
+	it("has no refresh time before any project has refreshed", () => {
+		expect(freshnessSummary({}, NOW, 15)).toStrictEqual({refreshedAt: null, staleProjects: []});
 	});
 });
 

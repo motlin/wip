@@ -3200,3 +3200,21 @@ describe("landFastForwardHandler", () => {
 		}).toEqual({ok: false, localMain: moved, remoteMain: moved});
 	});
 });
+
+describe("getSystemStatusHandler", () => {
+	it("reports children refresh times only for current projects, ignoring rows left by removed or skipped ones", async () => {
+		seedProjectCache([
+			makeProject({name: "alpha", dir: "/tmp/alpha"}),
+			makeProject({name: "beta", dir: "/tmp/beta"}),
+		]);
+		const {markCacheFresh} = await import("@wip/shared");
+		markCacheFresh("children:alpha");
+		markCacheFresh("children:kempt");
+		markCacheFresh("children:linguist");
+		const {getSystemStatusHandler} = await import("./server-fns.impl.js");
+
+		const status = await getSystemStatusHandler();
+
+		expect(Object.keys(status.childrenRefreshedAt)).toStrictEqual(["alpha"]);
+	});
+});

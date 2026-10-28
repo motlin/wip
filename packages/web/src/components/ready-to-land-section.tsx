@@ -24,6 +24,20 @@ export function landingAction(item: ReadyToLandItem, commit: GitChildResult | un
 	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch};
 }
 
+/**
+ * A stopped project (own upstream red) lands nothing but the fix: a commit that sits on the red
+ * upstream tip and tests green, so landing it makes upstream green. Null when the row may land.
+ */
+function stoppedLineReason(
+	project: string,
+	stopped: ReadonlySet<string>,
+	commit: GitChildResult | undefined,
+): string | null {
+	if (!stopped.has(project)) return null;
+	const fixesUpstream = commit?.testStatus === "passed" && commit.commitsBehind === 0 && commit.needsRebase !== true;
+	return fixesUpstream ? null : `${project}'s upstream is red: only the commit that makes it green can land`;
+}
+
 function sizeText(commit: GitChildResult | undefined): string | null {
 	if (commit?.insertions === undefined && commit?.deletions === undefined) return null;
 	const files = commit.files ?? 0;
@@ -63,6 +77,7 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 					const commit = byKey.get(`${item.project}:${item.sha}`);
 					const size = sizeText(commit);
 					const action = landingAction(item, commit);
+					const blockedReason = stoppedLineReason(item.project, stopped, commit);
 					const noTests = projectMap.get(item.project)?.hasTestConfigured === false;
 					const age = now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now);
 					return (
@@ -93,10 +108,12 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 							{action !== null && (
 								<button
 									type="button"
+									disabled={blockedReason !== null}
+									title={blockedReason ?? undefined}
 									onClick={() => {
 										onLand(item, commit);
 									}}
-									className="ml-auto rounded bg-status-green px-2 py-1 text-xs font-medium text-white hover:opacity-90"
+									className="ml-auto rounded bg-status-green px-2 py-1 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
 								>
 									{action.label}
 								</button>

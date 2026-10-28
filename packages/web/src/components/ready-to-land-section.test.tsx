@@ -28,7 +28,15 @@ function project(name: string, hasTestConfigured = true): ProjectInfo {
 const commits = [
 	makeChild({project: "a", sha: sha("a1"), subject: "Add parser", insertions: 10, deletions: 2, files: 1}),
 	makeChild({project: "a", sha: sha("a2"), subject: "Use parser", insertions: 3, deletions: 0, files: 2}),
-	makeChild({project: "red", sha: sha("r1"), subject: "Fix red", prNumber: 7, considerSplitting: true}),
+	makeChild({
+		project: "red",
+		sha: sha("r1"),
+		subject: "Fix red",
+		prNumber: 7,
+		considerSplitting: true,
+		commitsBehind: 0,
+	}),
+	makeChild({project: "red", sha: sha("r2"), subject: "Unrelated", prNumber: 8, commitsBehind: 2}),
 	makeChild({project: "plain", sha: sha("p1"), subject: "No tests here", branch: "no-tests"}),
 	makeChild({project: "plain", sha: sha("p2"), subject: "Detached", branch: undefined}),
 ];
@@ -41,6 +49,7 @@ const state: ReadyToLandState = {
 		{project: "a", id: "pa1", sha: sha("a1"), landing: "fast-forward", firstSeen: "2026-10-27 12:00:00"},
 		{project: "plain", id: "pp1", sha: sha("p1"), landing: "pull-request"},
 		{project: "plain", id: "pp2", sha: sha("p2"), landing: "pull-request"},
+		{project: "red", id: "pr2", sha: sha("r2"), landing: "pull-request"},
 	],
 	inFlight: [{project: "a", id: "pa3", sha: sha("a3")}],
 	next: [],
@@ -69,13 +78,14 @@ describe("ReadyToLandSection", () => {
 			heading: screen.getByTestId("ready-to-land-heading").textContent,
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
 		}).toStrictEqual({
-			heading: "Ready to land5/3 ready · 1 readying",
+			heading: "Ready to land6/3 ready · 1 readying",
 			rows: [
 				"Add parsera+10 −2 · 1 filein wip 1dFast-forward",
 				"Use parsera+3 −0 · 2 filesFast-forward",
 				"Fix redredupstream redconsider splittingin wip 3dMerge PR #7",
 				"No tests hereplainno testsOpen PR",
 				"Detachedplainno tests",
+				"Unrelatedredupstream redMerge PR #8",
 			],
 		});
 	});
@@ -111,7 +121,7 @@ describe("ReadyToLandSection", () => {
 
 		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
 
-		expect(onLand.mock.calls).toStrictEqual([[state.ready[3], commits[3]]]);
+		expect(onLand.mock.calls).toStrictEqual([[state.ready[3], commits[4]]]);
 	});
 
 	it("renders nothing without buffer state, and nothing when the buffer holds nothing", () => {
@@ -124,6 +134,36 @@ describe("ReadyToLandSection", () => {
 		expect({first: container.innerHTML, rows: screen.queryAllByTestId("ready-to-land-row")}).toStrictEqual({
 			first: "",
 			rows: [],
+		});
+	});
+
+	it("disables landing in a stopped project, with the reason, except for the commit that fixes the red upstream", () => {
+		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
+		render(
+			<ReadyToLandSection
+				state={state}
+				commits={commits}
+				projects={[project("a"), project("red"), project("plain", false)]}
+				now={now}
+				onLand={onLand}
+			/>,
+		);
+
+		const blocked = screen.getByRole("button", {name: "Merge PR #8"});
+		const fix = screen.getByRole("button", {name: "Merge PR #7"});
+		fireEvent.click(blocked);
+
+		expect({
+			blocked: {disabled: blocked.hasAttribute("disabled"), title: blocked.getAttribute("title")},
+			fix: {disabled: fix.hasAttribute("disabled"), title: fix.getAttribute("title")},
+			landed: onLand.mock.calls,
+		}).toStrictEqual({
+			blocked: {
+				disabled: true,
+				title: "red's upstream is red: only the commit that makes it green can land",
+			},
+			fix: {disabled: false, title: null},
+			landed: [],
 		});
 	});
 });

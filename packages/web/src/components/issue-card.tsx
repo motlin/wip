@@ -4,6 +4,7 @@ import type {IssueResult, Category} from "@wip/shared";
 import {CategoryBadge} from "./category-badge";
 import {LabelList} from "./label-list";
 
+// No primary action: an issue's next step (triage it into a todo or a branch) is the user's judgment, not one click.
 export function IssueCard({issue, category}: {issue: IssueResult; category?: Category}) {
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">

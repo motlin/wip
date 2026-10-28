@@ -43,15 +43,24 @@ describe("TodoCard actions", () => {
 		for (const fn of Object.values(serverFns)) fn.mockReset();
 	});
 
-	it("renders /markdown-tasks:do-one-task as its one primary action and queues it for the project", async () => {
+	it("renders Do this task as its one primary action, naming the todo, and queues that todo", async () => {
 		serverFns.runTodoTask.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
 		renderTodo(todo);
 
-		expect(primaryButtons().map((button) => button.textContent)).toStrictEqual(["/markdown-tasks:do-one-task"]);
+		expect(
+			primaryButtons().map((button) => ({label: button.textContent, title: button.getAttribute("title")})),
+		).toStrictEqual([
+			{
+				label: "Do this task",
+				title: 'Run claude with markdown-tasks:do-one-task on "Write the docs" from .llm/todo.md in wip',
+			},
+		]);
 		fireEvent.click(primaryButtons()[0]!);
 
 		await waitFor(() => {
-			expect(serverFns.runTodoTask.mock.calls).toStrictEqual([[{data: {project: "wip"}}]]);
+			expect(serverFns.runTodoTask.mock.calls).toStrictEqual([
+				[{data: {project: "wip", sourceFile: "/repo/wip/.llm/todo.md", title: "Write the docs"}}],
+			]);
 		});
 	});
 

@@ -30,8 +30,10 @@ export function addTestCommand(sha: string): string {
 	return `Add a test that covers the changes in commit ${sha}`;
 }
 
-/** The command a todo or issue card's primary action queues in its project. */
-export const DO_ONE_TASK_COMMAND = "/markdown-tasks:do-one-task";
+/** The Claude prompt a todo card's primary action queues: do-one-task, aimed at the clicked todo instead of the first one. */
+export function doTodoTaskPrompt(title: string, sourceLabel: string): string {
+	return `Follow the markdown-tasks:do-one-task skill, but implement the task titled "${title}" in ${sourceLabel} instead of the first incomplete task, and mark it complete with task_mark.py --title "${title}".`;
+}
 
 /** The one filled button on a card: a state's action, its Claude command (`run_claude`), or a todo's task (`do_task`). */
 export type PrimaryAction = Action | "run_claude" | "do_task";

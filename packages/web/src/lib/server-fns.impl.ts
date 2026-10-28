@@ -113,7 +113,7 @@ import {
 	parseWorktreeList,
 } from "@wip/shared";
 import {considerSplitting} from "@wip/shared/candidate-rank.js";
-import {DO_ONE_TASK_COMMAND} from "./category-actions.js";
+import {doTodoTaskPrompt} from "./category-actions.js";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
@@ -602,7 +602,7 @@ export async function unsnoozeTodoHandler(data: UnsnoozeTodoInput): Promise<Acti
 	});
 }
 
-/** Queues /markdown-tasks:do-one-task as a Claude task on the project's checked-out branch. */
+/** Queues a Claude task on the project's checked-out branch that does the given todo via markdown-tasks:do-one-task. */
 export async function runTodoTaskHandler(data: RunTodoTaskInput): Promise<TestJobStatus> {
 	return traced("runTodoTask", async () => {
 		const p = await resolveProject(data.project);
@@ -616,9 +616,9 @@ export async function runTodoTaskHandler(data: RunTodoTaskInput): Promise<TestJo
 			p.dir,
 			sha,
 			sha.slice(0, 7),
-			DO_ONE_TASK_COMMAND,
+			data.title,
 			branch,
-			DO_ONE_TASK_COMMAND,
+			doTodoTaskPrompt(data.title, path.relative(p.dir, data.sourceFile)),
 		);
 		return {id: task.id, status: task.status, message: task.message};
 	});

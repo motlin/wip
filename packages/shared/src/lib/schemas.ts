@@ -525,7 +525,8 @@ export type SnoozeTodoInput = z.infer<typeof SnoozeTodoInputSchema>;
 export const UnsnoozeTodoInputSchema = SnoozeTodoInputSchema.omit({until: true});
 export type UnsnoozeTodoInput = z.infer<typeof UnsnoozeTodoInputSchema>;
 
-export const RunTodoTaskInputSchema = z.object({project: z.string()});
+// Keyed like todoItemKey: the clicked todo's file and title.
+export const RunTodoTaskInputSchema = z.object({project: z.string(), sourceFile: z.string(), title: z.string()});
 export type RunTodoTaskInput = z.infer<typeof RunTodoTaskInputSchema>;
 
 export const UnsnoozeChildInputSchema = z.object({

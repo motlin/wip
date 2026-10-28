@@ -66,10 +66,11 @@ afterEach(async () => {
 });
 
 describe("todo actions", () => {
-	it("queues /markdown-tasks:do-one-task as a Claude task on the project's checked-out branch", async () => {
+	it("queues a Claude task on the project's checked-out branch that does the clicked todo, not the first one", async () => {
 		const head = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+		const todoFile = join(dir, ".llm", "todo.md");
 
-		const status = await runTodoTaskHandler({project: "todo-actions"});
+		const status = await runTodoTaskHandler({project: "todo-actions", sourceFile: todoFile, title: "Second task"});
 
 		expect({status, calls: enqueueTask.mock.calls}).toStrictEqual({
 			status: {id: "7", status: "queued", message: "queued"},
@@ -80,9 +81,9 @@ describe("todo actions", () => {
 					dir,
 					head,
 					head.slice(0, 7),
-					"/markdown-tasks:do-one-task",
+					"Second task",
 					"feature/todos",
-					"/markdown-tasks:do-one-task",
+					'Follow the markdown-tasks:do-one-task skill, but implement the task titled "Second task" in .llm/todo.md instead of the first incomplete task, and mark it complete with task_mark.py --title "Second task".',
 				],
 			],
 		});

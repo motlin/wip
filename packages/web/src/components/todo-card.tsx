@@ -4,7 +4,7 @@ import type {TodoItem, Category} from "@wip/shared";
 import {CategoryBadge} from "./category-badge";
 import {Bot, Loader2} from "./icons.js";
 import {runTodoTask, snoozeTodoFn, unsnoozeTodoFn} from "../lib/server-fns.js";
-import {DO_ONE_TASK_COMMAND, primaryAction} from "../lib/category-actions.js";
+import {primaryAction} from "../lib/category-actions.js";
 import {classifyTodo} from "@wip/shared/classify.js";
 import {SNOOZE_PRESETS, snoozeUntil} from "../lib/snooze-presets.js";
 import {runPendingAction} from "../lib/pending-action.js";
@@ -28,8 +28,8 @@ export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}
 
 	const handleDoTask = async () => {
 		await runPendingAction("Do task", setQueuing, async () => {
-			const status = await runTodoTask({data: {project: todo.project}});
-			pushToast({level: "info", message: `Queued ${DO_ONE_TASK_COMMAND}`, detail: status.message});
+			const status = await runTodoTask({data: key});
+			pushToast({level: "info", message: `Queued "${todo.title}"`, detail: status.message});
 		});
 	};
 	const handleSnooze = async (hours: number | null) => {
@@ -65,7 +65,7 @@ export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}
 							void handleDoTask();
 						}}
 						disabled={queuing}
-						title={`Run ${DO_ONE_TASK_COMMAND} in ${todo.project}: it does the next task in ${todo.sourceLabel}`}
+						title={`Run claude with markdown-tasks:do-one-task on "${todo.title}" from ${todo.sourceLabel} in ${todo.project}`}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							queuing
 								? "cursor-not-allowed opacity-60 text-text-300"
@@ -73,7 +73,7 @@ export function TodoCard({todo, category}: {todo: TodoItem; category?: Category}
 						}`}
 					>
 						{queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
-						{DO_ONE_TASK_COMMAND}
+						Do this task
 					</button>
 				)}
 				<button

@@ -1,11 +1,18 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
-import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
+import {useQuery, useQueryClient, useSuspenseQuery} from "@tanstack/react-query";
 import {ClipboardList} from "../../components/icons.js";
 import {useState, useMemo, useCallback, useEffect} from "react";
-import {landFastForward, mergePr, runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
+import {
+	createPr,
+	landFastForward,
+	mergePr,
+	runEscapeHatch,
+	topUpReadyBuffer,
+	type ProjectChildrenResult,
+} from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
 import {projectsQueryOptions, readyToLandQueryOptions, systemStatusQueryOptions} from "../../lib/queries";
-import {ReadyToLandSection} from "../../components/ready-to-land-section";
+import {ReadyToLandSection, landingAction} from "../../components/ready-to-land-section";
 import {pushToast} from "../../lib/toast-store";
 import type {ReadyToLandItem} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult} from "@wip/shared/schemas.js";
@@ -118,18 +125,41 @@ function QueueLayout() {
 			clearInterval(timer);
 		};
 	}, []);
-	const land = useCallback((item: ReadyToLandItem, commit: GitChildResult | undefined) => {
-		const landing =
-			item.landing === "pull-request"
-				? commit?.prNumber === undefined
-					? null
-					: mergePr({data: {project: item.project, prNumber: commit.prNumber}})
-				: landFastForward({data: {project: item.project, sha: item.sha}});
-		void landing?.then((result) => {
-			pushToast({level: result.ok ? "success" : "error", message: result.message});
-			return undefined;
-		});
-	}, []);
+	const queryClient = useQueryClient();
+	const land = useCallback(
+		(item: ReadyToLandItem, commit: GitChildResult | undefined) => {
+			const action = landingAction(item, commit);
+			if (action === null) return;
+			const landing =
+				action.kind === "merge-pr"
+					? mergePr({data: {project: item.project, prNumber: action.prNumber}})
+					: action.kind === "open-pr"
+						? createPr({
+								data: {
+									project: item.project,
+									branch: action.branch,
+									title: commit?.subject ?? action.branch,
+								},
+							})
+						: landFastForward({data: {project: item.project, sha: item.sha}});
+			void landing.then((result) => {
+				pushToast({level: result.ok ? "success" : "error", message: result.message});
+				const prNumber = result.compareUrl?.match(/\/pull\/(\d+)/)?.[1];
+				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {
+					// The row's next step becomes "Merge PR #N" without a refetch.
+					queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], (old) =>
+						old?.map((c) =>
+							c.sha === item.sha
+								? {...c, pushedToRemote: true, prUrl: result.compareUrl, prNumber: Number(prNumber)}
+								: c,
+						),
+					);
+				}
+				return undefined;
+			});
+		},
+		[queryClient],
+	);
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
 		() => flowCounts({projects, gitChildren: workItems.gitChildren, todos: workItems.todos, slots: readySlots}),

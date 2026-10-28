@@ -7,10 +7,23 @@ const DAY_MS = 86_400_000;
 const MARKER_CLASS =
 	"inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400";
 
-/** The repo's landing action: merge the PR in a pull-request repo, fast-forward otherwise. */
-function landingLabel(item: ReadyToLandItem, commit: GitChildResult | undefined): string | null {
-	if (item.landing === "pull-request") return commit?.prNumber === undefined ? null : `Merge PR #${commit.prNumber}`;
-	return "Fast-forward";
+/**
+ * The row's next step: in a pull-request repo, merge its PR, or open one when it has none yet (a
+ * PR the user clicks to open is user-initiated); fast-forward otherwise. Null only when a
+ * pull-request repo's commit has no branch to open a PR from.
+ */
+export type LandingAction =
+	| {kind: "merge-pr"; label: string; prNumber: number}
+	| {kind: "open-pr"; label: string; branch: string}
+	| {kind: "fast-forward"; label: string};
+
+export function landingAction(item: ReadyToLandItem, commit: GitChildResult | undefined): LandingAction | null {
+	if (item.landing !== "pull-request") return {kind: "fast-forward", label: "Fast-forward"};
+	if (commit?.prNumber !== undefined) {
+		return {kind: "merge-pr", label: `Merge PR #${commit.prNumber}`, prNumber: commit.prNumber};
+	}
+	const branch = item.branch ?? commit?.branch;
+	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch};
 }
 
 function sizeText(commit: GitChildResult | undefined): string | null {
@@ -51,7 +64,7 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 				{landingOrder(state.ready).map((item) => {
 					const commit = byKey.get(`${item.project}:${item.sha}`);
 					const size = sizeText(commit);
-					const action = landingLabel(item, commit);
+					const action = landingAction(item, commit);
 					const noTests = projectMap.get(item.project)?.hasTestConfigured === false;
 					const ageDays =
 						now === null || item.firstSeen === undefined
@@ -90,7 +103,7 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 									}}
 									className="ml-auto rounded bg-status-green px-2 py-1 text-xs font-medium text-white hover:opacity-90"
 								>
-									{action}
+									{action.label}
 								</button>
 							)}
 						</li>

@@ -21,6 +21,7 @@ import {
 	getCommitFacts,
 	getLadderBackgroundRebase,
 	getSplitThresholdLines,
+	getReadyBufferSize,
 	getTestLogDir,
 	invalidatePrCache,
 	invalidateIssuesCache,
@@ -1892,6 +1893,8 @@ export interface SystemStatus {
 	rateLimitedUntil: number | null;
 	/** Per-project children cache last-refreshed timestamps (DB format, UTC). */
 	childrenRefreshedAt: Record<string, string>;
+	/** How many commits the ready buffer keeps ready (readyBuffer.size): the nav strip's "ready n/slots". */
+	readySlots: number;
 }
 
 export async function getSystemStatusHandler(): Promise<SystemStatus> {
@@ -1900,6 +1903,7 @@ export async function getSystemStatusHandler(): Promise<SystemStatus> {
 		return Promise.resolve({
 			rateLimitedUntil: rateLimit.until,
 			childrenRefreshedAt: Object.fromEntries(getCacheFreshnessByPrefix("children:")),
+			readySlots: getReadyBufferSize(),
 		});
 	});
 }

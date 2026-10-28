@@ -38,6 +38,10 @@
 			"types": "./src/lib/readiness.ts",
 			"import": "./src/lib/readiness.ts"
 		},
+		"./flow-counts.js": {
+			"types": "./src/lib/flow-counts.ts",
+			"import": "./src/lib/flow-counts.ts"
+		},
 		"./upstream-red.js": {
 			"types": "./src/lib/upstream-red.ts",
 			"import": "./src/lib/upstream-red.ts"

@@ -1,39 +1,21 @@
 import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
-import {useSuspenseQuery} from "@tanstack/react-query";
+import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {ClipboardList} from "../../components/icons.js";
 import {useState, useMemo, useCallback} from "react";
 import {runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
-import {projectsQueryOptions} from "../../lib/queries";
+import {projectsQueryOptions, systemStatusQueryOptions} from "../../lib/queries";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, bucketCount, type QueueContextValue} from "../../lib/queue-context";
 import {SystemStatus} from "../../components/system-status";
+import {FlowStrip} from "../../components/flow-strip";
+import {flowCounts} from "@wip/shared/flow-counts.js";
 import {CategoryBadge} from "../../components/category-badge";
 import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared/classify.js";
 import {sidebarProjects} from "../../lib/sidebar-projects";
 import type {Category} from "@wip/shared";
 import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotClass} from "../../lib/category-actions";
-
-// Categories where the user needs to take action (not waiting on CI or external review)
-const NEEDS_ACTION_CATEGORIES: Set<Category> = new Set([
-	"upstream_red",
-	"checks_passed",
-	"checks_failed",
-	"test_failed",
-	"needs_rebase",
-	"rebase_conflicts",
-	"rebase_stuck",
-	"ready_to_push",
-	"pushed_no_pr",
-	"ready_to_test",
-	"local_changes",
-	"detached_head",
-	"no_test",
-	"approved",
-	"changes_requested",
-	"review_comments",
-]);
 
 const MAX_VISIBLE_PROJECTS = 8;
 
@@ -117,11 +99,16 @@ function QueueLayout() {
 		return {grouped: g, totalCount: total, readyToTestCount: rtCount, needsRebaseCount: nrCount};
 	}, [workItems, projects]);
 
-	const {categoryCounts, projectCounts, needsActionCount, waitingCount} = useMemo(() => {
+	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
+	const readySlots = systemStatus?.readySlots;
+	const counts = useMemo(
+		() => flowCounts({projects, gitChildren: workItems.gitChildren, todos: workItems.todos, slots: readySlots}),
+		[projects, workItems, readySlots],
+	);
+
+	const {categoryCounts, projectCounts} = useMemo(() => {
 		const catCounts: Partial<Record<Category, number>> = {};
 		const projCounts = new Map<string, number>();
-		let action = 0;
-		let waiting = 0;
 
 		for (const cat of CATEGORY_PRIORITY) {
 			const items = grouped[cat];
@@ -129,12 +116,6 @@ function QueueLayout() {
 
 			if (count > 0) {
 				catCounts[cat] = count;
-			}
-
-			if (NEEDS_ACTION_CATEGORIES.has(cat)) {
-				action += count;
-			} else {
-				waiting += count;
 			}
 
 			for (const child of items.gitChildren ?? []) {
@@ -152,12 +133,7 @@ function QueueLayout() {
 			}
 		}
 
-		return {
-			categoryCounts: catCounts,
-			projectCounts: projCounts,
-			needsActionCount: action,
-			waitingCount: waiting,
-		};
+		return {categoryCounts: catCounts, projectCounts: projCounts};
 	}, [grouped]);
 
 	const filterByProject = useCallback(
@@ -232,17 +208,9 @@ function QueueLayout() {
 								<span>Total items</span>
 								<span className="font-semibold text-text-000">{totalCount}</span>
 							</div>
-							<div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
+							<div className="flex items-center justify-between py-2 text-[0.8125rem] text-text-300">
 								<span>Projects</span>
 								<span className="font-semibold text-text-000">{workItems.projectCount}</span>
-							</div>
-							<div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
-								<span>Needs action</span>
-								<span className="font-semibold text-text-000">{needsActionCount}</span>
-							</div>
-							<div className="flex items-center justify-between py-2 text-[0.8125rem] text-text-300">
-								<span>Waiting</span>
-								<span className="font-semibold text-text-000">{waitingCount}</span>
 							</div>
 						</div>
 					</section>
@@ -359,6 +327,7 @@ function QueueLayout() {
 							<span className="text-sm text-text-500">
 								{totalCount} items across {workItems.projectCount} projects
 							</span>
+							<FlowStrip counts={counts} />
 							<SystemStatus />
 						</div>
 						<div className="flex items-center gap-2">

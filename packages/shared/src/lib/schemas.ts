@@ -444,6 +444,8 @@ export const TodoItemSchema = z.object({
 	sourceLabel: z.string(),
 	// A `- [!]` task: blocked work that classifies as `blocked`.
 	blocked: z.boolean().optional(),
+	// On hold or snoozed (keyed by todoItemKey): classifies as `snoozed` and leaves WIP.
+	onHold: z.boolean().optional(),
 });
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 
@@ -511,6 +513,20 @@ export const SnoozeChildInputSchema = z.object({
 	until: z.iso.datetime().nullable(),
 });
 export type SnoozeChildInput = z.infer<typeof SnoozeChildInputSchema>;
+
+export const SnoozeTodoInputSchema = z.object({
+	project: z.string(),
+	sourceFile: z.string(),
+	title: z.string(),
+	until: z.iso.datetime().nullable(),
+});
+export type SnoozeTodoInput = z.infer<typeof SnoozeTodoInputSchema>;
+
+export const UnsnoozeTodoInputSchema = SnoozeTodoInputSchema.omit({until: true});
+export type UnsnoozeTodoInput = z.infer<typeof UnsnoozeTodoInputSchema>;
+
+export const RunTodoTaskInputSchema = z.object({project: z.string()});
+export type RunTodoTaskInput = z.infer<typeof RunTodoTaskInputSchema>;
 
 export const UnsnoozeChildInputSchema = z.object({
 	sha: shaSchema,

@@ -74,6 +74,11 @@ function renderBranch(
 	);
 }
 
+/** Secondary actions live behind More; the card shows only its primary action until it is opened. */
+function openMore() {
+	fireEvent.click(screen.getByRole("button", {name: "More"}));
+}
+
 describe("no_test marker and Add a test detour", () => {
 	afterEach(() => {
 		cleanup();
@@ -96,6 +101,7 @@ describe("no_test marker and Add a test detour", () => {
 
 	it("shows the no tests marker on a pushed branch in a project with no test configured", () => {
 		renderBranch(branchItem({pushedToRemote: true}), "pushed_no_pr", [project(false)]);
+		openMore();
 
 		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
 		expect(screen.getByRole("button", {name: "Add a test"}).hasAttribute("disabled")).toBe(false);
@@ -131,6 +137,7 @@ describe("no_test marker and Add a test detour", () => {
 
 	it("disables Add a test with a reason on an unnamed commit", () => {
 		renderBranch(branchItem({branch: undefined}), "no_test", [project(false)]);
+		openMore();
 
 		const button = screen.getByRole("button", {name: "Add a test"});
 		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
@@ -144,6 +151,7 @@ describe("no_test marker and Add a test detour", () => {
 	it("enqueues exactly one task for the commit when Add a test is clicked", async () => {
 		serverFns.runClaudeCommand.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
 		renderBranch(branchItem({}), "no_test");
+		openMore();
 
 		fireEvent.click(screen.getByRole("button", {name: "Add a test"}));
 
@@ -274,6 +282,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 		renderBranch(branchItem({testStatus: "unknown", localAhead: true, pushedToRemote: true}), "pushed_no_pr", [
 			project(true),
 		]);
+		openMore();
 
 		fireEvent.click(screen.getByRole("button", {name: "Force Push"}));
 		const afterFirst = {
@@ -315,6 +324,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 		renderBranch(branchItem({testStatus: "passed", localAhead: true, pushedToRemote: true}), "pushed_no_pr", [
 			project(true),
 		]);
+		openMore();
 
 		fireEvent.click(screen.getByRole("button", {name: "Force Push"}));
 
@@ -351,6 +361,7 @@ describe("commit-actions error toasts", () => {
 	it("shows an error toast when enqueuing a test fails", async () => {
 		serverFns.testChild.mockRejectedValue(new Error("boom"));
 		renderBranch(branchItem({}), "no_test");
+		openMore();
 
 		fireEvent.click(screen.getByRole("button", {name: "Run Test"}));
 
@@ -365,6 +376,7 @@ describe("commit-actions error toasts", () => {
 	it("shows an error toast when running a Claude command fails", async () => {
 		serverFns.runClaudeCommand.mockRejectedValue(new Error("claude exploded"));
 		renderBranch(branchItem({}), "local_changes");
+		openMore();
 
 		fireEvent.click(screen.getByRole("button", {name: "/git:commit"}));
 
@@ -386,6 +398,7 @@ describe("consider splitting marker and Split transition", () => {
 
 	it("shows the marker plus both the normal Push and Split on a large commit", () => {
 		renderBranch(branchItem({testStatus: "passed", considerSplitting: true}), "ready_to_push", [project(true)]);
+		openMore();
 
 		expect({
 			markers: screen.getAllByTestId("consider-splitting-marker").map((el) => el.textContent),
@@ -416,6 +429,7 @@ describe("consider splitting marker and Split transition", () => {
 	it("queues /git:split-branch through the task queue when Split is clicked", async () => {
 		serverFns.runClaudeCommand.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
 		renderBranch(branchItem({testStatus: "passed", considerSplitting: true}), "ready_to_push", [project(true)]);
+		openMore();
 
 		fireEvent.click(screen.getByRole("button", {name: "Split"}));
 
@@ -428,6 +442,7 @@ describe("consider splitting marker and Split transition", () => {
 
 	it("disables Split with a reason on an unnamed commit", () => {
 		renderBranch(branchItem({branch: undefined, considerSplitting: true}), "ready_to_test", [project(true)]);
+		openMore();
 
 		const button = screen.getByRole("button", {name: "Split"});
 		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
@@ -607,5 +622,57 @@ describe("local test skipped marker", () => {
 			marked: ["local test skipped (green before replay)"],
 			unmarked: null,
 		});
+	});
+});
+
+function primaryButtons() {
+	return screen.getAllByRole("button").filter((button) => button.hasAttribute("data-primary"));
+}
+
+describe("one primary action per card", () => {
+	afterEach(() => {
+		cleanup();
+		clearToasts();
+	});
+
+	it("fills exactly one button on a test_failed card, the fix command, and keeps the rest in More", () => {
+		renderBranch(branchItem({testStatus: "failed"}), "test_failed", [project(true)]);
+
+		expect({
+			primary: primaryButtons().map((button) => button.textContent),
+			testLog: screen.queryByRole("link", {name: "View Test Log"}),
+			rerun: screen.queryByRole("button", {name: "Rerun Test"}),
+		}).toStrictEqual({primary: ["/build:fix"], testLog: null, rerun: null});
+	});
+
+	it("shows the secondary actions, unfilled, once More is opened", () => {
+		renderBranch(branchItem({testStatus: "failed"}), "test_failed", [project(true)]);
+
+		fireEvent.click(screen.getByRole("button", {name: "More"}));
+
+		expect({
+			primary: primaryButtons().map((button) => button.textContent),
+			testLog: screen.getAllByRole("link", {name: "View Test Log"}).length,
+			rerun: screen.getByRole("button", {name: "Rerun Test"}).className.includes("bg-yellow-600"),
+		}).toStrictEqual({primary: ["/build:fix"], testLog: 1, rerun: false});
+	});
+
+	it("makes Review fix the only primary action on an auto-fixed item", () => {
+		renderBranch(
+			branchItem({
+				testStatus: "failed",
+				autoFixed: {failure: "FAIL a.test.ts", fixupSha: "f".repeat(40), branch: "feature/x"},
+			}),
+			"test_failed",
+			[project(true)],
+		);
+
+		expect(primaryButtons().map((button) => button.textContent)).toStrictEqual(["Review fix"]);
+	});
+
+	it("makes Force Push the primary action on a ready_to_push branch that is ahead of its remote", () => {
+		renderBranch(branchItem({testStatus: "passed", localAhead: true}), "ready_to_push", [project(true)]);
+
+		expect(primaryButtons().map((button) => button.textContent)).toStrictEqual(["Force Push"]);
 	});
 });

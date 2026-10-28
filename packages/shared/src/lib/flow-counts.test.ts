@@ -41,6 +41,17 @@ function todo(title: string, overrides: Partial<TodoItem> = {}): TodoItem {
 }
 
 describe("flowCounts", () => {
+	it("leaves todos on hold out of WIP", () => {
+		expect(
+			flowCounts({
+				projects: [project],
+				gitChildren: [],
+				todos: [todo("one"), todo("held", {onHold: true}), todo("held blocked", {onHold: true, blocked: true})],
+				slots: 3,
+			}),
+		).toStrictEqual({wip: 1, commits: 0, todos: 1, red: 0, blocked: 0, ready: 0, slots: 3});
+	});
+
 	it("counts commits and todos separately and excludes on-hold, snoozed, skippable and upstream CI", () => {
 		expect(
 			flowCounts({

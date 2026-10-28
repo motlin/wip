@@ -53,6 +53,7 @@ export function classifyIssue(_issue: IssueResult): Category {
 }
 
 export function classifyTodo(todo: TodoItem): Category {
+	if (todo.onHold) return "snoozed";
 	return todo.blocked ? "blocked" : "triaged";
 }
 

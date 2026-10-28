@@ -248,6 +248,22 @@ export const snoozed = sqliteTable(
 	],
 );
 
+/** On hold (null until) and Snooze for todos, keyed by todoItemKey since a todo has no sha (bitemporal). */
+export const snoozedTodos = sqliteTable(
+	"snoozed_todos",
+	{
+		project: text("project").notNull(),
+		itemKey: text("item_key").notNull(),
+		until: text("until"),
+		systemFrom: text("system_from").notNull(),
+		systemTo: text("system_to").notNull().default(FAR_FUTURE),
+	},
+	(table) => [
+		primaryKey({columns: [table.project, table.itemKey, table.systemTo]}),
+		index("snoozed_todos_active_idx").on(table.project, table.systemTo),
+	],
+);
+
 export const childrenCache = sqliteTable(
 	"children_cache",
 	{

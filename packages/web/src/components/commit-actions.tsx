@@ -50,21 +50,30 @@ import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category, ProjectInfo} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns.js";
-import {CATEGORIES, SPLIT_BRANCH_COMMAND, addTestCommand} from "../lib/category-actions.js";
+import {
+	CATEGORIES,
+	SPLIT_BRANCH_COMMAND,
+	addTestCommand,
+	primaryAction,
+	type PrimaryAction,
+} from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import {unverifiedPushReason} from "../lib/push-verification.js";
 import {AutoFixReview} from "./auto-fix-review.js";
-
-const SNOOZE_PRESETS = [
-	{label: "1 hour", hours: 1},
-	{label: "4 hours", hours: 4},
-	{label: "1 day", hours: 24},
-	{label: "1 week", hours: 24 * 7},
-	{label: "On hold", hours: null},
-] as const;
+import {SNOOZE_PRESETS, snoozeUntil} from "../lib/snooze-presets.js";
 
 type ActionableItem = GitChildResult;
+
+/** A slot in ItemActions: an action, a card-level step, or a marker (always shown beside the primary). */
+type SlotKey =
+	| Exclude<PrimaryAction, "do_task">
+	| "rebase_again"
+	| "cancel_test"
+	| "snooze"
+	| "add_test"
+	| "review_fix"
+	| "marker";
 
 interface ItemActionsProps {
 	item: ActionableItem;
@@ -213,6 +222,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [addingTest, setAddingTest] = useState(false);
 	const [splitting, setSplitting] = useState(false);
 	const [reviewOpen, setReviewOpen] = useState(false);
+	const [moreOpen, setMoreOpen] = useState(false);
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -743,12 +753,27 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 
 	const isRow = layout === "row";
 
-	return (
-		<div>
-			<div className={`flex ${isRow ? "flex-wrap items-center gap-2" : "flex-col gap-1.5"}`}>
+	// The card's one filled button: an auto-fix review or a Rebase again outranks the state's own next step.
+	const primary: SlotKey | null = (() => {
+		if (item.autoFixed) return "review_fix";
+		if (rebaseAgain) return "rebase_again";
+		const next = primaryAction(category);
+		if (next === "push" && item.localAhead) return "force_push";
+		return next === "do_task" ? null : next;
+	})();
+	const fill = (key: SlotKey, filled: string): string =>
+		key === primary ? filled : "text-text-300 hover:bg-bg-200 hover:text-text-100";
+	const primaryProps = (key: SlotKey): {"data-primary"?: "true"} => (key === primary ? {"data-primary": "true"} : {});
+
+	const renderActions = (where: "primary" | "more") => {
+		const at = (key: SlotKey): boolean =>
+			key === "marker" ? where === "primary" : (key === primary) === (where === "primary");
+		return (
+			<>
 				{/* Rebase again: the next action after Abort rebase, a fresh replay onto current upstream */}
-				{rebaseAgain && (
+				{at("rebase_again") && rebaseAgain && (
 					<button
+						{...primaryProps("rebase_again")}
 						type="button"
 						onClick={() => {
 							void handleRebaseLocal();
@@ -758,7 +783,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							rebasingLocal
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-orange-600 hover:bg-orange-700 text-white"
+								: fill("rebase_again", "bg-orange-600 hover:bg-orange-700 text-white")
 						}`}
 					>
 						{rebasingLocal ? (
@@ -771,8 +796,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Abort rebase: back a stuck rebase/cherry-pick/merge out instead of rescuing it */}
-				{actions.has("abort_rebase") && (
+				{at("abort_rebase") && actions.has("abort_rebase") && (
 					<button
+						{...primaryProps("abort_rebase")}
 						type="button"
 						onClick={() => {
 							void handleAbortRebase();
@@ -782,7 +808,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							aborting
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-red-600 hover:bg-red-700 text-white"
+								: fill("abort_rebase", "bg-red-600 hover:bg-red-700 text-white")
 						}`}
 					>
 						{aborting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
@@ -791,8 +817,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Merge PR */}
-				{actions.has("merge") && pr && (
+				{at("merge") && actions.has("merge") && pr && (
 					<button
+						{...primaryProps("merge")}
 						type="button"
 						onClick={() => {
 							void handleMergePr();
@@ -801,7 +828,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							merging
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-green-600 hover:bg-green-700 text-white"
+								: fill("merge", "bg-green-600 hover:bg-green-700 text-white")
 						}`}
 					>
 						{merging ? (
@@ -814,12 +841,13 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* PR link */}
-				{actions.has("open_pr_link") && pr && (
+				{at("open_pr_link") && actions.has("open_pr_link") && pr && (
 					<a
+						{...primaryProps("open_pr_link")}
 						href={pr.prUrl}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("open_pr_link", "bg-blue-600 hover:bg-blue-700 text-white")}`}
 					>
 						<GitHubIcon className="h-3.5 w-3.5" />
 						Open PR
@@ -827,8 +855,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Force Push (local ahead of remote) */}
-				{actions.has("force_push") && item.localAhead && (
+				{at("force_push") && actions.has("force_push") && item.localAhead && (
 					<button
+						{...primaryProps("force_push")}
 						type="button"
 						onClick={() => {
 							if (confirmUnverified("force_push")) void handleForcePush();
@@ -837,7 +866,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							forcePushing
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+								: fill("force_push", "bg-amber-600 hover:bg-amber-700 text-white")
 						}`}
 					>
 						{forcePushing ? (
@@ -850,8 +879,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Local Rebase */}
-				{actions.has("rebase_local") && !rebaseAgain && (
+				{at("rebase_local") && actions.has("rebase_local") && !rebaseAgain && (
 					<button
+						{...primaryProps("rebase_local")}
 						type="button"
 						onClick={() => {
 							void handleRebaseLocal();
@@ -861,7 +891,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							rebasingLocal
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-orange-600 hover:bg-orange-700 text-white"
+								: fill("rebase_local", "bg-orange-600 hover:bg-orange-700 text-white")
 						}`}
 					>
 						{rebasingLocal ? (
@@ -874,13 +904,15 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Apply Fixes */}
-				{actions.has("apply_fixes") &&
+				{at("apply_fixes") &&
+					actions.has("apply_fixes") &&
 					pr?.failedChecks?.some((c) => c.name.endsWith("-fix")) &&
 					(() => {
 						const fixChecks = pr.failedChecks.filter((c) => c.name.endsWith("-fix"));
 						return (
 							<div className="relative">
 								<button
+									{...primaryProps("apply_fixes")}
 									ref={fixesButtonRef}
 									type="button"
 									onClick={() => {
@@ -895,7 +927,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 										applyingFixes
 											? "cursor-not-allowed opacity-60 text-text-300"
-											: "bg-orange-600 hover:bg-orange-700 text-white"
+											: fill("apply_fixes", "bg-orange-600 hover:bg-orange-700 text-white")
 									}`}
 								>
 									{applyingFixes ? (
@@ -979,8 +1011,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					})()}
 
 				{/* Commit local changes */}
-				{actions.has("commit") && (
+				{at("commit") && actions.has("commit") && (
 					<button
+						{...primaryProps("commit")}
 						type="button"
 						onClick={() => {
 							void handleCommit();
@@ -989,7 +1022,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							committing
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-green-600 hover:bg-green-700 text-white"
+								: fill("commit", "bg-green-600 hover:bg-green-700 text-white")
 						}`}
 					>
 						{committing ? (
@@ -1002,7 +1035,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Inline rename widget for main/master branches */}
-				{actions.has("rename") && isDefaultBranch && (
+				{at("rename") && actions.has("rename") && isDefaultBranch && (
 					<div className="flex items-center gap-1.5">
 						<Pencil className="h-3.5 w-3.5 shrink-0 text-text-400" />
 						<input
@@ -1018,6 +1051,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							className="min-w-0 flex-1 rounded border border-border-300/50 bg-bg-100 px-2 py-1 font-mono text-xs text-text-100 outline-none focus:border-blue-500"
 						/>
 						<button
+							{...primaryProps("rename")}
 							type="button"
 							onClick={() => {
 								void handleRenameBranch();
@@ -1036,9 +1070,10 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Rename Branch popup (for non-default, non-PR branches) */}
-				{actions.has("rename") && !isDefaultBranch && (
+				{at("rename") && actions.has("rename") && !isDefaultBranch && (
 					<div className="relative">
 						<button
+							{...primaryProps("rename")}
 							ref={renameButtonRef}
 							type="button"
 							onClick={() => {
@@ -1104,8 +1139,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Create Branch */}
-				{actions.has("create_branch") && (
+				{at("create_branch") && actions.has("create_branch") && (
 					<button
+						{...primaryProps("create_branch")}
 						type="button"
 						onClick={() => {
 							void handleCreateBranch();
@@ -1114,7 +1150,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							creatingBranch
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-blue-600 hover:bg-blue-700 text-white"
+								: fill("create_branch", "bg-blue-600 hover:bg-blue-700 text-white")
 						}`}
 					>
 						{creatingBranch ? (
@@ -1127,15 +1163,18 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Create PR */}
-				{actions.has("create_pr") && (
+				{at("create_pr") && actions.has("create_pr") && (
 					<button
+						{...primaryProps("create_pr")}
 						type="button"
 						onClick={() => {
 							void handleCreatePr();
 						}}
 						disabled={creatingPr}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							creatingPr ? "cursor-not-allowed opacity-60" : "bg-blue-600 hover:bg-blue-700 text-white"
+							creatingPr
+								? "cursor-not-allowed opacity-60"
+								: fill("create_pr", "bg-blue-600 hover:bg-blue-700 text-white")
 						}`}
 					>
 						{creatingPr ? (
@@ -1148,8 +1187,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Push */}
-				{actions.has("push") && !item.localAhead && (
+				{at("push") && actions.has("push") && !item.localAhead && (
 					<button
+						{...primaryProps("push")}
 						type="button"
 						onClick={() => {
 							if (confirmUnverified("push")) void handlePush();
@@ -1158,7 +1198,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							item.pushing
 								? "cursor-not-allowed opacity-60"
-								: "bg-green-600 hover:bg-green-700 text-white"
+								: fill("push", "bg-green-600 hover:bg-green-700 text-white")
 						}`}
 					>
 						{item.pushing ? (
@@ -1171,13 +1211,14 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Test */}
-				{actions.has("test") && (
+				{at("test") && actions.has("test") && (
 					<button
+						{...primaryProps("test")}
 						type="button"
 						onClick={() => {
 							void handleTest();
 						}}
-						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors bg-yellow-600 hover:bg-yellow-700 text-white"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("test", "bg-yellow-600 hover:bg-yellow-700 text-white")}`}
 					>
 						{testJob?.status === "running" ? (
 							<Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1197,8 +1238,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Cancel test */}
-				{(testJob?.status === "running" || testJob?.status === "queued") && (
+				{at("cancel_test") && (testJob?.status === "running" || testJob?.status === "queued") && (
 					<button
+						{...primaryProps("cancel_test")}
 						type="button"
 						onClick={() => {
 							void handleCancelTest();
@@ -1211,12 +1253,13 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Test failure log */}
-				{actions.has("view_test_log") && (
+				{at("view_test_log") && actions.has("view_test_log") && (
 					<a
+						{...primaryProps("view_test_log")}
 						href={`/log/${item.project}/${item.sha}`}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("view_test_log", "bg-yellow-600 hover:bg-yellow-700 text-white")}`}
 					>
 						<FileText className="h-3.5 w-3.5" />
 						View Test Log
@@ -1224,68 +1267,71 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Snooze */}
-				<div className="relative">
-					<button
-						ref={snoozeButtonRef}
-						type="button"
-						onClick={() => {
-							if (!snoozeOpen && snoozeButtonRef.current) {
-								const rect = snoozeButtonRef.current.getBoundingClientRect();
-								setSnoozePos({top: rect.bottom + 4, left: rect.left});
-							}
-							setSnoozeOpen(!snoozeOpen);
-						}}
-						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-							snoozedEntry
-								? "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-								: "text-text-400 hover:bg-bg-200 hover:text-text-300"
-						}`}
-					>
-						{snoozedEntry ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-						{snoozedEntry
-							? snoozedEntry.until
-								? `Snoozed until ${new Date(snoozedEntry.until).toLocaleDateString(undefined, {month: "short", day: "numeric"})}`
-								: "On hold"
-							: "Snooze"}
-					</button>
-					{snoozeOpen && snoozePos && (
-						<div
-							ref={snoozeRef}
-							className="fixed z-50 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg"
-							style={{top: snoozePos.top, left: snoozePos.left}}
+				{at("snooze") && (
+					<div className="relative">
+						<button
+							{...primaryProps("snooze")}
+							ref={snoozeButtonRef}
+							type="button"
+							onClick={() => {
+								if (!snoozeOpen && snoozeButtonRef.current) {
+									const rect = snoozeButtonRef.current.getBoundingClientRect();
+									setSnoozePos({top: rect.bottom + 4, left: rect.left});
+								}
+								setSnoozeOpen(!snoozeOpen);
+							}}
+							className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+								snoozedEntry
+									? "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+									: "text-text-400 hover:bg-bg-200 hover:text-text-300"
+							}`}
 						>
-							{snoozedEntry && (
-								<>
+							{snoozedEntry ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+							{snoozedEntry
+								? snoozedEntry.until
+									? `Snoozed until ${new Date(snoozedEntry.until).toLocaleDateString(undefined, {month: "short", day: "numeric"})}`
+									: "On hold"
+								: "Snooze"}
+						</button>
+						{snoozeOpen && snoozePos && (
+							<div
+								ref={snoozeRef}
+								className="fixed z-50 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg"
+								style={{top: snoozePos.top, left: snoozePos.left}}
+							>
+								{snoozedEntry && (
+									<>
+										<button
+											type="button"
+											onClick={() => {
+												void handleUnsnooze();
+											}}
+											className="block w-full px-3 py-1.5 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-bg-200"
+										>
+											Unsnooze
+										</button>
+										<div className="my-1 border-t border-border-300/30" />
+									</>
+								)}
+								{SNOOZE_PRESETS.map((preset) => (
 									<button
+										key={preset.label}
 										type="button"
 										onClick={() => {
-											void handleUnsnooze();
+											void handleSnooze(preset.hours);
 										}}
-										className="block w-full px-3 py-1.5 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-bg-200"
+										className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
 									>
-										Unsnooze
+										{preset.label}
 									</button>
-									<div className="my-1 border-t border-border-300/30" />
-								</>
-							)}
-							{SNOOZE_PRESETS.map((preset) => (
-								<button
-									key={preset.label}
-									type="button"
-									onClick={() => {
-										void handleSnooze(preset.hours);
-									}}
-									className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
-								>
-									{preset.label}
-								</button>
-							))}
-						</div>
-					)}
-				</div>
+								))}
+							</div>
+						)}
+					</div>
+				)}
 
 				{/* Unverified push warning: shown after the first Push / Force Push click */}
-				{armedPush !== null && unverifiedReason !== null && (
+				{at("marker") && armedPush !== null && unverifiedReason !== null && (
 					<span
 						data-testid="unverified-push-warning"
 						role="alert"
@@ -1296,7 +1342,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* No tests marker: landable without a test, with an "Add a test" detour */}
-				{noTests && (
+				{at("marker") && noTests && (
 					<span
 						data-testid="no-tests-marker"
 						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
@@ -1304,8 +1350,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						no tests
 					</span>
 				)}
-				{noTests && (
+				{at("add_test") && noTests && (
 					<button
+						{...primaryProps("add_test")}
 						type="button"
 						onClick={() => {
 							void handleAddTest();
@@ -1332,7 +1379,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Auto-fixed: the ready buffer's AI fixup sits on top; the next step is reviewing it */}
-				{item.autoFixed && (
+				{at("marker") && item.autoFixed && (
 					<span
 						data-testid="auto-fixed-marker"
 						className="inline-flex items-center rounded border border-amber-300/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
@@ -1341,13 +1388,14 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						{item.autoFixed.assigned ? "yours to fix" : "auto-fixed"}: {item.autoFixed.failure}
 					</span>
 				)}
-				{item.autoFixed && (
+				{at("review_fix") && item.autoFixed && (
 					<button
+						{...primaryProps("review_fix")}
 						type="button"
 						onClick={() => {
 							setReviewOpen((open) => !open);
 						}}
-						className="inline-flex items-center gap-1.5 rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-700"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("review_fix", "bg-amber-600 hover:bg-amber-700 text-white")}`}
 						title={`Review the AI fixup on ${item.autoFixed.branch} and the failure it fixed`}
 					>
 						<Wrench className="h-3.5 w-3.5" />
@@ -1356,7 +1404,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Patch-id fast path: the local build was skipped after a clean replay; PR checks decide readiness */}
-				{item.localTestSkipped && (
+				{at("marker") && item.localTestSkipped && (
 					<span
 						data-testid="local-test-skipped-marker"
 						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
@@ -1367,7 +1415,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Consider splitting: a large commit stays a candidate; the marker enables the state's split transition */}
-				{item.considerSplitting && (
+				{at("marker") && item.considerSplitting && (
 					<span
 						data-testid="consider-splitting-marker"
 						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
@@ -1375,8 +1423,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						consider splitting
 					</span>
 				)}
-				{item.considerSplitting && actions.has("split") && (
+				{at("split") && item.considerSplitting && actions.has("split") && (
 					<button
+						{...primaryProps("split")}
 						type="button"
 						onClick={() => {
 							void handleSplit();
@@ -1399,8 +1448,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Run Claude Command */}
-				{llmCommand && branch && (
+				{at("run_claude") && llmCommand && branch && (
 					<button
+						{...primaryProps("run_claude")}
 						type="button"
 						onClick={() => {
 							void handleRunClaude();
@@ -1409,7 +1459,7 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
 							runningClaude
 								? "cursor-not-allowed opacity-60 text-text-300"
-								: "bg-purple-600 hover:bg-purple-700 text-white"
+								: fill("run_claude", "bg-purple-600 hover:bg-purple-700 text-white")
 						}`}
 						title={`Run ${llmCommand}`}
 					>
@@ -1423,14 +1473,15 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Refresh */}
-				{actions.has("refresh") && (
+				{at("refresh") && actions.has("refresh") && (
 					<button
+						{...primaryProps("refresh")}
 						type="button"
 						onClick={() => {
 							void handleRefresh();
 						}}
 						disabled={refreshing}
-						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("refresh", "bg-blue-600 hover:bg-blue-700 text-white")}`}
 					>
 						<RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
 						{refreshing ? "Refreshing..." : "Refresh"}
@@ -1438,9 +1489,10 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				)}
 
 				{/* Delete Branch */}
-				{actions.has("delete_branch") && (
+				{at("delete_branch") && actions.has("delete_branch") && (
 					<div className="relative">
 						<button
+							{...primaryProps("delete_branch")}
 							ref={deleteButtonRef}
 							type="button"
 							onClick={() => {
@@ -1507,7 +1559,33 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						)}
 					</div>
 				)}
+			</>
+		);
+	};
+
+	return (
+		<div>
+			<div className={`flex ${isRow ? "flex-wrap items-center gap-2" : "flex-col gap-1.5"}`}>
+				{renderActions("primary")}
+				<button
+					type="button"
+					aria-expanded={moreOpen}
+					onClick={() => {
+						setMoreOpen((open) => !open);
+					}}
+					className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
+				>
+					More
+				</button>
 			</div>
+			{moreOpen && (
+				<div
+					data-testid="more-actions"
+					className={`mt-1.5 flex rounded-lg border border-border-300/30 p-1.5 ${isRow ? "flex-wrap items-center gap-2" : "flex-col gap-1.5"}`}
+				>
+					{renderActions("more")}
+				</div>
+			)}
 
 			{item.autoFixed && reviewOpen && (
 				<AutoFixReview
@@ -1529,10 +1607,6 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			{error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
 		</div>
 	);
-}
-
-function snoozeUntil(hours: number | null): string | null {
-	return hours === null ? null : new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
 export function BranchActions({

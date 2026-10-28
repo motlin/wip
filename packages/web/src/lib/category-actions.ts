@@ -30,6 +30,47 @@ export function addTestCommand(sha: string): string {
 	return `Add a test that covers the changes in commit ${sha}`;
 }
 
+/** The command a todo or issue card's primary action queues in its project. */
+export const DO_ONE_TASK_COMMAND = "/markdown-tasks:do-one-task";
+
+/** The one filled button on a card: a state's action, its Claude command (`run_claude`), or a todo's task (`do_task`). */
+export type PrimaryAction = Action | "run_claude" | "do_task";
+
+// The user's next step per state; every other action moves to More. Null where the next step is waiting or none.
+const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
+	upstream_red: "run_claude",
+	landed: null,
+	approved: "merge",
+	changes_requested: "open_pr_link",
+	review_comments: "open_pr_link",
+	checks_passed: "open_pr_link",
+	checks_failed: "run_claude",
+	checks_running: "open_pr_link",
+	checks_unknown: "refresh",
+	pushed_no_pr: "create_pr",
+	ready_to_push: "push",
+	pushing: null,
+	needs_rebase: "rebase_local",
+	rebase_unknown: "rebase_local",
+	rebase_conflicts: "run_claude",
+	rebase_stuck: "abort_rebase",
+	test_failed: "run_claude",
+	ready_to_test: "test",
+	test_running: "view_test_log",
+	detached_head: "create_branch",
+	local_changes: "commit",
+	no_test: "push",
+	untriaged: "do_task",
+	triaged: "do_task",
+	blocked: null,
+	skippable: null,
+	snoozed: null,
+};
+
+export function primaryAction(category: Category): PrimaryAction | null {
+	return PRIMARY_ACTIONS[category];
+}
+
 /** The command the split transition queues for a "consider splitting" commit. */
 export const SPLIT_BRANCH_COMMAND = "/git:split-branch";
 

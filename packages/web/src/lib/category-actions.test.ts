@@ -6,6 +6,8 @@ import {
 	TRANSITION_TO_ACTION,
 	getTransitionActions,
 	SUPPLEMENTARY_ACTIONS,
+	primaryAction,
+	type PrimaryAction,
 } from "./category-actions";
 import {CategorySchema, type Category} from "@wip/shared";
 import {getTransitionsFrom} from "@wip/shared/schemas.js";
@@ -245,5 +247,53 @@ describe("CATEGORY_PRIORITY", () => {
 	it("places rebase states before push states", () => {
 		expect(indexOf("needs_rebase")).toBeLessThan(indexOf("ready_to_push"));
 		expect(indexOf("rebase_conflicts")).toBeLessThan(indexOf("ready_to_push"));
+	});
+});
+
+describe("primaryAction", () => {
+	const expected: Record<Category, PrimaryAction | null> = {
+		upstream_red: "run_claude",
+		landed: null,
+		approved: "merge",
+		changes_requested: "open_pr_link",
+		review_comments: "open_pr_link",
+		checks_passed: "open_pr_link",
+		checks_failed: "run_claude",
+		checks_running: "open_pr_link",
+		checks_unknown: "refresh",
+		pushed_no_pr: "create_pr",
+		ready_to_push: "push",
+		pushing: null,
+		needs_rebase: "rebase_local",
+		rebase_unknown: "rebase_local",
+		rebase_conflicts: "run_claude",
+		rebase_stuck: "abort_rebase",
+		test_failed: "run_claude",
+		ready_to_test: "test",
+		test_running: "view_test_log",
+		detached_head: "create_branch",
+		local_changes: "commit",
+		no_test: "push",
+		untriaged: "do_task",
+		triaged: "do_task",
+		blocked: null,
+		skippable: null,
+		snoozed: null,
+	};
+
+	it("names one primary action for every category", () => {
+		expect(Object.fromEntries(CategorySchema.options.map((cat) => [cat, primaryAction(cat)]))).toStrictEqual(
+			expected,
+		);
+	});
+
+	it("picks a primary the category can actually perform", () => {
+		const unperformable = CategorySchema.options.filter((cat) => {
+			const primary = primaryAction(cat);
+			if (primary === null || primary === "do_task") return false;
+			if (primary === "run_claude") return CATEGORIES[cat].llmCommand === undefined;
+			return !CATEGORIES[cat].actions.includes(primary);
+		});
+		expect(unperformable).toStrictEqual([]);
 	});
 });

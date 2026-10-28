@@ -50,6 +50,7 @@ import {
 	priorityOverrides,
 	projectCache,
 	snoozed,
+	snoozedTodos,
 	taskRecords,
 	todosCache,
 	workItems,
@@ -198,6 +199,18 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	}
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS snoozed_active_idx ON snoozed (system_to)`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS snoozed_patch_idx ON snoozed (patch_id, project)`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS snoozed_todos (
+			project TEXT NOT NULL,
+			item_key TEXT NOT NULL,
+			until TEXT,
+			system_from TEXT NOT NULL,
+			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
+			PRIMARY KEY (project, item_key, system_to)
+		)
+	`);
+	sqlite.exec(`CREATE INDEX IF NOT EXISTS snoozed_todos_active_idx ON snoozed_todos (project, system_to)`);
 
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS branch_names (
@@ -683,6 +696,43 @@ export function repointSnoozed(row: SnoozedItem, next: {sha: string; shortSha: s
 			})
 			.run();
 	}, WRITE_TRANSACTION_CONFIG);
+}
+
+function activeTodoSnooze(project: string, itemKey: string) {
+	return and(
+		eq(snoozedTodos.project, project),
+		eq(snoozedTodos.itemKey, itemKey),
+		eq(snoozedTodos.systemTo, FAR_FUTURE),
+	);
+}
+
+/** Put a todo On hold (`until` null) or snooze it, replacing any earlier hold of the same todo. */
+export function snoozeTodo(project: string, itemKey: string, until: string | null): void {
+	const timestamp = now();
+	getDb().transaction((tx) => {
+		tx.update(snoozedTodos).set({systemTo: timestamp}).where(activeTodoSnooze(project, itemKey)).run();
+		tx.insert(snoozedTodos).values({project, itemKey, until, systemFrom: timestamp, systemTo: FAR_FUTURE}).run();
+	}, WRITE_TRANSACTION_CONFIG);
+}
+
+export function unsnoozeTodo(project: string, itemKey: string): void {
+	getDb().update(snoozedTodos).set({systemTo: now()}).where(activeTodoSnooze(project, itemKey)).run();
+}
+
+/** The todoItemKeys of one project's todos that are On hold or snoozed and not yet expired. */
+export function getActiveSnoozedTodoKeys(project: string): Set<string> {
+	const rows = getDb()
+		.select({itemKey: snoozedTodos.itemKey})
+		.from(snoozedTodos)
+		.where(
+			and(
+				eq(snoozedTodos.project, project),
+				eq(snoozedTodos.systemTo, FAR_FUTURE),
+				or(isNull(snoozedTodos.until), gte(snoozedTodos.until, now())),
+			),
+		)
+		.all();
+	return new Set(rows.map((row) => row.itemKey));
 }
 
 export function getActiveSnoozed(): SnoozedItem[] {

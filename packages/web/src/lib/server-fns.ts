@@ -16,9 +16,12 @@ import {
 	AutoFixInputSchema,
 	RenameBranchInputSchema,
 	RunClaudeCommandInputSchema,
+	RunTodoTaskInputSchema,
 	SnoozeChildInputSchema,
+	SnoozeTodoInputSchema,
 	TestChildInputSchema,
 	UnsnoozeChildInputSchema,
+	UnsnoozeTodoInputSchema,
 } from "@wip/shared/schemas.js";
 import type {
 	AdvancePlanSummary,
@@ -185,6 +188,18 @@ export const snoozeChildFn = createServerFn({method: "POST"})
 export const unsnoozeChildFn = createServerFn({method: "POST"})
 	.validator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).unsnoozeChildHandler(data));
+
+export const snoozeTodoFn = createServerFn({method: "POST"})
+	.validator((input: unknown) => SnoozeTodoInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).snoozeTodoHandler(data));
+
+export const unsnoozeTodoFn = createServerFn({method: "POST"})
+	.validator((input: unknown) => UnsnoozeTodoInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).unsnoozeTodoHandler(data));
+
+export const runTodoTask = createServerFn({method: "POST"})
+	.validator((input: unknown) => RunTodoTaskInputSchema.parse(input))
+	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).runTodoTaskHandler(data));
 
 export const getSnoozedList = createServerFn({method: "GET"}).handler(async (): Promise<SnoozedChild[]> =>
 	(await serverFns()).getSnoozedListHandler(),

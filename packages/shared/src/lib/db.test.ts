@@ -21,6 +21,9 @@ import {
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	snoozeItem,
+	snoozeTodo,
+	unsnoozeTodo,
+	getActiveSnoozedTodoKeys,
 	getAllSnoozed,
 	getAllSnoozedForDisplay,
 	cacheMiseEnv,
@@ -320,6 +323,29 @@ describe("Snoozed items", () => {
 		// Verify no temporal fields
 		expect("systemFrom" in display[0]!).toBe(false);
 		expect("systemTo" in display[0]!).toBe(false);
+	});
+});
+
+describe("Snoozed todos", () => {
+	it("holds a todo by its key until it is unsnoozed, per project", () => {
+		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Held", null);
+		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Later", "2099-01-01T00:00:00.000Z");
+		snoozeTodo("project-b", "/b/.llm/todo.md\u0000Other", null);
+		const before = sorted([...getActiveSnoozedTodoKeys("project-a")]);
+		unsnoozeTodo("project-a", "/a/.llm/todo.md\u0000Held");
+
+		expect({before, after: [...getActiveSnoozedTodoKeys("project-a")]}).toStrictEqual({
+			before: ["/a/.llm/todo.md\u0000Held", "/a/.llm/todo.md\u0000Later"],
+			after: ["/a/.llm/todo.md\u0000Later"],
+		});
+	});
+
+	it("drops an expired snooze and replaces an earlier snooze of the same todo", () => {
+		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Expired", "2000-01-01T00:00:00.000Z");
+		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Again", "2000-01-01T00:00:00.000Z");
+		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Again", null);
+
+		expect([...getActiveSnoozedTodoKeys("project-a")]).toStrictEqual(["/a/.llm/todo.md\u0000Again"]);
 	});
 });
 

@@ -72,6 +72,13 @@ import {
 	type PushChildInput,
 	type TestChildInput,
 	type SnoozeChildInput,
+	type SnoozeTodoInput,
+	type UnsnoozeTodoInput,
+	type RunTodoTaskInput,
+	snoozeTodo,
+	unsnoozeTodo,
+	getActiveSnoozedTodoKeys,
+	todoItemKey,
 	type UnsnoozeChildInput,
 	type CreatePrInput,
 	type CreateBranchInput,
@@ -106,6 +113,7 @@ import {
 	parseWorktreeList,
 } from "@wip/shared";
 import {considerSplitting} from "@wip/shared/candidate-rank.js";
+import {DO_ONE_TASK_COMMAND} from "./category-actions.js";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
@@ -551,7 +559,7 @@ export async function refreshProjectTodos(projectName: string): Promise<SharedTo
 		}));
 		cacheTodos(projectName, todos);
 		const {todoEmitter} = await import("./todo-events.js");
-		todoEmitter.emit("todos", {project: projectName, todos});
+		todoEmitter.emit("todos", {project: projectName, todos: withTodoHolds(projectName, todos)});
 		return todos;
 	});
 
@@ -563,14 +571,56 @@ export async function refreshProjectTodos(projectName: string): Promise<SharedTo
 	}
 }
 
+/** Flags each todo On hold or snoozed from the hold table; the todos cache itself stays hold-free. */
+function withTodoHolds(project: string, todos: SharedTodoItem[]): SharedTodoItem[] {
+	const held = getActiveSnoozedTodoKeys(project);
+	return todos.map((todo) => ({...todo, onHold: held.has(todoItemKey(todo))}));
+}
+
 export async function getProjectTodosHandler(project: string): Promise<SharedTodoItem[]> {
 	return traced("getProjectTodos", async () => {
 		const cached = getCachedTodos(project);
 		if (cached) {
 			if (!isCacheFresh(`todos:${project}`, TODOS_CACHE_TTL_MS)) enqueueTodosRefresh(project);
-			return cached;
+			return withTodoHolds(project, cached);
 		}
-		return refreshProjectTodos(project);
+		return withTodoHolds(project, await refreshProjectTodos(project));
+	});
+}
+
+export async function snoozeTodoHandler(data: SnoozeTodoInput): Promise<ActionResult> {
+	return tracedAction("snoozeTodoFn", async () => {
+		snoozeTodo(data.project, todoItemKey(data), data.until);
+		return Promise.resolve({ok: true, message: data.until ? `Snoozed until ${data.until}` : "On hold"});
+	});
+}
+
+export async function unsnoozeTodoHandler(data: UnsnoozeTodoInput): Promise<ActionResult> {
+	return tracedAction("unsnoozeTodoFn", async () => {
+		unsnoozeTodo(data.project, todoItemKey(data));
+		return Promise.resolve({ok: true, message: "Unsnoozed"});
+	});
+}
+
+/** Queues /markdown-tasks:do-one-task as a Claude task on the project's checked-out branch. */
+export async function runTodoTaskHandler(data: RunTodoTaskInput): Promise<TestJobStatus> {
+	return traced("runTodoTask", async () => {
+		const p = await resolveProject(data.project);
+		const branch = (await tracedExeca("git", ["-C", p.dir, "branch", "--show-current"])).stdout.trim();
+		if (!branch) throw new Error(`${data.project} has a detached HEAD: check out a branch to run a todo`);
+		const sha = (await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"])).stdout.trim();
+		const {enqueueTask} = await import("./task-queue.js");
+		const task = enqueueTask(
+			"claude",
+			data.project,
+			p.dir,
+			sha,
+			sha.slice(0, 7),
+			DO_ONE_TASK_COMMAND,
+			branch,
+			DO_ONE_TASK_COMMAND,
+		);
+		return {id: task.id, status: task.status, message: task.message};
 	});
 }
 

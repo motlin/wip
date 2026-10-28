@@ -86,6 +86,7 @@ export function flowCounts({projects, gitChildren, todos, slots}: FlowCountsInpu
 		commits += 1;
 		if (readySet.has(`${child.project}:${child.sha}`)) ready += 1;
 	}
-	const blocked = todos.filter((t) => classifyTodo(t) === "blocked").length;
-	return {wip: commits + todos.length, commits, todos: todos.length, red, blocked, ready, slots};
+	const active = todos.filter((t) => !t.onHold);
+	const blocked = active.filter((t) => classifyTodo(t) === "blocked").length;
+	return {wip: commits + active.length, commits, todos: active.length, red, blocked, ready, slots};
 }

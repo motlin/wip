@@ -533,6 +533,13 @@ describe("classifyTodo", () => {
 	it("returns blocked for a blocked todo", () => {
 		expect(classifyTodo(makeTodo({blocked: true}))).toBe("blocked");
 	});
+
+	it("returns snoozed for a todo on hold, even a blocked one", () => {
+		expect([
+			classifyTodo(makeTodo({onHold: true})),
+			classifyTodo(makeTodo({onHold: true, blocked: true})),
+		]).toStrictEqual(["snoozed", "snoozed"]);
+	});
 });
 
 describe("State machine consistency", () => {

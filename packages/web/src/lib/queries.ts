@@ -19,6 +19,7 @@ import {
 	getLadderResults,
 	getReadyToLand,
 	getFlowMetrics,
+	getFlowHistory,
 } from "./server-fns.js";
 import {isStaleBundleError} from "./stale-bundle.js";
 
@@ -89,6 +90,15 @@ export const flowMetricsQueryOptions = () =>
 	queryOptions({
 		queryKey: ["flowMetrics"],
 		queryFn: async () => getFlowMetrics(),
+		staleTime: 30_000,
+		refetchInterval: 60_000,
+	});
+
+/** Ledger state history for the /flow page; polled like the flow metrics. */
+export const flowHistoryQueryOptions = () =>
+	queryOptions({
+		queryKey: ["flowHistory"],
+		queryFn: async () => getFlowHistory(),
 		staleTime: 30_000,
 		refetchInterval: 60_000,
 	});

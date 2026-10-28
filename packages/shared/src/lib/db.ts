@@ -26,6 +26,7 @@ import {type CheckStatus, type GitChildResult, type ProjectInfo, type ReviewStat
 import type {GitHubIssue} from "./github-issues.js";
 import type {Priority, PriorityItemRef} from "./priority.js";
 import type {WorkItem} from "./work-ledger.js";
+import type {WorkItemHistoryRow} from "./flow-history.js";
 import type {GitHubProjectItem} from "./github-projects.js";
 import * as schema from "./schema.js";
 import {log} from "../services/logger-pino.js";
@@ -1686,6 +1687,15 @@ export function getWorkItemHistory(project: string, patchId: string) {
 		.from(workItems)
 		.where(and(eq(workItems.project, project), eq(workItems.patchId, patchId)))
 		.orderBy(asc(workItems.systemFrom))
+		.all();
+}
+
+/** Every ledger row ever written, across projects, each change's rows oldest first: the /flow page's input. */
+export function loadAllWorkItemHistory(): WorkItemHistoryRow[] {
+	return getDb()
+		.select({project: workItems.project, ...workItemColumns})
+		.from(workItems)
+		.orderBy(asc(workItems.project), asc(workItems.patchId), asc(workItems.systemFrom))
 		.all();
 }
 

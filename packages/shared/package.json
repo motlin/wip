@@ -42,6 +42,10 @@
 			"types": "./src/lib/flow-counts.ts",
 			"import": "./src/lib/flow-counts.ts"
 		},
+		"./flow-history.js": {
+			"types": "./src/lib/flow-history.ts",
+			"import": "./src/lib/flow-history.ts"
+		},
 		"./flow-metrics.js": {
 			"types": "./src/lib/flow-metrics.ts",
 			"import": "./src/lib/flow-metrics.ts"

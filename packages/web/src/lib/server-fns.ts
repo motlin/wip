@@ -42,6 +42,7 @@ import type {
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
 import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {FlowMetrics} from "@wip/shared/flow-metrics.js";
+import type {FlowHistory} from "@wip/shared/flow-history.js";
 import {EscapeHatchRecipeSchema} from "./escape-hatch.js";
 
 export type {
@@ -107,6 +108,10 @@ export const testChild = createServerFn({method: "POST"})
 
 export const getFlowMetrics = createServerFn({method: "GET"}).handler(async (): Promise<FlowMetrics> =>
 	(await serverFns()).getFlowMetricsHandler(),
+);
+
+export const getFlowHistory = createServerFn({method: "GET"}).handler(async (): Promise<FlowHistory> =>
+	(await serverFns()).getFlowHistoryHandler(),
 );
 
 export const getReadyToLand = createServerFn({method: "GET"}).handler(async (): Promise<ReadyToLandState | null> =>

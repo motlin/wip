@@ -44,8 +44,11 @@ import {
 	reconcileWorkItemsWithUpstream,
 	loadWorkItems,
 	loadAllWorkItems,
+	loadAllWorkItemHistory,
 	flowMetrics,
+	flowHistory,
 	type FlowMetrics,
+	type FlowHistory,
 	invalidateChildrenCache,
 	isCacheFresh,
 	getCacheFreshnessByPrefix,
@@ -1972,6 +1975,11 @@ export interface SystemStatus {
 /** Flow metrics over every project's work-item ledger (plan step 45): the /queue strip and /states counts. */
 export async function getFlowMetricsHandler(): Promise<FlowMetrics> {
 	return Promise.resolve(flowMetrics(loadAllWorkItems(), Date.now()));
+}
+
+/** Throughput, aging and time in each state from the ledger's state history (plan step 46): the /flow page. */
+export async function getFlowHistoryHandler(): Promise<FlowHistory> {
+	return Promise.resolve(flowHistory(loadAllWorkItemHistory(), Date.now()));
 }
 
 /** The ready buffer's state for the Ready to land section; null when this process runs no buffer. */

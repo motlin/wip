@@ -66,6 +66,12 @@ function RootComponent() {
 							States
 						</Link>
 						<Link
+							to="/flow"
+							className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
+						>
+							Flow
+						</Link>
+						<Link
 							to="/debug/logs"
 							className="text-text-300 hover:text-text-100 [&.active]:text-text-000 [&.active]:font-medium"
 						>

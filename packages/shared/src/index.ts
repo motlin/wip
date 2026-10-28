@@ -117,6 +117,7 @@ export {
 	getPriorityOverrides,
 	getWorkItemHistory,
 	loadAllWorkItems,
+	loadAllWorkItemHistory,
 	loadWorkItems,
 	writeWorkItems,
 	setPriorityOverride,
@@ -166,6 +167,7 @@ export {
 	type WorkItem,
 } from "./lib/work-ledger.js";
 export {flowMetrics, type FlowMetrics} from "./lib/flow-metrics.js";
+export {flowHistory, type FlowHistory, type WorkItemHistoryRow} from "./lib/flow-history.js";
 export {
 	backfillSnoozedPatchIds,
 	heldShas,

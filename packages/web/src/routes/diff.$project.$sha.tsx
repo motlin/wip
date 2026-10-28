@@ -1,10 +1,17 @@
 import {useState} from "react";
 import {createFileRoute} from "@tanstack/react-router";
-import {useSuspenseQuery} from "@tanstack/react-query";
+import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import "@git-diff-view/react/styles/diff-view.css";
 import {BranchActions, PullRequestActions} from "../components/commit-actions";
 import {FileDiffSection, DiffToolbar} from "../components/diff-section";
-import {diffQueryOptions, projectChildrenQueryOptions, projectsQueryOptions} from "../lib/queries";
+import {ReadyLandPanel} from "../components/ready-to-land-section";
+import {
+	diffQueryOptions,
+	projectChildrenQueryOptions,
+	projectsQueryOptions,
+	readyToLandQueryOptions,
+} from "../lib/queries";
+import {useLandReadyItem} from "../lib/use-land-ready-item";
 import {classifyBranch, classifyPullRequest} from "@wip/shared/classify.js";
 
 export const Route = createFileRoute("/diff/$project/$sha")({
@@ -31,6 +38,8 @@ function DiffViewer() {
 	const projectInfo = projects.find((p) => p.name === project);
 	const [mode, setMode] = useState<"split" | "unified">("split");
 	const [wrap, setWrap] = useState(false);
+	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
+	const land = useLandReadyItem();
 
 	const isPr = child && "prUrl" in child && child.prUrl;
 	const isBranch = child && "branch" in child;
@@ -57,6 +66,15 @@ function DiffViewer() {
 				</div>
 				<DiffToolbar mode={mode} setMode={setMode} wrap={wrap} setWrap={setWrap} />
 			</div>
+			{projectInfo && (
+				<ReadyLandPanel
+					state={readyToLand}
+					sha={sha}
+					commit={child ?? undefined}
+					projectInfo={projectInfo}
+					onLand={land}
+				/>
+			)}
 			{isPr && category && (
 				<div className="mb-4 rounded-lg border border-border-300/30 bg-bg-100 px-4 py-2.5">
 					<PullRequestActions item={child} category={category} layout="row" />

@@ -1,9 +1,11 @@
+import {useState} from "react";
+import {Link} from "@tanstack/react-router";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {landingOrder, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import {wipAgeText} from "../lib/staleness";
 
-const MARKER_CLASS =
-	"inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400";
+const CHIP_CLASS = "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium";
+const MARKER_CLASS = `${CHIP_CLASS} border-border-300/60 bg-bg-200/60 text-text-300`;
 
 /**
  * The row's next step: in a pull-request repo, merge its PR, or open one when it has none yet (a
@@ -44,6 +46,202 @@ function sizeText(commit: GitChildResult | undefined): string | null {
 	return `+${commit.insertions ?? 0} −${commit.deletions ?? 0} · ${files} ${files === 1 ? "file" : "files"}`;
 }
 
+/** What the confirm names: the commit, its sha, its repo, and where it goes. */
+function LandingPrompt({
+	action,
+	item,
+	commit,
+	projectInfo,
+}: {
+	action: LandingAction;
+	item: ReadyToLandItem;
+	commit: GitChildResult | undefined;
+	projectInfo: ProjectInfo | undefined;
+}) {
+	const what = `"${commit?.subject ?? item.sha.slice(0, 7)}" (${item.sha.slice(0, 7)})`;
+	if (action.kind === "merge-pr") {
+		const pr = `PR #${action.prNumber}`;
+		return (
+			<>
+				Merge{" "}
+				{commit?.prUrl === undefined ? (
+					pr
+				) : (
+					<a
+						href={commit.prUrl}
+						target="_blank"
+						rel="noreferrer"
+						className="text-blue-600 underline dark:text-blue-400"
+					>
+						{pr}
+					</a>
+				)}{" "}
+				for {what} in {item.project}.
+			</>
+		);
+	}
+	if (action.kind === "open-pr") {
+		return (
+			<>
+				Open a PR for {what} from branch {action.branch} in {item.project}.
+			</>
+		);
+	}
+	const branch = projectInfo?.upstreamBranch ?? "main";
+	const remote = projectInfo?.upstreamRemote ?? "upstream";
+	return (
+		<>
+			Land {what} in {item.project}: local {branch} moves to {item.sha.slice(0, 7)}, then pushes to {remote}/
+			{branch}.
+		</>
+	);
+}
+
+interface LandControlProps {
+	item: ReadyToLandItem;
+	commit: GitChildResult | undefined;
+	projectInfo: ProjectInfo | undefined;
+	blockedReason: string | null;
+	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
+}
+
+/** The landing button plus the confirm it opens; nothing lands until the user confirms. */
+function useLandControl({item, commit, projectInfo, blockedReason, onLand}: LandControlProps) {
+	const [confirming, setConfirming] = useState(false);
+	const action = landingAction(item, commit);
+	const button =
+		action === null ? null : (
+			<button
+				type="button"
+				disabled={blockedReason !== null}
+				title={blockedReason ?? undefined}
+				aria-expanded={confirming}
+				onClick={() => {
+					setConfirming(true);
+				}}
+				className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+			>
+				{action.label}
+			</button>
+		);
+	const confirm =
+		action === null || !confirming ? null : (
+			<div
+				data-testid="land-confirm"
+				aria-label="Confirm landing"
+				className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-status-green/40 bg-status-green/5 px-3 py-2 text-xs text-text-100"
+			>
+				<p className="min-w-0 flex-1 basis-60">
+					<LandingPrompt action={action} item={item} commit={commit} projectInfo={projectInfo} />
+				</p>
+				<div className="flex gap-2">
+					<button
+						type="button"
+						disabled={blockedReason !== null}
+						onClick={() => {
+							setConfirming(false);
+							onLand(item, commit);
+						}}
+						className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90 disabled:opacity-40"
+					>
+						Confirm
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							setConfirming(false);
+						}}
+						className="rounded-md border border-border-300 px-2.5 py-1 font-medium text-text-300 hover:bg-bg-200"
+					>
+						Cancel
+					</button>
+				</div>
+			</div>
+		);
+	return {button, confirm};
+}
+
+const REVIEW_CLASS =
+	"rounded-md border border-border-300 px-2.5 py-1 text-xs font-medium text-text-100 hover:bg-bg-200 hover:text-text-000";
+
+interface ReadyRowProps extends LandControlProps {
+	stoppedLine: boolean;
+	noTests: boolean;
+	age: string | null;
+}
+
+function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
+	const {item, commit} = land;
+	const {button, confirm} = useLandControl(land);
+	const size = sizeText(commit);
+	const params = {project: item.project, sha: item.sha};
+	const hasChips =
+		stoppedLine ||
+		noTests ||
+		commit?.localTestSkipped === true ||
+		commit?.considerSplitting === true ||
+		commit?.prUrl !== undefined;
+	return (
+		<li
+			data-testid="ready-to-land-row"
+			className="rounded-md border border-border-300/50 bg-bg-000 px-3 py-2.5 shadow-sm transition-colors hover:border-border-300"
+		>
+			<div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+				<div className="min-w-0 flex-1 basis-64">
+					<Link
+						to="/item/$project/$sha"
+						params={params}
+						className="line-clamp-2 break-words text-sm font-medium text-text-000 hover:underline"
+					>
+						{commit?.subject ?? item.sha.slice(0, 7)}
+					</Link>
+					<div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs tabular-nums text-text-500">
+						<span>{item.project}</span>
+						{size !== null && <span>{size}</span>}
+						{age !== null && <span>{age}</span>}
+					</div>
+					{hasChips && (
+						<div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+							{stoppedLine && (
+								<span
+									data-testid="upstream-red-marker"
+									className={`${CHIP_CLASS} border-status-red/50 bg-status-red/10 text-status-red`}
+								>
+									upstream red
+								</span>
+							)}
+							{noTests && <span className={MARKER_CLASS}>no tests</span>}
+							{commit?.localTestSkipped === true && (
+								<span className={MARKER_CLASS}>local test skipped</span>
+							)}
+							{commit?.considerSplitting === true && (
+								<span className={MARKER_CLASS}>consider splitting</span>
+							)}
+							{commit?.prUrl !== undefined && (
+								<a
+									href={commit.prUrl}
+									target="_blank"
+									rel="noreferrer"
+									className={`${CHIP_CLASS} border-blue-500/40 text-blue-600 hover:bg-blue-500/10 dark:text-blue-400`}
+								>
+									PR #{commit.prNumber ?? "?"}
+								</a>
+							)}
+						</div>
+					)}
+				</div>
+				<div className="ml-auto flex shrink-0 items-center gap-2">
+					<Link to="/diff/$project/$sha" params={params} className={REVIEW_CLASS}>
+						Review
+					</Link>
+					{button}
+				</div>
+			</div>
+			{confirm}
+		</li>
+	);
+}
+
 export interface ReadyToLandSectionProps {
 	state: ReadyToLandState | null | undefined;
 	/** The cached children, joined by project and sha for subject, size and markers. */
@@ -56,7 +254,8 @@ export interface ReadyToLandSectionProps {
 
 /**
  * Lean plan step 42: the ready buffer's ready commits, pinned first on /queue, in landing order
- * (stack prefixes first) with size, age ("in wip Nd" from first seen), markers and the landing action.
+ * (stack prefixes first), each a card with size, age ("in wip Nd" from first seen), markers, a
+ * Review link to its diff and the landing action, which lands only after a confirm naming what lands.
  */
 export function ReadyToLandSection({state, commits, projects, now, onLand}: ReadyToLandSectionProps) {
 	if (!state || (state.ready.length === 0 && state.inFlight.length === 0)) return null;
@@ -72,56 +271,61 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 					{state.ready.length} ready (target {state.slots}) · {state.inFlight.length} readying
 				</span>
 			</h2>
-			<ul className="flex flex-col gap-1.5">
+			<ul className="flex flex-col gap-2">
 				{landingOrder(state.ready).map((item) => {
 					const commit = byKey.get(`${item.project}:${item.sha}`);
-					const size = sizeText(commit);
-					const action = landingAction(item, commit);
-					const blockedReason = stoppedLineReason(item.project, stopped, commit);
-					const noTests = projectMap.get(item.project)?.hasTestConfigured === false;
-					const age = now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now);
+					const projectInfo = projectMap.get(item.project);
 					return (
-						<li
+						<ReadyRow
 							key={`${item.project}:${item.id}`}
-							data-testid="ready-to-land-row"
-							className="flex flex-wrap items-center gap-2 text-[0.8125rem]"
-						>
-							<span className="font-medium text-text-000">{commit?.subject ?? item.sha.slice(0, 7)}</span>
-							<span className="text-xs text-text-500">{item.project}</span>
-							{size !== null && <span className="text-xs tabular-nums text-text-500">{size}</span>}
-							{stopped.has(item.project) && (
-								<span
-									data-testid="upstream-red-marker"
-									className="inline-flex items-center rounded border border-status-red/50 px-1.5 py-0.5 text-[10px] font-medium text-status-red"
-								>
-									upstream red
-								</span>
-							)}
-							{noTests && <span className={MARKER_CLASS}>no tests</span>}
-							{commit?.localTestSkipped === true && (
-								<span className={MARKER_CLASS}>local test skipped</span>
-							)}
-							{commit?.considerSplitting === true && (
-								<span className={MARKER_CLASS}>consider splitting</span>
-							)}
-							{age !== null && <span className="text-xs text-text-500">{age}</span>}
-							{action !== null && (
-								<button
-									type="button"
-									disabled={blockedReason !== null}
-									title={blockedReason ?? undefined}
-									onClick={() => {
-										onLand(item, commit);
-									}}
-									className="ml-auto rounded bg-status-green px-2 py-1 text-xs font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-								>
-									{action.label}
-								</button>
-							)}
-						</li>
+							item={item}
+							commit={commit}
+							projectInfo={projectInfo}
+							blockedReason={stoppedLineReason(item.project, stopped, commit)}
+							stoppedLine={stopped.has(item.project)}
+							noTests={projectInfo?.hasTestConfigured === false}
+							age={now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now)}
+							onLand={onLand}
+						/>
 					);
 				})}
 			</ul>
 		</section>
+	);
+}
+
+export interface ReadyLandPanelProps {
+	state: ReadyToLandState | null | undefined;
+	sha: string;
+	commit: GitChildResult | undefined;
+	projectInfo: ProjectInfo;
+	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
+}
+
+/** The diff page's landing action, so the flow is review then land; only for a ready commit. */
+export function ReadyLandPanel({state, sha, commit, projectInfo, onLand}: ReadyLandPanelProps) {
+	const item = state?.ready.find((r) => r.project === projectInfo.name && r.sha === sha);
+	if (!state || item === undefined) return null;
+	return (
+		<ReadyLandPanelBody
+			item={item}
+			commit={commit}
+			projectInfo={projectInfo}
+			blockedReason={stoppedLineReason(item.project, new Set(state.stoppedProjects), commit)}
+			onLand={onLand}
+		/>
+	);
+}
+
+function ReadyLandPanelBody(props: LandControlProps) {
+	const {button, confirm} = useLandControl(props);
+	return (
+		<div className="mb-4 rounded-lg border border-status-green/40 bg-bg-100 px-4 py-2.5">
+			<div className="flex items-center justify-between gap-3">
+				<span className="text-sm font-medium text-text-100">Ready to land</span>
+				{button}
+			</div>
+			{confirm}
+		</div>
 	);
 }

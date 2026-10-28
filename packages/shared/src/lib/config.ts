@@ -132,6 +132,19 @@ export function getReadyBufferSize(config: Record<string, ConfigValue> = readCon
 	return positiveInt(config["readyBuffer.size"]) ?? DEFAULT_READY_BUFFER_SIZE;
 }
 
+const DEFAULT_OWNERSHIP_ORGS: readonly string[] = ["liftwizard"];
+
+/**
+ * Orgs whose upstreams are "own" for stop-the-line, from config key `ownership.orgs` (a list or one org).
+ * The viewer's login is always own on top of these. Defaults to liftwizard.
+ */
+export function getOwnershipOrgs(config: Record<string, ConfigValue> = readConfig()): string[] {
+	const value = config["ownership.orgs"];
+	if (Array.isArray(value)) return value;
+	if (typeof value === "string") return [value];
+	return [...DEFAULT_OWNERSHIP_ORGS];
+}
+
 const DEFAULT_FLOW_STALE_AFTER_MINUTES = 15;
 
 /** Minutes after the last completed scan before the nav's staleness indicator turns prominent, from config key `flow.staleAfterMinutes`. Defaults to 15. */

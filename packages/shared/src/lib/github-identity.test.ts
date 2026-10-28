@@ -24,29 +24,22 @@ describe("getGitHubIdentity", () => {
 		resetGitHubIdentityForTests();
 	});
 
-	it("fetches the viewer's login and orgs once, then serves them from the cache", async () => {
+	it("fetches only the viewer's login once, and takes the own orgs from config instead of GitHub", async () => {
 		const {polly, stop} = setupPolly({name: "getGitHubIdentity-success"});
 		pollyStop = stop;
 		const queries: string[] = [];
 		polly.server.post("https://api.github.com/graphql").intercept((req, res) => {
 			queries.push((JSON.parse(req.body ?? "{}") as {query: string}).query);
-			res.status(200).json({
-				data: {
-					viewer: {
-						login: "motlin",
-						organizations: {nodes: [{login: "liftwizard"}, {login: "eclipse-collections-kata"}]},
-					},
-				},
-			});
+			res.status(200).json({data: {viewer: {login: "motlin"}}});
 		});
 
-		const first = await getGitHubIdentity();
-		const second = await getGitHubIdentity();
+		const first = await getGitHubIdentity({});
+		const second = await getGitHubIdentity({"ownership.orgs": ["liftwizard", "acme"]});
 
-		expect({first, second, requests: queries.length}).toStrictEqual({
-			first: {login: "motlin", orgs: ["liftwizard", "eclipse-collections-kata"]},
-			second: {login: "motlin", orgs: ["liftwizard", "eclipse-collections-kata"]},
-			requests: 1,
+		expect({first, second, queries}).toStrictEqual({
+			first: {login: "motlin", orgs: ["liftwizard"]},
+			second: {login: "motlin", orgs: ["liftwizard", "acme"]},
+			queries: ["{ viewer { login } }"],
 		});
 	});
 
@@ -59,7 +52,7 @@ describe("getGitHubIdentity", () => {
 			res.status(502).json({message: "Bad Gateway"});
 		});
 
-		expect({first: await getGitHubIdentity(), second: await getGitHubIdentity(), requests}).toStrictEqual({
+		expect({first: await getGitHubIdentity({}), second: await getGitHubIdentity({}), requests}).toStrictEqual({
 			first: null,
 			second: null,
 			requests: 1,
@@ -76,6 +69,6 @@ describe("getGitHubIdentity", () => {
 		});
 		markGitHubRateLimited();
 
-		expect({identity: await getGitHubIdentity(), requested}).toStrictEqual({identity: null, requested: false});
+		expect({identity: await getGitHubIdentity({}), requested}).toStrictEqual({identity: null, requested: false});
 	});
 });

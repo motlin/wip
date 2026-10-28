@@ -1,5 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
 
+import {getOwnershipOrgs} from "./config.js";
 import type {GitChildResult} from "./schemas.js";
 import {stopsLine, upstreamOwnership, upstreamRedCommand} from "./upstream-red.js";
 
@@ -37,6 +38,15 @@ describe("upstreamOwnership", () => {
 
 	it("is foreign for any other owner", () => {
 		expect(upstreamOwnership("someone-else/lib", identity)).toBe("foreign");
+	});
+
+	it("with the default ownership orgs, is own for motlin and liftwizard and foreign for eclipse-collections", () => {
+		const defaultIdentity = {login: "motlin", orgs: getOwnershipOrgs({})};
+		expect({
+			motlin: upstreamOwnership("motlin/wip", defaultIdentity),
+			liftwizard: upstreamOwnership("liftwizard/liftwizard", defaultIdentity),
+			eclipseCollections: upstreamOwnership("eclipse-collections/eclipse-collections", defaultIdentity),
+		}).toStrictEqual({motlin: "own", liftwizard: "own", eclipseCollections: "foreign"});
 	});
 });
 

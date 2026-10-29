@@ -4,9 +4,12 @@ import type {ProjectRecord} from "./inventory.js";
 
 export type LandingMode = "pull-request" | "fast-forward";
 
-/** A fork lands through pull requests; any other repo fast-forwards local main unless the registry says otherwise. */
-export function landingMode(record: Pick<ProjectRecord, "kind" | "landing">): LandingMode {
-	return record.landing ?? (record.kind === "fork" ? "pull-request" : "fast-forward");
+/**
+ * The registry's configured landing; an unconfigured repo lands through a pull request, the safe
+ * path, never a guess from its kind. Push-based landing is only ever an explicit choice.
+ */
+export function landingMode(record: Pick<ProjectRecord, "landing">): LandingMode {
+	return record.landing ?? "pull-request";
 }
 
 export interface ParsedProjectsYaml {

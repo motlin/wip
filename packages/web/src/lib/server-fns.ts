@@ -270,6 +270,14 @@ export const pushUpstreamBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => PushUpstreamBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).pushUpstreamBranchHandler(data));
 
+export const getActionsBillingBlock = createServerFn({method: "GET"})
+	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+	.handler(async ({data}): Promise<boolean> => (await serverFns()).getActionsBillingBlockHandler(data));
+
+export const landByPushing = createServerFn({method: "POST"})
+	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).landByPushingHandler(data));
+
 export const renameBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => RenameBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).renameBranchHandler(data));

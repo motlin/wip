@@ -5,7 +5,7 @@ import {cleanup, fireEvent, render, screen, within} from "@testing-library/react
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {makeChild} from "../lib/test-factories";
-import {ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
+import {billingCheckCandidates, ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -377,6 +377,74 @@ describe("ReadyToLandSection push", () => {
 		);
 
 		expect(container.innerHTML).toBe("");
+	});
+});
+
+describe("ReadyToLandSection when PR checks can't run", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	const failed = [
+		makeChild({
+			project: "secret",
+			sha: sha("s1"),
+			subject: "Private change",
+			prNumber: 3,
+			prUrl: "https://github.com/motlin/secret/pull/3",
+			checkStatus: "failed",
+		}),
+		makeChild({project: "secret", sha: sha("s2"), subject: "Passing", prNumber: 4, checkStatus: "passed"}),
+		makeChild({project: "secret", sha: sha("s3"), subject: "No PR", checkStatus: "failed"}),
+		makeChild({project: "ff", sha: sha("f1"), subject: "Fast-forward repo", prNumber: 5, checkStatus: "failed"}),
+	];
+	const blockedState: ReadyToLandState = {
+		slots: 3,
+		ready: [
+			{project: "secret", id: "ps1", sha: sha("s1"), landing: "pull-request"},
+			{project: "secret", id: "ps2", sha: sha("s2"), landing: "pull-request"},
+			{project: "secret", id: "ps3", sha: sha("s3"), landing: "pull-request"},
+			{project: "ff", id: "pf1", sha: sha("f1"), landing: "fast-forward"},
+		],
+		inFlight: [],
+		next: [],
+		stoppedProjects: [],
+	};
+
+	it("asks about billing only for a pull-request row whose PR checks failed", () => {
+		expect(billingCheckCandidates(blockedState, failed)).toStrictEqual([blockedState.ready[0]]);
+	});
+
+	it("says so in plain words and switches the repo to pushing only after a confirm", () => {
+		const onLandByPushing = vi.fn<(project: string) => void>();
+		render(
+			<ReadyToLandSection
+				state={{...blockedState, ready: blockedState.ready.slice(0, 2)}}
+				commits={failed}
+				projects={[project("secret")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+				actionsBlocked={new Set([`secret:${sha("s1")}`])}
+				onLandByPushing={onLandByPushing}
+			/>,
+		);
+
+		const rows = screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent);
+		fireEvent.click(screen.getByRole("button", {name: "Land this repo by pushing directly instead"}));
+		const prompt = screen.getByTestId("land-by-pushing-confirm").textContent;
+		const switchedBeforeConfirm = [...onLandByPushing.mock.calls];
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+
+		expect({rows, prompt, switchedBeforeConfirm, switched: onLandByPushing.mock.calls}).toStrictEqual({
+			rows: [
+				"Private changesecretPR #3ReviewMerge PR #3PR checks can't run: secret is a private repo and its GitHub Actions are unavailable for billing.Land this repo by pushing directly instead",
+				"PassingsecretReviewMerge PR #4",
+			],
+			prompt: "Configure secret to land by pushing directly: its ready commits Fast-forward main, then you Push main. No pull requests. Saved to the registry.ConfirmCancel",
+			switchedBeforeConfirm: [],
+			switched: [["secret"]],
+		});
 	});
 });
 

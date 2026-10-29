@@ -166,6 +166,90 @@ function useLandControl({item, commit, projectInfo, blockedReason, onLand}: Land
 	return {button, confirm};
 }
 
+/**
+ * Ready rows worth asking GitHub whether Actions refused to run for billing: pull-request rows whose
+ * PR checks failed. Every other row keeps its landing action as is.
+ */
+export function billingCheckCandidates(
+	state: ReadyToLandState | null | undefined,
+	commits: readonly GitChildResult[],
+): ReadyToLandItem[] {
+	if (!state) return [];
+	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
+	return state.ready.filter((item) => {
+		const commit = byKey.get(`${item.project}:${item.sha}`);
+		return item.landing === "pull-request" && commit?.prNumber !== undefined && commit.checkStatus === "failed";
+	});
+}
+
+/**
+ * A pull-request row whose checks can't run (private repo, Actions unavailable for billing): says
+ * so, and offers the one switch to push-based landing for this repo, written only after a confirm.
+ */
+function LandByPushing({
+	project,
+	upstreamBranch,
+	onLandByPushing,
+}: {
+	project: string;
+	upstreamBranch: string;
+	onLandByPushing: (project: string) => void;
+}) {
+	const [confirming, setConfirming] = useState(false);
+	return (
+		<div className="mt-2 flex flex-col gap-2 text-xs text-text-300">
+			<div className="flex flex-wrap items-center gap-2">
+				<p className="min-w-0 flex-1 basis-60">
+					PR checks can't run: {project} is a private repo and its GitHub Actions are unavailable for billing.
+				</p>
+				<button
+					type="button"
+					aria-expanded={confirming}
+					onClick={() => {
+						setConfirming(true);
+					}}
+					className={REVIEW_CLASS}
+				>
+					Land this repo by pushing directly instead
+				</button>
+			</div>
+			{confirming && (
+				<div
+					data-testid="land-by-pushing-confirm"
+					aria-label="Confirm landing by pushing"
+					className="flex flex-wrap items-center gap-2 rounded-md border border-border-300 bg-bg-100 px-3 py-2 text-text-100"
+				>
+					<p className="min-w-0 flex-1 basis-60">
+						Configure {project} to land by pushing directly: its ready commits Fast-forward {upstreamBranch}
+						, then you Push {upstreamBranch}. No pull requests. Saved to the registry.
+					</p>
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={() => {
+								setConfirming(false);
+								onLandByPushing(project);
+							}}
+							className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90"
+						>
+							Confirm
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								setConfirming(false);
+							}}
+							className={CANCEL_CLASS}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
 const REVIEW_CLASS =
 	"rounded-md border border-border-300 px-2.5 py-1 text-xs font-medium text-text-100 hover:bg-bg-200 hover:text-text-000";
 
@@ -173,9 +257,11 @@ interface ReadyRowProps extends LandControlProps {
 	stoppedLine: boolean;
 	noTests: boolean;
 	age: string | null;
+	/** Set when PR checks can't run (private repo, Actions unavailable for billing). */
+	onLandByPushing?: ((project: string) => void) | undefined;
 }
 
-function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
+function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRowProps) {
 	const {item, commit} = land;
 	const {button, confirm} = useLandControl(land);
 	const size = sizeText(commit);
@@ -245,6 +331,13 @@ function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 					{button}
 				</div>
 			</div>
+			{onLandByPushing !== undefined && (
+				<LandByPushing
+					project={item.project}
+					upstreamBranch={land.projectInfo?.upstreamBranch ?? "main"}
+					onLandByPushing={onLandByPushing}
+				/>
+			)}
 			{confirm}
 		</li>
 	);
@@ -345,6 +438,10 @@ export interface ReadyToLandSectionProps {
 	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
 	/** Pushes a project's local main after a fast-forward left it ahead of its remote. */
 	onPush: (project: ProjectInfo) => void;
+	/** `project:sha` of ready rows whose PR checks can't run (private repo, Actions unavailable for billing). */
+	actionsBlocked?: ReadonlySet<string>;
+	/** Configures a repo to land by pushing directly; the row asks for a confirm first. */
+	onLandByPushing?: (project: string) => void;
 }
 
 /**
@@ -353,7 +450,16 @@ export interface ReadyToLandSectionProps {
  * Review link to its diff and the landing action, which lands only after a confirm naming what lands.
  * A project whose local main is ahead of its remote after a fast-forward gets a separate Push row.
  */
-export function ReadyToLandSection({state, commits, projects, now, onLand, onPush}: ReadyToLandSectionProps) {
+export function ReadyToLandSection({
+	state,
+	commits,
+	projects,
+	now,
+	onLand,
+	onPush,
+	actionsBlocked,
+	onLandByPushing,
+}: ReadyToLandSectionProps) {
 	const pushes = pendingPushes(commits, projects);
 	if (!state || (state.ready.length === 0 && state.inFlight.length === 0 && pushes.length === 0)) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
@@ -391,6 +497,11 @@ export function ReadyToLandSection({state, commits, projects, now, onLand, onPus
 							noTests={projectInfo?.hasTestConfigured === false}
 							age={now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now)}
 							onLand={onLand}
+							onLandByPushing={
+								actionsBlocked?.has(`${item.project}:${item.sha}`) === true
+									? onLandByPushing
+									: undefined
+							}
 						/>
 					);
 				})}

@@ -3,7 +3,6 @@ import type {ProjectRecord} from "@wip/shared";
 // The client-safe module, so the browser bundle never pulls the node-only registry code.
 import {
 	diffInventories,
-	landingMode,
 	type InventoryDiff,
 	type LandingMode,
 	type RegistryCandidate,
@@ -33,8 +32,8 @@ const DECISIONS: [Kind, string][] = [
 const TEMPLATES: ProjectRecord["template"][] = ["project", "typescript", "java", "rust", "playdate", "unknown"];
 
 const LANDINGS: [LandingMode, string][] = [
-	["pull-request", "lands via pull request"],
-	["fast-forward", "lands by fast-forward"],
+	["pull-request", "Pull request"],
+	["fast-forward", "Push directly (fast-forward)"],
 ];
 
 interface GroupSpec {
@@ -123,7 +122,8 @@ function describeChange({before, after}: InventoryDiff["changed"][number]): stri
 	const changes = (["name", "template", "kind"] as const)
 		.filter((key) => before[key] !== after[key])
 		.map((key) => `${before[key]} → ${after[key]}`);
-	if (before.landing !== after.landing) changes.push(`landing ${landingMode(before)} → ${landingMode(after)}`);
+	if (before.landing !== after.landing)
+		changes.push(`landing ${before.landing ?? "not configured"} → ${after.landing ?? "not configured"}`);
 	if (before.skipNote !== after.skipNote) changes.push(`note "${before.skipNote ?? ""}" → "${after.skipNote ?? ""}"`);
 	return `${before.name}: ${changes.join(", ")}`;
 }
@@ -177,7 +177,7 @@ function CandidateRow({
 	onDecide: (kind: Kind) => void;
 	onTemplate: (template: ProjectRecord["template"]) => void;
 	onNote: (note: string) => void;
-	/** Sets the landing mode explicitly, overriding the default derived from the kind. */
+	/** Configures the landing mode; unset lands via pull request. */
 	onLanding: (landing: LandingMode) => void;
 	/** Returns a decided row to the inbox; only decided inbox rows have it. */
 	onUndo?: () => void;
@@ -216,24 +216,20 @@ function CandidateRow({
 					{!skipped && (
 						<select
 							aria-label={`Landing for ${name}`}
-							title={
-								row.project.landing === undefined
-									? "Default for the kind: forks land via pull request, other repos by fast-forward. The ready buffer force-pushes ready commits only in pull-request repos."
-									: "Set in the registry. The ready buffer force-pushes ready commits only in pull-request repos."
-							}
-							value={landingMode(row.project)}
+							title="The ready buffer force-pushes ready commits only in pull-request repos."
+							value={row.project.landing ?? ""}
 							onChange={(event) => {
 								const next = parseLanding(event.target.value);
 								if (next) onLanding(next);
 							}}
 							className={selectClass}
 						>
+							{row.project.landing === undefined && (
+								<option value="">Pull request (not configured yet)</option>
+							)}
 							{LANDINGS.map(([value, label]) => (
 								<option key={value} value={value}>
 									{label}
-									{row.project.landing === undefined && value === landingMode(row.project)
-										? " (default)"
-										: ""}
 								</option>
 							))}
 						</select>

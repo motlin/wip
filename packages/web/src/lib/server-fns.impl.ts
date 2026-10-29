@@ -1,4 +1,5 @@
 import {
+	actionsBlockedByBilling,
 	applyFixesToBranch,
 	checkedOutBranches,
 	clearAutoFix,
@@ -1428,6 +1429,51 @@ export async function pushUpstreamBranchHandler(data: PushUpstreamBranchInput): 
 					: {}),
 			};
 		});
+	});
+}
+
+/**
+ * Whether the PR checks on a ready commit can't run because its private repo's GitHub Actions are
+ * unavailable for billing. Any error keeps the pull-request path (false).
+ */
+export async function getActionsBillingBlockHandler(data: {project: string; sha: string}): Promise<boolean> {
+	return traced("getActionsBillingBlock", async () => {
+		const p = await resolveProject(data.project);
+		try {
+			return await actionsBlockedByBilling(p.remote, data.sha);
+		} catch (error) {
+			log.general.warn({project: p.name, error}, "Checking for GitHub Actions billing refusal failed");
+			return false;
+		}
+	});
+}
+
+/**
+ * The user's confirmed switch after PR checks can't run: writes `landing: "fast-forward"` for this
+ * one repo, so its ready commits land by Fast-forward main and the separate Push main.
+ */
+export async function landByPushingHandler(data: {project: string}): Promise<ActionResult> {
+	return tracedAction("landByPushing", async () => {
+		const p = await resolveProject(data.project);
+		const {projects, errors} = loadInventory();
+		if (errors.length > 0) {
+			const entries = errors.length === 1 ? "1 invalid entry" : `${errors.length} invalid entries`;
+			return {
+				ok: false,
+				message: `The registry at ${getInventoryPath()} has ${entries}; fix it before changing ${p.name}'s landing`,
+			};
+		}
+		const record = projects.find((r) => r.dir === p.dir);
+		if (record === undefined) {
+			return {ok: false, message: `${p.name} isn't in the registry; add it on the Registry page first`};
+		}
+		// A fresh load, so changing it in place touches nothing shared.
+		record.landing = "fast-forward";
+		saveInventory(projects);
+		return {
+			ok: true,
+			message: `${p.name} now lands by pushing directly: Fast-forward ${p.upstreamBranch}, then Push ${p.upstreamBranch}`,
+		};
 	});
 }
 

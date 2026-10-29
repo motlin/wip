@@ -120,20 +120,21 @@ function record(overrides: Partial<ProjectRecord>): ProjectRecord {
 }
 
 describe("landingMode and trustsPatchIdGreen", () => {
-	it("lands forks by pull request and own repos by fast-forward unless the registry says otherwise", () => {
+	it("lands by pull request until the registry configures otherwise, whatever the kind", () => {
 		expect({
 			fork: landingMode(record({kind: "fork"})),
 			own: landingMode(record({kind: "own"})),
 			ownPr: landingMode(record({kind: "own", landing: "pull-request"})),
 			forkFf: landingMode(record({kind: "fork", landing: "fast-forward"})),
-		}).toStrictEqual({fork: "pull-request", own: "fast-forward", ownPr: "pull-request", forkFf: "fast-forward"});
+		}).toStrictEqual({fork: "pull-request", own: "pull-request", ownPr: "pull-request", forkFf: "fast-forward"});
 	});
 
 	it("trusts a pre-replay green only with the setting on in a pull-request repo", () => {
 		expect({
 			onPr: trustsPatchIdGreen(record({kind: "fork", trustPatchIdGreen: true})),
 			offPr: trustsPatchIdGreen(record({kind: "fork"})),
-			onFastForward: trustsPatchIdGreen(record({kind: "own", trustPatchIdGreen: true})),
-		}).toStrictEqual({onPr: true, offPr: false, onFastForward: false});
+			onUnsetOwn: trustsPatchIdGreen(record({kind: "own", trustPatchIdGreen: true})),
+			onFastForward: trustsPatchIdGreen(record({kind: "fork", landing: "fast-forward", trustPatchIdGreen: true})),
+		}).toStrictEqual({onPr: true, offPr: false, onUnsetOwn: true, onFastForward: false});
 	});
 });

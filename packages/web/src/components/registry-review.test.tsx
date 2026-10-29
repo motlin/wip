@@ -271,19 +271,33 @@ describe("RegistryReview", () => {
 		]);
 	});
 
-	it("shows each kept repo's effective landing mode and saves a correction as an explicit landing", () => {
+	it("shows each kept repo's configured landing, unset as a not-yet-configured pull request, and saves a choice explicitly", () => {
 		const {onSave} = renderReview();
-		const landing = (name: string) =>
-			within(row(name)).queryByRole<HTMLSelectElement>("combobox", {name: `Landing for ${name}`})?.value ?? null;
+		const landing = (name: string) => {
+			const select = within(row(name)).queryByRole<HTMLSelectElement>("combobox", {name: `Landing for ${name}`});
+			return select === null ? null : (select.selectedOptions[0]?.textContent ?? "");
+		};
 		expect({beta: landing("beta"), gone: landing("gone"), legacy: landing("legacy")}).toStrictEqual({
-			beta: "pull-request",
-			gone: "fast-forward",
+			beta: "Pull request (not configured yet)",
+			gone: "Pull request (not configured yet)",
 			legacy: null,
 		});
 		fireEvent.change(within(row("gone")).getByRole("combobox", {name: "Landing for gone"}), {
 			target: {value: "pull-request"},
 		});
-		expect(saveAndCapture(onSave, 1)).toEqual([beta, chosen, {...gone, landing: "pull-request"}, legacy]);
+		fireEvent.change(within(row("beta")).getByRole("combobox", {name: "Landing for beta"}), {
+			target: {value: "fast-forward"},
+		});
+		expect({beta: landing("beta"), gone: landing("gone")}).toStrictEqual({
+			beta: "Push directly (fast-forward)",
+			gone: "Pull request",
+		});
+		expect(saveAndCapture(onSave, 2)).toEqual([
+			{...beta, landing: "fast-forward"},
+			chosen,
+			{...gone, landing: "pull-request"},
+			legacy,
+		]);
 	});
 
 	it("drops the skip note when a skip becomes a kept project", () => {

@@ -1,5 +1,6 @@
 import {queryOptions} from "@tanstack/react-query";
 import {
+	getActionsBillingBlock,
 	getProjects,
 	getProjectChildren,
 	getProjectTodos,
@@ -83,6 +84,14 @@ export const readyToLandQueryOptions = () =>
 		queryKey: ["readyToLand"],
 		queryFn: async () => getReadyToLand(),
 		staleTime: Infinity,
+	});
+
+/** Whether a ready commit's PR checks can't run because its private repo's Actions are unavailable for billing. */
+export const actionsBillingBlockQueryOptions = (project: string, sha: string) =>
+	queryOptions({
+		queryKey: ["actionsBillingBlock", project, sha],
+		queryFn: async () => getActionsBillingBlock({data: {project, sha}}),
+		staleTime: 10 * 60_000,
 	});
 
 /** Ledger flow metrics; polled like systemStatus, since the ledger changes on every children refresh. */

@@ -1,9 +1,17 @@
-import {useCallback} from "react";
-import {useQueryClient} from "@tanstack/react-query";
-import type {ReadyToLandItem} from "@wip/shared/ready-to-land.js";
+import {useCallback, useMemo} from "react";
+import {useQueries, useQueryClient} from "@tanstack/react-query";
+import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult, ProjectInfo} from "@wip/shared/schemas.js";
-import {landingAction} from "../components/ready-to-land-section";
-import {createPr, landFastForward, mergePr, pushUpstreamBranch, type ProjectChildrenResult} from "./server-fns";
+import {billingCheckCandidates, landingAction} from "../components/ready-to-land-section";
+import {
+	createPr,
+	landByPushing,
+	landFastForward,
+	mergePr,
+	pushUpstreamBranch,
+	type ProjectChildrenResult,
+} from "./server-fns";
+import {actionsBillingBlockQueryOptions} from "./queries";
 import {actionResultToast} from "./action-messages";
 import {pushToast} from "./toast-store";
 
@@ -75,6 +83,47 @@ export function usePushUpstreamBranch(): (project: ProjectInfo) => void {
 					// The remote has them now: the Push row goes away without a refetch.
 					queryClient.setQueryData<ProjectChildrenResult>(["children", project.name], (old) =>
 						old?.map((c) => (c.onLocalMain === true ? {...c, onLocalMain: undefined} : c)),
+					);
+				}
+				return undefined;
+			});
+		},
+		[queryClient],
+	);
+}
+
+/** `project:sha` of the ready rows whose PR checks can't run because Actions are unavailable for billing. */
+export function useActionsBlocked(
+	state: ReadyToLandState | null | undefined,
+	commits: readonly GitChildResult[],
+): ReadonlySet<string> {
+	const candidates = useMemo(() => billingCheckCandidates(state, commits), [state, commits]);
+	const results = useQueries({
+		queries: candidates.map((item) => actionsBillingBlockQueryOptions(item.project, item.sha)),
+	});
+	const blocked = candidates.filter((_, i) => results[i]?.data === true).map((item) => `${item.project}:${item.sha}`);
+	const joined = blocked.join("\n");
+	return useMemo(() => new Set(joined === "" ? [] : joined.split("\n")), [joined]);
+}
+
+/** Configures a repo to land by pushing directly (after the row's confirm) and toasts the result. */
+export function useLandByPushing(): (project: string) => void {
+	const queryClient = useQueryClient();
+	return useCallback(
+		(project: string) => {
+			void landByPushing({data: {project}}).then((result) => {
+				pushToast(actionResultToast("Land by pushing", result));
+				if (result.ok) {
+					// The repo's ready rows offer Fast-forward main now, without waiting for the buffer.
+					queryClient.setQueryData<ReadyToLandState | null>(["readyToLand"], (old) =>
+						old
+							? {
+									...old,
+									ready: old.ready.map((item) =>
+										item.project === project ? {...item, landing: "fast-forward"} : item,
+									),
+								}
+							: old,
 					);
 				}
 				return undefined;

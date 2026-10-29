@@ -11,6 +11,7 @@ import {
 	cacheGhLogin,
 } from "./db.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
+import {cacheAutoMergeAllowed} from "./github-auto-merge.js";
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from "./rate-limit.js";
 import {
 	MergeStateStatusSchema,
@@ -53,6 +54,7 @@ const GraphQLPrNodeSchema = z.object({
 	author: z.object({login: z.string()}),
 	reviewDecision: z.string().nullable(),
 	mergeStateStatus: z.string(),
+	autoMergeRequest: z.object({enabledAt: z.string().nullable()}).nullish(),
 	reviewThreads: z.object({
 		nodes: z.array(z.object({isResolved: z.boolean()})),
 	}),
@@ -79,6 +81,7 @@ const PrGraphQLResponseSchema = z.object({
 		.object({
 			repository: z.object({
 				url: z.url().optional(),
+				autoMergeAllowed: z.boolean().optional(),
 				viewerPermission: z.enum(["ADMIN", "MAINTAIN", "WRITE", "TRIAGE", "READ"]),
 				ref: z
 					.object({
@@ -112,6 +115,10 @@ export interface PrStatuses {
 	prNumbers: Map<string, number>;
 	mergeStateStatuses: Map<string, MergeStateStatus>;
 	externalCiBlockers: Map<string, ExternalCiBlocker[]>;
+	/** Branches whose PR has auto-merge on: GitHub merges it once its checks pass. */
+	autoMerge: Set<string>;
+	/** The canonical repo allows auto-merge. */
+	autoMergeAllowed: boolean;
 	baseBranches: BaseBranchStatus[];
 }
 
@@ -179,6 +186,7 @@ const PR_GRAPHQL_QUERY = `
 query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
   repository(owner: $owner, name: $name) {
     url
+    autoMergeAllowed
     viewerPermission
     ref(qualifiedName: $qualifiedBaseRef) {
       target {
@@ -207,6 +215,7 @@ query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
         author { login }
         reviewDecision
         mergeStateStatus
+        autoMergeRequest { enabledAt }
         reviewThreads(first: 100) { nodes { isResolved } }
         commits(last: 1) {
           nodes {
@@ -343,6 +352,8 @@ function buildPrStatusesFromCached(
 	cached: CachedPrStatus[],
 	baseBranches: BaseBranchStatus[] = [],
 	externalCiBlockers: Map<string, ExternalCiBlocker[]> = new Map(),
+	autoMerge: Set<string> = new Set(),
+	autoMergeAllowed = false,
 ): PrStatuses {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
@@ -372,6 +383,8 @@ function buildPrStatusesFromCached(
 		prNumbers,
 		mergeStateStatuses,
 		externalCiBlockers,
+		autoMerge,
+		autoMergeAllowed,
 		baseBranches,
 	};
 }
@@ -403,6 +416,8 @@ function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
 		prNumbers,
 		mergeStateStatuses,
 		externalCiBlockers: new Map(),
+		autoMerge: new Set(),
+		autoMergeAllowed: false,
 		baseBranches: [],
 	};
 }
@@ -417,6 +432,8 @@ function emptyPrStatuses(): PrStatuses {
 		prNumbers: new Map(),
 		mergeStateStatuses: new Map(),
 		externalCiBlockers: new Map(),
+		autoMerge: new Set(),
+		autoMergeAllowed: false,
 		baseBranches: [],
 	};
 }
@@ -431,6 +448,7 @@ function emptyPrStatuses(): PrStatuses {
 const PR_CACHE_TTL_MS = 10 * 60 * 1000;
 const baseBranchStatusCache = new Map<string, BaseBranchStatus[]>();
 const externalCiBlockerCache = new Map<string, Map<string, ExternalCiBlocker[]>>();
+const autoMergeCache = new Map<string, {branches: Set<string>; allowed: boolean}>();
 
 export async function getPrStatuses(
 	dir: string,
@@ -443,7 +461,16 @@ export async function getPrStatuses(
 		const cached = getCachedPrStatuses(projectName);
 		const baseBranches = baseBranchStatusCache.get(projectName);
 		const externalCiBlockers = externalCiBlockerCache.get(projectName);
-		if (cached) return buildPrStatusesFromCached(cached, baseBranches, externalCiBlockers);
+		if (cached) {
+			const autoMerge = autoMergeCache.get(projectName);
+			return buildPrStatusesFromCached(
+				cached,
+				baseBranches,
+				externalCiBlockers,
+				autoMerge?.branches,
+				autoMerge?.allowed,
+			);
+		}
 	}
 
 	// If rate limited, return cached data with degraded check statuses
@@ -508,6 +535,7 @@ async function fetchPrStatusesFromApi(
 	type RepositoryPr = PrNode & {repository: string};
 	let allPrs: RepositoryPr[] = [];
 	const baseBranches: BaseBranchStatus[] = [];
+	let autoMergeAllowed = false;
 	try {
 		const canonical = await getCanonicalRepo(dir, upstreamRemote);
 		const client = getGitHubClient();
@@ -520,6 +548,10 @@ async function fetchPrStatusesFromApi(
 		});
 		const response = PrGraphQLResponseSchema.parse(raw);
 		const canonicalRepository = `${canonical.owner}/${canonical.name}`;
+		autoMergeAllowed = response.data?.repository.autoMergeAllowed === true;
+		if (response.data?.repository.autoMergeAllowed !== undefined) {
+			cacheAutoMergeAllowed(canonicalRepository, autoMergeAllowed);
+		}
 		allPrs = withRepository(response.data?.repository.pullRequests.nodes ?? [], canonicalRepository);
 		const canonicalBase = getBaseBranchStatus(
 			response,
@@ -594,6 +626,7 @@ async function fetchPrStatusesFromApi(
 	const prNumbers = new Map<string, number>();
 	const mergeStateStatuses = new Map<string, MergeStateStatus>();
 	const externalCiBlockers = new Map<string, ExternalCiBlocker[]>();
+	const autoMerge = new Set<string>();
 
 	for (const pr of prs) {
 		const branch = pr.headRefName;
@@ -650,6 +683,8 @@ async function fetchPrStatusesFromApi(
 		// PR number
 		prNumbers.set(branch, pr.number);
 
+		if (pr.autoMergeRequest) autoMerge.add(branch);
+
 		toCache.push({
 			branch,
 			reviewStatus,
@@ -667,6 +702,7 @@ async function fetchPrStatusesFromApi(
 		cachePrStatuses(projectName, toCache);
 		baseBranchStatusCache.set(projectName, baseBranches);
 		externalCiBlockerCache.set(projectName, externalCiBlockers);
+		autoMergeCache.set(projectName, {branches: autoMerge, allowed: autoMergeAllowed});
 	}
 
 	return {
@@ -678,6 +714,8 @@ async function fetchPrStatusesFromApi(
 		prNumbers,
 		mergeStateStatuses,
 		externalCiBlockers,
+		autoMerge,
+		autoMergeAllowed,
 		baseBranches,
 	};
 }

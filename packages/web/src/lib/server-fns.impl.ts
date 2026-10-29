@@ -434,6 +434,8 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					autoFixed: facts ? autoFixes.get(facts.patchId) : undefined,
 					localTestSkipped: isLocalTestSkipped(p.name, child.sha) || undefined,
 					onLocalMain: onLocalMain.has(child.sha) || undefined,
+					autoMerge: (child.branch !== undefined && prStatuses.autoMerge.has(child.branch)) || undefined,
+					autoMergeAllowed: prStatuses.autoMergeAllowed || undefined,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);
@@ -911,7 +913,9 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				return {ok: false, message: `Could not parse owner/repo from remote: ${p.remote}`};
 			}
 
-			const {createPullRequest} = await import("@wip/shared");
+			const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
+			// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
+			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(p.remote));
 			const result = await createPullRequest({
 				owner,
 				name,
@@ -919,19 +923,24 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				headRefName,
 				title: data.title,
 				body: data.body ?? "",
-				draft: data.draft !== false,
+				draft: data.autoMerge === true ? false : data.draft !== false,
 			});
 
 			if (result.ok) {
 				invalidatePrCache(data.project);
 				invalidateChildrenCache(data.project);
 				const prNumber = Number(/\/pull\/(\d+)/.exec(result.prUrl)?.[1]);
-				return {
-					ok: true,
-					message: Number.isNaN(prNumber) ? `Opened ${result.prUrl}` : `Opened PR #${prNumber}`,
-					...(Number.isNaN(prNumber) ? {} : {prNumber}),
-					prUrl: result.prUrl,
-				};
+				if (Number.isNaN(prNumber)) return {ok: true, message: `Opened ${result.prUrl}`, prUrl: result.prUrl};
+				const opened = {ok: true, prNumber, prUrl: result.prUrl};
+				if (!autoMerge) return {...opened, message: `Opened PR #${prNumber}`};
+				const enabled = await enableAutoMerge(p, prNumber, env);
+				return enabled === null
+					? {
+							...opened,
+							message: `Opened PR #${prNumber}; it will merge itself when its checks pass`,
+							autoMerge: true,
+						}
+					: {...opened, message: `Opened PR #${prNumber}, but couldn't turn on auto-merge: ${enabled}`};
 			}
 
 			return {ok: false, message: result.message};
@@ -1315,12 +1324,37 @@ export async function forcePushHandler(data: ForcePushInput): Promise<ActionResu
 	});
 }
 
+/** Turns on auto-merge (squash, delete the branch) for a PR; null on success, else gh's reason. */
+async function enableAutoMerge(p: ProjectInfo, prNumber: number, env: Record<string, string>): Promise<string | null> {
+	const {execa} = await import("execa");
+	const result = await execa(
+		"gh",
+		["pr", "merge", String(prNumber), "--squash", "--delete-branch", "--auto", "-R", p.remote],
+		{reject: false, cwd: p.dir, env},
+	);
+	if (result.exitCode !== 0) return result.stderr.trim() || `gh exited ${result.exitCode}`;
+	invalidatePrCache(p.name);
+	return null;
+}
+
 export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> {
 	return tracedAction("mergePr", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, {label: "mergePr", target: `PR #${data.prNumber}`}, async () => {
 			const {execa} = await import("execa");
 			const env = await getMiseEnv(p.dir);
+			if (data.autoMerge === true) {
+				const refused = await enableAutoMerge(p, data.prNumber, env);
+				return refused === null
+					? {
+							ok: true,
+							message: `PR #${data.prNumber} will merge itself when its checks pass`,
+							prNumber: data.prNumber,
+							prUrl: `https://github.com/${p.remote}/pull/${data.prNumber}`,
+							autoMerge: true,
+						}
+					: {ok: false, message: `Couldn't turn on auto-merge: ${refused}`};
+			}
 			const result = await execa(
 				"gh",
 				["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", p.remote],

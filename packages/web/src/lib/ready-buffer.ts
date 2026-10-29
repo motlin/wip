@@ -11,7 +11,7 @@ import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {withinBaseline} from "@wip/shared/baseline-failures.js";
 import {isGreen} from "@wip/shared/readiness.js";
 import {orderReadyQueue, planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
-import {landingOrder, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import {landingOrder, prChecksPending, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import {stopsLine, upstreamOwnership, type GitHubIdentity, type UpstreamOwnership} from "@wip/shared/upstream-red.js";
 import {repoResource} from "./repo-resource.js";
 
@@ -55,6 +55,11 @@ export interface BufferCandidate {
 	job?: number;
 	/** An AI fixup awaits the user's review: never pulled or re-advanced. */
 	autoFixed?: boolean;
+	/**
+	 * Ready, but its PR checks are still running: parked (never pulled), not counted toward the
+	 * ready target, and listed as awaiting checks until the checks report.
+	 */
+	checksPending?: boolean;
 }
 
 export interface BufferRepo {
@@ -248,6 +253,9 @@ export function bufferRepoFromChildren(
 				if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
 				if (override !== undefined) candidate.override = override;
 				if (child.autoFixed !== undefined) candidate.autoFixed = true;
+				if (candidate.state === "ready" && context.landing === "pull-request" && prChecksPending(child)) {
+					candidate.checksPending = true;
+				}
 				return candidate;
 			}),
 		),
@@ -431,7 +439,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				repo: repo.name,
 				id: c.id,
 				state: jobs.has(c.id) ? "inFlight" : ready ? "ready" : "unready",
-				onHold: c.onHold || c.autoFixed === true || parked || blocked,
+				onHold: c.onHold || c.autoFixed === true || c.checksPending === true || parked || blocked,
 				...(c.override === undefined ? {} : {override: c.override}),
 				...(c.job === undefined ? {} : {job: c.job}),
 			};
@@ -485,11 +493,13 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 
 	/**
 	 * Ready = known ready or advanced to ready, and not on hold or awaiting an auto-fix review; a
-	 * stopped repo's ready items stay listed (the section marks them upstream red).
+	 * stopped repo's ready items stay listed (the section marks them upstream red). A ready item
+	 * whose PR checks are still running is listed as awaiting checks instead.
 	 */
 	function state(): ReadyToLandState {
 		type Entry = [BufferRepo, BufferCandidate];
 		const ready: Entry[] = [];
+		const awaitingChecks: Entry[] = [];
 		const running: Entry[] = [];
 		const byKey = new Map<string, Entry>();
 		for (const repo of lastRepos) {
@@ -499,7 +509,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				byKey.set(`${repo.name}:${c.id}`, [repo, c]);
 				if (jobs.has(c.id)) running.push([repo, c]);
 				else if ((c.state === "ready" || done.get(c.id) === "ready") && !c.onHold && c.autoFixed !== true) {
-					ready.push([repo, c]);
+					(c.checksPending === true ? awaitingChecks : ready).push([repo, c]);
 				}
 			}
 		}
@@ -508,6 +518,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		return {
 			slots: deps.target(),
 			ready: landingOrder(items(ready)),
+			awaitingChecks: items(awaitingChecks),
 			inFlight: items(running),
 			next: items(
 				lastNext.map((it) => byKey.get(`${it.repo}:${it.id}`)).filter((e): e is Entry => e !== undefined),

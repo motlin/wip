@@ -1,7 +1,13 @@
 import {useState} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
-import {landingOrder, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import {
+	landingOrder,
+	prChecksPending,
+	readyRowView,
+	type ReadyToLandItem,
+	type ReadyToLandState,
+} from "@wip/shared/ready-to-land.js";
 import {wipAgeText} from "../lib/staleness";
 
 const CHIP_CLASS = "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium";
@@ -12,11 +18,12 @@ const CANCEL_CLASS = "rounded-md border border-border-300 px-2.5 py-1 font-mediu
  * The row's next step: in a pull-request repo, merge its PR, or open one when it has none yet (a
  * PR the user clicks to open is user-initiated); fast-forward local main otherwise (never a push:
  * pushing main is the separate Push step). Null only when a
- * pull-request repo's commit has no branch to open a PR from.
+ * pull-request repo's commit has no branch to open a PR from. `autoMerge` marks a step that turns on
+ * auto-merge (the repo allows it): Open PR, and Merge PR while the checks still run.
  */
 export type LandingAction =
-	| {kind: "merge-pr"; label: string; prNumber: number}
-	| {kind: "open-pr"; label: string; branch: string}
+	| {kind: "merge-pr"; label: string; prNumber: number; autoMerge: boolean}
+	| {kind: "open-pr"; label: string; branch: string; autoMerge: boolean}
 	| {kind: "fast-forward"; label: string};
 
 export function landingAction(
@@ -25,11 +32,17 @@ export function landingAction(
 	upstreamBranch = "main",
 ): LandingAction | null {
 	if (item.landing !== "pull-request") return {kind: "fast-forward", label: `Fast-forward ${upstreamBranch}`};
+	const autoMergeAllowed = commit?.autoMergeAllowed === true;
 	if (commit?.prNumber !== undefined) {
-		return {kind: "merge-pr", label: `Merge PR #${commit.prNumber}`, prNumber: commit.prNumber};
+		return {
+			kind: "merge-pr",
+			label: `Merge PR #${commit.prNumber}`,
+			prNumber: commit.prNumber,
+			autoMerge: autoMergeAllowed && prChecksPending(commit),
+		};
 	}
 	const branch = item.branch ?? commit?.branch;
-	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch};
+	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch, autoMerge: autoMergeAllowed};
 }
 
 /**
@@ -83,6 +96,7 @@ function LandingPrompt({
 					</a>
 				)}{" "}
 				for {what} in {item.project}.
+				{action.autoMerge && " Its checks are still running: it will merge itself when they pass."}
 			</>
 		);
 	}
@@ -90,6 +104,7 @@ function LandingPrompt({
 		return (
 			<>
 				Open a PR for {what} from branch {action.branch} in {item.project}.
+				{action.autoMerge && " It will merge itself when its checks pass."}
 			</>
 		);
 	}
@@ -417,6 +432,42 @@ function PushRow({
 	);
 }
 
+/** A PR with auto-merge on: GitHub merges it once its checks pass, so there is nothing to click. */
+function MergingRow({item, commit}: {item: ReadyToLandItem; commit: GitChildResult | undefined}) {
+	return (
+		<li
+			data-testid="merging-row"
+			className="rounded-md border border-border-300/50 bg-bg-000 px-3 py-2.5 shadow-sm transition-colors hover:border-border-300"
+		>
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+				<div className="min-w-0 flex-1 basis-64">
+					<Link
+						to="/item/$project/$sha"
+						params={{project: item.project, sha: item.sha}}
+						className="line-clamp-2 break-words text-sm font-medium text-text-000 hover:underline"
+					>
+						{commit?.subject ?? item.sha.slice(0, 7)}
+					</Link>
+					<div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-500">
+						<span>{item.project}</span>
+						{commit?.prUrl !== undefined && (
+							<a
+								href={commit.prUrl}
+								target="_blank"
+								rel="noreferrer"
+								className={`${CHIP_CLASS} border-blue-500/40 text-blue-600 hover:bg-blue-500/10 dark:text-blue-400`}
+							>
+								PR #{commit.prNumber ?? "?"}
+							</a>
+						)}
+					</div>
+				</div>
+				<span className="ml-auto text-xs text-text-300">Merging when checks pass</span>
+			</div>
+		</li>
+	);
+}
+
 /** Projects whose local main holds commits the remote lacks, with those commits. */
 function pendingPushes(
 	commits: readonly GitChildResult[],
@@ -461,17 +512,25 @@ export function ReadyToLandSection({
 	onLandByPushing,
 }: ReadyToLandSectionProps) {
 	const pushes = pendingPushes(commits, projects);
-	if (!state || (state.ready.length === 0 && state.inFlight.length === 0 && pushes.length === 0)) return null;
+	if (!state) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
+	// A PR whose checks still run shows only when it merges itself or can be told to; see readyRowView.
+	const rows = landingOrder([...state.ready, ...(state.awaitingChecks ?? [])]).flatMap((item) => {
+		const commit = byKey.get(`${item.project}:${item.sha}`);
+		const view = readyRowView(item, commit);
+		return view === "hidden" ? [] : [{item, commit, view}];
+	});
+	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0) return null;
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	const stopped = new Set(state.stoppedProjects);
+	const landable = rows.filter((row) => row.view === "land").length;
 
 	return (
 		<section className="mb-6 rounded-lg border border-status-green/40 bg-bg-100 p-4">
 			<h2 data-testid="ready-to-land-heading" className="mb-3 flex items-baseline gap-2 text-sm font-semibold">
 				<span>Ready to land</span>
 				<span className="text-xs font-normal tabular-nums text-text-500">
-					{state.ready.length} ready (target {state.slots}) · {state.inFlight.length} readying
+					{landable} ready (target {state.slots}) · {state.inFlight.length} readying
 				</span>
 			</h2>
 			<ul className="flex flex-col gap-2">
@@ -483,8 +542,10 @@ export function ReadyToLandSection({
 						onPush={onPush}
 					/>
 				))}
-				{landingOrder(state.ready).map((item) => {
-					const commit = byKey.get(`${item.project}:${item.sha}`);
+				{rows.map(({item, commit, view}) => {
+					if (view === "merging") {
+						return <MergingRow key={`${item.project}:${item.id}`} item={item} commit={commit} />;
+					}
 					const projectInfo = projectMap.get(item.project);
 					return (
 						<ReadyRow
@@ -520,8 +581,10 @@ export interface ReadyLandPanelProps {
 
 /** The diff page's landing action, so the flow is review then land; only for a ready commit. */
 export function ReadyLandPanel({state, sha, commit, projectInfo, onLand}: ReadyLandPanelProps) {
-	const item = state?.ready.find((r) => r.project === projectInfo.name && r.sha === sha);
-	if (!state || item === undefined) return null;
+	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? [])].find(
+		(r) => r.project === projectInfo.name && r.sha === sha,
+	);
+	if (!state || item === undefined || readyRowView(item, commit) !== "land") return null;
 	return (
 		<ReadyLandPanelBody
 			item={item}

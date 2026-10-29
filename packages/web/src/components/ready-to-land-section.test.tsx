@@ -61,6 +61,7 @@ const commits = [
 		prUrl: "https://github.com/motlin/red/pull/7",
 		considerSplitting: true,
 		commitsBehind: 0,
+		checkStatus: "passed",
 	}),
 	makeChild({
 		project: "red",
@@ -69,6 +70,7 @@ const commits = [
 		prNumber: 8,
 		prUrl: "https://github.com/motlin/red/pull/8",
 		commitsBehind: 2,
+		checkStatus: "passed",
 	}),
 	makeChild({project: "plain", sha: sha("p1"), subject: "No tests here", branch: "no-tests"}),
 	makeChild({project: "plain", sha: sha("p2"), subject: "Detached", branch: undefined}),
@@ -445,6 +447,152 @@ describe("ReadyToLandSection when PR checks can't run", () => {
 			switchedBeforeConfirm: [],
 			switched: [["secret"]],
 		});
+	});
+});
+
+function prUrl(n: number): string {
+	return `https://github.com/motlin/pr/pull/${n}`;
+}
+
+describe("ReadyToLandSection while PR checks run", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	const running = [
+		makeChild({
+			project: "pr",
+			sha: sha("m1"),
+			subject: "Merging",
+			prNumber: 1,
+			prUrl: prUrl(1),
+			checkStatus: "running",
+			autoMerge: true,
+			autoMergeAllowed: true,
+		}),
+		makeChild({
+			project: "pr",
+			sha: sha("w1"),
+			subject: "Waiting",
+			prNumber: 2,
+			prUrl: prUrl(2),
+			checkStatus: "running",
+		}),
+		makeChild({
+			project: "pr",
+			sha: sha("n1"),
+			subject: "Not reported",
+			prNumber: 3,
+			prUrl: prUrl(3),
+			checkStatus: "none",
+		}),
+		makeChild({
+			project: "pr",
+			sha: sha("a1"),
+			subject: "Allowed",
+			prNumber: 4,
+			prUrl: prUrl(4),
+			checkStatus: "running",
+			autoMergeAllowed: true,
+		}),
+		makeChild({
+			project: "pr",
+			sha: sha("g1"),
+			subject: "Green",
+			prNumber: 5,
+			prUrl: prUrl(5),
+			checkStatus: "passed",
+		}),
+	];
+	const prItem = (id: string): ReadyToLandItem => ({project: "pr", id, sha: sha(id), landing: "pull-request"});
+	const checksState: ReadyToLandState = {
+		slots: 3,
+		ready: [prItem("w1"), prItem("g1")],
+		awaitingChecks: [prItem("m1"), prItem("n1"), prItem("a1")],
+		inFlight: [],
+		next: [],
+		stoppedProjects: [],
+	};
+
+	function renderChecks(
+		onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void = () => undefined,
+	) {
+		render(
+			<ReadyToLandSection
+				state={checksState}
+				commits={running}
+				projects={[project("pr")]}
+				now={now}
+				onLand={onLand}
+				onPush={() => undefined}
+			/>,
+		);
+	}
+
+	it("leaves out a PR whose checks are pending without auto-merge, and shows one with auto-merge on as merging, with no button", () => {
+		renderChecks();
+
+		expect({
+			heading: screen.getByTestId("ready-to-land-heading").textContent,
+			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
+			merging: links(screen.getByTestId("merging-row")),
+			buttons: screen.getAllByRole("button").map((button) => button.textContent),
+		}).toStrictEqual({
+			heading: "Ready to land2 ready (target 3) · 0 readying",
+			rows: ["GreenprPR #5ReviewMerge PR #5", "AllowedprPR #4ReviewMerge PR #4"],
+			merging: [
+				["Merging", `/item/pr/${sha("m1")}`],
+				["PR #1", prUrl(1)],
+			],
+			buttons: ["Merge PR #5", "Merge PR #4"],
+		});
+	});
+
+	it("names the merging row in plain words", () => {
+		renderChecks();
+
+		expect(screen.getByTestId("merging-row").textContent).toBe("MergingprPR #1Merging when checks pass");
+	});
+
+	it("says Merge PR on running checks in an auto-merge repo merges itself when they pass", () => {
+		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
+		renderChecks(onLand);
+
+		fireEvent.click(screen.getByRole("button", {name: "Merge PR #4"}));
+		const prompt = screen.getByTestId("land-confirm").textContent;
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+
+		expect({prompt, landed: onLand.mock.calls}).toStrictEqual({
+			prompt: 'Merge PR #4 for "Allowed" (a100000) in pr. Its checks are still running: it will merge itself when they pass.ConfirmCancel',
+			landed: [[prItem("a1"), running[3]]],
+		});
+	});
+
+	it("says Open PR in an auto-merge repo merges itself when checks pass", () => {
+		render(
+			<ReadyToLandSection
+				state={{...checksState, ready: [{...prItem("o1"), branch: "open-me"}], awaitingChecks: []}}
+				commits={[
+					makeChild({
+						project: "pr",
+						sha: sha("o1"),
+						subject: "Open me",
+						branch: "open-me",
+						autoMergeAllowed: true,
+					}),
+				]}
+				projects={[project("pr")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+
+		expect(screen.getByTestId("land-confirm").textContent).toBe(
+			'Open a PR for "Open me" (o100000) from branch open-me in pr. It will merge itself when its checks pass.ConfirmCancel',
+		);
 	});
 });
 

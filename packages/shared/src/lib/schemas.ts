@@ -400,6 +400,10 @@ export const GitChildResultSchema = z.object({
 	localTestSkipped: z.boolean().optional(),
 	/** Local `<upstreamBranch>` already contains it but the upstream branch does not: fast-forwarded, waiting for a push. */
 	onLocalMain: z.boolean().optional(),
+	/** The PR has auto-merge on: GitHub merges it itself once its checks pass. */
+	autoMerge: z.literal(true).optional(),
+	/** The repo allows auto-merge: Open PR and Merge PR on running checks turn it on. */
+	autoMergeAllowed: z.literal(true).optional(),
 	/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
 	autoFixed: z
 		.object({
@@ -466,6 +470,8 @@ export const ActionResultSchema = z.object({
 	// Set by Open PR and Merge PR so the client can link the PR and update the row in place
 	prNumber: z.number().optional(),
 	prUrl: z.url().optional(),
+	// Set by Open PR and Merge PR when they turned on auto-merge: the PR merges itself when checks pass
+	autoMerge: z.literal(true).optional(),
 	logs: z.array(ActionLogEntrySchema).optional(),
 	// Set by Abort rebase: the branch whose rebase was backed out, whose next action is "Rebase again"
 	rebaseAgainBranch: z.string().optional(),
@@ -551,6 +557,8 @@ export const CreatePrInputSchema = z.object({
 	title: z.string(),
 	body: z.string().optional(),
 	draft: z.boolean().optional(),
+	/** Ready to land's Open PR: turn on auto-merge when the repo allows it (the PR is opened ready, not draft). */
+	autoMerge: z.boolean().optional(),
 });
 export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;
 
@@ -595,6 +603,8 @@ export type PushUpstreamBranchInput = z.infer<typeof PushUpstreamBranchInputSche
 export const MergePrInputSchema = z.object({
 	project: z.string(),
 	prNumber: z.number(),
+	/** The PR's checks are still running: turn on auto-merge instead of merging now. */
+	autoMerge: z.boolean().optional(),
 });
 export type MergePrInput = z.infer<typeof MergePrInputSchema>;
 

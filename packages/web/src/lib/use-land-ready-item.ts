@@ -30,13 +30,15 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 			if (action === null) return;
 			const landing =
 				action.kind === "merge-pr"
-					? mergePr({data: {project: item.project, prNumber: action.prNumber}})
+					? mergePr({data: {project: item.project, prNumber: action.prNumber, autoMerge: action.autoMerge}})
 					: action.kind === "open-pr"
 						? createPr({
 								data: {
 									project: item.project,
 									branch: action.branch,
 									title: commit?.subject ?? action.branch,
+									// Opened ready for review; the server turns on auto-merge only where the repo allows it.
+									autoMerge: true,
 								},
 							})
 						: landFastForward({data: {project: item.project, sha: item.sha}});
@@ -44,9 +46,28 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 				pushToast(actionResultToast(LANDING_ACTION_NAMES[action.kind], result));
 				const {prNumber, prUrl} = result;
 				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {
-					// The row's next step becomes "Merge PR #N" without a refetch.
+					// Its checks have not reported yet: without a refetch the row leaves Ready to land (or
+					// shows as merging when auto-merge is on), and returns as Merge PR once they pass.
 					queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], (old) =>
-						old?.map((c) => (c.sha === item.sha ? {...c, pushedToRemote: true, prUrl, prNumber} : c)),
+						old?.map((c) =>
+							c.sha === item.sha
+								? {
+										...c,
+										pushedToRemote: true,
+										prUrl,
+										prNumber,
+										checkStatus: "pending",
+										mergeStateStatus: undefined,
+										autoMerge: result.autoMerge,
+									}
+								: c,
+						),
+					);
+				}
+				if (action.kind === "merge-pr" && result.ok && result.autoMerge === true) {
+					// The row shows as merging until GitHub merges it.
+					queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], (old) =>
+						old?.map((c) => (c.sha === item.sha ? {...c, autoMerge: true} : c)),
 					);
 				}
 				if (action.kind === "fast-forward" && result.ok) {

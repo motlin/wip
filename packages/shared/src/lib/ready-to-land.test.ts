@@ -1,5 +1,11 @@
 import {describe, expect, it} from "vite-plus/test";
-import {landingOrder, ReadyToLandStateSchema, type ReadyToLandItem} from "./ready-to-land.js";
+import {
+	landingOrder,
+	prChecksPending,
+	readyRowView,
+	ReadyToLandStateSchema,
+	type ReadyToLandItem,
+} from "./ready-to-land.js";
 
 const item = (project: string, id: string, parentSha?: string): ReadyToLandItem => ({
 	project,
@@ -44,5 +50,55 @@ describe("ReadyToLandStateSchema", () => {
 		};
 
 		expect(ReadyToLandStateSchema.parse(state)).toStrictEqual(state);
+	});
+});
+
+type RowCommit = NonNullable<Parameters<typeof readyRowView>[1]>;
+
+function commit(fields: Partial<RowCommit> = {}): RowCommit {
+	return {prNumber: 9, checkStatus: "running", ...fields};
+}
+
+describe("readyRowView", () => {
+	const pr = {...item("p", "c1"), landing: "pull-request" as const};
+
+	it("lands a row whose PR checks passed or failed, a row with no PR yet, and every fast-forward row", () => {
+		expect([
+			readyRowView(pr, commit({checkStatus: "passed"})),
+			readyRowView(pr, commit({checkStatus: "failed"})),
+			readyRowView(pr, {checkStatus: "none"}),
+			readyRowView(pr, undefined),
+			readyRowView({...pr, landing: "fast-forward"}, commit()),
+			readyRowView(pr, commit({checkStatus: "none", mergeStateStatus: "CLEAN"})),
+		]).toStrictEqual(["land", "land", "land", "land", "land", "land"]);
+	});
+
+	it("hides a PR whose checks are pending or not yet reported when the repo has no auto-merge", () => {
+		expect([
+			readyRowView(pr, commit({checkStatus: "pending"})),
+			readyRowView(pr, commit({checkStatus: "running"})),
+			readyRowView(pr, commit({checkStatus: "none"})),
+			readyRowView(pr, commit({checkStatus: "unknown", mergeStateStatus: "BLOCKED"})),
+		]).toStrictEqual(["hidden", "hidden", "hidden", "hidden"]);
+	});
+
+	it("shows a pending PR as merging once auto-merge is on, and still offers Merge PR where the repo allows auto-merge", () => {
+		expect([
+			readyRowView(pr, commit({autoMerge: true})),
+			readyRowView(pr, commit({autoMergeAllowed: true})),
+			readyRowView(pr, commit({autoMerge: true, checkStatus: "passed"})),
+		]).toStrictEqual(["merging", "land", "land"]);
+	});
+});
+
+describe("prChecksPending", () => {
+	it("is true only for a PR whose checks are running or not yet reported", () => {
+		expect([
+			prChecksPending({prNumber: 1, checkStatus: "pending"}),
+			prChecksPending({prNumber: 1, checkStatus: "none"}),
+			prChecksPending({prNumber: 1, checkStatus: "none", mergeStateStatus: "HAS_HOOKS"}),
+			prChecksPending({prNumber: 1, checkStatus: "passed"}),
+			prChecksPending({checkStatus: "running"}),
+		]).toStrictEqual([true, true, false, false, false]);
 	});
 });

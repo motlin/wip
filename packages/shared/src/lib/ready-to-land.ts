@@ -1,4 +1,5 @@
 import {z} from "zod";
+import type {GitChildResult} from "./schemas.js";
 
 /**
  * The ready buffer's state as the "Ready to land" section shows it (lean plan step 42), carried
@@ -25,6 +26,12 @@ export const ReadyToLandStateSchema = z.object({
 	/** How many commits the buffer keeps ready (readyBuffer.size). */
 	slots: z.number(),
 	ready: z.array(ReadyToLandItemSchema),
+	/**
+	 * Otherwise ready pull-request items whose PR checks are still running: not counted toward the
+	 * ready target, so the buffer keeps pulling. The section shows them only as merging (auto-merge on)
+	 * or as Merge PR where the repo allows auto-merge.
+	 */
+	awaitingChecks: z.array(ReadyToLandItemSchema).optional(),
 	inFlight: z.array(ReadyToLandItemSchema),
 	/** The candidates the buffer pulls next, in pull order. */
 	next: z.array(ReadyToLandItemSchema),
@@ -53,4 +60,36 @@ export function landingOrder<T extends ReadyToLandItem>(items: readonly T[]): T[
 	};
 	for (const it of items) place(it, new Set());
 	return result;
+}
+
+type PrChecks = Pick<GitChildResult, "prNumber" | "checkStatus" | "mergeStateStatus">;
+
+const MERGEABLE_WITHOUT_CHECKS = new Set(["CLEAN", "HAS_HOOKS"]);
+
+/**
+ * A PR whose checks are still running or not yet reported. No rollup at all counts as pending until
+ * GitHub calls the PR mergeable, so a repo with no CI still lands.
+ */
+export function prChecksPending(commit: PrChecks): boolean {
+	if (commit.prNumber === undefined || commit.checkStatus === "passed" || commit.checkStatus === "failed") {
+		return false;
+	}
+	if (commit.checkStatus === "pending" || commit.checkStatus === "running") return true;
+	return commit.mergeStateStatus === undefined || !MERGEABLE_WITHOUT_CHECKS.has(commit.mergeStateStatus);
+}
+
+/**
+ * How a ready row shows while its PR checks run: `merging` once auto-merge is on (GitHub merges it
+ * itself, so no button), `land` where the repo allows auto-merge (Merge PR turns it on), and
+ * `hidden` otherwise, since nothing can land until the checks pass. Every other row lands.
+ */
+export type ReadyRowView = "land" | "merging" | "hidden";
+
+export function readyRowView(
+	item: Pick<ReadyToLandItem, "landing">,
+	commit: (PrChecks & Pick<GitChildResult, "autoMerge" | "autoMergeAllowed">) | undefined,
+): ReadyRowView {
+	if (item.landing !== "pull-request" || commit === undefined || !prChecksPending(commit)) return "land";
+	if (commit.autoMerge === true) return "merging";
+	return commit.autoMergeAllowed === true ? "land" : "hidden";
 }

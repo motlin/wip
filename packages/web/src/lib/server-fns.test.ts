@@ -25,6 +25,9 @@ import {
 	getAutoFixes,
 	getCommitFacts,
 	setAutoFix,
+	resetAutoMergeAllowedCache,
+	resetGitHubRateLimit,
+	resetRepositoryIdCache,
 } from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
@@ -2741,6 +2744,52 @@ describe("abortRebaseHandler", () => {
 	});
 });
 
+/** Ready to land's Open PR in a repo that does or doesn't allow auto-merge: the gh calls, drafts and result. */
+async function openPr(name: string, autoMergeAllowed: boolean) {
+	const dir = await createTestGitRepo();
+	seedProjectCache([makeProject({name, dir, remote: "alice/example-repo"})]);
+	const gh: string[][] = [];
+	fakeExeca.handler = (command, args) => {
+		if (command === "gh") gh.push(args);
+		return {
+			stdout: command === "mise" ? "{}" : "",
+			stderr: "",
+			exitCode: 0,
+			failed: false,
+			command: [command, ...args].join(" "),
+		};
+	};
+	const drafts: unknown[] = [];
+	setGitHubClient({
+		graphql: async (query: string, variables?: Record<string, unknown>) => {
+			if (query.includes("autoMergeAllowed")) {
+				return Promise.resolve({data: {repository: {autoMergeAllowed}}});
+			}
+			if (query.includes("createPullRequest")) {
+				drafts.push(variables?.["draft"]);
+				return Promise.resolve({
+					data: {
+						createPullRequest: {pullRequest: {url: "https://github.com/alice/example-repo/pull/7"}},
+					},
+				});
+			}
+			return Promise.resolve({data: {repository: {id: "REPOSITORY_7"}}});
+		},
+	});
+	const {createPrHandler} = await import("./server-fns.impl.js");
+	const result = await createPrHandler({project: name, branch: "main", title: "Ship it", autoMerge: true});
+	return {
+		gh,
+		drafts,
+		result: {
+			ok: result.ok,
+			message: result.message,
+			autoMerge: result.autoMerge,
+			prNumber: result.prNumber,
+		},
+	};
+}
+
 describe("queued git actions", () => {
 	afterEach(() => {
 		fakeExeca.handler = undefined;
@@ -2785,6 +2834,70 @@ describe("queued git actions", () => {
 			message: "Merged PR #42",
 			prNumber: 42,
 			prUrl: "https://github.com/alice/example-repo/pull/42",
+		});
+	});
+
+	it("mergePrHandler on running checks turns on auto-merge instead of merging now", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "merge-pr-auto", dir, remote: "alice/example-repo"})]);
+		const gh: string[][] = [];
+		fakeExeca.handler = (command, args) => {
+			if (command === "gh") gh.push(args);
+			return {
+				stdout: command === "mise" ? "{}" : "",
+				stderr: "",
+				exitCode: 0,
+				failed: false,
+				command: [command, ...args].join(" "),
+			};
+		};
+		const {mergePrHandler} = await import("./server-fns.impl.js");
+		const result = await mergePrHandler({project: "merge-pr-auto", prNumber: 42, autoMerge: true});
+		expect({
+			gh,
+			result: {ok: result.ok, message: result.message, autoMerge: result.autoMerge, prNumber: result.prNumber},
+		}).toStrictEqual({
+			gh: [["pr", "merge", "42", "--squash", "--delete-branch", "--auto", "-R", "alice/example-repo"]],
+			result: {
+				ok: true,
+				message: "PR #42 will merge itself when its checks pass",
+				autoMerge: true,
+				prNumber: 42,
+			},
+		});
+	});
+
+	describe("createPrHandler with auto-merge requested", () => {
+		beforeEach(() => {
+			// Earlier tests may leave GitHub marked rate limited, which reads as no auto-merge.
+			resetGitHubRateLimit();
+			resetAutoMergeAllowedCache();
+		});
+
+		afterEach(() => {
+			resetAutoMergeAllowedCache();
+			resetRepositoryIdCache();
+		});
+
+		it("opens the PR ready for review and turns on auto-merge where the repo allows it", async () => {
+			expect(await openPr("create-pr-auto", true)).toStrictEqual({
+				gh: [["pr", "merge", "7", "--squash", "--delete-branch", "--auto", "-R", "alice/example-repo"]],
+				drafts: [false],
+				result: {
+					ok: true,
+					message: "Opened PR #7; it will merge itself when its checks pass",
+					autoMerge: true,
+					prNumber: 7,
+				},
+			});
+		});
+
+		it("leaves auto-merge off where the repo doesn't allow it", async () => {
+			expect(await openPr("create-pr-manual", false)).toStrictEqual({
+				gh: [],
+				drafts: [false],
+				result: {ok: true, message: "Opened PR #7", autoMerge: undefined, prNumber: 7},
+			});
 		});
 	});
 

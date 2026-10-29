@@ -230,8 +230,8 @@ importers:
   packages/cli:
     dependencies:
       '@oclif/core':
-        specifier: ^5.1.8
-        version: 5.1.8
+        specifier: ^5.1.9
+        version: 5.1.9
       '@wip/shared':
         specifier: workspace:*
         version: link:../shared
@@ -1002,8 +1002,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@oclif/core@5.1.8':
-    resolution: {integrity: sha512-K1b3zdmbwANV9Jk+QN8aFvnXY/IhfWRnmhWn/V57h7alzbtck2je2DVVf0EkA01FokreF7Tpe+7hiGS87q30SA==}
+  '@oclif/core@5.1.9':
+    resolution: {integrity: sha512-jZfN6pxHkgDpHD0dk4nhtaUtYdK39oZoWJCfmkpp7CUE+6mUZSb3WDrdBHnxI5n6CJIiWBrLchM7rBvuV0lRSA==}
     engines: {node: '>=22.0.0'}
 
   '@oozcitak/dom@2.0.2':
@@ -4794,12 +4794,6 @@ packages:
     resolution: {integrity: sha512-VMbMxbDeehAxpOtWJXlcUS5E8iXh6QmN+BkRX1GARS3wRaXEEgzCcB10gTQazO42tpNIya8xIyNx8fll1OFPrg==}
     engines: {node: '>= 0.8.0'}
 
-  seroval-plugins@1.6.11:
-    resolution: {integrity: sha512-LmB3nd8pL39jKHKvnpTUjcjBtNwR8MLty/ydAR8qbfXt5j6/6KqR1atuw8cVmD2/lDxAkvAwq5tI/HsisD9Fqg==}
-    engines: {node: '>=10'}
-    peerDependencies:
-      seroval: ^1.0
-
   seroval-plugins@1.6.12:
     resolution: {integrity: sha512-+reiwp/lYxiyctSrdvX7OQ1YLrcbWYgBiZrhSFL+V43b0/DGRLNVSDyZINbQe+tWplPOI2fw2dPrdv6hcc09kQ==}
     engines: {node: '>=10'}
@@ -5911,7 +5905,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.3
 
-  '@oclif/core@5.1.8':
+  '@oclif/core@5.1.9':
     dependencies:
       ansi-escapes: 4.3.2
       ansis: 3.17.0
@@ -7046,7 +7040,7 @@ snapshots:
       '@tanstack/history': 1.162.5
       cookie-es: 3.1.1
       seroval: 1.6.11
-      seroval-plugins: 1.6.11(seroval@1.6.11)
+      seroval-plugins: 1.6.12(seroval@1.6.11)
 
   '@tanstack/router-generator@1.167.44(supports-color@8.1.1)':
     dependencies:
@@ -9411,7 +9405,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  seroval-plugins@1.6.11(seroval@1.6.11):
+  seroval-plugins@1.6.12(seroval@1.6.11):
     dependencies:
       seroval: 1.6.11
 

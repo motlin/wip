@@ -5,7 +5,7 @@ import JSON5 from "json5";
 import {z} from "zod";
 
 import {getConfigDir} from "./config.js";
-import {landingMode, type TemplateTexts} from "./inventory-import.js";
+import type {TemplateTexts} from "./inventory-import.js";
 import {PrioritySchema} from "./priority.js";
 
 export {diffInventories, type InventoryDiff} from "./inventory-import.js";
@@ -32,11 +32,21 @@ export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
 export {landingMode, type LandingMode} from "./inventory-import.js";
 
 /**
+ * Whether the ready buffer may force-push this repo's branches in the background: only when the
+ * registry explicitly says it lands by pull request. An unconfigured repo still lands by pull request
+ * when the user acts (see landingMode), but nothing pushes it unasked; neither does an unregistered one.
+ */
+export function pushesInBackground(record: Pick<ProjectRecord, "landing"> | undefined): boolean {
+	return record?.landing === "pull-request";
+}
+
+/**
  * Whether a clean replay of a commit green before the replay may skip the local build and let PR
- * checks verify it: the per-repo setting is on and the repo lands through pull requests.
+ * checks verify it: the per-repo setting is on and the repo is explicitly set to land by pull
+ * request, since the fast path pushes in the background.
  */
 export function trustsPatchIdGreen(record: Pick<ProjectRecord, "landing" | "trustPatchIdGreen">): boolean {
-	return record.trustPatchIdGreen === true && landingMode(record) === "pull-request";
+	return record.trustPatchIdGreen === true && pushesInBackground(record);
 }
 
 export interface InventoryError {

@@ -1,4 +1,4 @@
-import type {BackgroundPush, LandingMode, PushGateDecision} from "@wip/shared";
+import type {BackgroundPush, PushGateDecision} from "@wip/shared";
 import type {AdvanceOutcome} from "./ready-buffer.js";
 
 /**
@@ -118,7 +118,8 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 }
 
 export interface PublishInput {
-	landing: LandingMode | undefined;
+	/** The repo is explicitly set to land by pull request (see pushesInBackground). */
+	backgroundPush: boolean | undefined;
 	outcome: AdvanceOutcome;
 	request: PushRequest;
 	/** An AI fixup awaits the user's review (including Fix it myself): never pushed until accepted. */
@@ -126,17 +127,18 @@ export interface PublishInput {
 }
 
 /**
- * After a buffer advance: a ready item in a pull-request repo is force-pushed with lease through
- * the gate (held = deferred); fast-forward repos never push. Any other outcome drops a deferred push
+ * After a buffer advance: a ready item in a repo explicitly set to land by pull request is
+ * force-pushed with lease through the gate (held = deferred); fast-forward, unconfigured and
+ * unregistered repos never push in the background. Any other outcome drops a deferred push
  * of the branch, except `checks_pending`, whose fast path already pushed. An item whose AI fixup
  * awaits review is never pushed (and its deferred push is dropped) until Accept fix squashes it.
  * Null when nothing was pushed.
  */
 export async function publishAfterAdvance(
-	{landing, outcome, request, autoFixed}: PublishInput,
+	{backgroundPush, outcome, request, autoFixed}: PublishInput,
 	pusher: BackgroundPusher,
 ): Promise<PushOutcome | null> {
-	if (landing !== "pull-request") return null;
+	if (backgroundPush !== true) return null;
 	if (outcome === "ready" && autoFixed !== true) return pusher.push(request, {defer: true});
 	if (outcome !== "checks_pending") pusher.cancel(request.project, request.branch);
 	return null;

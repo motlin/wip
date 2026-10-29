@@ -818,6 +818,23 @@ describe("bufferRepoFromChildren landing mode", () => {
 			unset: bufferRepoFromChildren(project("motlin/wip"), [], base).landing,
 		}).toStrictEqual({pr: "pull-request", ff: "fast-forward", unset: undefined});
 	});
+
+	it("carries whether the repo pushes in the background, separately from its effective landing", () => {
+		const base = {identity: null, checkedOutBranches: [], onHold: () => false, override: () => undefined};
+		const view = (context: object) => {
+			const buffered = bufferRepoFromChildren(project("motlin/wip"), [], {...base, ...context});
+			return {landing: buffered.landing, backgroundPush: buffered.backgroundPush};
+		};
+		expect({
+			explicitPr: view({landing: "pull-request", backgroundPush: true}),
+			unsetLandsByPr: view({landing: "pull-request", backgroundPush: false}),
+			unregistered: view({}),
+		}).toStrictEqual({
+			explicitPr: {landing: "pull-request", backgroundPush: true},
+			unsetLandsByPr: {landing: "pull-request", backgroundPush: undefined},
+			unregistered: {landing: undefined, backgroundPush: undefined},
+		});
+	});
 });
 
 describe("bufferRepoFromChildren after a fast-forward of local main", () => {

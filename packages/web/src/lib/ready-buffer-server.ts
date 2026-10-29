@@ -27,8 +27,9 @@ import {currentReadyBuffer, setReadyBuffer} from "./ready-buffer-instance.js";
  * one silent `/git:conflicts` agent, a test failure one `/build:fix` agent that must commit a
  * separate fixup (recorded as "auto-fixed" until accepted), and the signals
  * (upstreamMoved, landed, task completion, On hold, children refresh, safety tick) trigger pulls.
- * A ready item in a pull-request repo is force-pushed with lease through the one GitHub Actions
- * gate (plan step 34); a held push is deferred and retried on the children and tick signals.
+ * A ready item in a repo explicitly set to land by pull request is force-pushed with lease through
+ * the one GitHub Actions gate (plan step 34); a held push is deferred and retried on the children
+ * and tick signals.
  */
 
 const SAFETY_TICK_MS = 45_000;
@@ -54,6 +55,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 		isOnHold,
 		landingMode,
 		loadInventory,
+		pushesInBackground,
 		trustsPatchIdGreen,
 	} = await import("@wip/shared");
 	const {getProjects} = await import("./server-fns.js");
@@ -77,6 +79,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 				override: (patchId) => getPriorityOverride(p.name, {kind: "commit", key: patchId}),
 				trustPatchIdGreen: record !== undefined && trustsPatchIdGreen(record),
 				...(record === undefined ? {} : {landing: landingMode(record)}),
+				backgroundPush: pushesInBackground(record),
 			}),
 		);
 	}
@@ -178,11 +181,12 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 		},
 	);
 
-	// 4. Step 34: a ready item in a pull-request repo is force-pushed with lease through the gate.
+	// 4. Step 34: a ready item in a repo explicitly set to land by pull request is force-pushed with
+	// lease through the gate; an unconfigured repo is rebased and tested but never pushed unasked.
 	const request = pushRequest(sha);
 	if (request !== null) {
 		const pushed = await publishAfterAdvance(
-			{landing: repo.landing, outcome, request, autoFixed},
+			{backgroundPush: repo.backgroundPush, outcome, request, autoFixed},
 			backgroundPusher(),
 		);
 		if (pushed !== null) log.general.info({project: p.name, branch, sha, push: pushed}, "Ready-buffer push");

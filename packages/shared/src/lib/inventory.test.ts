@@ -9,6 +9,7 @@ import {
 	inventoryExists,
 	landingMode,
 	loadInventory,
+	pushesInBackground,
 	saveInventory,
 	selectTrackedProjects,
 	trustsPatchIdGreen,
@@ -129,12 +130,29 @@ describe("landingMode and trustsPatchIdGreen", () => {
 		}).toStrictEqual({fork: "pull-request", own: "pull-request", ownPr: "pull-request", forkFf: "fast-forward"});
 	});
 
-	it("trusts a pre-replay green only with the setting on in a pull-request repo", () => {
+	it("trusts a pre-replay green only with the setting on in a repo explicitly set to pull request", () => {
 		expect({
-			onPr: trustsPatchIdGreen(record({kind: "fork", trustPatchIdGreen: true})),
-			offPr: trustsPatchIdGreen(record({kind: "fork"})),
+			onPr: trustsPatchIdGreen(record({kind: "fork", landing: "pull-request", trustPatchIdGreen: true})),
+			offPr: trustsPatchIdGreen(record({kind: "fork", landing: "pull-request"})),
+			onUnsetFork: trustsPatchIdGreen(record({kind: "fork", trustPatchIdGreen: true})),
 			onUnsetOwn: trustsPatchIdGreen(record({kind: "own", trustPatchIdGreen: true})),
 			onFastForward: trustsPatchIdGreen(record({kind: "fork", landing: "fast-forward", trustPatchIdGreen: true})),
-		}).toStrictEqual({onPr: true, offPr: false, onUnsetOwn: true, onFastForward: false});
+		}).toStrictEqual({onPr: true, offPr: false, onUnsetFork: false, onUnsetOwn: false, onFastForward: false});
+	});
+
+	it("pushes in the background only in a repo explicitly set to land by pull request", () => {
+		expect({
+			explicitPr: pushesInBackground(record({kind: "own", landing: "pull-request"})),
+			unsetOwn: pushesInBackground(record({kind: "own"})),
+			unsetFork: pushesInBackground(record({kind: "fork"})),
+			fastForward: pushesInBackground(record({kind: "fork", landing: "fast-forward"})),
+			unregistered: pushesInBackground(undefined),
+		}).toStrictEqual({
+			explicitPr: true,
+			unsetOwn: false,
+			unsetFork: false,
+			fastForward: false,
+			unregistered: false,
+		});
 	});
 });

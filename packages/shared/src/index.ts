@@ -480,6 +480,7 @@ export {
 	type ProjectRecord,
 	ProjectRecordSchema,
 	loadInventory,
+	pushesInBackground,
 	readTemplateTexts,
 	saveInventory,
 	selectTrackedProjects,

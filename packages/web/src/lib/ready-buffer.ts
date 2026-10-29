@@ -68,8 +68,10 @@ export interface BufferRepo {
 	checkedOutBranches: readonly string[];
 	/** The patch-id fast path applies (setting on, pull-request repo): see testStep. */
 	trustPatchIdGreen?: boolean;
-	/** The registry's effective landing mode; a ready item in a pull-request repo is force-pushed. */
+	/** The registry's effective landing mode (unset lands by pull request). */
 	landing?: LandingMode;
+	/** The registry explicitly sets pull-request landing: a ready item is force-pushed in the background. */
+	backgroundPush?: boolean;
 	/** In rank order (shortest remaining job first). */
 	candidates: BufferCandidate[];
 }
@@ -193,6 +195,8 @@ export interface BufferRepoContext {
 	trustPatchIdGreen?: boolean;
 	/** The registry's effective landing mode; unset when the project isn't registered. */
 	landing?: LandingMode;
+	/** The registry explicitly sets pull-request landing (see pushesInBackground). */
+	backgroundPush?: boolean;
 }
 
 /**
@@ -219,6 +223,7 @@ export function bufferRepoFromChildren(
 		checkedOutBranches: context.checkedOutBranches,
 		...(context.trustPatchIdGreen === true ? {trustPatchIdGreen: true} : {}),
 		...(context.landing === undefined ? {} : {landing: context.landing}),
+		...(context.backgroundPush === true ? {backgroundPush: true} : {}),
 		candidates: onePerPatchId(
 			work.map((child) => {
 				const override = child.patchId === undefined ? undefined : context.override(child.patchId);

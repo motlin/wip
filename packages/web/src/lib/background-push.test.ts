@@ -41,7 +41,7 @@ const PUSH = ["-C", "/p/wip", "push", "--force-with-lease", "origin", "feature:f
 describe("publishAfterAdvance", () => {
 	it("force-pushes a ready pull-request-repo candidate once with lease and records it on the gate", async () => {
 		const {pusher, commands, recorded} = fakes({remoteSha: OLD});
-		const outcome = await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		const outcome = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
 		expect({outcome, commands, recorded, pending: pusher.pending()}).toStrictEqual({
 			outcome: {status: "pushed"},
 			commands: [REV_PARSE, PUSH],
@@ -50,10 +50,16 @@ describe("publishAfterAdvance", () => {
 		});
 	});
 
-	it("never pushes in a fast-forward repo", async () => {
+	it("never pushes unless the repo is explicitly set to land by pull request", async () => {
 		const {pusher, commands} = fakes({remoteSha: OLD});
-		const outcome = await publishAfterAdvance({landing: "fast-forward", outcome: "ready", request}, pusher);
-		expect({outcome, commands}).toStrictEqual({outcome: null, commands: []});
+		const outcomes = {
+			fastForwardOrUnset: await publishAfterAdvance({backgroundPush: false, outcome: "ready", request}, pusher),
+			unregistered: await publishAfterAdvance({backgroundPush: undefined, outcome: "ready", request}, pusher),
+		};
+		expect({outcomes, commands}).toStrictEqual({
+			outcomes: {fastForwardOrUnset: null, unregistered: null},
+			commands: [],
+		});
 	});
 
 	it("never pushes an item that is not ready", async () => {
@@ -61,14 +67,14 @@ describe("publishAfterAdvance", () => {
 		const outcomes = [];
 		for (const outcome of ["test_failed", "rebase_conflicts", "checks_pending", "skipped"] as const) {
 			// eslint-disable-next-line no-await-in-loop
-			outcomes.push(await publishAfterAdvance({landing: "pull-request", outcome, request}, pusher));
+			outcomes.push(await publishAfterAdvance({backgroundPush: true, outcome, request}, pusher));
 		}
 		expect({outcomes, commands}).toStrictEqual({outcomes: [null, null, null, null], commands: []});
 	});
 
 	it("skips the push when origin already has the sha", async () => {
 		const {pusher, commands, recorded} = fakes({remoteSha: SHA});
-		const outcome = await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		const outcome = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
 		expect({outcome, commands, recorded}).toStrictEqual({
 			outcome: {status: "up_to_date"},
 			commands: [REV_PARSE],
@@ -81,7 +87,7 @@ describe("publishAfterAdvance", () => {
 			remoteSha: OLD,
 			gate: [{open: false, reason: "GitHub Actions queued on motlin/other@ccc"}, {open: true}],
 		});
-		const held = await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		const held = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
 		const afterHeld = {commands: [...commands], pending: pusher.pending()};
 		await pusher.flush();
 		expect({held, afterHeld, commands, recorded, pending: pusher.pending()}).toStrictEqual({
@@ -98,8 +104,8 @@ describe("publishAfterAdvance", () => {
 			remoteSha: OLD,
 			gate: [{open: false, reason: "held"}],
 		});
-		await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
-		await publishAfterAdvance({landing: "pull-request", outcome: "test_failed", request}, pusher);
+		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
+		await publishAfterAdvance({backgroundPush: true, outcome: "test_failed", request}, pusher);
 		await pusher.flush();
 		expect({commands, pending: pusher.pending()}).toStrictEqual({commands: [REV_PARSE], pending: []});
 	});
@@ -108,9 +114,9 @@ describe("publishAfterAdvance", () => {
 describe("publishAfterAdvance with an unaccepted AI fixup", () => {
 	it("never pushes a ready item whose auto-fix awaits review, and drops its deferred push", async () => {
 		const {pusher, commands} = fakes({remoteSha: OLD, gate: [{open: false, reason: "held"}]});
-		await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
 		const outcome = await publishAfterAdvance(
-			{landing: "pull-request", outcome: "ready", request, autoFixed: true},
+			{backgroundPush: true, outcome: "ready", request, autoFixed: true},
 			pusher,
 		);
 		await pusher.flush();
@@ -124,10 +130,10 @@ describe("publishAfterAdvance with an unaccepted AI fixup", () => {
 	it("pushes once after the fix is accepted and the item is ready again", async () => {
 		const {pusher, commands, recorded} = fakes({remoteSha: OLD});
 		const unaccepted = await publishAfterAdvance(
-			{landing: "pull-request", outcome: "ready", request, autoFixed: true},
+			{backgroundPush: true, outcome: "ready", request, autoFixed: true},
 			pusher,
 		);
-		const accepted = await publishAfterAdvance({landing: "pull-request", outcome: "ready", request}, pusher);
+		const accepted = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
 		expect({unaccepted, accepted, commands, recorded}).toStrictEqual({
 			unaccepted: null,
 			accepted: {status: "pushed"},

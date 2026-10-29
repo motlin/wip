@@ -20,6 +20,22 @@ describe("actionEventToast", () => {
 		});
 	});
 
+	it("says a fast-forward moves local main and a push pushes it, as two separate steps", () => {
+		expect([
+			actionEventToast({
+				id: "ff",
+				project: "wip",
+				label: "landFastForward",
+				target: "abc1234",
+				status: "waiting",
+			}),
+			actionEventToast({id: "push", project: "wip", label: "pushUpstreamBranch", status: "waiting"}),
+		]).toStrictEqual([
+			{level: "info", message: "Moving local main for abc1234…", detail: undefined},
+			{level: "info", message: "Pushing local main in wip…", detail: undefined},
+		]);
+	});
+
 	it("names the project when the action has no target", () => {
 		expect(
 			actionEventToast({id: "action-2", project: "wip", label: "commitWorkingTree", status: "waiting"}),

@@ -11,7 +11,7 @@ import {
 	systemStatusQueryOptions,
 } from "../../lib/queries";
 import {ReadyToLandSection} from "../../components/ready-to-land-section";
-import {useLandReadyItem} from "../../lib/use-land-ready-item";
+import {useLandReadyItem, usePushUpstreamBranch} from "../../lib/use-land-ready-item";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, type QueueContextValue} from "../../lib/queue-context";
@@ -73,6 +73,7 @@ function QueueLayout() {
 		};
 	}, []);
 	const land = useLandReadyItem();
+	const push = usePushUpstreamBranch();
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
 		() => flowCounts({projects, gitChildren: workItems.gitChildren, todos: workItems.todos, slots: readySlots}),
@@ -343,6 +344,7 @@ function QueueLayout() {
 						projects={projects}
 						now={now}
 						onLand={land}
+						onPush={push}
 					/>
 					<Outlet />
 				</main>

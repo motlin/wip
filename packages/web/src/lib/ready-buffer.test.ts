@@ -820,6 +820,22 @@ describe("bufferRepoFromChildren landing mode", () => {
 	});
 });
 
+describe("bufferRepoFromChildren after a fast-forward of local main", () => {
+	it("leaves out a commit local main already contains: it waits for a push, not a landing", () => {
+		const base = {identity: null, checkedOutBranches: [], onHold: () => false, override: () => undefined};
+		const forwarded = bufferRepoFromChildren(
+			project("motlin/wip"),
+			[
+				makeChild({sha: sha("a"), commitsBehind: 0, testStatus: "passed", onLocalMain: true}),
+				makeChild({sha: sha("b"), commitsBehind: 0, testStatus: "passed"}),
+			],
+			{...base, landing: "fast-forward"},
+		);
+
+		expect(forwarded.candidates.map((c) => c.sha)).toStrictEqual([sha("b")]);
+	});
+});
+
 describe("bufferRepoFromChildren with the patch-id fast path", () => {
 	it("counts a commit whose local test was skipped as ready only once its PR checks pass", () => {
 		const states = bufferRepoFromChildren(

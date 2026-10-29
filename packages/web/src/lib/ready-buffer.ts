@@ -206,7 +206,10 @@ export function bufferRepoFromChildren(
 	children: readonly GitChildResult[],
 	context: BufferRepoContext,
 ): BufferRepo {
-	const work = rankGitChildren(children.filter((child) => child.kind !== "upstream_ci"));
+	// A commit already fast-forwarded onto local main waits for the user's push, not a landing.
+	const work = rankGitChildren(
+		children.filter((child) => child.kind !== "upstream_ci" && child.onLocalMain !== true),
+	);
 	return {
 		name: project.name,
 		...(context.priority === undefined ? {} : {priority: context.priority}),

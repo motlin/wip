@@ -104,6 +104,7 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={() => undefined}
+				onPush={() => undefined}
 			/>,
 		);
 
@@ -113,8 +114,8 @@ describe("ReadyToLandSection", () => {
 		}).toStrictEqual({
 			heading: "Ready to land6 ready (target 3) · 1 readying",
 			rows: [
-				"Add parsera+10 −2 · 1 filein wip 1dReviewFast-forward",
-				"Use parsera+3 −0 · 2 filesReviewFast-forward",
+				"Add parsera+10 −2 · 1 filein wip 1dReviewFast-forward main",
+				"Use parsera+3 −0 · 2 filesReviewFast-forward main",
 				"Fix redredin wip 3dupstream redconsider splittingPR #7ReviewMerge PR #7",
 				"No tests hereplainno testsReviewOpen PR",
 				"Detachedplainno testsReview",
@@ -136,11 +137,12 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a")]}
 				now={now}
 				onLand={() => undefined}
+				onPush={() => undefined}
 			/>,
 		);
 
 		expect(screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent)).toStrictEqual([
-			"Add parsera+10 −2 · 1 filebranches one, twoReviewFast-forward",
+			"Add parsera+10 −2 · 1 filebranches one, twoReviewFast-forward main",
 		]);
 	});
 
@@ -153,6 +155,7 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={onLand}
+				onPush={() => undefined}
 			/>,
 		);
 
@@ -171,6 +174,7 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={onLand}
+				onPush={() => undefined}
 			/>,
 		);
 
@@ -182,10 +186,26 @@ describe("ReadyToLandSection", () => {
 
 	it("renders nothing without buffer state, and nothing when the buffer holds nothing", () => {
 		const {container} = render(
-			<ReadyToLandSection state={null} commits={[]} projects={[]} now={now} onLand={() => undefined} />,
+			<ReadyToLandSection
+				state={null}
+				commits={[]}
+				projects={[]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
 		);
 		const empty = {...state, ready: [], inFlight: []};
-		render(<ReadyToLandSection state={empty} commits={[]} projects={[]} now={now} onLand={() => undefined} />);
+		render(
+			<ReadyToLandSection
+				state={empty}
+				commits={[]}
+				projects={[]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
 
 		expect({first: container.innerHTML, rows: screen.queryAllByTestId("ready-to-land-row")}).toStrictEqual({
 			first: "",
@@ -202,6 +222,7 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={onLand}
+				onPush={() => undefined}
 			/>,
 		);
 
@@ -231,6 +252,7 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={() => undefined}
+				onPush={() => undefined}
 			/>,
 		);
 
@@ -273,11 +295,12 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={onLand}
+				onPush={() => undefined}
 			/>,
 		);
 
 		const prompts: (string | null)[] = [];
-		for (const name of ["Fast-forward", "Merge PR #7", "Open PR"]) {
+		for (const name of ["Fast-forward main", "Merge PR #7", "Open PR"]) {
 			fireEvent.click(screen.getAllByRole("button", {name})[0]!);
 			prompts.push(screen.getByTestId("land-confirm").textContent);
 			fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
@@ -292,13 +315,68 @@ describe("ReadyToLandSection", () => {
 			landed: onLand.mock.calls,
 		}).toStrictEqual({
 			prompts: [
-				'Land "Add parser" (a100000) in a: local main moves to a100000, then pushes to upstream/main.ConfirmCancel',
+				'Fast-forward main in a to "Add parser" (a100000). Local main moves to a100000. Nothing is pushed.ConfirmCancel',
 				'Merge PR #7 for "Fix red" (r100000) in red.ConfirmCancel',
 				'Open a PR for "No tests here" (p100000) from branch no-tests in plain.ConfirmCancel',
 			],
 			prLink: [["PR #7", "https://github.com/motlin/red/pull/7"]],
 			landed: [],
 		});
+	});
+});
+
+describe("ReadyToLandSection push", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	const forwarded = [
+		makeChild({project: "a", sha: sha("a1"), subject: "Add parser", onLocalMain: true}),
+		makeChild({project: "a", sha: sha("a2"), subject: "Use parser", onLocalMain: true}),
+		makeChild({project: "b", sha: sha("b1"), subject: "Not forwarded"}),
+	];
+	const empty: ReadyToLandState = {slots: 3, ready: [], inFlight: [], next: [], stoppedProjects: []};
+
+	it("offers a separate Push main to its remote when local main is ahead, naming the commits it pushes", () => {
+		const onPush = vi.fn<(project: ProjectInfo) => void>();
+		render(
+			<ReadyToLandSection
+				state={empty}
+				commits={forwarded}
+				projects={[project("a"), project("b")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={onPush}
+			/>,
+		);
+
+		const rows = screen.getAllByTestId("push-row").map((row) => row.textContent);
+		fireEvent.click(screen.getByRole("button", {name: "Push main to upstream"}));
+		const prompt = screen.getByTestId("push-confirm").textContent;
+		const pushedBeforeConfirm = [...onPush.mock.calls];
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+
+		expect({rows, prompt, pushedBeforeConfirm, pushed: onPush.mock.calls}).toStrictEqual({
+			rows: ["a: local main is 2 commits ahead of upstream/mainPush main to upstream"],
+			prompt: 'Push main to upstream/main in a: "Add parser" (a100000), "Use parser" (a200000).ConfirmCancel',
+			pushedBeforeConfirm: [],
+			pushed: [[project("a")]],
+		});
+	});
+
+	it("offers no push when local main is not ahead", () => {
+		const {container} = render(
+			<ReadyToLandSection
+				state={empty}
+				commits={[forwarded[2]!]}
+				projects={[project("b")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect(container.innerHTML).toBe("");
 	});
 });
 
@@ -319,13 +397,13 @@ describe("ReadyLandPanel", () => {
 			/>,
 		);
 
-		fireEvent.click(screen.getByRole("button", {name: "Fast-forward"}));
+		fireEvent.click(screen.getByRole("button", {name: "Fast-forward main"}));
 		const prompt = screen.getByTestId("land-confirm").textContent;
 		const landedBeforeConfirm = [...onLand.mock.calls];
 		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
 
 		expect({prompt, landedBeforeConfirm, landed: onLand.mock.calls}).toStrictEqual({
-			prompt: 'Land "Add parser" (a100000) in a: local main moves to a100000, then pushes to upstream/main.ConfirmCancel',
+			prompt: 'Fast-forward main in a to "Add parser" (a100000). Local main moves to a100000. Nothing is pushed.ConfirmCancel',
 			landedBeforeConfirm: [],
 			landed: [[state.ready[2], commits[0]]],
 		});

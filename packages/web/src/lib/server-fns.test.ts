@@ -1915,6 +1915,29 @@ describe("getProjectChildrenHandler", () => {
 		).toStrictEqual([{subject: "Fast-forward commit", state: "landed", landed: true}]);
 	});
 
+	it("flags a child that local main already contains but the upstream branch does not", async () => {
+		const {dir} = await repoWithRemote();
+		await gitOut(dir, "checkout", "-b", "feature");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Fast-forwarded commit");
+		const forwarded = await gitOut(dir, "rev-parse", "feature");
+		await gitOut(dir, "checkout", "-b", "other", "main");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Other commit");
+		await gitOut(dir, "branch", "-f", "main", forwarded);
+		seedProjectCache([makeProject({name: "on-local-main", dir})]);
+
+		const {getProjectChildrenHandler} = await import("./server-fns.impl.js");
+		const children = await getProjectChildrenHandler("on-local-main");
+
+		expect(
+			children
+				.map((c) => ({subject: c.subject, onLocalMain: c.onLocalMain}))
+				.toSorted((a, b) => a.subject.localeCompare(b.subject)),
+		).toStrictEqual([
+			{subject: "Fast-forwarded commit", onLocalMain: true},
+			{subject: "Other commit", onLocalMain: undefined},
+		]);
+	});
+
 	it("marks a child above flow.splitThresholdLines consider splitting and leaves smaller ones unmarked", async () => {
 		const dir = await createTestGitRepo();
 		const {stdout: base} = await execa("git", ["-C", dir, "rev-parse", "HEAD"]);
@@ -3113,8 +3136,8 @@ async function repoWithRemote(): Promise<{dir: string; remote: string; base: str
 }
 
 describe("landFastForwardHandler", () => {
-	it("fast-forwards local main to a ready commit, then pushes main without force", async () => {
-		const {dir, remote} = await repoWithRemote();
+	it("moves local main to a ready commit and never pushes", async () => {
+		const {dir, remote, base} = await repoWithRemote();
 		await gitOut(dir, "checkout", "-b", "feature");
 		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
 		const sha = await gitOut(dir, "rev-parse", "feature");
@@ -3124,15 +3147,20 @@ describe("landFastForwardHandler", () => {
 		const result = await landFastForwardHandler({project: "land-ff", sha});
 
 		expect({
-			ok: result.ok,
-			message: result.message,
+			result: {ok: result.ok, message: result.message},
 			localMain: await gitOut(dir, "rev-parse", "main"),
 			remoteMain: await gitOut(remote, "rev-parse", "main"),
-		}).toEqual({ok: true, message: `Landed ${sha.slice(0, 7)} on origin/main`, localMain: sha, remoteMain: sha});
+			remoteTracking: await gitOut(dir, "rev-parse", "origin/main"),
+		}).toStrictEqual({
+			result: {ok: true, message: `Moved local main to ${sha.slice(0, 7)}`},
+			localMain: sha,
+			remoteMain: base,
+			remoteTracking: base,
+		});
 	});
 
 	it("fast-forwards a checked-out, clean main in its worktree", async () => {
-		const {dir, remote} = await repoWithRemote();
+		const {dir, remote, base} = await repoWithRemote();
 		await gitOut(dir, "checkout", "-b", "feature");
 		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
 		const sha = await gitOut(dir, "rev-parse", "feature");
@@ -3148,7 +3176,7 @@ describe("landFastForwardHandler", () => {
 			localMain: await gitOut(dir, "rev-parse", "main"),
 			remoteMain: await gitOut(remote, "rev-parse", "main"),
 			status: await gitOut(dir, "status", "--porcelain"),
-		}).toEqual({ok: true, head: sha, localMain: sha, remoteMain: sha, status: ""});
+		}).toEqual({ok: true, head: sha, localMain: sha, remoteMain: base, status: ""});
 	});
 
 	it("refuses when main is checked out with local changes, leaving local and upstream main unchanged", async () => {
@@ -3220,6 +3248,66 @@ describe("landFastForwardHandler", () => {
 			localMain: await gitOut(dir, "rev-parse", "main"),
 			remoteMain: await gitOut(remote, "rev-parse", "main"),
 		}).toEqual({ok: false, localMain: moved, remoteMain: moved});
+	});
+});
+
+describe("pushUpstreamBranchHandler", () => {
+	it("pushes local main to the upstream branch without force and links the compare page", async () => {
+		const {dir, remote, base} = await repoWithRemote();
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Fast-forwarded commit");
+		const sha = await gitOut(dir, "rev-parse", "main");
+		seedProjectCache([makeProject({name: "push-main", dir})]);
+
+		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
+		const result = await pushUpstreamBranchHandler({project: "push-main"});
+
+		expect({
+			result: {ok: result.ok, message: result.message, compareUrl: result.compareUrl},
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+			remoteTracking: await gitOut(dir, "rev-parse", "origin/main"),
+		}).toStrictEqual({
+			result: {
+				ok: true,
+				message: "Pushed main to origin",
+				compareUrl: `https://github.com/owner/repo/compare/${base}...${sha}`,
+			},
+			remoteMain: sha,
+			remoteTracking: sha,
+		});
+	});
+
+	it("refuses when local main has nothing to push", async () => {
+		const {dir, remote, base} = await repoWithRemote();
+		seedProjectCache([makeProject({name: "push-nothing", dir})]);
+
+		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
+		const result = await pushUpstreamBranchHandler({project: "push-nothing"});
+
+		expect({
+			result: {ok: result.ok, message: result.message},
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toStrictEqual({
+			result: {ok: false, message: "Nothing to push: local main is not ahead of origin/main"},
+			remoteMain: base,
+		});
+	});
+
+	it("refuses a local main that is not a fast-forward of the upstream branch, leaving it unchanged", async () => {
+		const {dir, remote} = await repoWithRemote();
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Upstream moved");
+		await gitOut(dir, "push", "origin", "main");
+		const moved = await gitOut(dir, "rev-parse", "main");
+		await gitOut(dir, "reset", "--hard", "main~1");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Diverged local commit");
+		seedProjectCache([makeProject({name: "push-diverged", dir})]);
+
+		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
+		const result = await pushUpstreamBranchHandler({project: "push-diverged"});
+
+		expect({ok: result.ok, remoteMain: await gitOut(remote, "rev-parse", "main")}).toStrictEqual({
+			ok: false,
+			remoteMain: moved,
+		});
 	});
 });
 

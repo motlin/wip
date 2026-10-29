@@ -8,6 +8,7 @@ import {
 	DeleteBranchInputSchema,
 	ForcePushInputSchema,
 	LandFastForwardInputSchema,
+	PushUpstreamBranchInputSchema,
 	MergePrInputSchema,
 	PushChildInputSchema,
 	RebaseLocalInputSchema,
@@ -264,6 +265,10 @@ export const mergePr = createServerFn({method: "POST"})
 export const landFastForward = createServerFn({method: "POST"})
 	.validator((input: unknown) => LandFastForwardInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).landFastForwardHandler(data));
+
+export const pushUpstreamBranch = createServerFn({method: "POST"})
+	.validator((input: unknown) => PushUpstreamBranchInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).pushUpstreamBranchHandler(data));
 
 export const renameBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => RenameBranchInputSchema.parse(input))

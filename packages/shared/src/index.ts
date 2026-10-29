@@ -343,6 +343,8 @@ export {
 	type MergePrInput,
 	LandFastForwardInputSchema,
 	type LandFastForwardInput,
+	PushUpstreamBranchInputSchema,
+	type PushUpstreamBranchInput,
 } from "./lib/schemas.js";
 export {type Readiness, type ReadinessCommit, isGreen, isLandable, readinessOf} from "./lib/readiness.js";
 export {

@@ -6,10 +6,12 @@ import {wipAgeText} from "../lib/staleness";
 
 const CHIP_CLASS = "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium";
 const MARKER_CLASS = `${CHIP_CLASS} border-border-300/60 bg-bg-200/60 text-text-300`;
+const CANCEL_CLASS = "rounded-md border border-border-300 px-2.5 py-1 font-medium text-text-300 hover:bg-bg-200";
 
 /**
  * The row's next step: in a pull-request repo, merge its PR, or open one when it has none yet (a
- * PR the user clicks to open is user-initiated); fast-forward otherwise. Null only when a
+ * PR the user clicks to open is user-initiated); fast-forward local main otherwise (never a push:
+ * pushing main is the separate Push step). Null only when a
  * pull-request repo's commit has no branch to open a PR from.
  */
 export type LandingAction =
@@ -17,8 +19,12 @@ export type LandingAction =
 	| {kind: "open-pr"; label: string; branch: string}
 	| {kind: "fast-forward"; label: string};
 
-export function landingAction(item: ReadyToLandItem, commit: GitChildResult | undefined): LandingAction | null {
-	if (item.landing !== "pull-request") return {kind: "fast-forward", label: "Fast-forward"};
+export function landingAction(
+	item: ReadyToLandItem,
+	commit: GitChildResult | undefined,
+	upstreamBranch = "main",
+): LandingAction | null {
+	if (item.landing !== "pull-request") return {kind: "fast-forward", label: `Fast-forward ${upstreamBranch}`};
 	if (commit?.prNumber !== undefined) {
 		return {kind: "merge-pr", label: `Merge PR #${commit.prNumber}`, prNumber: commit.prNumber};
 	}
@@ -88,11 +94,10 @@ function LandingPrompt({
 		);
 	}
 	const branch = projectInfo?.upstreamBranch ?? "main";
-	const remote = projectInfo?.upstreamRemote ?? "upstream";
 	return (
 		<>
-			Land {what} in {item.project}: local {branch} moves to {item.sha.slice(0, 7)}, then pushes to {remote}/
-			{branch}.
+			Fast-forward {branch} in {item.project} to {what}. Local {branch} moves to {item.sha.slice(0, 7)}. Nothing
+			is pushed.
 		</>
 	);
 }
@@ -108,7 +113,7 @@ interface LandControlProps {
 /** The landing button plus the confirm it opens; nothing lands until the user confirms. */
 function useLandControl({item, commit, projectInfo, blockedReason, onLand}: LandControlProps) {
 	const [confirming, setConfirming] = useState(false);
-	const action = landingAction(item, commit);
+	const action = landingAction(item, commit, projectInfo?.upstreamBranch);
 	const button =
 		action === null ? null : (
 			<button
@@ -151,7 +156,7 @@ function useLandControl({item, commit, projectInfo, blockedReason, onLand}: Land
 						onClick={() => {
 							setConfirming(false);
 						}}
-						className="rounded-md border border-border-300 px-2.5 py-1 font-medium text-text-300 hover:bg-bg-200"
+						className={CANCEL_CLASS}
 					>
 						Cancel
 					</button>
@@ -245,6 +250,91 @@ function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 	);
 }
 
+/**
+ * A project whose local main a fast-forward moved ahead of its remote: the separate, user-initiated
+ * Push, whose confirm names every commit it pushes. Nothing is ever pushed automatically.
+ */
+function PushRow({
+	projectInfo,
+	commits,
+	onPush,
+}: {
+	projectInfo: ProjectInfo;
+	commits: readonly GitChildResult[];
+	onPush: (project: ProjectInfo) => void;
+}) {
+	const [confirming, setConfirming] = useState(false);
+	const {name, upstreamBranch: branch, upstreamRemote: remote} = projectInfo;
+	const count = `${commits.length} ${commits.length === 1 ? "commit" : "commits"}`;
+	const label = `Push ${branch} to ${remote}`;
+	return (
+		<li
+			data-testid="push-row"
+			className="rounded-md border border-border-300/50 bg-bg-000 px-3 py-2.5 shadow-sm transition-colors hover:border-border-300"
+		>
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+				<span className="min-w-0 flex-1 basis-64 text-sm text-text-100">
+					{name}: local {branch} is {count} ahead of {remote}/{branch}
+				</span>
+				<button
+					type="button"
+					aria-expanded={confirming}
+					onClick={() => {
+						setConfirming(true);
+					}}
+					className="ml-auto rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90"
+				>
+					{label}
+				</button>
+			</div>
+			{confirming && (
+				<div
+					data-testid="push-confirm"
+					aria-label="Confirm push"
+					className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-status-green/40 bg-status-green/5 px-3 py-2 text-xs text-text-100"
+				>
+					<p className="min-w-0 flex-1 basis-60">
+						Push {branch} to {remote}/{branch} in {name}:{" "}
+						{commits.map((c) => `"${c.subject}" (${c.sha.slice(0, 7)})`).join(", ")}.
+					</p>
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={() => {
+								setConfirming(false);
+								onPush(projectInfo);
+							}}
+							className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90"
+						>
+							Confirm
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								setConfirming(false);
+							}}
+							className={CANCEL_CLASS}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			)}
+		</li>
+	);
+}
+
+/** Projects whose local main holds commits the remote lacks, with those commits. */
+function pendingPushes(
+	commits: readonly GitChildResult[],
+	projects: readonly ProjectInfo[],
+): {projectInfo: ProjectInfo; commits: GitChildResult[]}[] {
+	return projects.flatMap((projectInfo) => {
+		const ahead = commits.filter((c) => c.project === projectInfo.name && c.onLocalMain === true);
+		return ahead.length === 0 ? [] : [{projectInfo, commits: ahead}];
+	});
+}
+
 export interface ReadyToLandSectionProps {
 	state: ReadyToLandState | null | undefined;
 	/** The cached children, joined by project and sha for subject, size and markers. */
@@ -253,15 +343,19 @@ export interface ReadyToLandSectionProps {
 	/** Client clock for ages; null during SSR, which omits them. */
 	now: number | null;
 	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
+	/** Pushes a project's local main after a fast-forward left it ahead of its remote. */
+	onPush: (project: ProjectInfo) => void;
 }
 
 /**
  * Lean plan step 42: the ready buffer's ready commits, pinned first on /queue, in landing order
  * (stack prefixes first), each a card with size, age ("in wip Nd" from first seen), markers, a
  * Review link to its diff and the landing action, which lands only after a confirm naming what lands.
+ * A project whose local main is ahead of its remote after a fast-forward gets a separate Push row.
  */
-export function ReadyToLandSection({state, commits, projects, now, onLand}: ReadyToLandSectionProps) {
-	if (!state || (state.ready.length === 0 && state.inFlight.length === 0)) return null;
+export function ReadyToLandSection({state, commits, projects, now, onLand, onPush}: ReadyToLandSectionProps) {
+	const pushes = pendingPushes(commits, projects);
+	if (!state || (state.ready.length === 0 && state.inFlight.length === 0 && pushes.length === 0)) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	const stopped = new Set(state.stoppedProjects);
@@ -275,6 +369,14 @@ export function ReadyToLandSection({state, commits, projects, now, onLand}: Read
 				</span>
 			</h2>
 			<ul className="flex flex-col gap-2">
+				{pushes.map((push) => (
+					<PushRow
+						key={`push:${push.projectInfo.name}`}
+						projectInfo={push.projectInfo}
+						commits={push.commits}
+						onPush={onPush}
+					/>
+				))}
 				{landingOrder(state.ready).map((item) => {
 					const commit = byKey.get(`${item.project}:${item.sha}`);
 					const projectInfo = projectMap.get(item.project);

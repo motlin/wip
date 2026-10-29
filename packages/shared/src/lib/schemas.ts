@@ -398,6 +398,8 @@ export const GitChildResultSchema = z.object({
 	firstSeen: z.string().optional(),
 	/** The ready buffer's patch-id fast path skipped the local test (green before replay); ready once PR checks pass. */
 	localTestSkipped: z.boolean().optional(),
+	/** Local `<upstreamBranch>` already contains it but the upstream branch does not: fast-forwarded, waiting for a push. */
+	onLocalMain: z.boolean().optional(),
 	/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
 	autoFixed: z
 		.object({
@@ -577,12 +579,18 @@ export const CreateBranchInputSchema = z.object({
 });
 export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
 
-/** Land a ready commit in a fast-forward repo: push it to the upstream branch, never forced. */
+/** Fast-forward local `<upstreamBranch>` to a ready commit in a fast-forward repo; never pushes. */
 export const LandFastForwardInputSchema = z.object({
 	project: z.string(),
 	sha: shaSchema,
 });
 export type LandFastForwardInput = z.infer<typeof LandFastForwardInputSchema>;
+
+/** Push local `<upstreamBranch>` to `<upstreamRemote>/<upstreamBranch>`, never forced; user-initiated only. */
+export const PushUpstreamBranchInputSchema = z.object({
+	project: z.string(),
+});
+export type PushUpstreamBranchInput = z.infer<typeof PushUpstreamBranchInputSchema>;
 
 export const MergePrInputSchema = z.object({
 	project: z.string(),

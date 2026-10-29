@@ -88,6 +88,7 @@ import {
 	type ApplyFixesInput,
 	type MergePrInput,
 	type LandFastForwardInput,
+	type PushUpstreamBranchInput,
 	type RebaseLocalInput,
 	type AutoFixInput,
 	type AutoFix,
@@ -353,6 +354,20 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				await tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false})
 			).stdout.trim();
 
+			// Commits a fast-forward put on local main that the upstream branch lacks: not landed
+			// until pushed, and the ready buffer never pulls them again.
+			const onLocalMain = new Set(
+				(
+					await tracedExeca(
+						"git",
+						["-C", p.dir, "rev-list", `${p.upstreamRef}..refs/heads/${p.upstreamBranch}`, "--"],
+						{reject: false},
+					)
+				).stdout
+					.split("\n")
+					.filter(Boolean),
+			);
+
 			const results: GitChildResult[] = uniqueChildren.map((child) => {
 				// Read failure tail for failed tests
 				let failureTail: string | undefined;
@@ -417,6 +432,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					considerSplitting: facts && considerSplitting(facts, splitThresholdLines) ? true : undefined,
 					autoFixed: facts ? autoFixes.get(facts.patchId) : undefined,
 					localTestSkipped: isLocalTestSkipped(p.name, child.sha) || undefined,
+					onLocalMain: onLocalMain.has(child.sha) || undefined,
 				};
 			});
 			const failedBases = getManagedFailedBaseBranches(prStatuses.baseBranches);
@@ -1361,8 +1377,7 @@ async function fastForwardLocalBranch(dir: string, branch: string, sha: string):
 
 /**
  * The fast-forward repo's landing action (lean plan step 42): fast-forward local main to the ready
- * commit first, then push main to the upstream branch without force, so git refuses anything that
- * is not a fast-forward and local main never falls behind what landed.
+ * commit, nothing more. It never pushes; pushing main is the separate, user-initiated Push.
  */
 export async function landFastForwardHandler(data: LandFastForwardInput): Promise<ActionResult> {
 	return tracedAction("landFastForward", async () => {
@@ -1370,14 +1385,48 @@ export async function landFastForwardHandler(data: LandFastForwardInput): Promis
 		return runQueuedAction(data.project, {label: "landFastForward", target: data.sha.slice(0, 7)}, async () => {
 			const refused = await fastForwardLocalBranch(p.dir, p.upstreamBranch, data.sha);
 			if (refused !== null) return {ok: false, message: refused};
+			invalidateChildrenCache(data.project);
+			return {ok: true, message: `Moved local ${p.upstreamBranch} to ${data.sha.slice(0, 7)}`};
+		});
+	});
+}
+
+/**
+ * Pushes local main to the upstream branch without force, so git refuses anything that is not a
+ * fast-forward. Only ever user-initiated, after a fast-forward left local main ahead.
+ */
+export async function pushUpstreamBranchHandler(data: PushUpstreamBranchInput): Promise<ActionResult> {
+	return tracedAction("pushUpstreamBranch", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, {label: "pushUpstreamBranch"}, async () => {
 			const ref = `refs/heads/${p.upstreamBranch}`;
+			const target = `${p.upstreamRemote}/${p.upstreamBranch}`;
+			const [local, remote] = await Promise.all([
+				tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", ref], {reject: false}),
+				tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", `refs/remotes/${target}`], {
+					reject: false,
+				}),
+			]);
+			const localSha = local.stdout.trim();
+			const remoteSha = remote.stdout.trim();
+			if (local.exitCode !== 0) return {ok: false, message: `No local ${p.upstreamBranch} to push`};
+			if (localSha === remoteSha) {
+				return {ok: false, message: `Nothing to push: local ${p.upstreamBranch} is not ahead of ${target}`};
+			}
 			const result = await tracedExeca("git", ["-C", p.dir, "push", p.upstreamRemote, `${ref}:${ref}`], {
 				reject: false,
 			});
 			invalidateChildrenCache(data.project);
 			invalidateMergeStatus(data.project);
-			if (result.exitCode !== 0) return {ok: false, message: `Failed to land: ${result.stderr}`};
-			return {ok: true, message: `Landed ${data.sha.slice(0, 7)} on ${p.upstreamRemote}/${p.upstreamBranch}`};
+			if (result.exitCode !== 0)
+				return {ok: false, message: `Failed to push ${p.upstreamBranch}: ${result.stderr}`};
+			return {
+				ok: true,
+				message: `Pushed ${p.upstreamBranch} to ${p.upstreamRemote}`,
+				...(remote.exitCode === 0
+					? {compareUrl: `https://github.com/${p.remote}/compare/${remoteSha}...${localSha}`}
+					: {}),
+			};
 		});
 	});
 }

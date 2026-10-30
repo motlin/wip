@@ -104,6 +104,8 @@ function harness(options: {
 	name?: (project: string, id: string) => string | null;
 	/** The ledger's first-seen time per item. */
 	firstSeen?: (project: string, id: string) => string | undefined;
+	/** Whether the machine runs on battery; AC unless a test says otherwise. */
+	onBattery?: () => boolean;
 }): Harness {
 	const queue = createWorkQueue({
 		globalConcurrency: 4,
@@ -168,6 +170,7 @@ function harness(options: {
 			return Promise.resolve(options.name ? options.name(r.name, candidate.id) : `${candidate.id}-branch`);
 		},
 		...(options.firstSeen === undefined ? {} : {firstSeen: options.firstSeen}),
+		...(options.onBattery === undefined ? {} : {onBattery: options.onBattery}),
 	});
 	return {
 		buffer,
@@ -197,6 +200,26 @@ const paddedSha = (id: string): string => id.padEnd(40, "0");
 const fresh = (enqueued: Enqueued[]): string[] => enqueued.filter((e) => !e.coalesced).map((e) => e.coalesceKey);
 
 describe("createReadyBuffer", () => {
+	it("starts no background work on battery and says so, then pulls again on AC power", async () => {
+		let battery = true;
+		const h = harness({repos: () => [repo("a", {candidates: candidates(1)})], target: 1, onBattery: () => battery});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		const onBattery = {enqueued: fresh(h.enqueued), paused: h.buffer.state().pausedOnBattery};
+		battery = false;
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({
+			onBattery,
+			onAc: {enqueued: fresh(h.enqueued), paused: h.buffer.state().pausedOnBattery},
+		}).toStrictEqual({
+			onBattery: {enqueued: [], paused: true},
+			onAc: {enqueued: ["ready:a:c1"], paused: undefined},
+		});
+	});
+
 	it("names an unnamed commit when it enters the buffer in a pull-request repo, and not in a fast-forward repo", async () => {
 		const repos = [
 			repo("pr", {landing: "pull-request", candidates: candidates(1)}),

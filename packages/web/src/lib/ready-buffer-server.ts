@@ -33,6 +33,8 @@ import {currentReadyBuffer, setReadyBuffer} from "./ready-buffer-instance.js";
  */
 
 const SAFETY_TICK_MS = 45_000;
+/** How often the power source is read, so background work pauses soon after unplugging. */
+const POWER_CHECK_MS = 30_000;
 const CHECKED_OUT_TTL_MS = 60_000;
 
 const checkedOutCache = new Map<string, {at: number; branches: string[]}>();
@@ -94,6 +96,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 		checkedOutBranches,
 		DEFAULT_GIT_TEST,
 		getAutoFixes,
+		getBackgroundTestWorkers,
 		getTestLogDir,
 		gitTestResults,
 		gitTestRun,
@@ -109,6 +112,8 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	).stdout.trim();
 	if (upstream === "") return "skipped";
 	const logDir = getTestLogDir(p.name);
+	// Background work: low priority and capped test workers, unlike a user-initiated test.
+	const background = {workers: getBackgroundTestWorkers()};
 
 	const failedTests = async (s: string): Promise<ReadonlySet<string> | null> => {
 		try {
@@ -125,12 +130,13 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	if (p.hasTestConfigured) {
 		const baseline = (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [upstream])).get(upstream);
 		const red =
-			baseline === "bad" || (baseline !== "good" && (await gitTestRun(p.dir, upstream, {logDir})).exitCode !== 0);
+			baseline === "bad" ||
+			(baseline !== "good" && (await gitTestRun(p.dir, upstream, {logDir, background})).exitCode !== 0);
 		if (red) {
 			if (repo.ownership === "own") return "skipped";
 			// A cached bad with no log left: rerun once so the log names the failures.
 			if (!fs.existsSync(path.join(logDir, `${upstream}.log`))) {
-				await gitTestRun(p.dir, upstream, {logDir, retest: true});
+				await gitTestRun(p.dir, upstream, {logDir, retest: true, background});
 			}
 			const failures = await failedTests(upstream);
 			if (failures === null) return "skipped";
@@ -170,7 +176,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 		},
 		{
 			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
-			run: async (s) => (await gitTestRun(p.dir, s, {logDir})).exitCode,
+			run: async (s) => (await gitTestRun(p.dir, s, {logDir, background})).exitCode,
 			publish: async (s) => {
 				const request = pushRequest(s);
 				if (request === null || !(await publishForChecks(p, request, candidate.sha))) return false;
@@ -334,6 +340,41 @@ function warnOnFailure(promise: Promise<void>, signal: string): void {
 }
 
 /**
+ * Reads the power source now and every POWER_CHECK_MS: on battery the shared queue holds
+ * pause-on-battery jobs and the buffer starts none; back on AC both resume, and a pull republishes
+ * the Ready to land state either way.
+ */
+async function startPowerWatch(buffer: () => ReturnType<typeof currentReadyBuffer>) {
+	const {readPowerSource} = await import("@wip/shared");
+	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+	const {createPowerWatch} = await import("./power-watch.js");
+	const watch = createPowerWatch({
+		read: async () =>
+			readPowerSource({
+				platform: process.platform,
+				pmset: async () => (await tracedExeca("pmset", ["-g", "batt"])).stdout,
+			}),
+		onChange: (onBattery) => {
+			log.general.info(
+				{onBattery},
+				onBattery ? "On battery: background work paused" : "On AC: background work resumed",
+			);
+			workQueue.setOnBattery(onBattery);
+			const current = buffer();
+			if (current) warnOnFailure(current.pull(), "power");
+		},
+	});
+	const check = (): void => {
+		watch.check().catch((error: unknown) => {
+			log.general.warn({error}, "Power source check failed");
+		});
+	};
+	await watch.check().catch(() => undefined);
+	setInterval(check, POWER_CHECK_MS).unref();
+	return watch;
+}
+
+/**
  * Once-only: create the controller and subscribe it to every pull signal. Skipped when
  * WIP_READY_BUFFER turns it off, or when another wip process already runs it (a process lock
  * under the shared cache dir), so two servers never replay and test the same repos.
@@ -353,7 +394,9 @@ export async function startReadyBuffer(
 		log.general.warn("Ready buffer already running in another wip process; not starting it here");
 		return;
 	}
+	const power = await startPowerWatch(() => currentReadyBuffer());
 	const started = createReadyBuffer({
+		onBattery: () => power.onBattery(),
 		queue: workQueue,
 		snapshot,
 		// Read per pull so a config change takes effect without a restart.

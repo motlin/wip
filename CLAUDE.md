@@ -23,6 +23,7 @@
 - `just dev` -- dev server on port 3457 (wip-dev.m4.notlin.com), database `~/.local/share/wip/wip-dev.db`
 - `WIP_DB_PATH` overrides the database file (`resolveDbPath` in `packages/shared/src/lib/db.ts`); `just dev` sets it so dev and production never share a database. Both scan state from disk independently.
 - `WIP_READY_BUFFER=false` (also `0`, `off`) keeps the ready buffer (`readyBufferEnabled` in `packages/web/src/lib/ready-buffer.ts`) from starting; it is on by default in production and `just dev` turns it off. A process lock (`~/.cache/wip/locks/ready-buffer.lock`) stops a second process from running it on the same repos even when both have it enabled.
+- Background `git test run`s (ready buffer, Push main pre-testing) run under `nice -n 10` with `VITEST_MAX_WORKERS` / `WIP_BACKGROUND_JOBS` set from config key `background.testWorkers` (default 2); user-initiated actions keep normal priority. On battery (`pmset -g batt`, read every 30s) the buffer starts nothing, `pauseOnBattery` jobs wait in the work queue, and Ready to land says "Paused on battery".
 
 ## Testing
 

@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 
-import {getReadyBufferCapacity, getReadyBufferSize} from "./config.js";
+import {getBackgroundTestWorkers, getReadyBufferCapacity, getReadyBufferSize} from "./config.js";
 
 describe("getReadyBufferSize", () => {
 	it("defaults to 3 and reads readyBuffer.size, ignoring invalid values", () => {
@@ -21,5 +21,16 @@ describe("getReadyBufferCapacity", () => {
 			set: getReadyBufferCapacity({"readyBuffer.capacity": "1", "workQueue.build": "4"}),
 			junk: getReadyBufferCapacity({"readyBuffer.capacity": "-2"}),
 		}).toStrictEqual({unset: 2, buildCap: 4, set: 1, junk: 2});
+	});
+});
+
+describe("getBackgroundTestWorkers", () => {
+	it("defaults to 2 and reads background.testWorkers, ignoring invalid values", () => {
+		expect({
+			unset: getBackgroundTestWorkers({}),
+			set: getBackgroundTestWorkers({"background.testWorkers": "1"}),
+			zero: getBackgroundTestWorkers({"background.testWorkers": "0"}),
+			junk: getBackgroundTestWorkers({"background.testWorkers": "many"}),
+		}).toStrictEqual({unset: 2, set: 1, zero: 2, junk: 2});
 	});
 });

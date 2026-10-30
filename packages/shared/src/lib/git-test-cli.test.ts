@@ -165,4 +165,21 @@ describe("gitTestRun", () => {
 			["git", ["-C", worktree, "test", "run", "--test", "lint", "--retest", SHA_BAD], {reject: false, env}],
 		]);
 	});
+
+	it("runs a background test at low priority with capped test workers on top of the caller's env", async () => {
+		fs.mkdirSync(worktree);
+		mockedExeca.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`)).mockResolvedValueOnce(execaResult(0, "ok"));
+		await gitTestRun(repo, SHA_GOOD, {logDir, env: {PATH: "/bin"}, background: {workers: 2}});
+		expect(mockedExeca.mock.calls).toStrictEqual([
+			["git", ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"], {reject: false}],
+			[
+				"nice",
+				["-n", "10", "git", "-C", worktree, "test", "run", "--test", "default", SHA_GOOD],
+				{
+					reject: false,
+					env: {PATH: "/bin", VITEST_MAX_WORKERS: "2", VITEST_MIN_WORKERS: "1", WIP_BACKGROUND_JOBS: "2"},
+				},
+			],
+		]);
+	});
 });

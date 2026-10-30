@@ -366,7 +366,7 @@ export {
 	pushGateDecision,
 } from "./lib/gha-gate.js";
 export {actionsBlockedByBilling, githubChecksSource} from "./lib/gha-checks.js";
-export {getAutoMergeAllowed, resetAutoMergeAllowedCache} from "./lib/github-auto-merge.js";
+export {getAutoMergeAllowed, prRepository, resetAutoMergeAllowedCache} from "./lib/github-auto-merge.js";
 export {
 	DEFAULT_PRIORITY,
 	effectivePriority,

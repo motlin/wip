@@ -131,3 +131,73 @@ describe("getPrStatuses auto-merge", () => {
 		});
 	});
 });
+
+// The fork parent forbids auto-merge and the fork allows it; a standalone lookup answers false, so a true lookup was seeded by the PR query.
+function forkAnswer(query: string, variables?: Record<string, unknown>): unknown {
+	if (query.includes("{ viewer { login } }")) return {data: {viewer: {login: "motlin"}}};
+	if (query.includes("parent {")) {
+		return {data: {repository: {parent: {owner: {login: "avalon-org"}, name: "avalon"}}}};
+	}
+	if (!query.includes("pullRequests")) return {data: {repository: {autoMergeAllowed: false}}};
+	const isFork = variables?.["owner"] === "motlin";
+	return {
+		data: {
+			repository: {
+				viewerPermission: "ADMIN",
+				autoMergeAllowed: isFork,
+				pullRequests: {nodes: isFork ? [pr("waiting", 2, null)] : []},
+			},
+		},
+	};
+}
+
+describe("getPrStatuses auto-merge in a fork whose PRs live in origin", () => {
+	let dir: string | undefined;
+
+	beforeEach(() => {
+		initDb(":memory:");
+		resetGitHubRateLimit();
+		resetGhLoginFailureForTests();
+		dir = mkdtempSync(join(tmpdir(), "wip-auto-merge-fork-"));
+		execSync("git init -b main", {cwd: dir, stdio: "ignore"});
+		execSync("git remote add origin https://github.com/motlin/avalon.git", {cwd: dir, stdio: "ignore"});
+	});
+
+	afterEach(() => {
+		resetGitHubClient();
+		resetAutoMergeAllowedCache();
+		resetDb();
+		if (dir) rmSync(dir, {recursive: true, force: true});
+	});
+
+	it("takes autoMergeAllowed from origin when origin is the upstream remote", async () => {
+		setGitHubClient({
+			graphql: async (query: string, variables?: Record<string, unknown>) =>
+				Promise.resolve(forkAnswer(query, variables)),
+		});
+
+		const fetched = await getPrStatuses(dir!, "avalon-online", "origin");
+
+		expect({
+			allowed: fetched.autoMergeAllowed,
+			forkLookup: await getAutoMergeAllowed("motlin/avalon"),
+			parentLookup: await getAutoMergeAllowed("avalon-org/avalon"),
+		}).toStrictEqual({allowed: true, forkLookup: true, parentLookup: false});
+	});
+
+	it("takes autoMergeAllowed from the fork parent when another remote is the upstream remote", async () => {
+		execSync("git remote add upstream https://github.com/avalon-org/avalon.git", {cwd: dir, stdio: "ignore"});
+		setGitHubClient({
+			graphql: async (query: string, variables?: Record<string, unknown>) =>
+				Promise.resolve(forkAnswer(query, variables)),
+		});
+
+		const fetched = await getPrStatuses(dir!, "avalon-online", "upstream");
+
+		expect({
+			allowed: fetched.autoMergeAllowed,
+			forkLookup: await getAutoMergeAllowed("motlin/avalon"),
+			parentLookup: await getAutoMergeAllowed("avalon-org/avalon"),
+		}).toStrictEqual({allowed: false, forkLookup: true, parentLookup: false});
+	});
+});

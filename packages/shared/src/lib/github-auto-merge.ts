@@ -12,6 +12,15 @@ const AutoMergeAllowedResponseSchema = z.object({
 	data: z.object({repository: z.object({autoMergeAllowed: z.boolean()})}),
 });
 
+/**
+ * The repo (`owner/name`) a project's PRs live in. A PR lands on <upstreamRemote>/<upstreamBranch>, so it
+ * opens in that remote's repo; with origin as the upstream remote that is origin itself, not the fork
+ * parent `remote` names. Open PR, Merge PR, auto-merge and the auto-merge setting all address this repo.
+ */
+export function prRepository(p: {upstreamRemote: string; originRemote: string; remote: string}): string {
+	return p.upstreamRemote === "origin" ? p.originRemote : p.remote;
+}
+
 /** Same lifetime as the cached PR statuses: a repo setting changes rarely. */
 const AUTO_MERGE_TTL_MS = 10 * 60 * 1000;
 const autoMergeAllowedCache = new Map<string, {allowed: boolean; at: number}>();

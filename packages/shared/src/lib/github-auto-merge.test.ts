@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {getAutoMergeAllowed, resetAutoMergeAllowedCache} from "./github-auto-merge.js";
+import {getAutoMergeAllowed, prRepository, resetAutoMergeAllowedCache} from "./github-auto-merge.js";
 import {markGitHubRateLimited, resetGitHubRateLimit} from "./rate-limit.js";
 import {resetGitHubClient, setGitHubClient} from "../services/github-client.js";
 
@@ -66,5 +66,14 @@ describe("getAutoMergeAllowed", () => {
 			limited: false,
 			calls: 2,
 		});
+	});
+});
+
+describe("prRepository", () => {
+	it("is origin when origin is the upstream remote, else the fork parent", () => {
+		expect([
+			prRepository({upstreamRemote: "origin", originRemote: "motlin/avalon", remote: "avalon-org/avalon"}),
+			prRepository({upstreamRemote: "upstream", originRemote: "motlin/avalon", remote: "avalon-org/avalon"}),
+		]).toStrictEqual(["motlin/avalon", "avalon-org/avalon"]);
 	});
 });

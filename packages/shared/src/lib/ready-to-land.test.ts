@@ -2,6 +2,7 @@ import {describe, expect, it} from "vite-plus/test";
 import {
 	landingOrder,
 	prChecksPending,
+	prChecksFailed,
 	readyRowView,
 	ReadyToLandStateSchema,
 	type ReadyToLandItem,
@@ -62,15 +63,23 @@ function commit(fields: Partial<RowCommit> = {}): RowCommit {
 describe("readyRowView", () => {
 	const pr = {...item("p", "c1"), landing: "pull-request" as const};
 
-	it("lands a row whose PR checks passed or failed, a row with no PR yet, and every fast-forward row", () => {
+	it("lands a row whose PR checks passed, a row with no PR yet, and every fast-forward row", () => {
 		expect([
 			readyRowView(pr, commit({checkStatus: "passed"})),
-			readyRowView(pr, commit({checkStatus: "failed"})),
 			readyRowView(pr, {checkStatus: "none"}),
 			readyRowView(pr, undefined),
 			readyRowView({...pr, landing: "fast-forward"}, commit()),
+			readyRowView({...pr, landing: "fast-forward"}, commit({checkStatus: "failed"})),
 			readyRowView(pr, commit({checkStatus: "none", mergeStateStatus: "CLEAN"})),
 		]).toStrictEqual(["land", "land", "land", "land", "land", "land"]);
+	});
+
+	it("never lands a PR whose checks failed, even where the repo allows auto-merge or it is on", () => {
+		expect([
+			readyRowView(pr, commit({checkStatus: "failed"})),
+			readyRowView(pr, commit({checkStatus: "failed", mergeStateStatus: "UNSTABLE", autoMergeAllowed: true})),
+			readyRowView(pr, commit({checkStatus: "failed", autoMerge: true})),
+		]).toStrictEqual(["checks-failed", "checks-failed", "checks-failed"]);
 	});
 
 	it("shows a PR whose checks are pending or not yet reported as waiting when the repo has no auto-merge", () => {
@@ -88,6 +97,17 @@ describe("readyRowView", () => {
 			readyRowView(pr, commit({autoMergeAllowed: true})),
 			readyRowView(pr, commit({autoMerge: true, checkStatus: "passed"})),
 		]).toStrictEqual(["waiting", "land", "land"]);
+	});
+});
+
+describe("prChecksFailed", () => {
+	it("is true only for a PR whose checks failed", () => {
+		expect([
+			prChecksFailed({prNumber: 1, checkStatus: "failed"}),
+			prChecksFailed({prNumber: 1, checkStatus: "passed"}),
+			prChecksFailed({prNumber: 1, checkStatus: "running"}),
+			prChecksFailed({checkStatus: "failed"}),
+		]).toStrictEqual([true, false, false, false]);
 	});
 });
 

@@ -4,6 +4,7 @@ import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {
 	landingOrder,
 	openPrRefusal,
+	prChecksFailed,
 	prChecksPending,
 	readyRowView,
 	type ReadyToLandItem,
@@ -47,6 +48,19 @@ export function landingAction(
 	}
 	const branch = item.branch ?? commit?.branch;
 	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch, autoMerge: autoMergeAllowed};
+}
+
+/**
+ * Finds a row's commit among the cached children. The children list each sha once across projects,
+ * so a commit shared by two projects on the same repo sits under only one of them: a row whose own
+ * project lacks it falls back to the same sha elsewhere, for its subject, PR and checks.
+ */
+function commitLookup(
+	commits: readonly GitChildResult[],
+): (item: Pick<ReadyToLandItem, "project" | "sha">) => GitChildResult | undefined {
+	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
+	const bySha = new Map(commits.map((c) => [c.sha, c]));
+	return (item) => byKey.get(`${item.project}:${item.sha}`) ?? bySha.get(item.sha);
 }
 
 /**
@@ -296,6 +310,8 @@ function useLandControl({
 	const refusal =
 		landing?.kind === "open-pr" ? openPrRefusal(landing.branch, projectInfo?.upstreamBranch ?? "main") : null;
 	if (refusal !== null) return <span className="text-xs text-text-300">{refusal}</span>;
+	// A row that may not land (its project's upstream is red) offers no action, only the reason.
+	if (blockedReason !== null && !running) return <span className="text-xs text-text-300">{blockedReason}</span>;
 	if (landing === null) return null;
 	const confirm = confirming ? (
 		<div data-testid="land-confirm" className="flex flex-col gap-2">
@@ -361,10 +377,10 @@ export function billingCheckCandidates(
 	commits: readonly GitChildResult[],
 ): ReadyToLandItem[] {
 	if (!state) return [];
-	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
-	return state.ready.filter((item) => {
-		const commit = byKey.get(`${item.project}:${item.sha}`);
-		return item.landing === "pull-request" && commit?.prNumber !== undefined && commit.checkStatus === "failed";
+	const commitOf = commitLookup(commits);
+	return [...state.ready, ...(state.checksFailed ?? [])].filter((item) => {
+		const commit = commitOf(item);
+		return item.landing === "pull-request" && commit !== undefined && prChecksFailed(commit);
 	});
 }
 
@@ -443,11 +459,9 @@ interface ReadyRowProps extends LandControlProps {
 	stoppedLine: boolean;
 	noTests: boolean;
 	age: string | null;
-	/** Set when PR checks can't run (private repo, Actions unavailable for billing). */
-	onLandByPushing?: ((project: string) => void) | undefined;
 }
 
-function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRowProps) {
+function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 	const {item, commit} = land;
 	const action = useLandControl(land);
 	const size = sizeText(commit);
@@ -517,13 +531,6 @@ function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRo
 					{action}
 				</div>
 			</div>
-			{onLandByPushing !== undefined && (
-				<LandByPushing
-					project={item.project}
-					upstreamBranch={land.projectInfo?.upstreamBranch ?? "main"}
-					onLandByPushing={onLandByPushing}
-				/>
-			)}
 		</li>
 	);
 }
@@ -676,44 +683,74 @@ function visiblePushes(pushes: readonly MainPush[]): MainPush[] {
 function WaitingRow({
 	item,
 	commit,
+	failed,
 	outcome,
 	onDismissOutcome,
+	onLandByPushing,
+	upstreamBranch,
 }: {
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
+	/** Its PR checks failed: the row links to the failing run instead of waiting. */
+	failed: boolean;
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
+	/** Set when PR checks can't run (private repo, Actions unavailable for billing). */
+	onLandByPushing?: ((project: string) => void) | undefined;
+	upstreamBranch: string;
 }) {
 	const pr = `PR #${commit?.prNumber ?? "?"}`;
+	const failedRun = commit?.failedChecks?.find((check) => check.url !== undefined)?.url;
+	const linkClass = "font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400";
 	return (
 		<li
-			data-testid="waiting-row"
-			className="flex items-center gap-2 rounded-md border border-border-300/50 bg-bg-000 px-3 py-1.5 text-xs text-text-500 shadow-sm"
+			data-testid={failed ? "checks-failed-row" : "waiting-row"}
+			className="rounded-md border border-border-300/50 bg-bg-000 px-3 py-1.5 text-xs text-text-500 shadow-sm"
 		>
-			<p className="min-w-0 flex-1 truncate">
-				<Link
-					to="/item/$project/$sha"
-					params={{project: item.project, sha: item.sha}}
-					className="font-medium text-text-000 hover:underline"
-				>
-					{commit?.subject ?? item.sha.slice(0, 7)}
-				</Link>
-				<span> · {item.project} · </span>
-				{commit?.prUrl === undefined ? (
-					<span>{pr}</span>
-				) : (
-					<a
-						href={commit.prUrl}
-						target="_blank"
-						rel="noreferrer"
-						className="font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400"
+			<div className="flex items-center gap-2">
+				<p className="min-w-0 flex-1 truncate">
+					<Link
+						to="/item/$project/$sha"
+						params={{project: item.project, sha: item.sha}}
+						className="font-medium text-text-000 hover:underline"
 					>
-						{pr}
-					</a>
-				)}
-				<span> · waiting for checks{commit?.autoMerge === true && ", merges itself when they pass"}</span>
-			</p>
-			<ActionSlot outcome={outcome} onDismissOutcome={onDismissOutcome} />
+						{commit?.subject ?? item.sha.slice(0, 7)}
+					</Link>
+					<span> · {item.project} · </span>
+					{commit?.prUrl === undefined ? (
+						<span>{pr}</span>
+					) : (
+						<a href={commit.prUrl} target="_blank" rel="noreferrer" className={linkClass}>
+							{pr}
+						</a>
+					)}
+					<span> · </span>
+					{failed ? (
+						failedRun === undefined ? (
+							<span className="text-status-red">checks failed</span>
+						) : (
+							<a
+								href={failedRun}
+								target="_blank"
+								rel="noreferrer"
+								className={`${linkClass} text-status-red`}
+							>
+								checks failed
+							</a>
+						)
+					) : (
+						<span>waiting for checks{commit?.autoMerge === true && ", merges itself when they pass"}</span>
+					)}
+				</p>
+				<ActionSlot outcome={outcome} onDismissOutcome={onDismissOutcome} />
+			</div>
+			{onLandByPushing !== undefined && (
+				<LandByPushing
+					project={item.project}
+					upstreamBranch={upstreamBranch}
+					onLandByPushing={onLandByPushing}
+				/>
+			)}
 		</li>
 	);
 }
@@ -785,12 +822,15 @@ export function ReadyToLandSection({
 		);
 	}
 	if (state === null) return null;
-	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
-	// A PR whose checks still run shows as waiting unless Merge PR can turn on auto-merge; see readyRowView.
-	const rows = landingOrder([...state.ready, ...(state.awaitingChecks ?? [])]).map((item) => {
-		const commit = byKey.get(`${item.project}:${item.sha}`);
-		return {item, commit, view: readyRowView(item, commit)};
-	});
+	const commitOf = commitLookup(commits);
+	// A PR whose checks failed never lands, and one whose checks still run shows as waiting unless
+	// Merge PR can turn on auto-merge; see readyRowView.
+	const rows = landingOrder([...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])]).map(
+		(item) => {
+			const commit = commitOf(item);
+			return {item, commit, view: readyRowView(item, commit)};
+		},
+	);
 	const paused = state.pausedOnBattery === true;
 	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0 && !paused) {
 		return null;
@@ -815,18 +855,23 @@ export function ReadyToLandSection({
 			<ul className="flex flex-col gap-2">
 				{rows.map(({item, commit, view}) => {
 					const outcomeKey = landOutcomeKey(item.project, item.sha);
-					if (view === "waiting") {
+					const projectInfo = projectMap.get(item.project);
+					const landByPushingHere =
+						actionsBlocked?.has(`${item.project}:${item.sha}`) === true ? onLandByPushing : undefined;
+					if (view !== "land") {
 						return (
 							<WaitingRow
 								key={`${item.project}:${item.id}`}
 								item={item}
 								commit={commit}
+								failed={view === "checks-failed"}
 								outcome={outcomes[outcomeKey]}
 								onDismissOutcome={dismiss(outcomeKey)}
+								onLandByPushing={landByPushingHere}
+								upstreamBranch={projectInfo?.upstreamBranch ?? "main"}
 							/>
 						);
 					}
-					const projectInfo = projectMap.get(item.project);
 					return (
 						<ReadyRow
 							key={`${item.project}:${item.id}`}
@@ -840,11 +885,6 @@ export function ReadyToLandSection({
 							onLand={onLand}
 							outcome={outcomes[outcomeKey]}
 							onDismissOutcome={dismiss(outcomeKey)}
-							onLandByPushing={
-								actionsBlocked?.has(`${item.project}:${item.sha}`) === true
-									? onLandByPushing
-									: undefined
-							}
 						/>
 					);
 				})}
@@ -899,7 +939,7 @@ export function ReadyLandPanel({
 	outcome,
 	onDismissOutcome,
 }: ReadyLandPanelProps) {
-	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? [])].find(
+	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? []), ...(state?.checksFailed ?? [])].find(
 		(r) => r.project === projectInfo.name && r.sha === sha,
 	);
 	if (!state || item === undefined || readyRowView(item, commit) !== "land") return null;

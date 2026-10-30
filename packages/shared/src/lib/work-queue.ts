@@ -96,6 +96,12 @@ export interface EnqueueOptions {
 	buffer?: boolean;
 	/** Background work that waits while the machine runs on battery (see setOnBattery); user actions never set it. */
 	pauseOnBattery?: boolean;
+	/**
+	 * Background work a foreground job may preempt: when a queued foreground job needs a resource this
+	 * running job holds, its signal aborts (its run must stop and kill its subprocesses), and once the
+	 * run returns the job goes back in the queue under the same handle, to run again after the user's job.
+	 */
+	preemptible?: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
 }
 
@@ -155,6 +161,11 @@ interface Job {
 	costClass: CostClass;
 	buffer: boolean;
 	pauseOnBattery: boolean;
+	preemptible: boolean;
+	/** Aborted by a foreground job; requeued, not settled, when its run returns. */
+	preempted: boolean;
+	/** Cancelled through cancel(); a cancelled job is never requeued. */
+	cancelled: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
 	controller: AbortController;
 	settle: () => void;
@@ -190,6 +201,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const heldResources = new Map<string, number>();
 	const resourceCapacity = options.resourceCapacity ?? (() => 1);
 	const inFlight = new Set<Promise<void>>();
+	/** While reset drains in-flight runs, a preempted job settles instead of going back in the queue. */
+	let resetting = false;
 
 	const stateListeners = new Set<(state: WorkQueueState) => void>();
 	const errorListeners = new Set<(event: WorkJobErrorEvent) => void>();
@@ -276,6 +289,33 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		queued.sort((a, b) => effectiveRank(a, at) - effectiveRank(b, at) || a.seq - b.seq);
 	}
 
+	/**
+	 * A queued foreground job blocked only by running preemptible jobs aborts them; they release the
+	 * resources when their runs return, and the foreground job starts on the next pump.
+	 */
+	function preemptFor(job: Job): void {
+		if (job.priority !== "foreground") return;
+		const holders = [...running.values()].filter((r) => r.resources.some((res) => job.resources.includes(res)));
+		if (holders.length === 0 || !holders.every((r) => r.preemptible && !r.cancelled)) return;
+		for (const holder of holders) {
+			if (holder.preempted) continue;
+			holder.preempted = true;
+			log.general.info(
+				{kind: holder.kind, project: holder.project, by: job.kind},
+				"Preempting background job for a user action",
+			);
+			holder.controller.abort();
+		}
+	}
+
+	/** A preempted job whose run returned goes back in the queue under its original handle. */
+	function requeue(job: Job): void {
+		job.preempted = false;
+		job.controller = new AbortController();
+		job.enqueuedAt = now();
+		queued.push(job);
+	}
+
 	function pump(): void {
 		sortQueued();
 		let slots = globalConcurrency - running.size;
@@ -305,6 +345,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 				continue;
 			}
 			if (job.resources.some((resource) => resourceFull(resource))) {
+				preemptFor(job);
 				index += 1;
 				continue;
 			}
@@ -343,6 +384,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 				}
 			})()
 				.catch((error: unknown) => {
+					if (job.preempted && !job.cancelled) return;
 					const message = error instanceof Error ? error.message : String(error);
 					log.general.error({kind: job.kind, project: job.project, error}, "Background job failed");
 					for (const listener of errorListeners) {
@@ -352,8 +394,14 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 				.finally(() => {
 					running.delete(job.id);
 					for (const resource of job.resources) releaseResource(resource);
-					remove(job);
 					inFlight.delete(promise);
+					if (job.preempted && !job.cancelled && !resetting) {
+						requeue(job);
+						emitState();
+						pump();
+						return;
+					}
+					remove(job);
 					job.settle();
 					emitState();
 					pump();
@@ -367,7 +415,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		const existing = byCoalesceKey.get(enqueueOptions.coalesceKey);
 		// A cancelled job keeps its coalesce key until its run settles; it must
 		// not absorb a fresh request, or that request is silently dropped.
-		if (existing && !existing.controller.signal.aborted) {
+		if (existing && !existing.cancelled) {
 			return {
 				id: existing.id,
 				coalesced: true,
@@ -398,6 +446,9 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			costClass: enqueueOptions.costClass ?? "cheap",
 			buffer: enqueueOptions.buffer ?? false,
 			pauseOnBattery: enqueueOptions.pauseOnBattery ?? false,
+			preemptible: enqueueOptions.preemptible ?? false,
+			preempted: false,
+			cancelled: false,
 			run: enqueueOptions.run,
 			controller: new AbortController(),
 			settle,
@@ -428,6 +479,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		}
 
 		if (running.has(id)) {
+			job.cancelled = true;
 			job.controller.abort();
 			return true;
 		}
@@ -435,6 +487,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	}
 
 	async function reset(): Promise<void> {
+		resetting = true;
 		for (const job of queued) {
 			remove(job);
 			job.settle();
@@ -452,6 +505,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		stateListeners.clear();
 		errorListeners.clear();
 		lastEmittedState = "";
+		resetting = false;
 	}
 
 	return {

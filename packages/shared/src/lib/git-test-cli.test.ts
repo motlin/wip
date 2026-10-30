@@ -166,6 +166,16 @@ describe("gitTestRun", () => {
 		]);
 	});
 
+	it("runs a cancellable test as its own process group, so aborting the signal kills the test runner's whole tree", async () => {
+		fs.mkdirSync(worktree);
+		mockedExeca.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`)).mockResolvedValueOnce(execaResult(0, "ok"));
+		await gitTestRun(repo, SHA_GOOD, {logDir, signal: new AbortController().signal});
+		expect(mockedExeca.mock.calls).toStrictEqual([
+			["git", ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"], {reject: false}],
+			["git", ["-C", worktree, "test", "run", "--test", "default", SHA_GOOD], {reject: false, detached: true}],
+		]);
+	});
+
 	it("runs a background test at low priority with capped test workers on top of the caller's env", async () => {
 		fs.mkdirSync(worktree);
 		mockedExeca.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`)).mockResolvedValueOnce(execaResult(0, "ok"));

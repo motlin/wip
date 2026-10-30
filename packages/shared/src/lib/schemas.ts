@@ -559,6 +559,8 @@ export const CreatePrInputSchema = z.object({
 	draft: z.boolean().optional(),
 	/** Ready to land's Open PR: turn on auto-merge when the repo allows it (the PR is opened ready, not draft). */
 	autoMerge: z.boolean().optional(),
+	/** The client's id for this action, so the tab it opened can follow its progress and result. */
+	actionId: z.string().min(1).max(100).optional(),
 });
 export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;
 

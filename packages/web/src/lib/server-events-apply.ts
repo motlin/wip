@@ -135,6 +135,8 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				return;
 			}
 			case "action": {
+				// A tab following this action (Open PR's) shows it without waiting for its next poll.
+				queryClient.setQueryData(["actionStatus", event.data.id], event.data);
 				const toast = actionEventToast(event.data);
 				if (toast) pushToast(toast);
 				return;

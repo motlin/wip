@@ -21,6 +21,7 @@ interface Enqueued {
 	priority: string | undefined;
 	resources: string[] | undefined;
 	buffer: boolean | undefined;
+	preemptible: boolean | undefined;
 	coalesced: boolean;
 }
 
@@ -133,6 +134,7 @@ function harness(options: {
 				priority: job.priority,
 				resources: job.resources,
 				buffer: job.buffer,
+				preemptible: job.preemptible,
 				coalesced: handle.coalesced,
 			});
 			return handle;
@@ -246,6 +248,7 @@ describe("createReadyBuffer", () => {
 					priority: undefined,
 					resources: undefined,
 					buffer: undefined,
+					preemptible: undefined,
 					coalesced: false,
 				},
 			],
@@ -268,7 +271,7 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("enqueues exactly 2 advance-commit jobs for 5 candidates with a ready target of 2, in rank order", async () => {
+	it("enqueues exactly 2 preemptible advance-commit jobs for 5 candidates with a ready target of 2, in rank order", async () => {
 		const h = harness({repos: () => [repo("a")], gated: true});
 
 		await h.buffer.pull();
@@ -282,6 +285,7 @@ describe("createReadyBuffer", () => {
 				priority: "background",
 				resources: ["repo:a"],
 				buffer: true,
+				preemptible: true,
 				coalesced: false,
 			},
 			{
@@ -292,6 +296,7 @@ describe("createReadyBuffer", () => {
 				priority: "background",
 				resources: ["repo:a"],
 				buffer: true,
+				preemptible: true,
 				coalesced: false,
 			},
 		]);

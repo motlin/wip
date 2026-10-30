@@ -21,6 +21,8 @@ export interface GitTestRunOptions {
 	env?: Record<string, string>;
 	/** A background run (not user-initiated): low CPU priority and a capped number of test workers. */
 	background?: {workers: number};
+	/** Aborting it kills the run's whole process tree (a preempted background job). */
+	signal?: AbortSignal;
 }
 
 export interface GitTestRunResult {
@@ -117,11 +119,12 @@ export async function gitTestRun(dir: string, sha: string, opts: GitTestRunOptio
 
 	const result = await withTestWorktree(dir, sha, async (worktree) => {
 		const args = ["-C", worktree, ...testArgs];
+		const tree = opts.signal === undefined ? undefined : {killTreeOn: opts.signal};
 		if (opts.background) {
 			const bg = backgroundCommand("git", args, opts.background.workers);
-			return tracedExeca(bg.cmd, bg.args, {reject: false, env: {...opts.env, ...bg.env}});
+			return tracedExeca(bg.cmd, bg.args, {reject: false, env: {...opts.env, ...bg.env}}, tree);
 		}
-		return tracedExeca("git", args, opts.env ? {reject: false, env: opts.env} : {reject: false});
+		return tracedExeca("git", args, opts.env ? {reject: false, env: opts.env} : {reject: false}, tree);
 	});
 
 	fs.mkdirSync(opts.logDir, {recursive: true});

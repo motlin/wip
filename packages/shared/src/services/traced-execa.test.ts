@@ -71,3 +71,40 @@ describe("tracedExeca exit codes", () => {
 		expect(result.failed).toBe(true);
 	});
 });
+
+describe("tracedExeca killTreeOn", () => {
+	it("kills the whole process tree, grandchildren included, when the signal aborts", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-kill-tree-"));
+		const pidFile = path.join(dir, "grandchild.pid");
+		// The child starts a grandchild (the sleep), records its pid, and waits on it.
+		const script = `sleep 30 & echo $! > "${pidFile}"; wait`;
+		const controller = new AbortController();
+		const started = Date.now();
+		const run = tracedExeca("sh", ["-c", script], {reject: false}, {killTreeOn: controller.signal});
+		while (!fs.existsSync(pidFile) || fs.readFileSync(pidFile, "utf8").trim() === "") {
+			// eslint-disable-next-line no-await-in-loop
+			await new Promise((resolve) => {
+				setTimeout(resolve, 20);
+			});
+		}
+		const grandchild = Number(fs.readFileSync(pidFile, "utf8").trim());
+		controller.abort();
+		const result = await run;
+		await new Promise((resolve) => {
+			setTimeout(resolve, 100);
+		});
+		let grandchildAlive = true;
+		try {
+			process.kill(grandchild, 0);
+		} catch {
+			grandchildAlive = false;
+		}
+		fs.rmSync(dir, {recursive: true, force: true});
+
+		expect({
+			failed: result.failed,
+			quick: Date.now() - started < 10_000,
+			grandchildAlive,
+		}).toStrictEqual({failed: true, quick: true, grandchildAlive: false});
+	});
+});

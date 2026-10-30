@@ -12,12 +12,52 @@ export interface ExecaResult {
 	command: string;
 }
 
-export async function tracedExeca(command: string, args: string[], options?: Options): Promise<ExecaResult> {
-	// The slot is taken before the span starts, so subprocess.duration_ms measures the run, not the wait.
-	return withSubprocessSlot(async () => runTraced(command, args, options));
+export interface TreeKillOptions {
+	/**
+	 * Aborting it kills the subprocess and everything it started: the child runs as its own process
+	 * group leader and the whole group gets SIGTERM (a `git test run` spawns test runners and workers).
+	 */
+	killTreeOn?: AbortSignal;
 }
 
-async function runTraced(command: string, args: string[], options?: Options): Promise<ExecaResult> {
+export async function tracedExeca(
+	command: string,
+	args: string[],
+	options?: Options,
+	tree?: TreeKillOptions,
+): Promise<ExecaResult> {
+	// The slot is taken before the span starts, so subprocess.duration_ms measures the run, not the wait.
+	return withSubprocessSlot(async () => runTraced(command, args, options, tree?.killTreeOn));
+}
+
+/** Starts the subprocess, as a process group leader whose group dies with `killTreeOn` when given. */
+async function runSubprocess(command: string, args: string[], options: Options | undefined, killTreeOn?: AbortSignal) {
+	if (killTreeOn === undefined) return execa(command, args, options);
+	const subprocess = execa(command, args, {...options, detached: true});
+	const killTree = (): void => {
+		const {pid} = subprocess;
+		if (pid === undefined) return;
+		try {
+			process.kill(-pid, "SIGTERM");
+		} catch {
+			// The group already exited.
+		}
+	};
+	if (killTreeOn.aborted) killTree();
+	killTreeOn.addEventListener("abort", killTree, {once: true});
+	try {
+		return await subprocess;
+	} finally {
+		killTreeOn.removeEventListener("abort", killTree);
+	}
+}
+
+async function runTraced(
+	command: string,
+	args: string[],
+	options?: Options,
+	killTreeOn?: AbortSignal,
+): Promise<ExecaResult> {
 	const tracer = getTracer();
 	return tracer.startActiveSpan(`subprocess: ${command}`, async (span) => {
 		span.setAttributes({
@@ -27,7 +67,7 @@ async function runTraced(command: string, args: string[], options?: Options): Pr
 
 		const start = performance.now();
 		try {
-			const result = await execa(command, args, options);
+			const result = await runSubprocess(command, args, options, killTreeOn);
 			const duration = Math.round(performance.now() - start);
 			span.setAttributes({
 				"subprocess.exit_code": result.exitCode,

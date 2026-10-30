@@ -2447,6 +2447,36 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 		});
 	});
 
+	it("reports its push and PR steps and its result under the client's action id, for the tab it opened", async () => {
+		const {dir} = await repoWithFeatureBranch("fix-tracked");
+		seedProjectCache([makeProject({name: "pr-tracked", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		fakeCreatePullRequest();
+		const {actionEmitter, latestActionEvent} = await import("./action-events.js");
+		const events: {status: string; step?: string}[] = [];
+		const listener = (event: {id: string; status: string; step?: string}): void => {
+			if (event.id === "tab-1")
+				events.push(
+					event.step === undefined ? {status: event.status} : {status: event.status, step: event.step},
+				);
+		};
+		actionEmitter.on("action", listener);
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		await createPrHandler({project: "pr-tracked", branch: "fix-tracked", title: "Fix", actionId: "tab-1"});
+		actionEmitter.off("action", listener);
+
+		expect({events, result: latestActionEvent("tab-1")?.result}).toStrictEqual({
+			events: [
+				{status: "waiting"},
+				{status: "running"},
+				{status: "running", step: "Pushing fix-tracked…"},
+				{status: "running", step: "Opening the pull request…"},
+				{status: "done"},
+			],
+			result: {ok: true, message: "Opened PR #9", url: "https://github.com/alice/repo/pull/9"},
+		});
+	});
+
 	it("force-pushes with lease when origin's copy of the branch was rewritten locally", async () => {
 		const {dir, remoteDir} = await repoWithFeatureBranch("fix-rewritten");
 		await execa("git", ["-C", dir, "push", "-u", "origin", "fix-rewritten"]);

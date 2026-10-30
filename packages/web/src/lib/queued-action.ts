@@ -1,10 +1,30 @@
-import {actionEmitter} from "./action-events.js";
+import {emitAction, type ActionEvent} from "./action-events.js";
 import {repoResource} from "./repo-resource.js";
 import {subscribeLogs, unsubscribeLogs, type CostClass, type LogEntry} from "@wip/shared";
 import * as asyncHooks from "node:async_hooks";
 import {workQueue} from "./shared-work-queue.js";
 
 let nextActionId = 1;
+
+/** Reports what a running action is doing now ("Pushing add-parser…") to its toast and opened tab. */
+export type ActionStep = (step: string) => void;
+
+/** The outcome a finished action reports: an ActionResult's words and link, or a thrown error's message. */
+function resultOf(outcome: {ok: true; value: unknown} | {ok: false; error: unknown}): ActionEvent["result"] {
+	if (!outcome.ok) {
+		return {ok: false, message: outcome.error instanceof Error ? outcome.error.message : String(outcome.error)};
+	}
+	const {value} = outcome;
+	if (typeof value !== "object" || value === null || !("ok" in value) || !("message" in value)) return undefined;
+	if (typeof value.ok !== "boolean" || typeof value.message !== "string") return undefined;
+	const url =
+		"prUrl" in value && typeof value.prUrl === "string"
+			? value.prUrl
+			: "compareUrl" in value && typeof value.compareUrl === "string"
+				? value.compareUrl
+				: undefined;
+	return {ok: value.ok, message: value.message, ...(url === undefined ? {} : {url})};
+}
 
 /** Human-readable name for the job holding a repo, naming the AI conflict rung when that is what runs. */
 function describeHolder(job: {kind: string; costClass: CostClass} | undefined): string | undefined {
@@ -55,18 +75,22 @@ export function setActionMaxWaitMs(ms: number): void {
  * outcome, so callers keep their return shapes and only wait when the repo is
  * busy. Queue state changes reach clients through the usual queue events.
  * `action` is the internal label, optionally with the commit, branch or PR it
- * acts on; the client turns both into a plain-language toast.
+ * acts on; the client turns both into a plain-language toast. `action.id` names the action for a
+ * client that tracks it (Open PR's tab); otherwise one is generated. `fn` gets a step reporter.
  */
 export async function runQueuedAction<T>(
 	project: string,
-	action: string | {label: string; target?: string},
-	fn: () => Promise<T>,
+	action: string | {label: string; target?: string; id?: string},
+	fn: (step: ActionStep) => Promise<T>,
 	costClass: CostClass = "git-write",
 	maxWaitMs: number = defaultMaxWaitMs,
 ): Promise<T> {
-	const {label, target} = typeof action === "string" ? {label: action, target: undefined} : action;
+	const {label, target, id: givenId} = typeof action === "string" ? {label: action, target: undefined} : action;
 	const named = target === undefined ? {label} : {label, target};
-	const id = `action-${nextActionId++}`;
+	const id = givenId ?? `action-${nextActionId++}`;
+	const step: ActionStep = (text) => {
+		emitAction({id, project, ...named, status: "running", step: text});
+	};
 	const gate = logGate.getStore();
 	if (gate) gate.active = false;
 	let outcome: {ok: true; value: T} | {ok: false; error: unknown} | undefined;
@@ -81,10 +105,10 @@ export async function runQueuedAction<T>(
 		run: async () => {
 			if (state.abandoned) return;
 			state.started = true;
-			actionEmitter.emit("action", {id, project, ...named, status: "running"});
+			emitAction({id, project, ...named, status: "running"});
 			if (gate) gate.active = true;
 			try {
-				outcome = {ok: true, value: await fn()};
+				outcome = {ok: true, value: await fn(step)};
 			} catch (error) {
 				outcome = {ok: false, error};
 			} finally {
@@ -94,7 +118,7 @@ export async function runQueuedAction<T>(
 	});
 	const running = workQueue.getState().running.find((job) => job.project === project);
 	if (!state.started) {
-		actionEmitter.emit("action", {
+		emitAction({
 			id,
 			project,
 			...named,
@@ -117,12 +141,14 @@ export async function runQueuedAction<T>(
 		if (gate) gate.active = true;
 		handle.cancel();
 		const holder = describeHolder(workQueue.getState().running.find((job) => job.project === project) ?? running);
-		actionEmitter.emit("action", {id, project, ...named, status: "busy", waitingFor: holder});
-		throw new Error(`repo busy: ${holder ?? "another job"} is running on ${project}; try again shortly`);
+		const message = `repo busy: ${holder ?? "another job"} is running on ${project}; try again shortly`;
+		emitAction({id, project, ...named, status: "busy", waitingFor: holder, result: {ok: false, message}});
+		throw new Error(message);
 	}
 	await handle.settled;
 	if (gate) gate.active = true;
-	actionEmitter.emit("action", {id, project, ...named, status: "done"});
+	const finished = outcome === undefined ? undefined : resultOf(outcome);
+	emitAction({id, project, ...named, status: "done", ...(finished === undefined ? {} : {result: finished})});
 	if (!outcome) throw new Error(`${label} was cancelled before it ran`);
 	if (!outcome.ok) throw outcome.error;
 	return outcome.value;

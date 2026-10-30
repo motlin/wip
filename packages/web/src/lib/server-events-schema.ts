@@ -68,6 +68,10 @@ const ActionEventSchema = z.object({
 	status: z.enum(["waiting", "running", "done", "busy"]),
 	/** Kind of the job holding the repo while this action waits (or timed out). */
 	waitingFor: z.string().optional(),
+	/** What a running action is doing now, in plain words ("Pushing add-parser…"). */
+	step: z.string().optional(),
+	/** A finished (done or busy) action's outcome; `url` is the PR or compare page it produced. */
+	result: z.object({ok: z.boolean(), message: z.string(), url: z.string().optional()}).optional(),
 });
 export type ActionEvent = z.infer<typeof ActionEventSchema>;
 

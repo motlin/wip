@@ -977,3 +977,93 @@ describe("battery pause", () => {
 		});
 	});
 });
+
+describe("preemption", () => {
+	it("aborts a running preemptible background job holding a foreground job's resource, runs the foreground job, then reruns the background job under its original handle", async () => {
+		const q = makeQueue({globalConcurrency: 4});
+		const events: string[] = [];
+		let backgroundRuns = 0;
+		const firstRunBlocked = deferred();
+		const background = q.enqueue({
+			coalesceKey: "bg",
+			resources: ["repo:x"],
+			kind: "advance-commit",
+			project: "x",
+			priority: "background",
+			preemptible: true,
+			run: async (signal) => {
+				backgroundRuns += 1;
+				const run = backgroundRuns;
+				events.push(`bg-start-${run}`);
+				if (run === 1) {
+					await new Promise<void>((resolve) => {
+						signal.addEventListener("abort", () => {
+							resolve();
+						});
+						void firstRunBlocked.promise.then(resolve);
+					});
+					events.push(`bg-end-${run}-${signal.aborted ? "aborted" : "done"}`);
+					return;
+				}
+				events.push(`bg-end-${run}-done`);
+			},
+		});
+		await settle();
+		const foreground = q.enqueue({
+			coalesceKey: "fg",
+			resources: ["repo:x"],
+			kind: "createPr",
+			project: "x",
+			priority: "foreground",
+			costClass: "git-write",
+			run: async () => {
+				events.push("fg");
+				await Promise.resolve();
+			},
+		});
+		await foreground.settled;
+		await background.settled;
+
+		expect(events).toStrictEqual(["bg-start-1", "bg-end-1-aborted", "fg", "bg-start-2", "bg-end-2-done"]);
+	});
+
+	it("never aborts a running job that is not preemptible; the foreground job waits for it", async () => {
+		const q = makeQueue({globalConcurrency: 4});
+		const events: string[] = [];
+		const gate = deferred();
+		const background = q.enqueue({
+			coalesceKey: "bg",
+			resources: ["repo:x"],
+			kind: "ladder",
+			project: "x",
+			priority: "background",
+			run: async (signal) => {
+				events.push("bg-start");
+				await gate.promise;
+				events.push(`bg-end-${signal.aborted ? "aborted" : "done"}`);
+			},
+		});
+		await settle();
+		const foreground = q.enqueue({
+			coalesceKey: "fg",
+			resources: ["repo:x"],
+			kind: "createPr",
+			project: "x",
+			priority: "foreground",
+			run: async () => {
+				events.push("fg");
+				await Promise.resolve();
+			},
+		});
+		await settle();
+		const beforeRelease = [...events];
+		gate.resolve();
+		await foreground.settled;
+		await background.settled;
+
+		expect({beforeRelease, events}).toStrictEqual({
+			beforeRelease: ["bg-start"],
+			events: ["bg-start", "bg-end-done", "fg"],
+		});
+	});
+});

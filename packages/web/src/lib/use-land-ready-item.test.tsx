@@ -2,7 +2,7 @@
 import type {ReactNode} from "react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 import {act, cleanup, fireEvent, render, screen, within} from "@testing-library/react";
-import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
+import {QueryClient, QueryClientProvider, skipToken, useQuery} from "@tanstack/react-query";
 import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {ActionResult} from "@wip/shared/schemas.js";
 import type {MainPush, ProjectInfo} from "@wip/shared";
@@ -68,7 +68,14 @@ const push: MainPush = {
 	commits: [{sha: "k1".padEnd(40, "0"), subject: "Add parser", status: "good"}],
 };
 
-function Harness() {
+/** The ready row's commit, from the static fixture or, with `fromCache`, the children cache the hooks write. */
+function useCommits(fromCache: boolean) {
+	const {data} = useQuery({queryKey: ["children", "plain"], queryFn: skipToken, enabled: fromCache});
+	return fromCache ? ((data as (typeof commit)[] | undefined) ?? []) : [commit];
+}
+
+function Harness({fromCache = false}: {fromCache?: boolean}) {
+	const commits = useCommits(fromCache);
 	const land = useLandReadyItem();
 	const pushMain = usePushUpstreamBranch();
 	const outcomes = useActionOutcomes();
@@ -77,7 +84,7 @@ function Harness() {
 		<>
 			<ReadyToLandSection
 				state={state}
-				commits={[commit]}
+				commits={commits}
 				projects={[plain]}
 				now={null}
 				onLand={land}
@@ -91,11 +98,12 @@ function Harness() {
 	);
 }
 
-function renderHarness() {
+function renderHarness(fromCache = false) {
 	const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
+	queryClient.setQueryData(["children", "plain"], [commit]);
 	render(
 		<QueryClientProvider client={queryClient}>
-			<Harness />
+			<Harness fromCache={fromCache} />
 		</QueryClientProvider>,
 	);
 }
@@ -162,6 +170,39 @@ describe("landing outcomes outlive their toasts", () => {
 			outcome: "PR #12 openedView on GitHubDismiss",
 			link: "https://github.com/motlin/plain/pull/12",
 			inRow: true,
+		});
+	});
+
+	it("keeps Open PR's result as its own line in Ready to land while the row hides for pending checks in a repo without auto-merge", async () => {
+		serverFns.createPr.mockResolvedValue({
+			ok: true,
+			message: "Opened PR #12",
+			prNumber: 12,
+			prUrl: "https://github.com/motlin/plain/pull/12",
+		});
+		renderHarness(true);
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+		await act(async () => {
+			await Promise.resolve();
+		});
+		act(() => {
+			vi.advanceTimersByTime(30_000);
+		});
+
+		expect({
+			toast: toastText(),
+			rows: screen.queryAllByTestId("ready-to-land-row").length,
+			outcome: outcomeText(),
+			link: within(screen.getByTestId("action-outcome"))
+				.getByRole("link", {name: "View on GitHub"})
+				.getAttribute("href"),
+		}).toStrictEqual({
+			toast: null,
+			rows: 0,
+			outcome: "plain: Opened PR #12 · waiting for checksView on GitHubDismiss",
+			link: "https://github.com/motlin/plain/pull/12",
 		});
 	});
 

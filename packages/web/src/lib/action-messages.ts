@@ -1,5 +1,6 @@
 import type {ActionResult} from "@wip/shared/schemas.js";
 import type {ActionEvent, TaskEvent} from "./server-events-schema.js";
+import type {ActionOutcome} from "./action-outcomes.js";
 import type {ToastInput, ToastLink} from "./toast-store.js";
 
 /**
@@ -107,6 +108,18 @@ export function actionResultToast(action: string, result: ActionResult): ToastIn
 		message: result.message,
 		...(href === undefined ? {} : {link: {href, label: GITHUB_LINK_LABEL}}),
 	};
+}
+
+/** A row's in-progress outcome for a queued action, by its internal runQueuedAction label. */
+export function runningOutcome(label: string): ActionOutcome {
+	return {status: "running", message: `${describeAction(label)}…`};
+}
+
+/** A row's outcome for a finished action: the same words and link as its toast, kept on the row. */
+export function actionResultOutcome(action: string, result: ActionResult): ActionOutcome {
+	const {message, detail, link} = actionResultToast(action, result);
+	if (result.ok) return {status: "success", message, ...(link === undefined ? {} : {link})};
+	return {status: "failure", message, ...(detail === undefined ? {} : {detail}), link: link ?? ACTION_LOG_LINK};
 }
 
 /** The completion toast for a background task (push, rebase, Claude task); null otherwise. */

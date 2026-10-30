@@ -11,6 +11,8 @@ import {
 } from "@wip/shared/ready-to-land.js";
 import {greenPrefix, type MainPush, type MainPushCommit} from "@wip/shared/main-push.js";
 import {wipAgeText} from "../lib/staleness";
+import {landOutcomeKey, pushOutcomeKey, type ActionOutcome, type ActionOutcomes} from "../lib/action-outcomes";
+import {Loader2} from "./icons.js";
 
 const CHIP_CLASS = "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium";
 const MARKER_CLASS = `${CHIP_CLASS} border-border-300/60 bg-bg-200/60 text-text-300`;
@@ -119,16 +121,74 @@ function LandingPrompt({
 	);
 }
 
+const OUTCOME_STYLES: Record<ActionOutcome["status"], string> = {
+	running: "text-text-300",
+	success: "text-status-green",
+	failure: "text-status-red",
+};
+
+const NO_OUTCOMES: ActionOutcomes = {};
+
+/**
+ * A row's latest action outcome, kept until its next action replaces it: in progress with a
+ * spinner, success with where to find the result, or failure with a short reason and the log.
+ */
+function ActionOutcomeLine({
+	outcome,
+	onDismiss,
+	prefix,
+}: {
+	outcome: ActionOutcome | undefined;
+	onDismiss?: (() => void) | undefined;
+	prefix?: string;
+}) {
+	if (outcome === undefined) return null;
+	const link = outcome.status === "running" ? undefined : outcome.link;
+	return (
+		<output
+			data-testid="action-outcome"
+			className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ${OUTCOME_STYLES[outcome.status]}`}
+		>
+			{outcome.status === "running" && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
+			<span className="font-medium">
+				{prefix}
+				{outcome.message}
+			</span>
+			{outcome.status === "failure" && outcome.detail !== undefined && (
+				<span className="min-w-0 break-words text-text-300">{outcome.detail}</span>
+			)}
+			{link !== undefined && (
+				<a
+					href={link.href}
+					{...(/^https?:\/\//.test(link.href) ? {target: "_blank", rel: "noreferrer"} : {})}
+					className="font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400"
+				>
+					{link.label}
+				</a>
+			)}
+			{outcome.status !== "running" && onDismiss !== undefined && (
+				<button type="button" onClick={onDismiss} className="ml-auto text-text-500 hover:text-text-100">
+					Dismiss
+				</button>
+			)}
+		</output>
+	);
+}
+
 interface LandControlProps {
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo | undefined;
 	blockedReason: string | null;
 	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
+	/** The row's latest landing outcome; the button waits while one is in progress. */
+	outcome?: ActionOutcome | undefined;
+	onDismissOutcome?: (() => void) | undefined;
 }
 
 /** The landing button plus the confirm it opens; nothing lands until the user confirms. */
-function useLandControl({item, commit, projectInfo, blockedReason, onLand}: LandControlProps) {
+function useLandControl({item, commit, projectInfo, blockedReason, onLand, outcome}: LandControlProps) {
+	const running = outcome?.status === "running";
 	const [confirming, setConfirming] = useState(false);
 	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
 	// An Open PR the server would refuse is never offered: the row says why instead.
@@ -140,7 +200,7 @@ function useLandControl({item, commit, projectInfo, blockedReason, onLand}: Land
 			action === null ? null : (
 				<button
 					type="button"
-					disabled={blockedReason !== null}
+					disabled={blockedReason !== null || running}
 					title={blockedReason ?? undefined}
 					aria-expanded={confirming}
 					onClick={() => {
@@ -167,7 +227,7 @@ function useLandControl({item, commit, projectInfo, blockedReason, onLand}: Land
 				<div className="flex gap-2">
 					<button
 						type="button"
-						disabled={blockedReason !== null}
+						disabled={blockedReason !== null || running}
 						onClick={() => {
 							setConfirming(false);
 							onLand(item, commit);
@@ -364,6 +424,7 @@ function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRo
 				/>
 			)}
 			{confirm}
+			<ActionOutcomeLine outcome={land.outcome} onDismiss={land.onDismissOutcome} />
 		</li>
 	);
 }
@@ -379,7 +440,17 @@ const commitLabel = (c: MainPushCommit): string => `"${c.subject}" (${c.sha.slic
  * prefix (oldest first, by `git test results`), whose confirm names exactly those commits and the
  * sha it pushes; the unknown or red tail is listed as not pushed. A diverged main gets no button.
  */
-function PushRow({push, onPush}: {push: MainPush; onPush: (push: MainPush, sha: string) => void}) {
+function PushRow({
+	push,
+	onPush,
+	outcome,
+	onDismissOutcome,
+}: {
+	push: MainPush;
+	onPush: (push: MainPush, sha: string) => void;
+	outcome: ActionOutcome | undefined;
+	onDismissOutcome: (() => void) | undefined;
+}) {
 	const [confirming, setConfirming] = useState(false);
 	const {project, branch, remote} = push;
 	const target = `${remote}/${branch}`;
@@ -387,6 +458,7 @@ function PushRow({push, onPush}: {push: MainPush; onPush: (push: MainPush, sha: 
 		return (
 			<li data-testid="push-row" className="px-1 py-1 text-xs text-text-300">
 				{project}: local {branch} has diverged from {target}; rebase first
+				<ActionOutcomeLine outcome={outcome} onDismiss={onDismissOutcome} />
 			</li>
 		);
 	}
@@ -403,11 +475,12 @@ function PushRow({push, onPush}: {push: MainPush; onPush: (push: MainPush, sha: 
 				{last !== undefined && (
 					<button
 						type="button"
+						disabled={outcome?.status === "running"}
 						aria-expanded={confirming}
 						onClick={() => {
 							setConfirming(true);
 						}}
-						className="ml-auto rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90"
+						className="ml-auto rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
 					>
 						{label}
 					</button>
@@ -431,6 +504,7 @@ function PushRow({push, onPush}: {push: MainPush; onPush: (push: MainPush, sha: 
 					<div className="flex gap-2">
 						<button
 							type="button"
+							disabled={outcome?.status === "running"}
 							onClick={() => {
 								setConfirming(false);
 								onPush(push, last.sha);
@@ -451,6 +525,7 @@ function PushRow({push, onPush}: {push: MainPush; onPush: (push: MainPush, sha: 
 					</div>
 				</div>
 			)}
+			<ActionOutcomeLine outcome={outcome} onDismiss={onDismissOutcome} />
 		</li>
 	);
 }
@@ -463,7 +538,17 @@ function visiblePushes(pushes: readonly MainPush[]): MainPush[] {
 }
 
 /** A PR with auto-merge on: GitHub merges it once its checks pass, so there is nothing to click. */
-function MergingRow({item, commit}: {item: ReadyToLandItem; commit: GitChildResult | undefined}) {
+function MergingRow({
+	item,
+	commit,
+	outcome,
+	onDismissOutcome,
+}: {
+	item: ReadyToLandItem;
+	commit: GitChildResult | undefined;
+	outcome: ActionOutcome | undefined;
+	onDismissOutcome: (() => void) | undefined;
+}) {
 	return (
 		<li
 			data-testid="merging-row"
@@ -494,6 +579,7 @@ function MergingRow({item, commit}: {item: ReadyToLandItem; commit: GitChildResu
 				</div>
 				<span className="ml-auto text-xs text-text-300">Merging when checks pass</span>
 			</div>
+			<ActionOutcomeLine outcome={outcome} onDismiss={onDismissOutcome} />
 		</li>
 	);
 }
@@ -514,6 +600,10 @@ export interface ReadyToLandSectionProps {
 	actionsBlocked?: ReadonlySet<string>;
 	/** Configures a repo to land by pushing directly; the row asks for a confirm first. */
 	onLandByPushing?: (project: string) => void;
+	/** Each row's latest action outcome, by landOutcomeKey / pushOutcomeKey. */
+	outcomes?: ActionOutcomes;
+	/** Clears one row's outcome by its key. */
+	onDismissOutcome?: (key: string) => void;
 }
 
 /**
@@ -532,8 +622,22 @@ export function ReadyToLandSection({
 	onPush,
 	actionsBlocked,
 	onLandByPushing,
+	outcomes = NO_OUTCOMES,
+	onDismissOutcome,
 }: ReadyToLandSectionProps) {
 	const pushes = visiblePushes(mainPushes);
+	// A push whose row left (every green commit pushed) keeps its outcome as a line of its own.
+	const shownPushes = new Set(pushes.map((push) => push.project));
+	const leftPushes = Object.keys(outcomes)
+		.filter((key) => key.startsWith("push:"))
+		.map((key) => key.slice("push:".length))
+		.filter((project) => !shownPushes.has(project));
+	const dismiss = (key: string) =>
+		onDismissOutcome === undefined
+			? undefined
+			: () => {
+					onDismissOutcome(key);
+				};
 	if (!state) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
 	// A PR whose checks still run shows only when it merges itself or can be told to; see readyRowView.
@@ -542,7 +646,9 @@ export function ReadyToLandSection({
 		const view = readyRowView(item, commit);
 		return view === "hidden" ? [] : [{item, commit, view}];
 	});
-	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0) return null;
+	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0) {
+		return null;
+	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	const stopped = new Set(state.stoppedProjects);
 	const landable = rows.filter((row) => row.view === "land").length;
@@ -557,8 +663,17 @@ export function ReadyToLandSection({
 			</h2>
 			<ul className="flex flex-col gap-2">
 				{rows.map(({item, commit, view}) => {
+					const outcomeKey = landOutcomeKey(item.project, item.sha);
 					if (view === "merging") {
-						return <MergingRow key={`${item.project}:${item.id}`} item={item} commit={commit} />;
+						return (
+							<MergingRow
+								key={`${item.project}:${item.id}`}
+								item={item}
+								commit={commit}
+								outcome={outcomes[outcomeKey]}
+								onDismissOutcome={dismiss(outcomeKey)}
+							/>
+						);
 					}
 					const projectInfo = projectMap.get(item.project);
 					return (
@@ -572,6 +687,8 @@ export function ReadyToLandSection({
 							noTests={projectInfo?.hasTestConfigured === false}
 							age={now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now)}
 							onLand={onLand}
+							outcome={outcomes[outcomeKey]}
+							onDismissOutcome={dismiss(outcomeKey)}
 							onLandByPushing={
 								actionsBlocked?.has(`${item.project}:${item.sha}`) === true
 									? onLandByPushing
@@ -581,12 +698,27 @@ export function ReadyToLandSection({
 					);
 				})}
 			</ul>
-			{pushes.length > 0 && (
+			{(pushes.length > 0 || leftPushes.length > 0) && (
 				<div data-testid="push-main-group" className="mt-3 border-t border-border-300/50 pt-2">
 					<h3 className="mb-1 px-1 text-xs font-semibold text-text-300">Push main</h3>
 					<ul className="flex flex-col">
 						{pushes.map((push) => (
-							<PushRow key={`push:${push.project}`} push={push} onPush={onPush} />
+							<PushRow
+								key={`push:${push.project}`}
+								push={push}
+								onPush={onPush}
+								outcome={outcomes[pushOutcomeKey(push.project)]}
+								onDismissOutcome={dismiss(pushOutcomeKey(push.project))}
+							/>
+						))}
+						{leftPushes.map((project) => (
+							<li key={`push:${project}`} data-testid="push-row" className="px-1 py-1 text-xs">
+								<ActionOutcomeLine
+									outcome={outcomes[pushOutcomeKey(project)]}
+									onDismiss={dismiss(pushOutcomeKey(project))}
+									prefix={`${project}: `}
+								/>
+							</li>
 						))}
 					</ul>
 				</div>
@@ -601,10 +733,21 @@ export interface ReadyLandPanelProps {
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo;
 	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
+	/** The commit's latest landing outcome, kept on the panel until its next action. */
+	outcome?: ActionOutcome | undefined;
+	onDismissOutcome?: (() => void) | undefined;
 }
 
 /** The diff page's landing action, so the flow is review then land; only for a ready commit. */
-export function ReadyLandPanel({state, sha, commit, projectInfo, onLand}: ReadyLandPanelProps) {
+export function ReadyLandPanel({
+	state,
+	sha,
+	commit,
+	projectInfo,
+	onLand,
+	outcome,
+	onDismissOutcome,
+}: ReadyLandPanelProps) {
 	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? [])].find(
 		(r) => r.project === projectInfo.name && r.sha === sha,
 	);
@@ -616,6 +759,8 @@ export function ReadyLandPanel({state, sha, commit, projectInfo, onLand}: ReadyL
 			projectInfo={projectInfo}
 			blockedReason={stoppedLineReason(item.project, new Set(state.stoppedProjects), commit)}
 			onLand={onLand}
+			outcome={outcome}
+			onDismissOutcome={onDismissOutcome}
 		/>
 	);
 }
@@ -629,6 +774,7 @@ function ReadyLandPanelBody(props: LandControlProps) {
 				{button}
 			</div>
 			{confirm}
+			<ActionOutcomeLine outcome={props.outcome} onDismiss={props.onDismissOutcome} />
 		</div>
 	);
 }

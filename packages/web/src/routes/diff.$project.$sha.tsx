@@ -12,6 +12,7 @@ import {
 	readyToLandQueryOptions,
 } from "../lib/queries";
 import {useLandReadyItem} from "../lib/use-land-ready-item";
+import {landOutcomeKey, useActionOutcomes, useDismissActionOutcome} from "../lib/action-outcomes";
 import {classifyBranch, classifyPullRequest} from "@wip/shared/classify.js";
 
 export const Route = createFileRoute("/diff/$project/$sha")({
@@ -40,6 +41,8 @@ function DiffViewer() {
 	const [wrap, setWrap] = useState(false);
 	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
 	const land = useLandReadyItem();
+	const outcomes = useActionOutcomes();
+	const dismissOutcome = useDismissActionOutcome();
 
 	const isPr = child && "prUrl" in child && child.prUrl;
 	const isBranch = child && "branch" in child;
@@ -73,6 +76,10 @@ function DiffViewer() {
 					commit={child ?? undefined}
 					projectInfo={projectInfo}
 					onLand={land}
+					outcome={outcomes[landOutcomeKey(project, sha)]}
+					onDismissOutcome={() => {
+						dismissOutcome(landOutcomeKey(project, sha));
+					}}
 				/>
 			)}
 			{isPr && category && (

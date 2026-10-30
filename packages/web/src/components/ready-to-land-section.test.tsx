@@ -6,6 +6,7 @@ import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.
 import type {GitChildResult, MainPush, ProjectInfo} from "@wip/shared";
 import {makeChild} from "../lib/test-factories";
 import {billingCheckCandidates, ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
+import {landOutcomeKey, pushOutcomeKey, type ActionOutcomes} from "../lib/action-outcomes";
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -717,5 +718,156 @@ describe("ReadyLandPanel", () => {
 		);
 
 		expect(container.innerHTML).toBe("");
+	});
+});
+
+function outcomeView() {
+	const outcome = screen.getByTestId("action-outcome");
+	return {
+		text: outcome.textContent,
+		links: links(outcome),
+		button: screen.getByRole("button", {name: "Open PR"}).hasAttribute("disabled"),
+	};
+}
+
+describe("ReadyToLandSection action outcomes", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	const one: ReadyToLandState = {
+		slots: 3,
+		ready: [{project: "plain", id: "pp1", sha: sha("p1"), landing: "pull-request"}],
+		inFlight: [],
+		next: [],
+		stoppedProjects: [],
+	};
+
+	function renderOutcome(outcomes: ActionOutcomes, onDismissOutcome = vi.fn<(key: string) => void>()) {
+		render(
+			<ReadyToLandSection
+				state={one}
+				commits={commits}
+				projects={[project("plain")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+				outcomes={outcomes}
+				onDismissOutcome={onDismissOutcome}
+			/>,
+		);
+		return {onDismissOutcome};
+	}
+
+	it("shows an action in progress on its row and holds the button until it finishes", () => {
+		renderOutcome({[landOutcomeKey("plain", sha("p1"))]: {status: "running", message: "Opening a pull request…"}});
+
+		expect(outcomeView()).toStrictEqual({text: "Opening a pull request…", links: [], button: true});
+	});
+
+	it("keeps a success on its row with the link to GitHub", () => {
+		renderOutcome({
+			[landOutcomeKey("plain", sha("p1"))]: {
+				status: "success",
+				message: "PR #12 opened",
+				link: {href: "https://github.com/motlin/plain/pull/12", label: "View on GitHub"},
+			},
+		});
+
+		expect(outcomeView()).toStrictEqual({
+			text: "PR #12 openedView on GitHubDismiss",
+			links: [["View on GitHub", "https://github.com/motlin/plain/pull/12"]],
+			button: false,
+		});
+	});
+
+	it("keeps a failure on its row with a short reason and the log, leaves the button to retry, and dismisses", () => {
+		const key = landOutcomeKey("plain", sha("p1"));
+		const {onDismissOutcome} = renderOutcome({
+			[key]: {
+				status: "failure",
+				message: "Open PR failed",
+				detail: "base branch main does not exist on origin",
+				link: {href: "/debug/logs", label: "See the log"},
+			},
+		});
+		const view = outcomeView();
+		fireEvent.click(screen.getByRole("button", {name: "Dismiss"}));
+
+		expect({view, dismissed: onDismissOutcome.mock.calls}).toStrictEqual({
+			view: {
+				text: "Open PR failedbase branch main does not exist on originSee the logDismiss",
+				links: [["See the log", "/debug/logs"]],
+				button: false,
+			},
+			dismissed: [[key]],
+		});
+	});
+
+	it("shows a push outcome on the Push main row, and after the pushed row leaves", () => {
+		const push: MainPush = {
+			project: "kalshi",
+			remote: "origin",
+			branch: "main",
+			diverged: false,
+			commits: [{sha: sha("k1"), subject: "Add parser", status: "good"}],
+		};
+		const pushed = {
+			[pushOutcomeKey("kalshi")]: {
+				status: "success" as const,
+				message: "Pushed 3 commits to origin/main",
+				link: {href: "https://github.com/motlin/kalshi/compare/a...b", label: "View on GitHub"},
+			},
+		};
+		const withRow = render(
+			<ReadyToLandSection
+				state={one}
+				commits={commits}
+				projects={[project("plain")]}
+				now={now}
+				onLand={() => undefined}
+				mainPushes={[push]}
+				onPush={() => undefined}
+				outcomes={pushed}
+			/>,
+		);
+		const onRow = links(screen.getByTestId("push-row"));
+		withRow.unmount();
+		render(
+			<ReadyToLandSection
+				state={one}
+				commits={commits}
+				projects={[project("plain")]}
+				now={now}
+				onLand={() => undefined}
+				mainPushes={[]}
+				onPush={() => undefined}
+				outcomes={pushed}
+			/>,
+		);
+
+		expect({onRow, afterLeaving: screen.getByTestId("push-row").textContent}).toStrictEqual({
+			onRow: [["View on GitHub", "https://github.com/motlin/kalshi/compare/a...b"]],
+			afterLeaving: "kalshi: Pushed 3 commits to origin/mainView on GitHub",
+		});
+	});
+
+	it("keeps the outcome on the diff page's land panel", () => {
+		render(
+			<ReadyLandPanel
+				state={one}
+				sha={sha("p1")}
+				commit={commits[4]}
+				projectInfo={project("plain")}
+				onLand={() => undefined}
+				outcome={{
+					status: "failure",
+					message: "Open PR failed",
+					link: {href: "/debug/logs", label: "See the log"},
+				}}
+			/>,
+		);
+
+		expect(links(screen.getByTestId("action-outcome"))).toStrictEqual([["See the log", "/debug/logs"]]);
 	});
 });

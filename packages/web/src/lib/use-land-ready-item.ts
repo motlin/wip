@@ -1,7 +1,7 @@
 import {useCallback, useMemo} from "react";
-import {useQueries, useQueryClient} from "@tanstack/react-query";
+import {useQueries, useQueryClient, type QueryClient} from "@tanstack/react-query";
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
-import type {GitChildResult} from "@wip/shared/schemas.js";
+import type {ActionResult, GitChildResult} from "@wip/shared/schemas.js";
 import {afterPush, type MainPush} from "@wip/shared/main-push.js";
 import {billingCheckCandidates, landingAction} from "../components/ready-to-land-section";
 import {
@@ -14,7 +14,8 @@ import {
 	type ProjectChildrenResult,
 } from "./server-fns";
 import {actionsBillingBlockQueryOptions} from "./queries";
-import {actionResultToast} from "./action-messages";
+import {actionResultOutcome, actionResultToast, runningOutcome} from "./action-messages";
+import {landOutcomeKey, pushOutcomeKey, setActionOutcome} from "./action-outcomes";
 import {pushToast} from "./toast-store";
 
 const LANDING_ACTION_NAMES = {
@@ -23,14 +24,47 @@ const LANDING_ACTION_NAMES = {
 	"fast-forward": "Fast-forward main",
 } as const;
 
-/** Runs a ready commit's landing action (merge PR, open PR or fast-forward local main) and toasts the result. */
+/** Queued-action labels, for the row's in-progress outcome. */
+const LANDING_ACTION_LABELS = {
+	"merge-pr": "mergePr",
+	"open-pr": "createPr",
+	"fast-forward": "landFastForward",
+} as const;
+
+/** A server function that threw (network, server error) fails like a refused action. */
+function failedResult(error: unknown): ActionResult {
+	return {ok: false, message: error instanceof Error ? error.message : String(error)};
+}
+
+/**
+ * Runs an action whose outcome stays on its row: in progress while it runs, then its result (also
+ * echoed as a toast). Resolves with the result, a thrown server function counting as a failure.
+ */
+async function runWithOutcome(
+	queryClient: QueryClient,
+	key: string,
+	label: string,
+	name: string,
+	run: () => Promise<ActionResult>,
+): Promise<ActionResult> {
+	setActionOutcome(queryClient, key, runningOutcome(label));
+	const result = await run().catch(failedResult);
+	setActionOutcome(queryClient, key, actionResultOutcome(name, result));
+	pushToast(actionResultToast(name, result));
+	return result;
+}
+
+/**
+ * Runs a ready commit's landing action (merge PR, open PR or fast-forward local main), keeping its
+ * outcome on the row and toasting the result.
+ */
 export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResult | undefined) => void {
 	const queryClient = useQueryClient();
 	return useCallback(
 		(item: ReadyToLandItem, commit: GitChildResult | undefined) => {
 			const action = landingAction(item, commit);
 			if (action === null) return;
-			const landing =
+			const landing = async () =>
 				action.kind === "merge-pr"
 					? mergePr({data: {project: item.project, prNumber: action.prNumber, autoMerge: action.autoMerge}})
 					: action.kind === "open-pr"
@@ -44,8 +78,13 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 								},
 							})
 						: landFastForward({data: {project: item.project, sha: item.sha}});
-			void landing.then((result) => {
-				pushToast(actionResultToast(LANDING_ACTION_NAMES[action.kind], result));
+			void runWithOutcome(
+				queryClient,
+				landOutcomeKey(item.project, item.sha),
+				LANDING_ACTION_LABELS[action.kind],
+				LANDING_ACTION_NAMES[action.kind],
+				landing,
+			).then((result) => {
 				const {prNumber, prUrl} = result;
 				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {
 					// Its checks have not reported yet: without a refetch the row leaves Ready to land (or
@@ -104,15 +143,20 @@ function markOnLocalMain(children: ProjectChildrenResult, sha: string): ProjectC
 }
 
 /**
- * Pushes the green prefix of a project's local main (up to `sha`) to its remote and toasts the
- * result; the pushed commits leave the Push main row without a refetch.
+ * Pushes the green prefix of a project's local main (up to `sha`) to its remote, keeping the outcome
+ * on its Push main row and toasting the result; the pushed commits leave the row without a refetch.
  */
 export function usePushUpstreamBranch(): (push: MainPush, sha: string) => void {
 	const queryClient = useQueryClient();
 	return useCallback(
 		(push: MainPush, sha: string) => {
-			void pushUpstreamBranch({data: {project: push.project, sha}}).then((result) => {
-				pushToast(actionResultToast(`Push ${push.branch}`, result));
+			void runWithOutcome(
+				queryClient,
+				pushOutcomeKey(push.project),
+				"pushUpstreamBranch",
+				`Push ${push.branch}`,
+				async () => pushUpstreamBranch({data: {project: push.project, sha}}),
+			).then((result) => {
 				if (result.ok) {
 					const pushed = new Set(
 						push.commits.slice(0, push.commits.findIndex((c) => c.sha === sha) + 1).map((c) => c.sha),

@@ -21,6 +21,7 @@ export {
 	getReadyBufferSize,
 	getFlowStaleAfterMinutes,
 	getReadyBufferCapacity,
+	getBackgroundTestWorkers,
 	DEFAULT_READY_BUFFER_SIZE,
 	DEFAULT_AI_RUNG_TIMEOUT_MS,
 } from "./lib/config.js";
@@ -212,7 +213,9 @@ export {
 export {createSystemProbe} from "./lib/system-probe.js";
 export {ensureBranchWorktree, parseWorktreeList, type BranchWorktree, type WorktreeEntry} from "./lib/worktree.js";
 export {checkBaseline, type BaselineCheck} from "./lib/advance-baseline.js";
+export {parsePmsetBatt, readPowerSource, type PowerSource, type PowerSourceReader} from "./lib/power-source.js";
 export {
+	backgroundCommand,
 	DEFAULT_GIT_TEST,
 	getGitTestStatuses,
 	gitTestResults,

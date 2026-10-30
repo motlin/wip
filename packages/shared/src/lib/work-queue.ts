@@ -94,6 +94,8 @@ export interface EnqueueOptions {
 	costClass?: CostClass;
 	/** Ready-buffer job: admitted under a hot probe even while the queue is busy, one buffer job at a time. */
 	buffer?: boolean;
+	/** Background work that waits while the machine runs on battery (see setOnBattery); user actions never set it. */
+	pauseOnBattery?: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
 }
 
@@ -126,6 +128,8 @@ export interface WorkQueue {
 	setResourceLock(lock: ResourceLock | null): void;
 	/** Install (or replace) the cross-process machine build lock after creation (node-only, so injected late). */
 	setBuildLock(lock: ResourceLock | null): void;
+	/** Whether the machine runs on battery: while true, pauseOnBattery jobs stay queued; false starts them. */
+	setOnBattery(onBattery: boolean): void;
 	/** Override per-class concurrency caps after creation (the server bootstrap applies config.json5 values). */
 	setClassCaps(caps: Partial<Record<CostClass, number>>): void;
 	getState(): WorkQueueState;
@@ -150,6 +154,7 @@ interface Job {
 	enqueuedAt: number;
 	costClass: CostClass;
 	buffer: boolean;
+	pauseOnBattery: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
 	controller: AbortController;
 	settle: () => void;
@@ -169,6 +174,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	let probe = options.probe ?? null;
 	let resourceLock = options.resourceLock ?? null;
 	let buildLock = options.buildLock ?? null;
+	let onBattery = false;
 	const loadThreshold = options.loadThreshold ?? DEFAULT_LOAD_THRESHOLD;
 	const memFloor = options.memFloor ?? DEFAULT_MEM_FLOOR;
 	const stateCoalesceMs = options.stateCoalesceMs ?? DEFAULT_STATE_COALESCE_MS;
@@ -294,7 +300,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		for (let index = 0; index < queued.length && slots > 0;) {
 			const job = queued[index];
 			if (job === undefined) break;
-			if (bufferOnly && !job.buffer) {
+			if ((bufferOnly && !job.buffer) || (onBattery && job.pauseOnBattery)) {
 				index += 1;
 				continue;
 			}
@@ -391,6 +397,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			enqueuedAt: now(),
 			costClass: enqueueOptions.costClass ?? "cheap",
 			buffer: enqueueOptions.buffer ?? false,
+			pauseOnBattery: enqueueOptions.pauseOnBattery ?? false,
 			run: enqueueOptions.run,
 			controller: new AbortController(),
 			settle,
@@ -452,6 +459,10 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		cancel,
 		setClassCaps: (caps) => {
 			classCaps = {...classCaps, ...caps};
+			pump();
+		},
+		setOnBattery: (next) => {
+			onBattery = next;
 			pump();
 		},
 		setProbe: (nextProbe) => {

@@ -25,6 +25,7 @@ import {
 	getSplitThresholdLines,
 	getReadyBufferSize,
 	getFlowStaleAfterMinutes,
+	getBackgroundTestWorkers,
 	getTestLogDir,
 	gitTestResults,
 	gitTestRun,
@@ -1493,9 +1494,13 @@ function scheduleMainPushTest(p: ProjectInfo, sha: string): void {
 		project: p.name,
 		costClass: "build",
 		priority: "background",
+		pauseOnBattery: true,
 		resources: [repoResource(p.name)],
 		run: async () => {
-			await gitTestRun(p.dir, sha, {logDir: getTestLogDir(p.name)});
+			await gitTestRun(p.dir, sha, {
+				logDir: getTestLogDir(p.name),
+				background: {workers: getBackgroundTestWorkers()},
+			});
 		},
 	});
 	void handle.settled.finally(() => {

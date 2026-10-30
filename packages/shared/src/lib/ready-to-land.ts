@@ -37,6 +37,8 @@ export const ReadyToLandStateSchema = z.object({
 	next: z.array(ReadyToLandItemSchema),
 	/** Projects whose own upstream is red: no pulls, and their ready items are marked. */
 	stoppedProjects: z.array(z.string()),
+	/** Set while the machine runs on battery: the buffer starts no background work until AC power returns. */
+	pausedOnBattery: z.literal(true).optional(),
 });
 export type ReadyToLandState = z.infer<typeof ReadyToLandStateSchema>;
 

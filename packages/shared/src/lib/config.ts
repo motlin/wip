@@ -162,6 +162,17 @@ export function getReadyBufferCapacity(config: Record<string, ConfigValue> = rea
 	);
 }
 
+const DEFAULT_BACKGROUND_TEST_WORKERS = 2;
+
+/**
+ * Test workers a background `git test run` (ready buffer, Push main pre-testing) may use, from config
+ * key `background.testWorkers`. Passed to the repo's own test command as VITEST_MAX_WORKERS and
+ * WIP_BACKGROUND_JOBS; the repo's git-test command itself is never edited. Defaults to 2.
+ */
+export function getBackgroundTestWorkers(config: Record<string, ConfigValue> = readConfig()): number {
+	return positiveInt(config["background.testWorkers"]) ?? DEFAULT_BACKGROUND_TEST_WORKERS;
+}
+
 /** Max milliseconds a user-click git action waits for a busy repo, from config key `actionMaxWaitMs`. Undefined when unset or invalid. */
 export function getActionMaxWaitMs(config: Record<string, ConfigValue> = readConfig()): number | undefined {
 	const value = config["actionMaxWaitMs"];

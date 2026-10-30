@@ -19,6 +19,8 @@ export interface GitTestRunOptions {
 	/** Re-run a commit already marked bad. Only for an explicit user request. */
 	retest?: boolean;
 	env?: Record<string, string>;
+	/** A background run (not user-initiated): low CPU priority and a capped number of test workers. */
+	background?: {workers: number};
 }
 
 export interface GitTestRunResult {
@@ -38,6 +40,26 @@ export async function testWorktreePath(dir: string): Promise<string> {
 		throw new Error(`git rev-parse --git-common-dir failed in ${dir}: ${result.stderr.trim()}`);
 	}
 	return `${path.dirname(result.stdout.trim())}-test-worktree`;
+}
+
+/** Niceness of a background test run; its whole process tree inherits it. */
+const BACKGROUND_NICE = 10;
+
+/**
+ * The command and env for a background job: `nice -n 10` around the command, and the worker cap in
+ * the env vars test runners read (VITEST_MAX_WORKERS, with VITEST_MIN_WORKERS kept at or below it)
+ * plus WIP_BACKGROUND_JOBS for any other runner a repo wires to it.
+ */
+export function backgroundCommand(
+	cmd: string,
+	args: readonly string[],
+	workers: number,
+): {cmd: string; args: string[]; env: Record<string, string>} {
+	return {
+		cmd: "nice",
+		args: ["-n", String(BACKGROUND_NICE), cmd, ...args],
+		env: {VITEST_MAX_WORKERS: String(workers), VITEST_MIN_WORKERS: "1", WIP_BACKGROUND_JOBS: String(workers)},
+	};
 }
 
 // One git-test run at a time per test worktree, since each one checks commits out in it.
@@ -93,9 +115,14 @@ export async function gitTestRun(dir: string, sha: string, opts: GitTestRunOptio
 	if (opts.retest) testArgs.push("--retest");
 	testArgs.push(sha);
 
-	const result = await withTestWorktree(dir, sha, async (worktree) =>
-		tracedExeca("git", ["-C", worktree, ...testArgs], opts.env ? {reject: false, env: opts.env} : {reject: false}),
-	);
+	const result = await withTestWorktree(dir, sha, async (worktree) => {
+		const args = ["-C", worktree, ...testArgs];
+		if (opts.background) {
+			const bg = backgroundCommand("git", args, opts.background.workers);
+			return tracedExeca(bg.cmd, bg.args, {reject: false, env: {...opts.env, ...bg.env}});
+		}
+		return tracedExeca("git", args, opts.env ? {reject: false, env: opts.env} : {reject: false});
+	});
 
 	fs.mkdirSync(opts.logDir, {recursive: true});
 	const logPath = path.join(opts.logDir, `${sha}.log`);

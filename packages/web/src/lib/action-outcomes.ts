@@ -37,9 +37,12 @@ export function setActionOutcome(queryClient: QueryClient, key: string, outcome:
 /** Drops the landing outcomes of rows that left the ready buffer; Push main outcomes stay until replaced. */
 export function pruneLandOutcomes(outcomes: ActionOutcomes, state: ReadyToLandState | null): ActionOutcomes {
 	const live = new Set(
-		[...(state?.ready ?? []), ...(state?.awaitingChecks ?? []), ...(state?.inFlight ?? [])].map((item) =>
-			landOutcomeKey(item.project, item.sha),
-		),
+		[
+			...(state?.ready ?? []),
+			...(state?.awaitingChecks ?? []),
+			...(state?.checksFailed ?? []),
+			...(state?.inFlight ?? []),
+		].map((item) => landOutcomeKey(item.project, item.sha)),
 	);
 	const kept = Object.entries(outcomes).filter(([key]) => !key.startsWith("land:") || live.has(key));
 	return kept.length === Object.keys(outcomes).length ? outcomes : Object.fromEntries(kept);

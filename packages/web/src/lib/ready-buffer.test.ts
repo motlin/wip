@@ -416,6 +416,7 @@ describe("createReadyBuffer", () => {
 					{project: "red", id: "c1", sha: paddedSha("c1"), branch: "red-fix", firstSeen: "2026-10-21 red"},
 				],
 				awaitingChecks: [],
+				checksFailed: [],
 				inFlight: [a("c1"), a("c2")],
 				next: [a("c3"), a("c4")],
 				stoppedProjects: ["red"],
@@ -428,6 +429,7 @@ describe("createReadyBuffer", () => {
 					a("c2"),
 				],
 				awaitingChecks: [],
+				checksFailed: [],
 				inFlight: [],
 				next: [a("c3"), a("c4")],
 				stoppedProjects: ["red"],
@@ -687,6 +689,29 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("counts a ready PR whose checks failed as checks failed, not ready, and pulls the next one", async () => {
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					candidates: candidates(3, {c1: {state: "ready", branch: "b1", checksFailed: true}}),
+				}),
+			],
+			target: 1,
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		const {ready, awaitingChecks, checksFailed} = h.buffer.state();
+
+		expect({advanced: h.advanced, ready, awaitingChecks, checksFailed}).toStrictEqual({
+			advanced: ["a:c2"],
+			ready: [{project: "a", id: "c2", sha: paddedSha("c2"), landing: "pull-request"}],
+			awaitingChecks: [],
+			checksFailed: [{project: "a", id: "c1", sha: paddedSha("c1"), branch: "b1", landing: "pull-request"}],
+		});
+	});
+
 	it("pulls nothing for a project with local changes", async () => {
 		const h = harness({repos: () => [repo("dirty", {localChanges: true}), repo("clean")], gated: true});
 
@@ -922,6 +947,30 @@ describe("bufferRepoFromChildren with PR checks still running", () => {
 
 		expect({pullRequest: flagged("pull-request"), fastForward: flagged("fast-forward")}).toStrictEqual({
 			pullRequest: ["a", "b"],
+			fastForward: [],
+		});
+	});
+});
+
+describe("bufferRepoFromChildren with failed PR checks", () => {
+	it("flags a ready commit whose PR checks failed, only in a pull-request repo", () => {
+		const children = [
+			makeChild({sha: sha("a"), branch: "a", commitsBehind: 0, prNumber: 1, checkStatus: "failed"}),
+			makeChild({sha: sha("b"), branch: "b", commitsBehind: 0, prNumber: 2, checkStatus: "passed"}),
+			makeChild({sha: sha("c"), branch: "c", commitsBehind: 1, prNumber: 3, checkStatus: "failed"}),
+			makeChild({sha: sha("d"), branch: "d", commitsBehind: 0, checkStatus: "failed"}),
+		];
+		const flagged = (landing: "pull-request" | "fast-forward") =>
+			bufferRepoFromChildren(project("motlin/wip"), children, {
+				identity: null,
+				checkedOutBranches: [],
+				onHold: () => false,
+				override: () => undefined,
+				landing,
+			}).candidates.flatMap((c) => (c.checksFailed === true ? [[c.branch, c.checksPending === true]] : []));
+
+		expect({pullRequest: flagged("pull-request"), fastForward: flagged("fast-forward")}).toStrictEqual({
+			pullRequest: [["a", false]],
 			fastForward: [],
 		});
 	});

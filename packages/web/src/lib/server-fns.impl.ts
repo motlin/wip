@@ -882,6 +882,15 @@ async function pushPrBranch(dir: string, branch: string, env: Record<string, str
 	return push.exitCode === 0 ? null : `Failed to push ${branch} to origin: ${push.stderr}`;
 }
 
+/**
+ * The repo a project's PRs live in. A PR lands on <upstreamRemote>/<upstreamBranch>, so it opens in that
+ * remote's repo; with origin as the upstream remote that is origin itself, not the fork parent p.remote
+ * names. Open PR, Merge PR and auto-merge all address PRs here.
+ */
+function prRepo(p: Pick<ProjectInfo, "upstreamRemote" | "originRemote" | "remote">): string {
+	return p.upstreamRemote === "origin" ? p.originRemote : p.remote;
+}
+
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
@@ -950,17 +959,15 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				}
 			}
 
-			// The PR lands on <upstreamRemote>/<upstreamBranch>, so it opens in that remote's repo. With
-			// origin as the upstream remote that is origin itself, not the fork parent p.remote names.
-			const prRepo = p.upstreamRemote === "origin" ? p.originRemote : p.remote;
-			const [owner, name] = prRepo.split("/");
+			const repo = prRepo(p);
+			const [owner, name] = repo.split("/");
 			if (!owner || !name) {
-				return {ok: false, message: `Could not parse owner/repo from remote: ${prRepo}`};
+				return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
 			}
 
 			const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
 			// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
-			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(prRepo));
+			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(repo));
 			const result = await createPullRequest({
 				owner,
 				name,
@@ -978,7 +985,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				if (Number.isNaN(prNumber)) return {ok: true, message: `Opened ${result.prUrl}`, prUrl: result.prUrl};
 				const opened = {ok: true, prNumber, prUrl: result.prUrl};
 				if (!autoMerge) return {...opened, message: `Opened PR #${prNumber}`};
-				const enabled = await enableAutoMerge({...p, remote: prRepo}, prNumber, env);
+				const enabled = await enableAutoMerge(p, prNumber, env);
 				return enabled === null
 					? {
 							...opened,
@@ -1374,7 +1381,7 @@ async function enableAutoMerge(p: ProjectInfo, prNumber: number, env: Record<str
 	const {execa} = await import("execa");
 	const result = await execa(
 		"gh",
-		["pr", "merge", String(prNumber), "--squash", "--delete-branch", "--auto", "-R", p.remote],
+		["pr", "merge", String(prNumber), "--squash", "--delete-branch", "--auto", "-R", prRepo(p)],
 		{reject: false, cwd: p.dir, env},
 	);
 	if (result.exitCode !== 0) return result.stderr.trim() || `gh exited ${result.exitCode}`;
@@ -1385,6 +1392,7 @@ async function enableAutoMerge(p: ProjectInfo, prNumber: number, env: Record<str
 export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> {
 	return tracedAction("mergePr", async () => {
 		const p = await resolveProject(data.project);
+		const repo = prRepo(p);
 		return runQueuedAction(data.project, {label: "mergePr", target: `PR #${data.prNumber}`}, async () => {
 			const {execa} = await import("execa");
 			const env = await getMiseEnv(p.dir);
@@ -1395,14 +1403,14 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 							ok: true,
 							message: `PR #${data.prNumber} will merge itself when its checks pass`,
 							prNumber: data.prNumber,
-							prUrl: `https://github.com/${p.remote}/pull/${data.prNumber}`,
+							prUrl: `https://github.com/${repo}/pull/${data.prNumber}`,
 							autoMerge: true,
 						}
 					: {ok: false, message: `Couldn't turn on auto-merge: ${refused}`};
 			}
 			const result = await execa(
 				"gh",
-				["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", p.remote],
+				["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", repo],
 				{reject: false, cwd: p.dir, env},
 			);
 
@@ -1413,7 +1421,7 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 					ok: true,
 					message: `Merged PR #${data.prNumber}`,
 					prNumber: data.prNumber,
-					prUrl: `https://github.com/${p.remote}/pull/${data.prNumber}`,
+					prUrl: `https://github.com/${repo}/pull/${data.prNumber}`,
 				};
 			}
 

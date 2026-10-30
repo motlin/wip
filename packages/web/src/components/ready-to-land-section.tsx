@@ -137,10 +137,12 @@ function ActionOutcomeLine({
 	outcome,
 	onDismiss,
 	prefix,
+	suffix,
 }: {
 	outcome: ActionOutcome | undefined;
 	onDismiss?: (() => void) | undefined;
 	prefix?: string;
+	suffix?: string;
 }) {
 	if (outcome === undefined) return null;
 	const link = outcome.status === "running" ? undefined : outcome.link;
@@ -153,6 +155,7 @@ function ActionOutcomeLine({
 			<span className="font-medium">
 				{prefix}
 				{outcome.message}
+				{suffix}
 			</span>
 			{outcome.status === "failure" && outcome.detail !== undefined && (
 				<span className="min-w-0 break-words text-text-300">{outcome.detail}</span>
@@ -641,12 +644,23 @@ export function ReadyToLandSection({
 	if (!state) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
 	// A PR whose checks still run shows only when it merges itself or can be told to; see readyRowView.
-	const rows = landingOrder([...state.ready, ...(state.awaitingChecks ?? [])]).flatMap((item) => {
+	const ordered = landingOrder([...state.ready, ...(state.awaitingChecks ?? [])]).map((item) => {
 		const commit = byKey.get(`${item.project}:${item.sha}`);
-		const view = readyRowView(item, commit);
-		return view === "hidden" ? [] : [{item, commit, view}];
+		return {item, commit, view: readyRowView(item, commit)};
 	});
-	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0) {
+	const rows = ordered.flatMap((row) => (row.view === "hidden" ? [] : [{...row, view: row.view}]));
+	// A hidden row's outcome (Open PR's link) stays as a line of its own until the row returns.
+	const hiddenOutcomes = ordered.flatMap(({item, view}) => {
+		const key = landOutcomeKey(item.project, item.sha);
+		return view === "hidden" && outcomes[key] !== undefined ? [{item, key}] : [];
+	});
+	if (
+		rows.length === 0 &&
+		hiddenOutcomes.length === 0 &&
+		state.inFlight.length === 0 &&
+		pushes.length === 0 &&
+		leftPushes.length === 0
+	) {
 		return null;
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
@@ -697,6 +711,16 @@ export function ReadyToLandSection({
 						/>
 					);
 				})}
+				{hiddenOutcomes.map(({item, key}) => (
+					<li key={key} data-testid="ready-to-land-outcome" className="px-1 text-xs">
+						<ActionOutcomeLine
+							outcome={outcomes[key]}
+							onDismiss={dismiss(key)}
+							prefix={`${item.project}: `}
+							suffix={outcomes[key]?.status === "success" ? " · waiting for checks" : undefined}
+						/>
+					</li>
+				))}
 			</ul>
 			{(pushes.length > 0 || leftPushes.length > 0) && (
 				<div data-testid="push-main-group" className="mt-3 border-t border-border-300/50 pt-2">

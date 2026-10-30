@@ -323,6 +323,28 @@ describe("other channels", () => {
 		});
 	});
 
+	it("keeps a landing outcome while its row only awaits checks", () => {
+		const waiting = "3".repeat(40);
+		const opened = {
+			status: "success",
+			message: "Opened PR #12",
+			link: {href: "https://github.com/owner/repo/pull/12", label: "View on GitHub"},
+		};
+		queryClient.setQueryData(["actionOutcomes"], {[`land:a:${waiting}`]: opened});
+		applier.apply({
+			channel: "ready-buffer",
+			data: {
+				slots: 2,
+				ready: [],
+				awaitingChecks: [{project: "a", id: "p3", sha: waiting}],
+				inFlight: [],
+				next: [],
+				stoppedProjects: [],
+			},
+		});
+		expect(queryClient.getQueryData(["actionOutcomes"])).toStrictEqual({[`land:a:${waiting}`]: opened});
+	});
+
 	it("writes refreshed issues and project items straight into the cache", () => {
 		const issue = {
 			number: 3,

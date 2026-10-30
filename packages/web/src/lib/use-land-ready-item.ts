@@ -56,7 +56,7 @@ async function runWithOutcome(
 
 /**
  * Runs a ready commit's landing action (merge PR, open PR or fast-forward local main), keeping its
- * outcome on the row and toasting the result.
+ * outcome on the row and toasting the result. Open PR opens the new PR in a new tab.
  */
 export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResult | undefined) => void {
 	const queryClient = useQueryClient();
@@ -64,6 +64,9 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 		(item: ReadyToLandItem, commit: GitChildResult | undefined) => {
 			const action = landingAction(item, commit);
 			if (action === null) return;
+			// Opened inside the confirm click so popup blockers allow it; it goes to the PR once it exists.
+			const tab = action.kind === "open-pr" ? window.open("", "_blank") : null;
+			if (tab !== null) tab.opener = null;
 			const landing = async () =>
 				action.kind === "merge-pr"
 					? mergePr({data: {project: item.project, prNumber: action.prNumber, autoMerge: action.autoMerge}})
@@ -86,6 +89,10 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 				landing,
 			).then((result) => {
 				const {prNumber, prUrl} = result;
+				if (tab !== null) {
+					if (result.ok && prUrl !== undefined) tab.location.href = prUrl;
+					else tab.close();
+				}
 				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {
 					// Its checks have not reported yet: without a refetch the row leaves Ready to land (or
 					// shows as merging when auto-merge is on), and returns as Merge PR once they pass.

@@ -594,9 +594,13 @@ export const LandFastForwardInputSchema = z.object({
 });
 export type LandFastForwardInput = z.infer<typeof LandFastForwardInputSchema>;
 
-/** Push local `<upstreamBranch>` to `<upstreamRemote>/<upstreamBranch>`, never forced; user-initiated only. */
+/**
+ * Push the green prefix of local `<upstreamBranch>`: `sha` (its last green commit) to
+ * `<upstreamRemote>/<upstreamBranch>`, never forced; user-initiated only.
+ */
 export const PushUpstreamBranchInputSchema = z.object({
 	project: z.string(),
+	sha: shaSchema,
 });
 export type PushUpstreamBranchInput = z.infer<typeof PushUpstreamBranchInputSchema>;
 

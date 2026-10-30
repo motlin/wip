@@ -3,7 +3,7 @@ import type {ReactNode} from "react";
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {cleanup, fireEvent, render, screen, within} from "@testing-library/react";
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
-import type {GitChildResult, ProjectInfo} from "@wip/shared";
+import type {GitChildResult, MainPush, ProjectInfo} from "@wip/shared";
 import {makeChild} from "../lib/test-factories";
 import {billingCheckCandidates, ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
 
@@ -361,58 +361,104 @@ describe("ReadyToLandSection", () => {
 	});
 });
 
-describe("ReadyToLandSection push", () => {
+describe("ReadyToLandSection push main", () => {
 	afterEach(() => {
 		cleanup();
 	});
 
-	const forwarded = [
-		makeChild({project: "a", sha: sha("a1"), subject: "Add parser", onLocalMain: true}),
-		makeChild({project: "a", sha: sha("a2"), subject: "Use parser", onLocalMain: true}),
-		makeChild({project: "b", sha: sha("b1"), subject: "Not forwarded"}),
-	];
 	const empty: ReadyToLandState = {slots: 3, ready: [], inFlight: [], next: [], stoppedProjects: []};
+	const kalshi: MainPush = {
+		project: "kalshi",
+		remote: "origin",
+		branch: "main",
+		diverged: false,
+		commits: [
+			{sha: sha("k1"), subject: "Add parser", status: "good"},
+			{sha: sha("k2"), subject: "Use parser", status: "good"},
+			{sha: sha("k3"), subject: "Wire parser", status: "good"},
+			{sha: sha("k4"), subject: "Polish parser", status: "unknown"},
+			{sha: sha("k5"), subject: "Break parser", status: "bad"},
+		],
+		testing: sha("k4"),
+	};
 
-	it("offers a separate Push main to its remote when local main is ahead, naming the commits it pushes", () => {
-		const onPush = vi.fn<(project: ProjectInfo) => void>();
-		render(
-			<ReadyToLandSection
-				state={empty}
-				commits={forwarded}
-				projects={[project("a"), project("b")]}
-				now={now}
-				onLand={() => undefined}
-				onPush={onPush}
-			/>,
-		);
+	function renderPushes(mainPushes: MainPush[], onPush = vi.fn<(push: MainPush, sha: string) => void>()) {
+		return {
+			onPush,
+			...render(
+				<ReadyToLandSection
+					state={{...empty, ready: [{project: "a", id: "pa1", sha: sha("a1"), landing: "fast-forward"}]}}
+					commits={commits}
+					projects={[project("a")]}
+					now={now}
+					onLand={() => undefined}
+					mainPushes={mainPushes}
+					onPush={onPush}
+				/>,
+			),
+		};
+	}
 
+	it("offers to push exactly the green prefix, after the commit rows, naming the commits and the sha it pushes", () => {
+		const {onPush} = renderPushes([kalshi]);
+
+		const list = screen.getByTestId("ready-to-land-heading").parentElement!;
+		const order = [...list.querySelectorAll("[data-testid]")]
+			.map((el) => el.getAttribute("data-testid"))
+			.filter((id) => id === "ready-to-land-row" || id === "push-main-group");
 		const rows = screen.getAllByTestId("push-row").map((row) => row.textContent);
-		fireEvent.click(screen.getByRole("button", {name: "Push main to upstream"}));
+		fireEvent.click(screen.getByRole("button", {name: "Push 3 green commits to origin/main"}));
 		const prompt = screen.getByTestId("push-confirm").textContent;
 		const pushedBeforeConfirm = [...onPush.mock.calls];
 		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
 
-		expect({rows, prompt, pushedBeforeConfirm, pushed: onPush.mock.calls}).toStrictEqual({
-			rows: ["a: local main is 2 commits ahead of upstream/mainPush main to upstream"],
-			prompt: 'Push main to upstream/main in a: "Add parser" (a100000), "Use parser" (a200000).ConfirmCancel',
+		expect({order, rows, prompt, pushedBeforeConfirm, pushed: onPush.mock.calls}).toStrictEqual({
+			order: ["ready-to-land-row", "push-main-group"],
+			rows: [
+				"kalshi: 3 of 5 unpushed commits on main are green · testing k400000" +
+					"Push 3 green commits to origin/main" +
+					'Not pushed: "Polish parser" (k400000) unknown, "Break parser" (k500000) red',
+			],
+			prompt:
+				'Push 3 green commits to origin/main in kalshi: "Add parser" (k100000), "Use parser" (k200000), ' +
+				'"Wire parser" (k300000). Pushes k300000:refs/heads/main, never forced.ConfirmCancel',
 			pushedBeforeConfirm: [],
-			pushed: [[project("a")]],
+			pushed: [[kalshi, sha("k3")]],
 		});
 	});
 
-	it("offers no push when local main is not ahead", () => {
-		const {container} = render(
-			<ReadyToLandSection
-				state={empty}
-				commits={[forwarded[2]!]}
-				projects={[project("b")]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
+	it("explains a diverged local main with no push button", () => {
+		renderPushes([{project: "kalshi", remote: "origin", branch: "main", diverged: true, commits: []}]);
 
-		expect(container.innerHTML).toBe("");
+		expect({
+			rows: screen.getAllByTestId("push-row").map((row) => row.textContent),
+			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
+		}).toStrictEqual({
+			rows: ["kalshi: local main has diverged from origin/main; rebase first"],
+			buttons: 0,
+		});
+	});
+
+	it("shows a repo with no green commits only while a test is running, without a push button", () => {
+		const unknownHead = {sha: sha("u1"), subject: "Untested", status: "unknown" as const};
+		const idle: MainPush = {
+			project: "idle",
+			remote: "origin",
+			branch: "main",
+			diverged: false,
+			commits: [unknownHead],
+		};
+		renderPushes([idle, {...idle, project: "busy", testing: sha("u1")}]);
+
+		expect({
+			rows: screen.getAllByTestId("push-row").map((row) => row.textContent),
+			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
+		}).toStrictEqual({
+			rows: [
+				'busy: 0 of 1 unpushed commits on main are green · testing u100000Not pushed: "Untested" (u100000) unknown',
+			],
+			buttons: 0,
+		});
 	});
 });
 

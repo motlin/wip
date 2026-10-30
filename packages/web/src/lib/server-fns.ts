@@ -45,6 +45,7 @@ import type {
 } from "@wip/shared";
 import type {ActionResult, SnoozedChild, TaskQueueJob} from "@wip/shared/schemas.js";
 import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import type {MainPush} from "@wip/shared/main-push.js";
 import type {FlowMetrics} from "@wip/shared/flow-metrics.js";
 import type {FlowHistory} from "@wip/shared/flow-history.js";
 import {EscapeHatchRecipeSchema} from "./escape-hatch.js";
@@ -121,6 +122,11 @@ export const getFlowHistory = createServerFn({method: "GET"}).handler(async (): 
 export const getReadyToLand = createServerFn({method: "GET"}).handler(async (): Promise<ReadyToLandState | null> =>
 	(await serverFns()).getReadyToLandHandler(),
 );
+
+/** Push main rows: projects whose local main is ahead of the upstream branch (or just `project`). */
+export const getMainPushes = createServerFn({method: "GET"})
+	.validator((input: unknown) => z.object({project: z.string().optional()}).parse(input ?? {}))
+	.handler(async ({data}): Promise<MainPush[]> => (await serverFns()).getMainPushesHandler(data));
 
 export const topUpReadyBuffer = createServerFn({method: "POST"}).handler(async (): Promise<{running: boolean}> =>
 	(await serverFns()).topUpReadyBufferHandler(),

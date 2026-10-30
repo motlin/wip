@@ -6,6 +6,7 @@ import {runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
 import {
 	flowMetricsQueryOptions,
+	mainPushesQueryOptions,
 	projectsQueryOptions,
 	readyToLandQueryOptions,
 	systemStatusQueryOptions,
@@ -64,6 +65,7 @@ function QueueLayout() {
 	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
 	const {data: flowMetrics} = useQuery(flowMetricsQueryOptions());
 	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
+	const {data: mainPushes} = useQuery(mainPushesQueryOptions());
 	// Ages come from the client clock, set after mount so hydration matches the server render.
 	const [now, setNow] = useState<number | null>(null);
 	useEffect(() => {
@@ -351,6 +353,7 @@ function QueueLayout() {
 						projects={projects}
 						now={now}
 						onLand={land}
+						mainPushes={mainPushes}
 						onPush={push}
 						actionsBlocked={actionsBlocked}
 						onLandByPushing={landByPushing}

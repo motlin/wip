@@ -114,9 +114,12 @@ const toastText = (): string | null => screen.queryByLabelText("Notifications")?
 describe("landing outcomes outlive their toasts", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
+		// jsdom has no window.open; a browser that blocks the popup returns null too.
+		vi.spyOn(window, "open").mockReturnValue(null);
 	});
 
 	afterEach(() => {
+		vi.mocked(window.open).mockRestore();
 		cleanup();
 		clearToasts();
 		vi.useRealTimers();
@@ -173,7 +176,7 @@ describe("landing outcomes outlive their toasts", () => {
 		});
 	});
 
-	it("keeps Open PR's result as its own line in Ready to land while the row hides for pending checks in a repo without auto-merge", async () => {
+	it("turns the row into a waiting row linking to the new PR while its checks run in a repo without auto-merge", async () => {
 		serverFns.createPr.mockResolvedValue({
 			ok: true,
 			message: "Opened PR #12",
@@ -190,20 +193,77 @@ describe("landing outcomes outlive their toasts", () => {
 		act(() => {
 			vi.advanceTimersByTime(30_000);
 		});
+		const waiting = screen.getByTestId("waiting-row");
 
 		expect({
 			toast: toastText(),
 			rows: screen.queryAllByTestId("ready-to-land-row").length,
+			waiting: waiting.textContent,
+			link: within(waiting).getByRole("link", {name: "PR #12"}).getAttribute("href"),
 			outcome: outcomeText(),
-			link: within(screen.getByTestId("action-outcome"))
-				.getByRole("link", {name: "View on GitHub"})
-				.getAttribute("href"),
 		}).toStrictEqual({
 			toast: null,
 			rows: 0,
-			outcome: "plain: Opened PR #12 · waiting for checksView on GitHubDismiss",
+			waiting: "Add parser · plain · PR #12 · waiting for checksOpened PR #12View on GitHubDismiss",
 			link: "https://github.com/motlin/plain/pull/12",
+			outcome: "Opened PR #12View on GitHubDismiss",
 		});
+	});
+
+	it("opens a tab in the confirm click and sends it to the new PR once it opens", async () => {
+		const tab = {location: {href: ""}, opener: {} as unknown, close: vi.fn<() => void>()};
+		const open = vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
+		let finish: ((result: ActionResult) => void) | undefined;
+		serverFns.createPr.mockImplementation(
+			async () =>
+				new Promise<ActionResult>((resolve) => {
+					finish = resolve;
+				}),
+		);
+		renderHarness();
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+		const openedInClick = open.mock.calls;
+		const hrefBefore = tab.location.href;
+		await act(async () => {
+			finish?.({
+				ok: true,
+				message: "Opened PR #12",
+				prNumber: 12,
+				prUrl: "https://github.com/motlin/plain/pull/12",
+			});
+			await Promise.resolve();
+		});
+
+		expect({
+			openedInClick,
+			hrefBefore,
+			href: tab.location.href,
+			opener: tab.opener,
+			closed: tab.close.mock.calls.length,
+		}).toStrictEqual({
+			openedInClick: [["", "_blank"]],
+			hrefBefore: "",
+			href: "https://github.com/motlin/plain/pull/12",
+			opener: null,
+			closed: 0,
+		});
+	});
+
+	it("closes the tab it opened when Open PR fails", async () => {
+		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
+		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
+		serverFns.createPr.mockResolvedValue({ok: false, message: "base branch main does not exist on origin"});
+		renderHarness();
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+		await act(async () => {
+			await Promise.resolve();
+		});
+
+		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({href: "", closed: 1});
 	});
 
 	it("keeps an Open PR failure and its log link on the row after the toast expires, with the button to retry", async () => {

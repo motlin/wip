@@ -28,8 +28,8 @@ export const ReadyToLandStateSchema = z.object({
 	ready: z.array(ReadyToLandItemSchema),
 	/**
 	 * Otherwise ready pull-request items whose PR checks are still running: not counted toward the
-	 * ready target, so the buffer keeps pulling. The section shows them only as merging (auto-merge on)
-	 * or as Merge PR where the repo allows auto-merge.
+	 * ready target, so the buffer keeps pulling. The section shows each as a waiting row linking to its PR,
+	 * or as Merge PR where the repo allows auto-merge and it is not on yet.
 	 */
 	awaitingChecks: z.array(ReadyToLandItemSchema).optional(),
 	inFlight: z.array(ReadyToLandItemSchema),
@@ -79,19 +79,18 @@ export function prChecksPending(commit: PrChecks): boolean {
 }
 
 /**
- * How a ready row shows while its PR checks run: `merging` once auto-merge is on (GitHub merges it
- * itself, so no button), `land` where the repo allows auto-merge (Merge PR turns it on), and
- * `hidden` otherwise, since nothing can land until the checks pass. Every other row lands.
+ * How a ready row shows while its PR checks run: `waiting` (a compact row linking to its PR, no
+ * button) unless the repo allows auto-merge and it is not on yet, where Merge PR turns it on. Every
+ * other row lands. A waiting row does not count toward the ready target.
  */
-export type ReadyRowView = "land" | "merging" | "hidden";
+export type ReadyRowView = "land" | "waiting";
 
 export function readyRowView(
 	item: Pick<ReadyToLandItem, "landing">,
 	commit: (PrChecks & Pick<GitChildResult, "autoMerge" | "autoMergeAllowed">) | undefined,
 ): ReadyRowView {
 	if (item.landing !== "pull-request" || commit === undefined || !prChecksPending(commit)) return "land";
-	if (commit.autoMerge === true) return "merging";
-	return commit.autoMergeAllowed === true ? "land" : "hidden";
+	return commit.autoMerge !== true && commit.autoMergeAllowed === true ? "land" : "waiting";
 }
 
 /**

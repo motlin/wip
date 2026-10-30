@@ -250,6 +250,25 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
+	it("holds a fixed-height Loading placeholder until the buffer state has loaded", () => {
+		render(
+			<ReadyToLandSection
+				state={undefined}
+				commits={[]}
+				projects={[]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+		const placeholder = screen.getByTestId("ready-to-land-loading");
+
+		expect({text: placeholder.textContent, fixedHeight: placeholder.classList.contains("h-24")}).toStrictEqual({
+			text: "Ready to landLoading…",
+			fixedHeight: true,
+		});
+	});
+
 	it("disables landing in a stopped project, with the reason, except for the commit that fixes the red upstream", () => {
 		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
 		render(
@@ -358,6 +377,65 @@ describe("ReadyToLandSection", () => {
 			],
 			prLink: [["PR #7", "https://github.com/motlin/red/pull/7"]],
 			landed: [],
+		});
+	});
+});
+
+function renderOpenPrRow() {
+	render(
+		<ReadyToLandSection
+			state={state}
+			commits={commits}
+			projects={[project("a"), project("red"), project("plain", false)]}
+			now={now}
+			onLand={() => undefined}
+			onPush={() => undefined}
+		/>,
+	);
+	const button = screen.getByRole("button", {name: "Open PR"});
+	const row = button.closest("li")!;
+	return {button, row};
+}
+
+describe("ReadyToLandSection landing overlay", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("opens the confirm in an overlay anchored to the row's button, leaving the row's layout unchanged", () => {
+		const {button, row} = renderOpenPrRow();
+		const before = [...row.children].map((child) => child.tagName);
+		fireEvent.click(button);
+		const dialog = screen.getByRole("dialog", {name: "Confirm landing"});
+
+		expect({
+			after: [...row.children].map((child) => child.tagName),
+			positioned: dialog.classList.contains("absolute"),
+			anchored: dialog.parentElement?.contains(button),
+			anchorRelative: dialog.parentElement?.classList.contains("relative"),
+			confirm: dialog.contains(screen.getByTestId("land-confirm")),
+		}).toStrictEqual({
+			after: before,
+			positioned: true,
+			anchored: true,
+			anchorRelative: true,
+			confirm: true,
+		});
+	});
+
+	it("closes the confirm on Escape and on a click outside", () => {
+		const {button} = renderOpenPrRow();
+		fireEvent.click(button);
+		fireEvent.keyDown(document, {key: "Escape"});
+		const afterEscape = screen.queryByRole("dialog");
+		fireEvent.click(button);
+		const reopened = screen.queryByRole("dialog") !== null;
+		fireEvent.mouseDown(document.body);
+
+		expect({afterEscape, reopened, afterOutside: screen.queryByRole("dialog")}).toStrictEqual({
+			afterEscape: null,
+			reopened: true,
+			afterOutside: null,
 		});
 	});
 });
@@ -646,29 +724,42 @@ describe("ReadyToLandSection while PR checks run", () => {
 		);
 	}
 
-	it("leaves out a PR whose checks are pending without auto-merge, and shows one with auto-merge on as merging, with no button", () => {
+	it("shows every PR whose checks are pending as a compact waiting row linking to the PR, with no button, whether or not auto-merge is on", () => {
 		renderChecks();
+		const waiting = screen.getAllByTestId("waiting-row");
 
 		expect({
 			heading: screen.getByTestId("ready-to-land-heading").textContent,
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
-			merging: links(screen.getByTestId("merging-row")),
+			waiting: waiting.map((row) => row.textContent),
+			links: waiting.map(links),
+			targets: waiting.map((row) => within(row).getByRole("link", {name: /^PR #/}).getAttribute("target")),
 			buttons: screen.getAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
 			heading: "Ready to land2 ready (target 3) · 0 readying",
 			rows: ["GreenprPR #5ReviewMerge PR #5", "AllowedprPR #4ReviewMerge PR #4"],
-			merging: [
-				["Merging", `/item/pr/${sha("m1")}`],
-				["PR #1", prUrl(1)],
+			waiting: [
+				"Waiting · pr · PR #2 · waiting for checks",
+				"Merging · pr · PR #1 · waiting for checks, merges itself when they pass",
+				"Not reported · pr · PR #3 · waiting for checks",
 			],
+			links: [
+				[
+					["Waiting", `/item/pr/${sha("w1")}`],
+					["PR #2", prUrl(2)],
+				],
+				[
+					["Merging", `/item/pr/${sha("m1")}`],
+					["PR #1", prUrl(1)],
+				],
+				[
+					["Not reported", `/item/pr/${sha("n1")}`],
+					["PR #3", prUrl(3)],
+				],
+			],
+			targets: ["_blank", "_blank", "_blank"],
 			buttons: ["Merge PR #5", "Merge PR #4"],
 		});
-	});
-
-	it("names the merging row in plain words", () => {
-		renderChecks();
-
-		expect(screen.getByTestId("merging-row").textContent).toBe("MergingprPR #1Merging when checks pass");
 	});
 
 	it("says Merge PR on running checks in an auto-merge repo merges itself when they pass", () => {
@@ -828,9 +919,14 @@ describe("ReadyToLandSection action outcomes", () => {
 			},
 		});
 		const view = outcomeView();
+		const inDialog = screen.getByRole("dialog").contains(screen.getByTestId("action-outcome"));
+		fireEvent.mouseDown(document.body);
+		const afterOutside = screen.queryByTestId("action-outcome") !== null;
 		fireEvent.click(screen.getByRole("button", {name: "Dismiss"}));
 
-		expect({view, dismissed: onDismissOutcome.mock.calls}).toStrictEqual({
+		expect({view, inDialog, afterOutside, dismissed: onDismissOutcome.mock.calls}).toStrictEqual({
+			inDialog: true,
+			afterOutside: true,
 			view: {
 				text: "Open PR failedbase branch main does not exist on originSee the logDismiss",
 				links: [["See the log", "/debug/logs"]],

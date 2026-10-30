@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useEffect, useRef, useState, type ReactNode} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {
@@ -137,25 +137,24 @@ function ActionOutcomeLine({
 	outcome,
 	onDismiss,
 	prefix,
-	suffix,
+	className = "mt-2",
 }: {
 	outcome: ActionOutcome | undefined;
 	onDismiss?: (() => void) | undefined;
 	prefix?: string;
-	suffix?: string;
+	className?: string;
 }) {
 	if (outcome === undefined) return null;
 	const link = outcome.status === "running" ? undefined : outcome.link;
 	return (
 		<output
 			data-testid="action-outcome"
-			className={`mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ${OUTCOME_STYLES[outcome.status]}`}
+			className={`${className} flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs ${OUTCOME_STYLES[outcome.status]}`}
 		>
 			{outcome.status === "running" && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
 			<span className="font-medium">
 				{prefix}
 				{outcome.message}
-				{suffix}
 			</span>
 			{outcome.status === "failure" && outcome.detail !== undefined && (
 				<span className="min-w-0 break-words text-text-300">{outcome.detail}</span>
@@ -178,6 +177,94 @@ function ActionOutcomeLine({
 	);
 }
 
+/**
+ * An overlay anchored to a row's action button (absolutely positioned, so opening it, its progress
+ * and its result never change the row's height or move the page). Escape closes it when `onClose`
+ * is set; a click outside closes it too when `closeOnOutside` is set.
+ */
+function ActionPopover({
+	label,
+	onClose,
+	closeOnOutside = false,
+	children,
+}: {
+	label: string;
+	onClose?: (() => void) | undefined;
+	closeOnOutside?: boolean;
+	children: ReactNode;
+}) {
+	const ref = useRef<HTMLDialogElement>(null);
+	useEffect(() => {
+		if (onClose === undefined) return undefined;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") onClose();
+		};
+		const onMouseDown = (event: MouseEvent) => {
+			const inside = event.target instanceof Node && ref.current?.contains(event.target) === true;
+			if (closeOnOutside && !inside) onClose();
+		};
+		document.addEventListener("keydown", onKeyDown);
+		document.addEventListener("mousedown", onMouseDown);
+		return () => {
+			document.removeEventListener("keydown", onKeyDown);
+			document.removeEventListener("mousedown", onMouseDown);
+		};
+	}, [onClose, closeOnOutside]);
+	return (
+		// A non-modal <dialog open>: the UA centers it, so the anchor's corner is set explicitly.
+		<dialog
+			ref={ref}
+			open
+			aria-label={label}
+			className="absolute left-auto right-0 top-full z-20 m-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border-300 bg-bg-000 px-3 py-2 text-left text-xs font-normal text-text-100 shadow-lg"
+		>
+			{children}
+		</dialog>
+	);
+}
+
+/**
+ * A row's action and the overlay it opens: the confirm while confirming, otherwise the latest
+ * outcome (in progress until it finishes; a success closes on Escape or a click outside; a failure
+ * stays, with its log, until dismissed).
+ */
+function ActionSlot({
+	children,
+	confirm,
+	confirmLabel,
+	onCancel,
+	outcome,
+	onDismissOutcome,
+}: {
+	children?: ReactNode;
+	confirm?: ReactNode;
+	confirmLabel?: string;
+	onCancel?: () => void;
+	outcome: ActionOutcome | undefined;
+	onDismissOutcome: (() => void) | undefined;
+}) {
+	return (
+		<div className="relative flex shrink-0 items-center">
+			{children}
+			{confirm !== undefined && confirm !== null ? (
+				<ActionPopover label={confirmLabel ?? "Confirm"} onClose={onCancel} closeOnOutside>
+					{confirm}
+				</ActionPopover>
+			) : (
+				outcome !== undefined && (
+					<ActionPopover
+						label="Action result"
+						onClose={outcome.status === "success" ? onDismissOutcome : undefined}
+						closeOnOutside={outcome.status === "success"}
+					>
+						<ActionOutcomeLine outcome={outcome} onDismiss={onDismissOutcome} className="" />
+					</ActionPopover>
+				)
+			)}
+		</div>
+	);
+}
+
 interface LandControlProps {
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
@@ -189,69 +276,80 @@ interface LandControlProps {
 	onDismissOutcome?: (() => void) | undefined;
 }
 
-/** The landing button plus the confirm it opens; nothing lands until the user confirms. */
-function useLandControl({item, commit, projectInfo, blockedReason, onLand, outcome}: LandControlProps) {
+/**
+ * The landing button plus the overlay it opens (the confirm, then the outcome); nothing lands until
+ * the user confirms.
+ */
+function useLandControl({
+	item,
+	commit,
+	projectInfo,
+	blockedReason,
+	onLand,
+	outcome,
+	onDismissOutcome,
+}: LandControlProps): ReactNode {
 	const running = outcome?.status === "running";
 	const [confirming, setConfirming] = useState(false);
 	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
 	// An Open PR the server would refuse is never offered: the row says why instead.
 	const refusal =
 		landing?.kind === "open-pr" ? openPrRefusal(landing.branch, projectInfo?.upstreamBranch ?? "main") : null;
-	const action = refusal === null ? landing : null;
-	const button =
-		refusal === null ? (
-			action === null ? null : (
+	if (refusal !== null) return <span className="text-xs text-text-300">{refusal}</span>;
+	if (landing === null) return null;
+	const confirm = confirming ? (
+		<div data-testid="land-confirm" className="flex flex-col gap-2">
+			<p>
+				<LandingPrompt action={landing} item={item} commit={commit} projectInfo={projectInfo} />
+			</p>
+			<div className="flex justify-end gap-2">
 				<button
 					type="button"
 					disabled={blockedReason !== null || running}
-					title={blockedReason ?? undefined}
-					aria-expanded={confirming}
 					onClick={() => {
-						setConfirming(true);
+						setConfirming(false);
+						onLand(item, commit);
 					}}
-					className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+					className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90 disabled:opacity-40"
 				>
-					{action.label}
+					Confirm
 				</button>
-			)
-		) : (
-			<span className="text-xs text-text-300">{refusal}</span>
-		);
-	const confirm =
-		action === null || !confirming ? null : (
-			<div
-				data-testid="land-confirm"
-				aria-label="Confirm landing"
-				className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-status-green/40 bg-status-green/5 px-3 py-2 text-xs text-text-100"
-			>
-				<p className="min-w-0 flex-1 basis-60">
-					<LandingPrompt action={action} item={item} commit={commit} projectInfo={projectInfo} />
-				</p>
-				<div className="flex gap-2">
-					<button
-						type="button"
-						disabled={blockedReason !== null || running}
-						onClick={() => {
-							setConfirming(false);
-							onLand(item, commit);
-						}}
-						className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90 disabled:opacity-40"
-					>
-						Confirm
-					</button>
-					<button
-						type="button"
-						onClick={() => {
-							setConfirming(false);
-						}}
-						className={CANCEL_CLASS}
-					>
-						Cancel
-					</button>
-				</div>
+				<button
+					type="button"
+					onClick={() => {
+						setConfirming(false);
+					}}
+					className={CANCEL_CLASS}
+				>
+					Cancel
+				</button>
 			</div>
-		);
-	return {button, confirm};
+		</div>
+	) : null;
+	return (
+		<ActionSlot
+			confirm={confirm}
+			confirmLabel="Confirm landing"
+			onCancel={() => {
+				setConfirming(false);
+			}}
+			outcome={outcome}
+			onDismissOutcome={onDismissOutcome}
+		>
+			<button
+				type="button"
+				disabled={blockedReason !== null || running}
+				title={blockedReason ?? undefined}
+				aria-expanded={confirming}
+				onClick={() => {
+					setConfirming(true);
+				}}
+				className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+			>
+				{landing.label}
+			</button>
+		</ActionSlot>
+	);
 }
 
 /**
@@ -351,7 +449,7 @@ interface ReadyRowProps extends LandControlProps {
 
 function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRowProps) {
 	const {item, commit} = land;
-	const {button, confirm} = useLandControl(land);
+	const action = useLandControl(land);
 	const size = sizeText(commit);
 	const params = {project: item.project, sha: item.sha};
 	const hasChips =
@@ -416,7 +514,7 @@ function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRo
 					<Link to="/diff/$project/$sha" params={params} className={REVIEW_CLASS}>
 						Review
 					</Link>
-					{button}
+					{action}
 				</div>
 			</div>
 			{onLandByPushing !== undefined && (
@@ -426,8 +524,6 @@ function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRo
 					onLandByPushing={onLandByPushing}
 				/>
 			)}
-			{confirm}
-			<ActionOutcomeLine outcome={land.outcome} onDismiss={land.onDismissOutcome} />
 		</li>
 	);
 }
@@ -496,6 +592,37 @@ function PushRow({
 	const {green, rest} = greenPrefix(push.commits);
 	const last = green.at(-1);
 	const label = `Push ${green.length} green ${green.length === 1 ? "commit" : "commits"} to ${target}`;
+	const confirm =
+		confirming && last !== undefined ? (
+			<div data-testid="push-confirm" className="flex flex-col gap-2">
+				<p>
+					{label} in {project}: {green.map(commitLabel).join(", ")}. Pushes {last.sha.slice(0, 7)}
+					:refs/heads/{branch}, never forced.
+				</p>
+				<div className="flex justify-end gap-2">
+					<button
+						type="button"
+						disabled={outcome?.status === "running"}
+						onClick={() => {
+							setConfirming(false);
+							onPush(push, last.sha);
+						}}
+						className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90"
+					>
+						Confirm
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							setConfirming(false);
+						}}
+						className={CANCEL_CLASS}
+					>
+						Cancel
+					</button>
+				</div>
+			</div>
+		) : null;
 	return (
 		<li data-testid="push-row" className="px-1 py-1 text-xs">
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -503,56 +630,33 @@ function PushRow({
 					{project}: {green.length} of {push.commits.length} unpushed commits on {branch} are green
 					{push.testing !== undefined && ` · testing ${push.testing.slice(0, 7)}`}
 				</span>
-				{last !== undefined && (
-					<button
-						type="button"
-						disabled={outcome?.status === "running"}
-						aria-expanded={confirming}
-						onClick={() => {
-							setConfirming(true);
+				<div className="ml-auto">
+					<ActionSlot
+						confirm={confirm}
+						confirmLabel="Confirm push"
+						onCancel={() => {
+							setConfirming(false);
 						}}
-						className="ml-auto rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+						outcome={outcome}
+						onDismissOutcome={onDismissOutcome}
 					>
-						{label}
-					</button>
-				)}
+						{last !== undefined && (
+							<button
+								type="button"
+								disabled={outcome?.status === "running"}
+								aria-expanded={confirming}
+								onClick={() => {
+									setConfirming(true);
+								}}
+								className="rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+							>
+								{label}
+							</button>
+						)}
+					</ActionSlot>
+				</div>
 			</div>
 			{rest.length > 0 && <NotPushed rest={rest} />}
-			{confirming && last !== undefined && (
-				<div
-					data-testid="push-confirm"
-					aria-label="Confirm push"
-					className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-status-green/40 bg-status-green/5 px-3 py-2 text-text-100"
-				>
-					<p className="min-w-0 flex-1 basis-60">
-						{label} in {project}: {green.map(commitLabel).join(", ")}. Pushes {last.sha.slice(0, 7)}
-						:refs/heads/{branch}, never forced.
-					</p>
-					<div className="flex gap-2">
-						<button
-							type="button"
-							disabled={outcome?.status === "running"}
-							onClick={() => {
-								setConfirming(false);
-								onPush(push, last.sha);
-							}}
-							className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90"
-						>
-							Confirm
-						</button>
-						<button
-							type="button"
-							onClick={() => {
-								setConfirming(false);
-							}}
-							className={CANCEL_CLASS}
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
-			)}
-			<ActionOutcomeLine outcome={outcome} onDismiss={onDismissOutcome} />
 		</li>
 	);
 }
@@ -564,8 +668,12 @@ function visiblePushes(pushes: readonly MainPush[]): MainPush[] {
 	);
 }
 
-/** A PR with auto-merge on: GitHub merges it once its checks pass, so there is nothing to click. */
-function MergingRow({
+/**
+ * A PR whose checks still run: one compact line naming it and linking to it on GitHub, from server
+ * state (the PR status cache), so it stays findable after a reload. No button until the checks
+ * pass; with auto-merge on, GitHub merges it itself.
+ */
+function WaitingRow({
 	item,
 	commit,
 	outcome,
@@ -576,37 +684,36 @@ function MergingRow({
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
 }) {
+	const pr = `PR #${commit?.prNumber ?? "?"}`;
 	return (
 		<li
-			data-testid="merging-row"
-			className="rounded-md border border-border-300/50 bg-bg-000 px-3 py-2.5 shadow-sm transition-colors hover:border-border-300"
+			data-testid="waiting-row"
+			className="flex items-center gap-2 rounded-md border border-border-300/50 bg-bg-000 px-3 py-1.5 text-xs text-text-500 shadow-sm"
 		>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-				<div className="min-w-0 flex-1 basis-64">
-					<Link
-						to="/item/$project/$sha"
-						params={{project: item.project, sha: item.sha}}
-						className="line-clamp-2 break-words text-sm font-medium text-text-000 hover:underline"
+			<p className="min-w-0 flex-1 truncate">
+				<Link
+					to="/item/$project/$sha"
+					params={{project: item.project, sha: item.sha}}
+					className="font-medium text-text-000 hover:underline"
+				>
+					{commit?.subject ?? item.sha.slice(0, 7)}
+				</Link>
+				<span> · {item.project} · </span>
+				{commit?.prUrl === undefined ? (
+					<span>{pr}</span>
+				) : (
+					<a
+						href={commit.prUrl}
+						target="_blank"
+						rel="noreferrer"
+						className="font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400"
 					>
-						{commit?.subject ?? item.sha.slice(0, 7)}
-					</Link>
-					<div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-text-500">
-						<span>{item.project}</span>
-						{commit?.prUrl !== undefined && (
-							<a
-								href={commit.prUrl}
-								target="_blank"
-								rel="noreferrer"
-								className={`${CHIP_CLASS} border-blue-500/40 text-blue-600 hover:bg-blue-500/10 dark:text-blue-400`}
-							>
-								PR #{commit.prNumber ?? "?"}
-							</a>
-						)}
-					</div>
-				</div>
-				<span className="ml-auto text-xs text-text-300">Merging when checks pass</span>
-			</div>
-			<ActionOutcomeLine outcome={outcome} onDismiss={onDismissOutcome} />
+						{pr}
+					</a>
+				)}
+				<span> · waiting for checks{commit?.autoMerge === true && ", merges itself when they pass"}</span>
+			</p>
+			<ActionSlot outcome={outcome} onDismissOutcome={onDismissOutcome} />
 		</li>
 	);
 }
@@ -665,26 +772,26 @@ export function ReadyToLandSection({
 			: () => {
 					onDismissOutcome(key);
 				};
-	if (!state) return null;
+	if (state === undefined) {
+		// Not loaded yet: hold the section's place instead of popping in later.
+		return (
+			<section
+				data-testid="ready-to-land-loading"
+				className="mb-6 h-24 rounded-lg border border-status-green/40 bg-bg-100 p-4"
+			>
+				<h2 className="mb-3 text-sm font-semibold">Ready to land</h2>
+				<p className="text-xs text-text-500">Loading…</p>
+			</section>
+		);
+	}
+	if (state === null) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
-	// A PR whose checks still run shows only when it merges itself or can be told to; see readyRowView.
-	const ordered = landingOrder([...state.ready, ...(state.awaitingChecks ?? [])]).map((item) => {
+	// A PR whose checks still run shows as waiting unless Merge PR can turn on auto-merge; see readyRowView.
+	const rows = landingOrder([...state.ready, ...(state.awaitingChecks ?? [])]).map((item) => {
 		const commit = byKey.get(`${item.project}:${item.sha}`);
 		return {item, commit, view: readyRowView(item, commit)};
 	});
-	const rows = ordered.flatMap((row) => (row.view === "hidden" ? [] : [{...row, view: row.view}]));
-	// A hidden row's outcome (Open PR's link) stays as a line of its own until the row returns.
-	const hiddenOutcomes = ordered.flatMap(({item, view}) => {
-		const key = landOutcomeKey(item.project, item.sha);
-		return view === "hidden" && outcomes[key] !== undefined ? [{item, key}] : [];
-	});
-	if (
-		rows.length === 0 &&
-		hiddenOutcomes.length === 0 &&
-		state.inFlight.length === 0 &&
-		pushes.length === 0 &&
-		leftPushes.length === 0
-	) {
+	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0) {
 		return null;
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
@@ -702,9 +809,9 @@ export function ReadyToLandSection({
 			<ul className="flex flex-col gap-2">
 				{rows.map(({item, commit, view}) => {
 					const outcomeKey = landOutcomeKey(item.project, item.sha);
-					if (view === "merging") {
+					if (view === "waiting") {
 						return (
-							<MergingRow
+							<WaitingRow
 								key={`${item.project}:${item.id}`}
 								item={item}
 								commit={commit}
@@ -735,16 +842,6 @@ export function ReadyToLandSection({
 						/>
 					);
 				})}
-				{hiddenOutcomes.map(({item, key}) => (
-					<li key={key} data-testid="ready-to-land-outcome" className="px-1 text-xs">
-						<ActionOutcomeLine
-							outcome={outcomes[key]}
-							onDismiss={dismiss(key)}
-							prefix={`${item.project}: `}
-							suffix={outcomes[key]?.status === "success" ? " · waiting for checks" : undefined}
-						/>
-					</li>
-				))}
 			</ul>
 			{(pushes.length > 0 || leftPushes.length > 0) && (
 				<div data-testid="push-main-group" className="mt-3 border-t border-border-300/50 pt-2">
@@ -814,15 +911,13 @@ export function ReadyLandPanel({
 }
 
 function ReadyLandPanelBody(props: LandControlProps) {
-	const {button, confirm} = useLandControl(props);
+	const action = useLandControl(props);
 	return (
 		<div className="mb-4 rounded-lg border border-status-green/40 bg-bg-100 px-4 py-2.5">
 			<div className="flex items-center justify-between gap-3">
 				<span className="text-sm font-medium text-text-100">Ready to land</span>
-				{button}
+				{action}
 			</div>
-			{confirm}
-			<ActionOutcomeLine outcome={props.outcome} onDismiss={props.onDismissOutcome} />
 		</div>
 	);
 }

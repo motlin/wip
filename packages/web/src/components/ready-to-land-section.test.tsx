@@ -186,6 +186,40 @@ describe("ReadyToLandSection", () => {
 		expect(onLand.mock.calls).toStrictEqual([[state.ready[3], commits[4]]]);
 	});
 
+	it("offers no Open PR that can't succeed, and says why instead", () => {
+		const fromBase = makeChild({project: "fork", sha: sha("f1"), subject: "On the base", branch: "avalon.cool"});
+		const fromMaster = makeChild({project: "fork", sha: sha("f2"), subject: "On master", branch: "master"});
+		render(
+			<ReadyToLandSection
+				state={{
+					...state,
+					ready: [
+						{project: "fork", id: "pf1", sha: sha("f1"), landing: "pull-request"},
+						{project: "fork", id: "pf2", sha: sha("f2"), landing: "pull-request"},
+					],
+					inFlight: [],
+					stoppedProjects: [],
+				}}
+				commits={[fromBase, fromMaster]}
+				projects={[{...project("fork"), upstreamBranch: "avalon.cool", upstreamRef: "upstream/avalon.cool"}]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect({
+			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
+			buttons: screen.queryAllByRole("button", {name: "Open PR"}).length,
+		}).toStrictEqual({
+			rows: [
+				"On the baseforkReviewCan't open a PR from avalon.cool: it is the base branch, and Open PR never pushes it",
+				"On masterforkReviewCan't open a PR from master: Open PR never pushes a main branch",
+			],
+			buttons: 0,
+		});
+	});
+
 	it("renders nothing without buffer state, and nothing when the buffer holds nothing", () => {
 		const {container} = render(
 			<ReadyToLandSection

@@ -93,3 +93,17 @@ export function readyRowView(
 	if (commit.autoMerge === true) return "merging";
 	return commit.autoMergeAllowed === true ? "land" : "hidden";
 }
+
+/**
+ * Why Open PR can't open a PR from `branch`, or null when it can: it pushes the branch to origin
+ * first, and never pushes the base branch or a main branch, nor opens a PR from the base into itself.
+ */
+export function openPrRefusal(branch: string, upstreamBranch: string): string | null {
+	if (branch === upstreamBranch) {
+		return `Can't open a PR from ${branch}: it is the base branch, and Open PR never pushes it`;
+	}
+	if (branch === "main" || branch === "master") {
+		return `Can't open a PR from ${branch}: Open PR never pushes a main branch`;
+	}
+	return null;
+}

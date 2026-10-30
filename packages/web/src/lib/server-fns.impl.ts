@@ -25,6 +25,11 @@ import {
 	getReadyBufferSize,
 	getFlowStaleAfterMinutes,
 	getTestLogDir,
+	gitTestResults,
+	gitTestRun,
+	DEFAULT_GIT_TEST,
+	greenPrefix,
+	type MainPush,
 	invalidatePrCache,
 	invalidateIssuesCache,
 	invalidateProjectItemsCache,
@@ -1479,41 +1484,142 @@ export async function landFastForwardHandler(data: LandFastForwardInput): Promis
 	});
 }
 
+/** Projects whose next unknown unpushed main commit a background `git test run` is testing, by sha. */
+const mainPushTests = new Map<string, string>();
+
 /**
- * Pushes local main to the upstream branch without force, so git refuses anything that is not a
- * fast-forward. Only ever user-initiated, after a fast-forward left local main ahead.
+ * "Getting ready" for Push main: while the ready buffer runs in this process, test the first unknown
+ * commit after main's green prefix as a background job on the shared queue, in the repo's test
+ * worktree (never the user's checkout). Each finished test lets the next read queue the next one.
+ */
+function scheduleMainPushTest(p: ProjectInfo, sha: string): void {
+	if (!p.hasTestConfigured || currentReadyBuffer() === null || mainPushTests.has(p.name)) return;
+	mainPushTests.set(p.name, sha);
+	const handle = workQueue.enqueue({
+		coalesceKey: `main-push-test:${p.name}:${sha}`,
+		kind: "main-push-test",
+		project: p.name,
+		costClass: "build",
+		priority: "background",
+		resources: [repoResource(p.name)],
+		run: async () => {
+			await gitTestRun(p.dir, sha, {logDir: getTestLogDir(p.name)});
+		},
+	});
+	void handle.settled.finally(() => {
+		mainPushTests.delete(p.name);
+	});
+}
+
+/**
+ * Local main's commits the upstream branch lacks, oldest first, with their `git test results`;
+ * null when local main is not ahead. A local main the upstream branch is not an ancestor of is
+ * diverged and lists nothing.
+ */
+async function readMainPush(p: ProjectInfo): Promise<MainPush | null> {
+	const ref = `refs/heads/${p.upstreamBranch}`;
+	const remoteRef = `refs/remotes/${p.upstreamRemote}/${p.upstreamBranch}`;
+	const [local, remote] = await Promise.all([
+		tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", ref], {reject: false}),
+		tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", remoteRef], {reject: false}),
+	]);
+	if (local.exitCode !== 0 || remote.exitCode !== 0 || local.stdout.trim() === remote.stdout.trim()) return null;
+	const base = {project: p.name, remote: p.upstreamRemote, branch: p.upstreamBranch};
+	const ancestor = await tracedExeca("git", ["-C", p.dir, "merge-base", "--is-ancestor", remoteRef, ref], {
+		reject: false,
+	});
+	if (ancestor.exitCode !== 0) return {...base, diverged: true, commits: []};
+	const logged = await tracedExeca(
+		"git",
+		["-C", p.dir, "log", "--reverse", "--format=%H%x1f%s", `${remoteRef}..${ref}`, "--"],
+		{reject: false},
+	);
+	const lines = logged.stdout.split("\n").filter(Boolean);
+	const statuses = await gitTestResults(
+		p.dir,
+		DEFAULT_GIT_TEST,
+		lines.map((line) => line.split("\x1f")[0] ?? ""),
+	);
+	const commits = lines.map((line) => {
+		const [sha = "", subject = ""] = line.split("\x1f");
+		return {sha, subject, status: statuses.get(sha) ?? ("unknown" as const)};
+	});
+	if (commits.length === 0) return null;
+	return {...base, diverged: false, commits};
+}
+
+/**
+ * Push main rows: every project (or just `project`) whose local main is ahead of its upstream
+ * branch. Reading also queues the background test of the first unknown commit after the green prefix.
+ */
+export async function getMainPushesHandler(data: {project?: string}): Promise<MainPush[]> {
+	return traced("getMainPushes", async () => {
+		const projects = (await ensureProjects()).filter((p) => data.project === undefined || p.name === data.project);
+		const pushes = await Promise.all(
+			projects.map(async (p) => {
+				try {
+					return {p, push: await readMainPush(p)};
+				} catch (error) {
+					log.general.warn({project: p.name, error}, "Reading local main's unpushed commits failed");
+					return {p, push: null};
+				}
+			}),
+		);
+		return pushes.flatMap(({p, push}) => {
+			if (push === null) return [];
+			const next = push.diverged ? undefined : greenPrefix(push.commits).next;
+			if (next !== undefined) scheduleMainPushTest(p, next.sha);
+			const testing = mainPushTests.get(p.name);
+			return [testing === undefined ? push : {...push, testing}];
+		});
+	});
+}
+
+/**
+ * Pushes the green prefix of local main: `<sha>:refs/heads/<upstreamBranch>`, never forced, only
+ * after re-checking that `sha` is an unpushed commit on local main and every commit up to it is good
+ * in `git test results`. Only ever user-initiated; the non-green tail stays local.
  */
 export async function pushUpstreamBranchHandler(data: PushUpstreamBranchInput): Promise<ActionResult> {
 	return tracedAction("pushUpstreamBranch", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, {label: "pushUpstreamBranch"}, async () => {
-			const ref = `refs/heads/${p.upstreamBranch}`;
+		return runQueuedAction(data.project, {label: "pushUpstreamBranch", target: data.sha.slice(0, 7)}, async () => {
 			const target = `${p.upstreamRemote}/${p.upstreamBranch}`;
-			const [local, remote] = await Promise.all([
-				tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", ref], {reject: false}),
-				tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", `refs/remotes/${target}`], {
-					reject: false,
-				}),
-			]);
-			const localSha = local.stdout.trim();
-			const remoteSha = remote.stdout.trim();
-			if (local.exitCode !== 0) return {ok: false, message: `No local ${p.upstreamBranch} to push`};
-			if (localSha === remoteSha) {
-				return {ok: false, message: `Nothing to push: local ${p.upstreamBranch} is not ahead of ${target}`};
+			const short = data.sha.slice(0, 7);
+			const push = await readMainPush(p);
+			if (push?.diverged === true) {
+				return {ok: false, message: `Local ${p.upstreamBranch} has diverged from ${target}; rebase first`};
 			}
-			const result = await tracedExeca("git", ["-C", p.dir, "push", p.upstreamRemote, `${ref}:${ref}`], {
-				reject: false,
-			});
+			const end = push?.commits.findIndex((c) => c.sha === data.sha) ?? -1;
+			if (push === null || end === -1) {
+				return {
+					ok: false,
+					message: `Not pushed: ${short} is not an unpushed commit on local ${p.upstreamBranch}`,
+				};
+			}
+			const pushed = push.commits.slice(0, end + 1);
+			const notGreen = pushed.find((c) => c.status !== "good");
+			if (notGreen !== undefined) {
+				return {ok: false, message: `Not pushed: ${notGreen.sha.slice(0, 7)} is ${notGreen.status}, not green`};
+			}
+			const remoteSha = (
+				await tracedExeca("git", ["-C", p.dir, "rev-parse", `refs/remotes/${target}`], {reject: false})
+			).stdout.trim();
+			const result = await tracedExeca(
+				"git",
+				["-C", p.dir, "push", p.upstreamRemote, `${data.sha}:refs/heads/${p.upstreamBranch}`],
+				{reject: false},
+			);
 			invalidateChildrenCache(data.project);
 			invalidateMergeStatus(data.project);
-			if (result.exitCode !== 0)
+			if (result.exitCode !== 0) {
 				return {ok: false, message: `Failed to push ${p.upstreamBranch}: ${result.stderr}`};
+			}
+			const count = `${pushed.length} green ${pushed.length === 1 ? "commit" : "commits"}`;
 			return {
 				ok: true,
-				message: `Pushed ${p.upstreamBranch} to ${p.upstreamRemote}`,
-				...(remote.exitCode === 0
-					? {compareUrl: `https://github.com/${p.remote}/compare/${remoteSha}...${localSha}`}
-					: {}),
+				message: `Pushed ${count} to ${target}`,
+				compareUrl: `https://github.com/${p.remote}/compare/${remoteSha}...${data.sha}`,
 			};
 		});
 	});

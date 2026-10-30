@@ -9,6 +9,7 @@ import {
 	type ReadyToLandItem,
 	type ReadyToLandState,
 } from "@wip/shared/ready-to-land.js";
+import {greenPrefix, type MainPush, type MainPushCommit} from "@wip/shared/main-push.js";
 import {wipAgeText} from "../lib/staleness";
 
 const CHIP_CLASS = "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium";
@@ -367,59 +368,72 @@ function ReadyRow({stoppedLine, noTests, age, onLandByPushing, ...land}: ReadyRo
 	);
 }
 
+const NO_PUSHES: readonly MainPush[] = [];
+
+const STATUS_WORDS = {good: "green", bad: "red", unknown: "unknown"} as const;
+
+const commitLabel = (c: MainPushCommit): string => `"${c.subject}" (${c.sha.slice(0, 7)})`;
+
 /**
- * A project whose local main a fast-forward moved ahead of its remote: the separate, user-initiated
- * Push, whose confirm names every commit it pushes. Nothing is ever pushed automatically.
+ * Push main: local main is ahead of its remote. The row offers one confirmed push of the green
+ * prefix (oldest first, by `git test results`), whose confirm names exactly those commits and the
+ * sha it pushes; the unknown or red tail is listed as not pushed. A diverged main gets no button.
  */
-function PushRow({
-	projectInfo,
-	commits,
-	onPush,
-}: {
-	projectInfo: ProjectInfo;
-	commits: readonly GitChildResult[];
-	onPush: (project: ProjectInfo) => void;
-}) {
+function PushRow({push, onPush}: {push: MainPush; onPush: (push: MainPush, sha: string) => void}) {
 	const [confirming, setConfirming] = useState(false);
-	const {name, upstreamBranch: branch, upstreamRemote: remote} = projectInfo;
-	const count = `${commits.length} ${commits.length === 1 ? "commit" : "commits"}`;
-	const label = `Push ${branch} to ${remote}`;
+	const {project, branch, remote} = push;
+	const target = `${remote}/${branch}`;
+	if (push.diverged) {
+		return (
+			<li data-testid="push-row" className="px-1 py-1 text-xs text-text-300">
+				{project}: local {branch} has diverged from {target}; rebase first
+			</li>
+		);
+	}
+	const {green, rest} = greenPrefix(push.commits);
+	const last = green.at(-1);
+	const label = `Push ${green.length} green ${green.length === 1 ? "commit" : "commits"} to ${target}`;
 	return (
-		<li
-			data-testid="push-row"
-			className="rounded-md border border-border-300/50 bg-bg-000 px-3 py-2.5 shadow-sm transition-colors hover:border-border-300"
-		>
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-				<span className="min-w-0 flex-1 basis-64 text-sm text-text-100">
-					{name}: local {branch} is {count} ahead of {remote}/{branch}
+		<li data-testid="push-row" className="px-1 py-1 text-xs">
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+				<span className="min-w-0 flex-1 basis-64 text-text-100">
+					{project}: {green.length} of {push.commits.length} unpushed commits on {branch} are green
+					{push.testing !== undefined && ` · testing ${push.testing.slice(0, 7)}`}
 				</span>
-				<button
-					type="button"
-					aria-expanded={confirming}
-					onClick={() => {
-						setConfirming(true);
-					}}
-					className="ml-auto rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90"
-				>
-					{label}
-				</button>
+				{last !== undefined && (
+					<button
+						type="button"
+						aria-expanded={confirming}
+						onClick={() => {
+							setConfirming(true);
+						}}
+						className="ml-auto rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90"
+					>
+						{label}
+					</button>
+				)}
 			</div>
-			{confirming && (
+			{rest.length > 0 && (
+				<p className="mt-0.5 text-text-500">
+					Not pushed: {rest.map((c) => `${commitLabel(c)} ${STATUS_WORDS[c.status]}`).join(", ")}
+				</p>
+			)}
+			{confirming && last !== undefined && (
 				<div
 					data-testid="push-confirm"
 					aria-label="Confirm push"
-					className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-status-green/40 bg-status-green/5 px-3 py-2 text-xs text-text-100"
+					className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-status-green/40 bg-status-green/5 px-3 py-2 text-text-100"
 				>
 					<p className="min-w-0 flex-1 basis-60">
-						Push {branch} to {remote}/{branch} in {name}:{" "}
-						{commits.map((c) => `"${c.subject}" (${c.sha.slice(0, 7)})`).join(", ")}.
+						{label} in {project}: {green.map(commitLabel).join(", ")}. Pushes {last.sha.slice(0, 7)}
+						:refs/heads/{branch}, never forced.
 					</p>
 					<div className="flex gap-2">
 						<button
 							type="button"
 							onClick={() => {
 								setConfirming(false);
-								onPush(projectInfo);
+								onPush(push, last.sha);
 							}}
 							className="rounded-md bg-status-green px-2.5 py-1 font-medium text-white hover:opacity-90"
 						>
@@ -438,6 +452,13 @@ function PushRow({
 				</div>
 			)}
 		</li>
+	);
+}
+
+/** Push main rows worth showing: diverged, a non-empty green prefix, or a background test running. */
+function visiblePushes(pushes: readonly MainPush[]): MainPush[] {
+	return pushes.filter(
+		(push) => push.diverged || push.testing !== undefined || greenPrefix(push.commits).green.length > 0,
 	);
 }
 
@@ -477,17 +498,6 @@ function MergingRow({item, commit}: {item: ReadyToLandItem; commit: GitChildResu
 	);
 }
 
-/** Projects whose local main holds commits the remote lacks, with those commits. */
-function pendingPushes(
-	commits: readonly GitChildResult[],
-	projects: readonly ProjectInfo[],
-): {projectInfo: ProjectInfo; commits: GitChildResult[]}[] {
-	return projects.flatMap((projectInfo) => {
-		const ahead = commits.filter((c) => c.project === projectInfo.name && c.onLocalMain === true);
-		return ahead.length === 0 ? [] : [{projectInfo, commits: ahead}];
-	});
-}
-
 export interface ReadyToLandSectionProps {
 	state: ReadyToLandState | null | undefined;
 	/** The cached children, joined by project and sha for subject, size and markers. */
@@ -496,8 +506,10 @@ export interface ReadyToLandSectionProps {
 	/** Client clock for ages; null during SSR, which omits them. */
 	now: number | null;
 	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
-	/** Pushes a project's local main after a fast-forward left it ahead of its remote. */
-	onPush: (project: ProjectInfo) => void;
+	/** Projects whose local main is ahead of its remote, for the Push main group. */
+	mainPushes?: readonly MainPush[];
+	/** Pushes `sha`, the last commit of a project's green prefix, to its upstream branch. */
+	onPush: (push: MainPush, sha: string) => void;
 	/** `project:sha` of ready rows whose PR checks can't run (private repo, Actions unavailable for billing). */
 	actionsBlocked?: ReadonlySet<string>;
 	/** Configures a repo to land by pushing directly; the row asks for a confirm first. */
@@ -508,7 +520,7 @@ export interface ReadyToLandSectionProps {
  * Lean plan step 42: the ready buffer's ready commits, pinned first on /queue, in landing order
  * (stack prefixes first), each a card with size, age ("in wip Nd" from first seen), markers, a
  * Review link to its diff and the landing action, which lands only after a confirm naming what lands.
- * A project whose local main is ahead of its remote after a fast-forward gets a separate Push row.
+ * Projects whose local main is ahead of its remote get a compact Push main group below the commits.
  */
 export function ReadyToLandSection({
 	state,
@@ -516,11 +528,12 @@ export function ReadyToLandSection({
 	projects,
 	now,
 	onLand,
+	mainPushes = NO_PUSHES,
 	onPush,
 	actionsBlocked,
 	onLandByPushing,
 }: ReadyToLandSectionProps) {
-	const pushes = pendingPushes(commits, projects);
+	const pushes = visiblePushes(mainPushes);
 	if (!state) return null;
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
 	// A PR whose checks still run shows only when it merges itself or can be told to; see readyRowView.
@@ -543,14 +556,6 @@ export function ReadyToLandSection({
 				</span>
 			</h2>
 			<ul className="flex flex-col gap-2">
-				{pushes.map((push) => (
-					<PushRow
-						key={`push:${push.projectInfo.name}`}
-						projectInfo={push.projectInfo}
-						commits={push.commits}
-						onPush={onPush}
-					/>
-				))}
 				{rows.map(({item, commit, view}) => {
 					if (view === "merging") {
 						return <MergingRow key={`${item.project}:${item.id}`} item={item} commit={commit} />;
@@ -576,6 +581,16 @@ export function ReadyToLandSection({
 					);
 				})}
 			</ul>
+			{pushes.length > 0 && (
+				<div data-testid="push-main-group" className="mt-3 border-t border-border-300/50 pt-2">
+					<h3 className="mb-1 px-1 text-xs font-semibold text-text-300">Push main</h3>
+					<ul className="flex flex-col">
+						{pushes.map((push) => (
+							<PushRow key={`push:${push.project}`} push={push} onPush={onPush} />
+						))}
+					</ul>
+				</div>
+			)}
 		</section>
 	);
 }

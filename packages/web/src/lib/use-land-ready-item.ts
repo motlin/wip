@@ -1,10 +1,12 @@
 import {useCallback, useMemo} from "react";
 import {useQueries, useQueryClient} from "@tanstack/react-query";
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
-import type {GitChildResult, ProjectInfo} from "@wip/shared/schemas.js";
+import type {GitChildResult} from "@wip/shared/schemas.js";
+import {afterPush, type MainPush} from "@wip/shared/main-push.js";
 import {billingCheckCandidates, landingAction} from "../components/ready-to-land-section";
 import {
 	createPr,
+	getMainPushes,
 	landByPushing,
 	landFastForward,
 	mergePr,
@@ -71,10 +73,18 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 					);
 				}
 				if (action.kind === "fast-forward" && result.ok) {
-					// Local main now holds the commit and its stack prefix: the Push row appears without a refetch.
+					// Local main now holds the commit and its stack prefix: the buffer leaves them alone.
 					queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], (old) =>
 						old === undefined ? old : markOnLocalMain(old, item.sha),
 					);
+					// Its Push main row is written straight into the cache, not refetched.
+					void getMainPushes({data: {project: item.project}}).then((fresh) => {
+						queryClient.setQueryData<MainPush[]>(["mainPushes"], (old) => [
+							...(old ?? []).filter((p) => p.project !== item.project),
+							...fresh,
+						]);
+						return undefined;
+					});
 				}
 				return undefined;
 			});
@@ -93,17 +103,25 @@ function markOnLocalMain(children: ProjectChildrenResult, sha: string): ProjectC
 	return children.map((c) => (chain.has(c.sha) ? {...c, onLocalMain: true} : c));
 }
 
-/** Pushes a project's local main to its remote (the user's separate step after a fast-forward) and toasts the result. */
-export function usePushUpstreamBranch(): (project: ProjectInfo) => void {
+/**
+ * Pushes the green prefix of a project's local main (up to `sha`) to its remote and toasts the
+ * result; the pushed commits leave the Push main row without a refetch.
+ */
+export function usePushUpstreamBranch(): (push: MainPush, sha: string) => void {
 	const queryClient = useQueryClient();
 	return useCallback(
-		(project: ProjectInfo) => {
-			void pushUpstreamBranch({data: {project: project.name}}).then((result) => {
-				pushToast(actionResultToast(`Push ${project.upstreamBranch}`, result));
+		(push: MainPush, sha: string) => {
+			void pushUpstreamBranch({data: {project: push.project, sha}}).then((result) => {
+				pushToast(actionResultToast(`Push ${push.branch}`, result));
 				if (result.ok) {
-					// The remote has them now: the Push row goes away without a refetch.
-					queryClient.setQueryData<ProjectChildrenResult>(["children", project.name], (old) =>
-						old?.map((c) => (c.onLocalMain === true ? {...c, onLocalMain: undefined} : c)),
+					const pushed = new Set(
+						push.commits.slice(0, push.commits.findIndex((c) => c.sha === sha) + 1).map((c) => c.sha),
+					);
+					queryClient.setQueryData<MainPush[]>(["mainPushes"], (old) =>
+						old === undefined ? old : afterPush(old, push.project, sha),
+					);
+					queryClient.setQueryData<ProjectChildrenResult>(["children", push.project], (old) =>
+						old?.map((c) => (pushed.has(c.sha) ? {...c, onLocalMain: undefined} : c)),
 					);
 				}
 				return undefined;

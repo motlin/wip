@@ -954,3 +954,26 @@ describe("rank ordering", () => {
 		expect(order).toEqual(["fg", "bg"]);
 	});
 });
+
+describe("battery pause", () => {
+	it("holds pause-on-battery jobs while on battery, runs everything else, and starts them back on AC", async () => {
+		makeQueue();
+		const started: string[] = [];
+		const record = (name: string) => async () => {
+			started.push(name);
+			return Promise.resolve();
+		};
+		queue.setOnBattery(true);
+		queue.enqueue(job("buffer", record("buffer"), {pauseOnBattery: true, priority: "background"}));
+		queue.enqueue(job("user", record("user"), {priority: "foreground"}));
+		queue.enqueue(job("refresh", record("refresh")));
+		await settle();
+		const onBattery = [...started];
+		queue.setOnBattery(false);
+		await settle();
+		expect({onBattery, onAc: started}).toStrictEqual({
+			onBattery: ["user", "refresh"],
+			onAc: ["user", "refresh", "buffer"],
+		});
+	});
+});

@@ -250,6 +250,23 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
+	it("says background work is paused on battery, even when the buffer holds nothing", () => {
+		render(
+			<ReadyToLandSection
+				state={{...state, ready: [], inFlight: [], pausedOnBattery: true}}
+				commits={[]}
+				projects={[]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect(screen.getByTestId("ready-to-land-paused").textContent).toBe(
+			"Paused on battery: background tests resume when the Mac is plugged in.",
+		);
+	});
+
 	it("holds a fixed-height Loading placeholder until the buffer state has loaded", () => {
 		render(
 			<ReadyToLandSection

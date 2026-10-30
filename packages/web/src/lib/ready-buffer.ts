@@ -170,6 +170,8 @@ export interface ReadyBufferDeps {
 	nameBranch: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
 	/** The work-item ledger's first-seen time for an item, shown as its age. */
 	firstSeen?: (project: string, id: string) => string | undefined;
+	/** Whether the machine runs on battery; while it does, a pull starts no background work. */
+	onBattery?: () => boolean;
 }
 
 export interface ReadyBuffer {
@@ -327,6 +329,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			project: repo.name,
 			costClass: "ai",
 			resources: [repoResource(repo.name)],
+			pauseOnBattery: true,
 			run: async (signal) => {
 				result.sha = await run(signal);
 			},
@@ -354,6 +357,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			rank: BUFFER_RANK,
 			resources: [repoResource(repo.name)],
 			buffer: true,
+			pauseOnBattery: true,
 			run: async (signal) => {
 				if (stopped.has(repo.name)) return;
 				done.set(candidate.id, await deps.advance(repo, candidate, signal));
@@ -404,6 +408,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			kind: "branch-name",
 			project: repo.name,
 			costClass: "ai",
+			pauseOnBattery: true,
 			run: async (signal) => {
 				result.branch = await deps.nameBranch(repo, candidate, signal);
 			},
@@ -459,11 +464,13 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			r.priority === undefined ? {name: r.name} : {name: r.name, priority: r.priority},
 		);
 		const items = active.flatMap(queueItems);
-		const pulls = planReadyPulls(queueRepos, items, {
-			target: deps.target(),
-			capacity: deps.capacity(),
-			inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
-		});
+		const pulls = deps.onBattery?.()
+			? []
+			: planReadyPulls(queueRepos, items, {
+					target: deps.target(),
+					capacity: deps.capacity(),
+					inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
+				});
 		for (const pull of pulls) {
 			const repo = byName.get(pull.repo);
 			const candidate = repo?.candidates.find((c) => c.id === pull.id);
@@ -524,6 +531,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				lastNext.map((it) => byKey.get(`${it.repo}:${it.id}`)).filter((e): e is Entry => e !== undefined),
 			),
 			stoppedProjects: lastRepos.filter((r) => stopped.has(r.name)).map((r) => r.name),
+			...(deps.onBattery?.() ? {pausedOnBattery: true as const} : {}),
 		};
 	}
 

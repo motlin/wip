@@ -791,7 +791,8 @@ export function ReadyToLandSection({
 		const commit = byKey.get(`${item.project}:${item.sha}`);
 		return {item, commit, view: readyRowView(item, commit)};
 	});
-	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0) {
+	const paused = state.pausedOnBattery === true;
+	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0 && !paused) {
 		return null;
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
@@ -806,6 +807,11 @@ export function ReadyToLandSection({
 					{landable} ready (target {state.slots}) · {state.inFlight.length} readying
 				</span>
 			</h2>
+			{paused && (
+				<p data-testid="ready-to-land-paused" className="mb-2 text-xs text-text-300">
+					Paused on battery: background tests resume when the Mac is plugged in.
+				</p>
+			)}
 			<ul className="flex flex-col gap-2">
 				{rows.map(({item, commit, view}) => {
 					const outcomeKey = landOutcomeKey(item.project, item.sha);

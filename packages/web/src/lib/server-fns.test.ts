@@ -2974,7 +2974,14 @@ describe("queued git actions", () => {
 
 	it("mergePrHandler returns the merged PR's number and GitHub URL", async () => {
 		const dir = await createTestGitRepo();
-		seedProjectCache([makeProject({name: "merge-pr-result", dir, remote: "alice/example-repo"})]);
+		seedProjectCache([
+			makeProject({
+				name: "merge-pr-result",
+				dir,
+				remote: "alice/example-repo",
+				originRemote: "alice/example-repo",
+			}),
+		]);
 		fakeExeca.handler = (command, args) => ({
 			stdout: command === "mise" ? "{}" : "",
 			stderr: "",
@@ -2994,7 +3001,9 @@ describe("queued git actions", () => {
 
 	it("mergePrHandler on running checks turns on auto-merge instead of merging now", async () => {
 		const dir = await createTestGitRepo();
-		seedProjectCache([makeProject({name: "merge-pr-auto", dir, remote: "alice/example-repo"})]);
+		seedProjectCache([
+			makeProject({name: "merge-pr-auto", dir, remote: "alice/example-repo", originRemote: "alice/example-repo"}),
+		]);
 		const gh: string[][] = [];
 		fakeExeca.handler = (command, args) => {
 			if (command === "gh") gh.push(args);
@@ -3019,6 +3028,42 @@ describe("queued git actions", () => {
 				autoMerge: true,
 				prNumber: 42,
 			},
+		});
+	});
+
+	it("mergePrHandler targets origin's repo, where Open PR opened it, when origin is the upstream remote of a fork", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([
+			makeProject({
+				name: "merge-pr-fork",
+				dir,
+				remote: "georgyo/avalon",
+				originRemote: "motlin/avalon",
+				upstreamRemote: "origin",
+				upstreamBranch: "avalon.cool",
+				upstreamRef: "origin/avalon.cool",
+			}),
+		]);
+		const gh: string[][] = [];
+		fakeExeca.handler = (command, args) => {
+			if (command === "gh") gh.push(args);
+			return {
+				stdout: command === "mise" ? "{}" : "",
+				stderr: "",
+				exitCode: 0,
+				failed: false,
+				command: [command, ...args].join(" "),
+			};
+		};
+		const {mergePrHandler} = await import("./server-fns.impl.js");
+		const merged = await mergePrHandler({project: "merge-pr-fork", prNumber: 5});
+		const auto = await mergePrHandler({project: "merge-pr-fork", prNumber: 6, autoMerge: true});
+		expect({gh, prUrls: [merged.prUrl, auto.prUrl]}).toStrictEqual({
+			gh: [
+				["pr", "merge", "5", "--squash", "--delete-branch", "-R", "motlin/avalon"],
+				["pr", "merge", "6", "--squash", "--delete-branch", "--auto", "-R", "motlin/avalon"],
+			],
+			prUrls: ["https://github.com/motlin/avalon/pull/5", "https://github.com/motlin/avalon/pull/6"],
 		});
 	});
 

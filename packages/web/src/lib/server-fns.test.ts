@@ -58,6 +58,18 @@ vi.mock("@wip/shared", async (importOriginal) => {
 	};
 });
 
+const readyBufferOverride = vi.hoisted(() => ({running: false}));
+vi.mock("./ready-buffer-instance.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./ready-buffer-instance.js")>();
+	return {
+		...actual,
+		currentReadyBuffer: () =>
+			readyBufferOverride.running
+				? ({} as ReturnType<typeof actual.currentReadyBuffer>)
+				: actual.currentReadyBuffer(),
+	};
+});
+
 const fakeExeca = vi.hoisted(() => ({
 	handler: undefined as
 		| undefined
@@ -3564,63 +3576,181 @@ describe("landFastForwardHandler", () => {
 	});
 });
 
+/** Commits a new file on the checked-out branch (distinct trees, so git-test results stay per commit). */
+async function commitNewFile(dir: string, name: string): Promise<string> {
+	await writeTestFile(join(dir, name), `${name}\n`);
+	await gitOut(dir, "add", name);
+	await gitOut(dir, "commit", "-m", `Add ${name}`);
+	return gitOut(dir, "rev-parse", "HEAD");
+}
+
+/** Local main three commits ahead of origin/main: green, green, unknown. */
+async function mainAheadGreenGreenUnknown(): Promise<{dir: string; remote: string; base: string; shas: string[]}> {
+	const {dir, remote, base} = await repoWithRemote();
+	const shas = [
+		await commitNewFile(dir, "a.txt"),
+		await commitNewFile(dir, "b.txt"),
+		await commitNewFile(dir, "c.txt"),
+	];
+	await markGitTest(dir, shas[0] ?? "", true);
+	await markGitTest(dir, shas[1] ?? "", true);
+	return {dir, remote, base, shas};
+}
+
 describe("pushUpstreamBranchHandler", () => {
-	it("pushes local main to the upstream branch without force and links the compare page", async () => {
-		const {dir, remote, base} = await repoWithRemote();
-		await gitOut(dir, "commit", "--allow-empty", "-m", "Fast-forwarded commit");
-		const sha = await gitOut(dir, "rev-parse", "main");
+	it("pushes exactly the green sha to the upstream branch without force, leaving the unknown tail local", async () => {
+		const {dir, remote, base, shas} = await mainAheadGreenGreenUnknown();
+		const [, green, tip] = shas;
 		seedProjectCache([makeProject({name: "push-main", dir})]);
 
 		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
-		const result = await pushUpstreamBranchHandler({project: "push-main"});
+		const result = await pushUpstreamBranchHandler({project: "push-main", sha: green ?? ""});
 
 		expect({
 			result: {ok: result.ok, message: result.message, compareUrl: result.compareUrl},
 			remoteMain: await gitOut(remote, "rev-parse", "main"),
 			remoteTracking: await gitOut(dir, "rev-parse", "origin/main"),
+			localMain: await gitOut(dir, "rev-parse", "main"),
 		}).toStrictEqual({
 			result: {
 				ok: true,
-				message: "Pushed main to origin",
-				compareUrl: `https://github.com/owner/repo/compare/${base}...${sha}`,
+				message: "Pushed 2 green commits to origin/main",
+				compareUrl: `https://github.com/owner/repo/compare/${base}...${green}`,
 			},
-			remoteMain: sha,
-			remoteTracking: sha,
+			remoteMain: green,
+			remoteTracking: green,
+			localMain: tip,
 		});
 	});
 
-	it("refuses when local main has nothing to push", async () => {
-		const {dir, remote, base} = await repoWithRemote();
-		seedProjectCache([makeProject({name: "push-nothing", dir})]);
+	it("refuses a sha whose range holds a commit git-test has not marked good", async () => {
+		const {dir, remote, base, shas} = await mainAheadGreenGreenUnknown();
+		seedProjectCache([makeProject({name: "push-unknown", dir})]);
 
 		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
-		const result = await pushUpstreamBranchHandler({project: "push-nothing"});
+		const result = await pushUpstreamBranchHandler({project: "push-unknown", sha: shas[2] ?? ""});
 
 		expect({
 			result: {ok: result.ok, message: result.message},
 			remoteMain: await gitOut(remote, "rev-parse", "main"),
 		}).toStrictEqual({
-			result: {ok: false, message: "Nothing to push: local main is not ahead of origin/main"},
+			result: {ok: false, message: `Not pushed: ${shas[2]?.slice(0, 7)} is unknown, not green`},
 			remoteMain: base,
 		});
 	});
 
-	it("refuses a local main that is not a fast-forward of the upstream branch, leaving it unchanged", async () => {
+	it("refuses a sha that is not on local main", async () => {
+		const {dir, remote, base} = await repoWithRemote();
+		await gitOut(dir, "checkout", "-b", "side");
+		const side = await commitNewFile(dir, "side.txt");
+		await markGitTest(dir, side, true);
+		await gitOut(dir, "checkout", "main");
+		seedProjectCache([makeProject({name: "push-side", dir})]);
+
+		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
+		const result = await pushUpstreamBranchHandler({project: "push-side", sha: side});
+
+		expect({
+			result: {ok: result.ok, message: result.message},
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toStrictEqual({
+			result: {ok: false, message: `Not pushed: ${side.slice(0, 7)} is not an unpushed commit on local main`},
+			remoteMain: base,
+		});
+	});
+
+	it("refuses when local main has diverged from the upstream branch, leaving it unchanged", async () => {
 		const {dir, remote} = await repoWithRemote();
-		await gitOut(dir, "commit", "--allow-empty", "-m", "Upstream moved");
+		await commitNewFile(dir, "upstream.txt");
 		await gitOut(dir, "push", "origin", "main");
 		const moved = await gitOut(dir, "rev-parse", "main");
 		await gitOut(dir, "reset", "--hard", "main~1");
-		await gitOut(dir, "commit", "--allow-empty", "-m", "Diverged local commit");
+		const local = await commitNewFile(dir, "local.txt");
+		await markGitTest(dir, local, true);
 		seedProjectCache([makeProject({name: "push-diverged", dir})]);
 
 		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
-		const result = await pushUpstreamBranchHandler({project: "push-diverged"});
+		const result = await pushUpstreamBranchHandler({project: "push-diverged", sha: local});
 
-		expect({ok: result.ok, remoteMain: await gitOut(remote, "rev-parse", "main")}).toStrictEqual({
-			ok: false,
+		expect({
+			result: {ok: result.ok, message: result.message},
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toStrictEqual({
+			result: {ok: false, message: "Local main has diverged from origin/main; rebase first"},
 			remoteMain: moved,
 		});
+	});
+});
+
+describe("getMainPushesHandler", () => {
+	it("lists local main's unpushed commits oldest first with their git-test results", async () => {
+		const {dir, shas} = await mainAheadGreenGreenUnknown();
+		seedProjectCache([makeProject({name: "ahead", dir})]);
+
+		const {getMainPushesHandler} = await import("./server-fns.impl.js");
+
+		expect(await getMainPushesHandler({})).toStrictEqual([
+			{
+				project: "ahead",
+				remote: "origin",
+				branch: "main",
+				diverged: false,
+				commits: [
+					{sha: shas[0], subject: "Add a.txt", status: "good"},
+					{sha: shas[1], subject: "Add b.txt", status: "good"},
+					{sha: shas[2], subject: "Add c.txt", status: "unknown"},
+				],
+			},
+		]);
+	});
+
+	it("tests the first unknown commit after the green prefix in the background while the ready buffer runs", async () => {
+		const {dir, shas} = await mainAheadGreenGreenUnknown();
+		tmpDirs.push(`${dir}-test-worktree`);
+		seedProjectCache([makeProject({name: "getting-ready", dir})]);
+		readyBufferOverride.running = true;
+		try {
+			const {getMainPushesHandler} = await import("./server-fns.impl.js");
+			const first = await getMainPushesHandler({});
+			await vi.waitFor(async () => {
+				expect((await getMainPushesHandler({}))[0]?.commits[2]?.status).toBe("good");
+			});
+
+			expect({testing: first[0]?.testing, after: await getMainPushesHandler({})}).toStrictEqual({
+				testing: shas[2],
+				after: [
+					{
+						project: "getting-ready",
+						remote: "origin",
+						branch: "main",
+						diverged: false,
+						commits: [
+							{sha: shas[0], subject: "Add a.txt", status: "good"},
+							{sha: shas[1], subject: "Add b.txt", status: "good"},
+							{sha: shas[2], subject: "Add c.txt", status: "good"},
+						],
+					},
+				],
+			});
+		} finally {
+			readyBufferOverride.running = false;
+		}
+	});
+
+	it("flags a diverged local main and omits projects whose main is not ahead", async () => {
+		const {dir} = await repoWithRemote();
+		await commitNewFile(dir, "upstream.txt");
+		await gitOut(dir, "push", "origin", "main");
+		await gitOut(dir, "reset", "--hard", "main~1");
+		await commitNewFile(dir, "local.txt");
+		const {dir: even} = await repoWithRemote();
+		seedProjectCache([makeProject({name: "diverged", dir}), makeProject({name: "even", dir: even})]);
+
+		const {getMainPushesHandler} = await import("./server-fns.impl.js");
+
+		expect(await getMainPushesHandler({})).toStrictEqual([
+			{project: "diverged", remote: "origin", branch: "main", diverged: true, commits: []},
+		]);
 	});
 });
 

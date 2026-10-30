@@ -19,6 +19,7 @@ import {
 	getRegistryCandidates,
 	getLadderResults,
 	getReadyToLand,
+	getMainPushes,
 	getFlowMetrics,
 	getFlowHistory,
 } from "./server-fns.js";
@@ -84,6 +85,15 @@ export const readyToLandQueryOptions = () =>
 		queryKey: ["readyToLand"],
 		queryFn: async () => getReadyToLand(),
 		staleTime: Infinity,
+	});
+
+/** Push main rows; polled, so a background test finishing grows the green prefix. */
+export const mainPushesQueryOptions = () =>
+	queryOptions({
+		queryKey: ["mainPushes"],
+		queryFn: async () => getMainPushes({data: {}}),
+		staleTime: 30_000,
+		refetchInterval: 30_000,
 	});
 
 /** Whether a ready commit's PR checks can't run because its private repo's Actions are unavailable for billing. */

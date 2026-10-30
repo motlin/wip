@@ -34,6 +34,10 @@
 			"types": "./src/lib/baseline-failures.ts",
 			"import": "./src/lib/baseline-failures.ts"
 		},
+		"./main-push.js": {
+			"types": "./src/lib/main-push.ts",
+			"import": "./src/lib/main-push.ts"
+		},
 		"./readiness.js": {
 			"types": "./src/lib/readiness.ts",
 			"import": "./src/lib/readiness.ts"

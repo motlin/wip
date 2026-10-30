@@ -32,6 +32,12 @@ export const ReadyToLandStateSchema = z.object({
 	 * or as Merge PR where the repo allows auto-merge and it is not on yet.
 	 */
 	awaitingChecks: z.array(ReadyToLandItemSchema).optional(),
+	/**
+	 * Otherwise ready pull-request items whose PR checks failed: never landable and not counted toward
+	 * the ready target, so the buffer keeps pulling. The section shows each as a checks-failed row
+	 * linking to the failing run.
+	 */
+	checksFailed: z.array(ReadyToLandItemSchema).optional(),
 	inFlight: z.array(ReadyToLandItemSchema),
 	/** The candidates the buffer pulls next, in pull order. */
 	next: z.array(ReadyToLandItemSchema),
@@ -66,6 +72,11 @@ export function landingOrder<T extends ReadyToLandItem>(items: readonly T[]): T[
 
 type PrChecks = Pick<GitChildResult, "prNumber" | "checkStatus" | "mergeStateStatus">;
 
+/** A PR whose checks failed: it never lands until they pass again. */
+export function prChecksFailed(commit: PrChecks): boolean {
+	return commit.prNumber !== undefined && commit.checkStatus === "failed";
+}
+
 const MERGEABLE_WITHOUT_CHECKS = new Set(["CLEAN", "HAS_HOOKS"]);
 
 /**
@@ -81,17 +92,20 @@ export function prChecksPending(commit: PrChecks): boolean {
 }
 
 /**
- * How a ready row shows while its PR checks run: `waiting` (a compact row linking to its PR, no
- * button) unless the repo allows auto-merge and it is not on yet, where Merge PR turns it on. Every
- * other row lands. A waiting row does not count toward the ready target.
+ * How a ready row shows: `checks-failed` (a compact row linking to the failing run, no button) when
+ * its PR checks failed; while they run, `waiting` (a compact row linking to its PR, no button)
+ * unless the repo allows auto-merge and it is not on yet, where Merge PR turns it on. Every other
+ * row lands. Only a `land` row counts toward the ready target.
  */
-export type ReadyRowView = "land" | "waiting";
+export type ReadyRowView = "land" | "waiting" | "checks-failed";
 
 export function readyRowView(
 	item: Pick<ReadyToLandItem, "landing">,
 	commit: (PrChecks & Pick<GitChildResult, "autoMerge" | "autoMergeAllowed">) | undefined,
 ): ReadyRowView {
-	if (item.landing !== "pull-request" || commit === undefined || !prChecksPending(commit)) return "land";
+	if (item.landing !== "pull-request" || commit === undefined) return "land";
+	if (prChecksFailed(commit)) return "checks-failed";
+	if (!prChecksPending(commit)) return "land";
 	return commit.autoMerge !== true && commit.autoMergeAllowed === true ? "land" : "waiting";
 }
 

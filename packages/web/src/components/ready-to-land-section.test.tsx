@@ -122,7 +122,7 @@ describe("ReadyToLandSection", () => {
 				"Fix redredin wip 3dupstream redconsider splittingPR #7ReviewMerge PR #7",
 				"No tests hereplainno testsReviewOpen PR",
 				"Detachedplainno testsReview",
-				"Unrelatedredupstream redPR #8ReviewMerge PR #8",
+				"Unrelatedredupstream redPR #8Reviewred's upstream is red: only the commit that makes it green can land",
 			],
 		});
 	});
@@ -286,34 +286,53 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
-	it("disables landing in a stopped project, with the reason, except for the commit that fixes the red upstream", () => {
-		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
+	it("offers no landing action in a stopped project, only the reason, except for the commit that fixes the red upstream", () => {
 		render(
 			<ReadyToLandSection
 				state={state}
 				commits={commits}
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
-				onLand={onLand}
+				onLand={() => undefined}
 				onPush={() => undefined}
 			/>,
 		);
 
-		const blocked = screen.getByRole("button", {name: "Merge PR #8"});
-		const fix = screen.getByRole("button", {name: "Merge PR #7"});
-		fireEvent.click(blocked);
+		const blocked = screen.getAllByTestId("ready-to-land-row")[5];
+		if (blocked === undefined) throw new Error("no blocked row");
 
 		expect({
-			blocked: {disabled: blocked.hasAttribute("disabled"), title: blocked.getAttribute("title")},
-			fix: {disabled: fix.hasAttribute("disabled"), title: fix.getAttribute("title")},
-			landed: onLand.mock.calls,
+			blocked: within(blocked)
+				.queryAllByRole("button")
+				.map((button) => button.textContent),
+			fix: screen.getByRole("button", {name: "Merge PR #7"}).hasAttribute("disabled"),
+		}).toStrictEqual({blocked: [], fix: false});
+	});
+
+	it("names a row's commit by its subject when the commit was listed under another project sharing the repo", () => {
+		render(
+			<ReadyToLandSection
+				state={{
+					...state,
+					ready: [{project: "logs", id: "pl1", sha: sha("l1"), landing: "pull-request"}],
+					stoppedProjects: ["logs"],
+				}}
+				commits={[makeChild({project: "scraper", sha: sha("l1"), subject: "Shared change", branch: "shared"})]}
+				projects={[project("logs"), project("scraper")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect({
+			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
+			buttons: screen.queryAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
-			blocked: {
-				disabled: true,
-				title: "red's upstream is red: only the commit that makes it green can land",
-			},
-			fix: {disabled: false, title: null},
-			landed: [],
+			rows: [
+				"Shared changelogsupstream redReviewlogs's upstream is red: only the commit that makes it green can land",
+			],
+			buttons: [],
 		});
 	});
 
@@ -644,7 +663,7 @@ describe("ReadyToLandSection when PR checks can't run", () => {
 			/>,
 		);
 
-		const rows = screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent);
+		const rows = screen.getAllByRole("listitem").map((row) => row.textContent);
 		fireEvent.click(screen.getByRole("button", {name: "Land this repo by pushing directly instead"}));
 		const prompt = screen.getByTestId("land-by-pushing-confirm").textContent;
 		const switchedBeforeConfirm = [...onLandByPushing.mock.calls];
@@ -652,7 +671,7 @@ describe("ReadyToLandSection when PR checks can't run", () => {
 
 		expect({rows, prompt, switchedBeforeConfirm, switched: onLandByPushing.mock.calls}).toStrictEqual({
 			rows: [
-				"Private changesecretPR #3ReviewMerge PR #3PR checks can't run: secret is a private repo and its GitHub Actions are unavailable for billing.Land this repo by pushing directly instead",
+				"Private change · secret · PR #3 · checks failedPR checks can't run: secret is a private repo and its GitHub Actions are unavailable for billing.Land this repo by pushing directly instead",
 				"PassingsecretReviewMerge PR #4",
 			],
 			prompt: "Configure secret to land by pushing directly: its ready commits Fast-forward main, then you Push main. No pull requests. Saved to the registry.ConfirmCancel",
@@ -776,6 +795,69 @@ describe("ReadyToLandSection while PR checks run", () => {
 			],
 			targets: ["_blank", "_blank", "_blank"],
 			buttons: ["Merge PR #5", "Merge PR #4"],
+		});
+	});
+
+	it("never offers Merge PR on a PR whose checks failed: a compact row links to the failing run and it is not counted as ready", () => {
+		const failedUrl = "https://github.com/motlin/pr/actions/runs/1/job/2";
+		render(
+			<ReadyToLandSection
+				state={{
+					...checksState,
+					ready: [prItem("g1"), prItem("f1")],
+					awaitingChecks: [],
+					checksFailed: [prItem("f2")],
+				}}
+				commits={[
+					...running,
+					makeChild({
+						project: "pr",
+						sha: sha("f1"),
+						subject: "Failing",
+						prNumber: 11,
+						prUrl: prUrl(11),
+						checkStatus: "failed",
+						mergeStateStatus: "UNSTABLE",
+						autoMergeAllowed: true,
+						failedChecks: [{name: "DeterminateCI / build", url: failedUrl}],
+					}),
+					makeChild({
+						project: "pr",
+						sha: sha("f2"),
+						subject: "No run link",
+						prNumber: 12,
+						prUrl: prUrl(12),
+						checkStatus: "failed",
+					}),
+				]}
+				projects={[project("pr")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+		const failed = screen.getAllByTestId("checks-failed-row");
+
+		expect({
+			heading: screen.getByTestId("ready-to-land-heading").textContent,
+			failed: failed.map((row) => row.textContent),
+			links: failed.map(links),
+			buttons: screen.getAllByRole("button").map((button) => button.textContent),
+		}).toStrictEqual({
+			heading: "Ready to land1 ready (target 3) · 0 readying",
+			failed: ["Failing · pr · PR #11 · checks failed", "No run link · pr · PR #12 · checks failed"],
+			links: [
+				[
+					["Failing", `/item/pr/${sha("f1")}`],
+					["PR #11", prUrl(11)],
+					["checks failed", failedUrl],
+				],
+				[
+					["No run link", `/item/pr/${sha("f2")}`],
+					["PR #12", prUrl(12)],
+				],
+			],
+			buttons: ["Merge PR #5"],
 		});
 	});
 

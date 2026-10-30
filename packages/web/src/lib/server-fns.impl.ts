@@ -1505,8 +1505,8 @@ function scheduleMainPushTest(p: ProjectInfo, sha: string): void {
 
 /**
  * Local main's commits the upstream branch lacks, oldest first, with their `git test results`;
- * null when local main is not ahead. A local main the upstream branch is not an ancestor of is
- * diverged and lists nothing.
+ * null when local main has no commits of its own (even, or merely behind). A local main with its own
+ * commits that the upstream branch is not an ancestor of is diverged and lists nothing.
  */
 async function readMainPush(p: ProjectInfo): Promise<MainPush | null> {
 	const ref = `refs/heads/${p.upstreamBranch}`;
@@ -1516,17 +1516,18 @@ async function readMainPush(p: ProjectInfo): Promise<MainPush | null> {
 		tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", "--quiet", remoteRef], {reject: false}),
 	]);
 	if (local.exitCode !== 0 || remote.exitCode !== 0 || local.stdout.trim() === remote.stdout.trim()) return null;
-	const base = {project: p.name, remote: p.upstreamRemote, branch: p.upstreamBranch};
-	const ancestor = await tracedExeca("git", ["-C", p.dir, "merge-base", "--is-ancestor", remoteRef, ref], {
-		reject: false,
-	});
-	if (ancestor.exitCode !== 0) return {...base, diverged: true, commits: []};
 	const logged = await tracedExeca(
 		"git",
 		["-C", p.dir, "log", "--reverse", "--format=%H%x1f%s", `${remoteRef}..${ref}`, "--"],
 		{reject: false},
 	);
 	const lines = logged.stdout.split("\n").filter(Boolean);
+	if (lines.length === 0) return null;
+	const base = {project: p.name, remote: p.upstreamRemote, branch: p.upstreamBranch};
+	const ancestor = await tracedExeca("git", ["-C", p.dir, "merge-base", "--is-ancestor", remoteRef, ref], {
+		reject: false,
+	});
+	if (ancestor.exitCode !== 0) return {...base, diverged: true, commits: []};
 	const statuses = await gitTestResults(
 		p.dir,
 		DEFAULT_GIT_TEST,
@@ -1536,7 +1537,6 @@ async function readMainPush(p: ProjectInfo): Promise<MainPush | null> {
 		const [sha = "", subject = ""] = line.split("\x1f");
 		return {sha, subject, status: statuses.get(sha) ?? ("unknown" as const)};
 	});
-	if (commits.length === 0) return null;
 	return {...base, diverged: false, commits};
 }
 

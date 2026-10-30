@@ -438,6 +438,34 @@ const STATUS_WORDS = {good: "green", bad: "red", unknown: "unknown"} as const;
 
 const commitLabel = (c: MainPushCommit): string => `"${c.subject}" (${c.sha.slice(0, 7)})`;
 
+const statusLabel = (c: MainPushCommit): string => `${commitLabel(c)} ${STATUS_WORDS[c.status]}`;
+
+/**
+ * The commits after the green prefix, as one line: how many, how many unknown and red, and the first
+ * (never green) by name. The full list sits behind a disclosure so a long tail never floods the row.
+ */
+function NotPushed({rest}: {rest: readonly MainPushCommit[]}) {
+	const [first] = rest;
+	const unknown = rest.filter((c) => c.status === "unknown").length;
+	const red = rest.filter((c) => c.status === "bad").length;
+	return (
+		<div data-testid="not-pushed" className="mt-0.5 text-text-500">
+			<p>
+				Not pushed: {rest.length} {rest.length === 1 ? "commit" : "commits"} ({unknown} unknown, {red} red)
+				{first !== undefined && `, first ${statusLabel(first)}`}
+			</p>
+			<details data-testid="not-pushed-all">
+				<summary className="cursor-pointer">Show all {rest.length}</summary>
+				<ul className="ml-4 list-disc">
+					{rest.map((c) => (
+						<li key={c.sha}>{statusLabel(c)}</li>
+					))}
+				</ul>
+			</details>
+		</div>
+	);
+}
+
 /**
  * Push main: local main is ahead of its remote. The row offers one confirmed push of the green
  * prefix (oldest first, by `git test results`), whose confirm names exactly those commits and the
@@ -489,11 +517,7 @@ function PushRow({
 					</button>
 				)}
 			</div>
-			{rest.length > 0 && (
-				<p className="mt-0.5 text-text-500">
-					Not pushed: {rest.map((c) => `${commitLabel(c)} ${STATUS_WORDS[c.status]}`).join(", ")}
-				</p>
-			)}
+			{rest.length > 0 && <NotPushed rest={rest} />}
 			{confirming && last !== undefined && (
 				<div
 					data-testid="push-confirm"

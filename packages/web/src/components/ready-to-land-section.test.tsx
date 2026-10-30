@@ -418,7 +418,8 @@ describe("ReadyToLandSection push main", () => {
 			rows: [
 				"kalshi: 3 of 5 unpushed commits on main are green · testing k400000" +
 					"Push 3 green commits to origin/main" +
-					'Not pushed: "Polish parser" (k400000) unknown, "Break parser" (k500000) red',
+					'Not pushed: 2 commits (1 unknown, 1 red), first "Polish parser" (k400000) unknown' +
+					'Show all 2"Polish parser" (k400000) unknown"Break parser" (k500000) red',
 			],
 			prompt:
 				'Push 3 green commits to origin/main in kalshi: "Add parser" (k100000), "Use parser" (k200000), ' +
@@ -456,9 +457,44 @@ describe("ReadyToLandSection push main", () => {
 			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
 		}).toStrictEqual({
 			rows: [
-				'busy: 0 of 1 unpushed commits on main are green · testing u100000Not pushed: "Untested" (u100000) unknown',
+				"busy: 0 of 1 unpushed commits on main are green · testing u100000" +
+					'Not pushed: 1 commit (1 unknown, 0 red), first "Untested" (u100000) unknown' +
+					'Show all 1"Untested" (u100000) unknown',
 			],
 			buttons: 0,
+		});
+	});
+
+	it("keeps a long not-pushed tail to one line, with the full list behind a disclosure", () => {
+		const tail = Array.from({length: 27}, (_, i) => ({
+			sha: sha(`c${i}`),
+			subject: `Commit ${i}`,
+			status: i === 0 ? ("unknown" as const) : ("bad" as const),
+		}));
+		renderPushes([
+			{
+				project: "checkstyle-results",
+				remote: "origin",
+				branch: "main",
+				diverged: false,
+				commits: [{sha: sha("g1"), subject: "Green", status: "good"}, ...tail],
+			},
+		]);
+
+		const disclosure = screen.getByTestId("not-pushed-all");
+		const openBefore = disclosure.hasAttribute("open");
+		fireEvent.click(screen.getByText("Show all 27"));
+
+		expect({
+			summary: screen.getByTestId("not-pushed").firstChild?.textContent,
+			openBefore,
+			openAfter: disclosure.hasAttribute("open"),
+			listed: [...disclosure.querySelectorAll("li")].length,
+		}).toStrictEqual({
+			summary: 'Not pushed: 27 commits (1 unknown, 26 red), first "Commit 0" (c000000) unknown',
+			openBefore: false,
+			openAfter: true,
+			listed: 27,
 		});
 	});
 });

@@ -2326,7 +2326,14 @@ describe("createPrHandler", () => {
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Current feature work"]);
 		await execa("git", ["-C", dir, "push", "-u", "origin", "feature/current-pr"]);
 
-		seedProjectCache([makeProject({name: "create-pr-current", dir, remote: "alice/example-repo"})]);
+		seedProjectCache([
+			makeProject({
+				name: "create-pr-current",
+				dir,
+				remote: "alice/example-repo",
+				originRemote: "alice/example-repo",
+			}),
+		]);
 
 		const {polly, stop} = setupPolly({name: "createPrHandler-current-branch"});
 		pollyStop = stop;
@@ -2367,6 +2374,155 @@ describe("createPrHandler", () => {
 			message: "Opened PR #100",
 			prNumber: 100,
 			prUrl: "https://example.com/alice/example-repo/pull/100",
+		});
+	});
+});
+
+/** A local repo with a bare origin holding main, and a feature branch with one local commit. */
+async function repoWithFeatureBranch(branch: string): Promise<{dir: string; remoteDir: string}> {
+	const dir = await createTestGitRepo();
+	const remoteDir = await createBareRemote();
+	await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+	await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
+	await execa("git", ["-C", dir, "checkout", "-b", branch]);
+	await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
+	return {dir, remoteDir};
+}
+
+/** Fakes GitHub: records the repo each PR targets and its variables; never reaches GitHub. */
+function fakeCreatePullRequest(): {calls: {repository: string; variables: Record<string, unknown>}[]} {
+	resetRepositoryIdCache();
+	const calls: {repository: string; variables: Record<string, unknown>}[] = [];
+	let repository = "";
+	setGitHubClient({
+		graphql: async (query: string, variables?: Record<string, unknown>) => {
+			if (query.includes("createPullRequest")) {
+				calls.push({repository, variables: {...variables}});
+				return Promise.resolve({
+					data: {createPullRequest: {pullRequest: {url: `https://github.com/${repository}/pull/9`}}},
+				});
+			}
+			repository = `${String(variables?.["owner"])}/${String(variables?.["name"])}`;
+			return Promise.resolve({data: {repository: {id: `REPOSITORY_${repository}`}}});
+		},
+	});
+	return {calls};
+}
+
+describe("createPrHandler pushes the branch and targets the base", () => {
+	afterEach(() => {
+		resetRepositoryIdCache();
+	});
+
+	it("pushes a never-pushed branch to origin before opening the PR", async () => {
+		const {dir, remoteDir} = await repoWithFeatureBranch("fix-unpushed");
+		seedProjectCache([makeProject({name: "pr-unpushed", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-unpushed", branch: "fix-unpushed", title: "Fix"});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			remoteTip: await gitOut(remoteDir, "rev-parse", "refs/heads/fix-unpushed"),
+			calls: github.calls.map((c) => [c.repository, c.variables["baseRefName"], c.variables["headRefName"]]),
+		}).toStrictEqual({
+			ok: true,
+			message: "Opened PR #9",
+			remoteTip: await gitOut(dir, "rev-parse", "fix-unpushed"),
+			calls: [["alice/repo", "main", "fix-unpushed"]],
+		});
+	});
+
+	it("force-pushes with lease when origin's copy of the branch was rewritten locally", async () => {
+		const {dir, remoteDir} = await repoWithFeatureBranch("fix-rewritten");
+		await execa("git", ["-C", dir, "push", "-u", "origin", "fix-rewritten"]);
+		await execa("git", ["-C", dir, "commit", "--amend", "--allow-empty", "-m", "Feature work, reworded"]);
+		seedProjectCache([makeProject({name: "pr-rewritten", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-rewritten", branch: "fix-rewritten", title: "Fix"});
+
+		expect({
+			ok: result.ok,
+			remoteTip: await gitOut(remoteDir, "rev-parse", "refs/heads/fix-rewritten"),
+			calls: github.calls.length,
+		}).toStrictEqual({ok: true, remoteTip: await gitOut(dir, "rev-parse", "fix-rewritten"), calls: 1});
+	});
+
+	it("opens the PR in origin's repo when origin is the upstream remote, even for a fork", async () => {
+		const {dir} = await repoWithFeatureBranch("fix-fork");
+		await execa("git", ["-C", dir, "push", "origin", "main:refs/heads/avalon.cool"]);
+		seedProjectCache([
+			makeProject({
+				name: "pr-fork",
+				dir,
+				remote: "georgyo/avalon",
+				originRemote: "motlin/avalon",
+				upstreamRemote: "origin",
+				upstreamBranch: "avalon.cool",
+				upstreamRef: "origin/avalon.cool",
+			}),
+		]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-fork", branch: "fix-fork", title: "Fix"});
+
+		expect({
+			ok: result.ok,
+			calls: github.calls.map((c) => [c.repository, c.variables["baseRefName"], c.variables["headRefName"]]),
+		}).toStrictEqual({ok: true, calls: [["motlin/avalon", "avalon.cool", "fix-fork"]]});
+	});
+
+	it("fails plainly without calling GitHub when the base branch isn't on the upstream remote", async () => {
+		const {dir, remoteDir} = await repoWithFeatureBranch("fix-no-base");
+		seedProjectCache([
+			makeProject({
+				name: "pr-no-base",
+				dir,
+				upstreamBranch: "avalon.cool",
+				upstreamRef: "origin/avalon.cool",
+			}),
+		]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-no-base", branch: "fix-no-base", title: "Fix"});
+
+		const pushed = await execa("git", ["-C", remoteDir, "rev-parse", "--verify", "refs/heads/fix-no-base"], {
+			reject: false,
+		});
+		expect({ok: result.ok, message: result.message, calls: github.calls, pushed: pushed.exitCode}).toStrictEqual({
+			ok: false,
+			message: "Can't open a PR: the base branch avalon.cool doesn't exist on origin",
+			calls: [],
+			pushed: 128,
+		});
+	});
+
+	it("refuses to open a PR from the base branch itself and pushes nothing", async () => {
+		const {dir} = await repoWithFeatureBranch("fix-unused");
+		await execa("git", ["-C", dir, "checkout", "main"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Local main work"]);
+		seedProjectCache([makeProject({name: "pr-from-base", dir})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-from-base", branch: "main", title: "Fix"});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			calls: github.calls,
+			ahead: await gitOut(dir, "rev-list", "--count", "origin/main..main"),
+		}).toStrictEqual({
+			ok: false,
+			message: "Can't open a PR from main: it is the base branch, and Open PR never pushes it",
+			calls: [],
+			ahead: "1",
 		});
 	});
 });
@@ -2746,7 +2902,7 @@ describe("abortRebaseHandler", () => {
 /** Ready to land's Open PR in a repo that does or doesn't allow auto-merge: the gh calls, drafts and result. */
 async function openPr(name: string, autoMergeAllowed: boolean) {
 	const dir = await createTestGitRepo();
-	seedProjectCache([makeProject({name, dir, remote: "alice/example-repo"})]);
+	seedProjectCache([makeProject({name, dir, remote: "alice/example-repo", originRemote: "alice/example-repo"})]);
 	const gh: string[][] = [];
 	fakeExeca.handler = (command, args) => {
 		if (command === "gh") gh.push(args);
@@ -2776,7 +2932,7 @@ async function openPr(name: string, autoMergeAllowed: boolean) {
 		},
 	});
 	const {createPrHandler} = await import("./server-fns.impl.js");
-	const result = await createPrHandler({project: name, branch: "main", title: "Ship it", autoMerge: true});
+	const result = await createPrHandler({project: name, branch: "ship-it", title: "Ship it", autoMerge: true});
 	return {
 		gh,
 		drafts,
@@ -2905,7 +3061,7 @@ describe("queued git actions", () => {
 		seedProjectCache([makeProject({name: "queued-create-pr", dir})]);
 		const {createPrHandler} = await import("./server-fns.impl.js");
 		const {whileHeld, afterRelease} = await execCallsAroundRepoHold("queued-create-pr", async () =>
-			createPrHandler({project: "queued-create-pr", branch: "main", title: "t", draft: true}),
+			createPrHandler({project: "queued-create-pr", branch: "feature", title: "t", draft: true}),
 		);
 		expect(whileHeld).toEqual([]);
 		expect(afterRelease.map((c) => [c.command, c.args.includes("fetch")])).toContainEqual(["git", true]);

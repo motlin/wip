@@ -370,6 +370,8 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			resources: [repoResource(repo.name)],
 			buffer: true,
 			pauseOnBattery: true,
+			// It replays and pushes the user's refs, so it holds the repo; a user action preempts it.
+			preemptible: true,
 			run: async (signal) => {
 				if (stopped.has(repo.name)) return;
 				done.set(candidate.id, await deps.advance(repo, candidate, signal));

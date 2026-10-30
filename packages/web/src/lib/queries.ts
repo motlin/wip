@@ -1,5 +1,6 @@
 import {queryOptions} from "@tanstack/react-query";
 import {
+	getActionStatus,
 	getActionsBillingBlock,
 	getProjects,
 	getProjectChildren,
@@ -150,6 +151,17 @@ export const testLogQueryOptions = (project: string, sha: string) =>
 		queryFn: async () => getTestLog({data: {project, sha}}),
 		staleTime: Infinity,
 		gcTime: 10 * 60 * 1000,
+	});
+
+/** A user action's latest progress or result, polled until it finishes; SSE action events write it too. */
+export const actionStatusQueryOptions = (id: string) =>
+	queryOptions({
+		queryKey: ["actionStatus", id],
+		queryFn: async () => getActionStatus({data: {id}}),
+		refetchInterval: (query) => {
+			const status = query.state.data?.status;
+			return status === "done" || status === "busy" ? false : 1000;
+		},
 	});
 
 export const issueByNumberQueryOptions = (project: string, number: number) =>

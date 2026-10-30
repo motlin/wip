@@ -1,8 +1,8 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
-import {actionEmitter, type ActionEvent} from "./action-events.js";
+import {actionEmitter, latestActionEvent, type ActionEvent} from "./action-events.js";
 import {writeLogEntry, type CostClass} from "@wip/shared";
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
-import {repoResource} from "./repo-resource.js";
+import {repoResource, testWorktreeResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 
 async function tick(): Promise<void> {
@@ -185,5 +185,161 @@ describe("captureActionLogs", () => {
 			return Promise.resolve(1);
 		});
 		expect(logs.map((e) => e.msg)).toStrictEqual(["direct"]);
+	});
+});
+
+describe("user actions never wait behind background tests", () => {
+	it("starts a foreground action on a project while a background test-worktree job for it runs", async () => {
+		let release!: () => void;
+		const background = workQueue.enqueue({
+			coalesceKey: "main-push-test:alpha",
+			resources: [testWorktreeResource("alpha")],
+			kind: "main-push-test",
+			project: "alpha",
+			costClass: "build",
+			priority: "background",
+			run: async () =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		});
+		await tick();
+		const result = await runQueuedAction(
+			"alpha",
+			"createPr",
+			async () => Promise.resolve("opened"),
+			"git-write",
+			50,
+		);
+		const runningAfter = workQueue.getState().running.map((job) => job.kind);
+		release();
+		await background.settled;
+
+		expect({result, runningAfter}).toStrictEqual({result: "opened", runningAfter: ["main-push-test"]});
+	});
+
+	it("preempts a preemptible background job holding the repo, runs the action at once, then reruns the background job", async () => {
+		const runs: string[] = [];
+		const background = workQueue.enqueue({
+			coalesceKey: "ready:alpha:c1",
+			resources: [repoResource("alpha")],
+			kind: "advance-commit",
+			project: "alpha",
+			costClass: "build",
+			priority: "background",
+			preemptible: true,
+			run: async (signal) => {
+				runs.push(runs.includes("advance") ? "advance-again" : "advance");
+				if (runs.length > 1) return;
+				await new Promise<void>((resolve) => {
+					signal.addEventListener("abort", () => {
+						resolve();
+					});
+				});
+				runs.push("advance-aborted");
+			},
+		});
+		await tick();
+		const events: ActionEvent[] = [];
+		const listener = (event: ActionEvent): void => {
+			events.push(event);
+		};
+		actionEmitter.on("action", listener);
+		const result = await runQueuedAction(
+			"alpha",
+			"createPr",
+			async () => {
+				runs.push("createPr");
+				return Promise.resolve("opened");
+			},
+			"git-write",
+			1000,
+		);
+		actionEmitter.off("action", listener);
+		await background.settled;
+
+		expect({result, runs, statuses: events.map((e) => e.status)}).toStrictEqual({
+			result: "opened",
+			runs: ["advance", "advance-aborted", "createPr", "advance-again"],
+			statuses: ["waiting", "running", "done"],
+		});
+	});
+});
+
+describe("action status for the opened tab", () => {
+	it("uses the caller's id, reports each step and keeps the final result for a tab that loads late", async () => {
+		const events: ActionEvent[] = [];
+		const listener = (event: ActionEvent): void => {
+			events.push(event);
+		};
+		actionEmitter.on("action", listener);
+		await runQueuedAction("alpha", {label: "createPr", target: "Add parser", id: "req-1"}, async (step) => {
+			step("Pushing add-parser…");
+			step("Opening the pull request…");
+			return Promise.resolve({ok: true, message: "Opened PR #12", prUrl: "https://github.com/o/alpha/pull/12"});
+		});
+		actionEmitter.off("action", listener);
+
+		const base = {id: "req-1", project: "alpha", label: "createPr", target: "Add parser"};
+		expect({events, status: latestActionEvent("req-1")}).toStrictEqual({
+			events: [
+				{...base, status: "waiting", waitingFor: undefined},
+				{...base, status: "running"},
+				{...base, status: "running", step: "Pushing add-parser…"},
+				{...base, status: "running", step: "Opening the pull request…"},
+				{
+					...base,
+					status: "done",
+					result: {ok: true, message: "Opened PR #12", url: "https://github.com/o/alpha/pull/12"},
+				},
+			],
+			status: {
+				...base,
+				status: "done",
+				result: {ok: true, message: "Opened PR #12", url: "https://github.com/o/alpha/pull/12"},
+			},
+		});
+	});
+
+	it("keeps a thrown error as a failed result", async () => {
+		await expect(
+			runQueuedAction("alpha", {label: "createPr", id: "req-2"}, async () => Promise.reject(new Error("boom"))),
+		).rejects.toThrow("boom");
+
+		expect(latestActionEvent("req-2")).toStrictEqual({
+			id: "req-2",
+			project: "alpha",
+			label: "createPr",
+			status: "done",
+			result: {ok: false, message: "boom"},
+		});
+	});
+
+	it("keeps a busy repo as a failed result naming the job it waited for", async () => {
+		const release = holdRepo("alpha", "rebase");
+		await tick();
+		await expect(
+			runQueuedAction(
+				"alpha",
+				{label: "createPr", id: "req-3"},
+				async () => Promise.resolve("x"),
+				"git-write",
+				20,
+			),
+		).rejects.toThrow("repo busy");
+		release();
+
+		expect(latestActionEvent("req-3")).toStrictEqual({
+			id: "req-3",
+			project: "alpha",
+			label: "createPr",
+			status: "busy",
+			waitingFor: "rebase",
+			result: {ok: false, message: "repo busy: rebase is running on alpha; try again shortly"},
+		});
+	});
+
+	it("knows nothing about an id it never saw", () => {
+		expect(latestActionEvent("never")).toBeNull();
 	});
 });

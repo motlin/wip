@@ -120,6 +120,7 @@ describe("landing outcomes outlive their toasts", () => {
 
 	afterEach(() => {
 		vi.mocked(window.open).mockRestore();
+		vi.restoreAllMocks();
 		cleanup();
 		clearToasts();
 		vi.useRealTimers();
@@ -210,7 +211,8 @@ describe("landing outcomes outlive their toasts", () => {
 		});
 	});
 
-	it("opens a tab in the confirm click and sends it to the new PR once it opens", async () => {
+	it("opens a wip tab following the action in the confirm click and sends it to the new PR once it opens", async () => {
+		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
 		const tab = {location: {href: ""}, opener: {} as unknown, close: vi.fn<() => void>()};
 		const open = vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
 		let finish: ((result: ActionResult) => void) | undefined;
@@ -224,7 +226,7 @@ describe("landing outcomes outlive their toasts", () => {
 
 		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
 		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		const openedInClick = open.mock.calls;
+		const openedInClick = [...open.mock.calls];
 		const hrefBefore = tab.location.href;
 		await act(async () => {
 			finish?.({
@@ -238,12 +240,26 @@ describe("landing outcomes outlive their toasts", () => {
 
 		expect({
 			openedInClick,
+			request: serverFns.createPr.mock.calls,
 			hrefBefore,
 			href: tab.location.href,
 			opener: tab.opener,
 			closed: tab.close.mock.calls.length,
 		}).toStrictEqual({
-			openedInClick: [["", "_blank"]],
+			openedInClick: [["/opening/0000-0000-0000-0000-tab", "_blank"]],
+			request: [
+				[
+					{
+						data: {
+							project: "plain",
+							branch: "add-parser",
+							title: "Add parser",
+							autoMerge: true,
+							actionId: "0000-0000-0000-0000-tab",
+						},
+					},
+				],
+			],
 			hrefBefore: "",
 			href: "https://github.com/motlin/plain/pull/12",
 			opener: null,
@@ -251,7 +267,8 @@ describe("landing outcomes outlive their toasts", () => {
 		});
 	});
 
-	it("closes the tab it opened when Open PR fails", async () => {
+	it("keeps the tab open on the wip page showing why Open PR failed", async () => {
+		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
 		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
 		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
 		serverFns.createPr.mockResolvedValue({ok: false, message: "base branch main does not exist on origin"});
@@ -263,7 +280,32 @@ describe("landing outcomes outlive their toasts", () => {
 			await Promise.resolve();
 		});
 
-		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({href: "", closed: 1});
+		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({
+			href: `/opening/0000-0000-0000-0000-tab?failed=${encodeURIComponent("base branch main does not exist on origin")}`,
+			closed: 0,
+		});
+	});
+
+	it("keeps the tab open on the wip page when the Open PR request itself throws", async () => {
+		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
+		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
+		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
+		serverFns.createPr.mockRejectedValue(
+			new Error("repo busy: advance-commit is running on plain; try again shortly"),
+		);
+		renderHarness();
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+		await act(async () => {
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+
+		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({
+			href: `/opening/0000-0000-0000-0000-tab?failed=${encodeURIComponent("repo busy: advance-commit is running on plain; try again shortly")}`,
+			closed: 0,
+		});
 	});
 
 	it("keeps an Open PR failure and its log link on the row after the toast expires, with the button to retry", async () => {

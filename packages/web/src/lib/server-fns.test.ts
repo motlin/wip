@@ -3752,6 +3752,18 @@ describe("getMainPushesHandler", () => {
 			{project: "diverged", remote: "origin", branch: "main", diverged: true, commits: []},
 		]);
 	});
+
+	it("gives a local main that is only behind its upstream branch no row", async () => {
+		const {dir} = await repoWithRemote();
+		await commitNewFile(dir, "upstream.txt");
+		await gitOut(dir, "push", "origin", "main");
+		await gitOut(dir, "reset", "--hard", "main~1");
+		seedProjectCache([makeProject({name: "behind", dir})]);
+
+		const {getMainPushesHandler} = await import("./server-fns.impl.js");
+
+		expect(await getMainPushesHandler({})).toStrictEqual([]);
+	});
 });
 
 describe("getSystemStatusHandler", () => {

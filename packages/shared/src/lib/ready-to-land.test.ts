@@ -73,21 +73,21 @@ describe("readyRowView", () => {
 		]).toStrictEqual(["land", "land", "land", "land", "land", "land"]);
 	});
 
-	it("hides a PR whose checks are pending or not yet reported when the repo has no auto-merge", () => {
+	it("shows a PR whose checks are pending or not yet reported as waiting when the repo has no auto-merge", () => {
 		expect([
 			readyRowView(pr, commit({checkStatus: "pending"})),
 			readyRowView(pr, commit({checkStatus: "running"})),
 			readyRowView(pr, commit({checkStatus: "none"})),
 			readyRowView(pr, commit({checkStatus: "unknown", mergeStateStatus: "BLOCKED"})),
-		]).toStrictEqual(["hidden", "hidden", "hidden", "hidden"]);
+		]).toStrictEqual(["waiting", "waiting", "waiting", "waiting"]);
 	});
 
-	it("shows a pending PR as merging once auto-merge is on, and still offers Merge PR where the repo allows auto-merge", () => {
+	it("shows a pending PR as waiting once auto-merge is on, and still offers Merge PR where the repo allows auto-merge", () => {
 		expect([
 			readyRowView(pr, commit({autoMerge: true})),
 			readyRowView(pr, commit({autoMergeAllowed: true})),
 			readyRowView(pr, commit({autoMerge: true, checkStatus: "passed"})),
-		]).toStrictEqual(["merging", "land", "land"]);
+		]).toStrictEqual(["waiting", "land", "land"]);
 	});
 });
 

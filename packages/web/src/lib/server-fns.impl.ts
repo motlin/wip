@@ -123,7 +123,7 @@ import {repoResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import {runEscapeHatch, topUpReadyBuffer} from "./bulk-actions.js";
 import {currentReadyBuffer} from "./ready-buffer-instance.js";
-import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import {openPrRefusal, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {EscapeHatchRecipe} from "./escape-hatch.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
@@ -852,17 +852,56 @@ export async function pushChildHandler(data: PushChildInput): Promise<TestJobSta
 	});
 }
 
+/**
+ * Pushes the PR's branch to origin so GitHub can see it: a plain push when origin lacks it or holds an
+ * ancestor, a force-with-lease against origin's exact tip when the branch was rewritten locally (it is
+ * the user's own PR branch and Open PR is user-initiated). Never pushes to any other remote. Returns
+ * the failure, or null once origin holds the local tip.
+ */
+async function pushPrBranch(dir: string, branch: string, env: Record<string, string>): Promise<string | null> {
+	const ref = `refs/heads/${branch}`;
+	const local = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", `${ref}^{commit}`], {
+		reject: false,
+		env,
+	});
+	if (local.exitCode !== 0) return `Could not resolve branch ${branch}: ${local.stderr}`;
+	const remote = await tracedExeca("git", ["-C", dir, "ls-remote", "origin", ref], {reject: false, env});
+	if (remote.exitCode !== 0) return `Could not read ${branch} on origin: ${remote.stderr}`;
+	const remoteSha = remote.stdout.split(/\s/)[0] ?? "";
+	if (remoteSha === local.stdout.trim()) return null;
+	const args = ["-C", dir, "push", "origin", `${ref}:${ref}`];
+	if (remoteSha !== "") {
+		await tracedExeca("git", ["-C", dir, "fetch", "origin", ref], {reject: false, env});
+		const ancestor = await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", remoteSha, ref], {
+			reject: false,
+			env,
+		});
+		if (ancestor.exitCode !== 0) args.push(`--force-with-lease=${ref}:${remoteSha}`);
+	}
+	const push = await tracedExeca("git", args, {reject: false, env});
+	return push.exitCode === 0 ? null : `Failed to push ${branch} to origin: ${push.stderr}`;
+}
+
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, {label: "createPr", target: data.title}, async () => {
 			const env = await getMiseEnv(p.dir);
 
+			const refused = openPrRefusal(data.branch, p.upstreamBranch);
+			if (refused !== null) return {ok: false, message: refused};
+
 			const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
 				reject: false,
 				env,
 			});
 			if (fetch.exitCode !== 0) {
+				if (fetch.stderr.includes("couldn't find remote ref")) {
+					return {
+						ok: false,
+						message: `Can't open a PR: the base branch ${p.upstreamBranch} doesn't exist on ${p.upstreamRemote}`,
+					};
+				}
 				return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
 			}
 
@@ -895,6 +934,9 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				return {ok: false, message: `${data.branch} is behind ${p.upstreamRef}; rebase before creating a PR`};
 			}
 
+			const pushed = await pushPrBranch(p.dir, data.branch, env);
+			if (pushed !== null) return {ok: false, message: pushed};
+
 			let headRefName = data.branch;
 			if (p.upstreamRemote !== "origin") {
 				const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
@@ -908,14 +950,17 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				}
 			}
 
-			const [owner, name] = p.remote.split("/");
+			// The PR lands on <upstreamRemote>/<upstreamBranch>, so it opens in that remote's repo. With
+			// origin as the upstream remote that is origin itself, not the fork parent p.remote names.
+			const prRepo = p.upstreamRemote === "origin" ? p.originRemote : p.remote;
+			const [owner, name] = prRepo.split("/");
 			if (!owner || !name) {
-				return {ok: false, message: `Could not parse owner/repo from remote: ${p.remote}`};
+				return {ok: false, message: `Could not parse owner/repo from remote: ${prRepo}`};
 			}
 
 			const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
 			// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
-			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(p.remote));
+			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(prRepo));
 			const result = await createPullRequest({
 				owner,
 				name,
@@ -933,7 +978,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				if (Number.isNaN(prNumber)) return {ok: true, message: `Opened ${result.prUrl}`, prUrl: result.prUrl};
 				const opened = {ok: true, prNumber, prUrl: result.prUrl};
 				if (!autoMerge) return {...opened, message: `Opened PR #${prNumber}`};
-				const enabled = await enableAutoMerge(p, prNumber, env);
+				const enabled = await enableAutoMerge({...p, remote: prRepo}, prNumber, env);
 				return enabled === null
 					? {
 							...opened,

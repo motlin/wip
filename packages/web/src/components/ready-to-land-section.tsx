@@ -3,6 +3,7 @@ import {Link} from "@tanstack/react-router";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {
 	landingOrder,
+	openPrRefusal,
 	prChecksPending,
 	readyRowView,
 	type ReadyToLandItem,
@@ -128,21 +129,29 @@ interface LandControlProps {
 /** The landing button plus the confirm it opens; nothing lands until the user confirms. */
 function useLandControl({item, commit, projectInfo, blockedReason, onLand}: LandControlProps) {
 	const [confirming, setConfirming] = useState(false);
-	const action = landingAction(item, commit, projectInfo?.upstreamBranch);
+	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
+	// An Open PR the server would refuse is never offered: the row says why instead.
+	const refusal =
+		landing?.kind === "open-pr" ? openPrRefusal(landing.branch, projectInfo?.upstreamBranch ?? "main") : null;
+	const action = refusal === null ? landing : null;
 	const button =
-		action === null ? null : (
-			<button
-				type="button"
-				disabled={blockedReason !== null}
-				title={blockedReason ?? undefined}
-				aria-expanded={confirming}
-				onClick={() => {
-					setConfirming(true);
-				}}
-				className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-			>
-				{action.label}
-			</button>
+		refusal === null ? (
+			action === null ? null : (
+				<button
+					type="button"
+					disabled={blockedReason !== null}
+					title={blockedReason ?? undefined}
+					aria-expanded={confirming}
+					onClick={() => {
+						setConfirming(true);
+					}}
+					className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+				>
+					{action.label}
+				</button>
+			)
+		) : (
+			<span className="text-xs text-text-300">{refusal}</span>
 		);
 	const confirm =
 		action === null || !confirming ? null : (

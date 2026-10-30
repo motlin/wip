@@ -11,7 +11,7 @@ import {
 	cacheGhLogin,
 } from "./db.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
-import {cacheAutoMergeAllowed} from "./github-auto-merge.js";
+import {cacheAutoMergeAllowed, prRepository} from "./github-auto-merge.js";
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from "./rate-limit.js";
 import {
 	MergeStateStatusSchema,
@@ -117,7 +117,7 @@ export interface PrStatuses {
 	externalCiBlockers: Map<string, ExternalCiBlocker[]>;
 	/** Branches whose PR has auto-merge on: GitHub merges it once its checks pass. */
 	autoMerge: Set<string>;
-	/** The canonical repo allows auto-merge. */
+	/** The repo the project's PRs live in (see prRepository) allows auto-merge. */
 	autoMergeAllowed: boolean;
 	baseBranches: BaseBranchStatus[];
 }
@@ -548,10 +548,14 @@ async function fetchPrStatusesFromApi(
 		});
 		const response = PrGraphQLResponseSchema.parse(raw);
 		const canonicalRepository = `${canonical.owner}/${canonical.name}`;
-		autoMergeAllowed = response.data?.repository.autoMergeAllowed === true;
-		if (response.data?.repository.autoMergeAllowed !== undefined) {
-			cacheAutoMergeAllowed(canonicalRepository, autoMergeAllowed);
-		}
+		// Each PR query reads its repo's auto-merge setting; the flag comes from the repo the PRs live in.
+		const autoMergeAllowedByRepo = new Map<string, boolean>();
+		const recordAutoMergeAllowed = (repository: string, allowed: boolean | undefined) => {
+			if (allowed === undefined) return;
+			autoMergeAllowedByRepo.set(repository, allowed);
+			cacheAutoMergeAllowed(repository, allowed);
+		};
+		recordAutoMergeAllowed(canonicalRepository, response.data?.repository.autoMergeAllowed);
 		allPrs = withRepository(response.data?.repository.pullRequests.nodes ?? [], canonicalRepository);
 		const canonicalBase = getBaseBranchStatus(
 			response,
@@ -574,6 +578,7 @@ async function fetchPrStatusesFromApi(
 				});
 				const originResponse = PrGraphQLResponseSchema.parse(originRaw);
 				const originRepository = `${origin.owner}/${origin.name}`;
+				recordAutoMergeAllowed(originRepository, originResponse.data?.repository.autoMergeAllowed);
 				const originPrs = withRepository(
 					originResponse.data?.repository.pullRequests.nodes ?? [],
 					originRepository,
@@ -601,6 +606,12 @@ async function fetchPrStatusesFromApi(
 				);
 			}
 		}
+		const prRepo = prRepository({
+			upstreamRemote: upstreamRemote ?? "",
+			originRemote: origin ? `${origin.owner}/${origin.name}` : canonicalRepository,
+			remote: canonicalRepository,
+		});
+		autoMergeAllowed = autoMergeAllowedByRepo.get(prRepo) === true;
 	} catch (error) {
 		const message = errorMessage(error);
 		// Detect rate limiting and activate cooldown to prevent further calls

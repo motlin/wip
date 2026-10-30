@@ -17,6 +17,7 @@ import {
 	getChildCommits,
 	getMiseEnv,
 	getPrStatuses,
+	prRepository,
 	getProjectsDirs,
 	getRemoteBranchInfo,
 	getCommitFacts,
@@ -887,15 +888,6 @@ async function pushPrBranch(dir: string, branch: string, env: Record<string, str
 	return push.exitCode === 0 ? null : `Failed to push ${branch} to origin: ${push.stderr}`;
 }
 
-/**
- * The repo a project's PRs live in. A PR lands on <upstreamRemote>/<upstreamBranch>, so it opens in that
- * remote's repo; with origin as the upstream remote that is origin itself, not the fork parent p.remote
- * names. Open PR, Merge PR and auto-merge all address PRs here.
- */
-function prRepo(p: Pick<ProjectInfo, "upstreamRemote" | "originRemote" | "remote">): string {
-	return p.upstreamRemote === "origin" ? p.originRemote : p.remote;
-}
-
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
@@ -964,7 +956,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				}
 			}
 
-			const repo = prRepo(p);
+			const repo = prRepository(p);
 			const [owner, name] = repo.split("/");
 			if (!owner || !name) {
 				return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
@@ -1386,7 +1378,7 @@ async function enableAutoMerge(p: ProjectInfo, prNumber: number, env: Record<str
 	const {execa} = await import("execa");
 	const result = await execa(
 		"gh",
-		["pr", "merge", String(prNumber), "--squash", "--delete-branch", "--auto", "-R", prRepo(p)],
+		["pr", "merge", String(prNumber), "--squash", "--delete-branch", "--auto", "-R", prRepository(p)],
 		{reject: false, cwd: p.dir, env},
 	);
 	if (result.exitCode !== 0) return result.stderr.trim() || `gh exited ${result.exitCode}`;
@@ -1397,7 +1389,7 @@ async function enableAutoMerge(p: ProjectInfo, prNumber: number, env: Record<str
 export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> {
 	return tracedAction("mergePr", async () => {
 		const p = await resolveProject(data.project);
-		const repo = prRepo(p);
+		const repo = prRepository(p);
 		return runQueuedAction(data.project, {label: "mergePr", target: `PR #${data.prNumber}`}, async () => {
 			const {execa} = await import("execa");
 			const env = await getMiseEnv(p.dir);

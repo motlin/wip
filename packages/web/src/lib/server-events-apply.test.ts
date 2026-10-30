@@ -293,6 +293,36 @@ describe("other channels", () => {
 		expect(queryClient.getQueryData(["readyToLand"])).toStrictEqual(state);
 	});
 
+	it("clears a landing outcome when its row leaves the ready buffer, and keeps the rest", () => {
+		const stays = "1".repeat(40);
+		const leaves = "2".repeat(40);
+		const failed = {
+			status: "failure",
+			message: "Open PR failed",
+			link: {href: "/debug/logs", label: "See the log"},
+		};
+		const pushed = {status: "success", message: "Pushed 1 commit to origin/main"};
+		queryClient.setQueryData(["actionOutcomes"], {
+			[`land:a:${stays}`]: failed,
+			[`land:a:${leaves}`]: failed,
+			"push:a": pushed,
+		});
+		applier.apply({
+			channel: "ready-buffer",
+			data: {
+				slots: 2,
+				ready: [{project: "a", id: "p1", sha: stays}],
+				inFlight: [],
+				next: [],
+				stoppedProjects: [],
+			},
+		});
+		expect(queryClient.getQueryData(["actionOutcomes"])).toStrictEqual({
+			[`land:a:${stays}`]: failed,
+			"push:a": pushed,
+		});
+	});
+
 	it("writes refreshed issues and project items straight into the cache", () => {
 		const issue = {
 			number: 3,

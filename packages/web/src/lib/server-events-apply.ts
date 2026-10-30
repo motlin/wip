@@ -1,6 +1,7 @@
 import type {QueryClient} from "@tanstack/react-query";
 import type {GitChildResult, SnoozedChild, TestStatus, TodoItem} from "@wip/shared";
 import {actionEventToast, taskEventToast} from "./action-messages.js";
+import {ACTION_OUTCOMES_KEY, pruneLandOutcomes, type ActionOutcomes} from "./action-outcomes.js";
 import {createQueryUpdateBatcher} from "./query-update-batcher.js";
 import type {ProjectChildrenResult} from "./server-fns.js";
 import type {ServerEvent, TaskEvent} from "./server-events-schema.js";
@@ -144,6 +145,10 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 			}
 			case "ready-buffer": {
 				queryClient.setQueryData(["readyToLand"], event.data);
+				// A row that left the buffer takes its action outcome with it.
+				queryClient.setQueryData<ActionOutcomes>(ACTION_OUTCOMES_KEY, (old) =>
+					old === undefined ? old : pruneLandOutcomes(old, event.data),
+				);
 				return;
 			}
 			case "refresh-error": {

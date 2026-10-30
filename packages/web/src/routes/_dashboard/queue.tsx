@@ -18,6 +18,7 @@ import {
 	useLandReadyItem,
 	usePushUpstreamBranch,
 } from "../../lib/use-land-ready-item";
+import {useActionOutcomes, useDismissActionOutcome} from "../../lib/action-outcomes";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, type QueueContextValue} from "../../lib/queue-context";
@@ -82,6 +83,8 @@ function QueueLayout() {
 	const land = useLandReadyItem();
 	const push = usePushUpstreamBranch();
 	const landByPushing = useLandByPushing();
+	const outcomes = useActionOutcomes();
+	const dismissOutcome = useDismissActionOutcome();
 	const actionsBlocked = useActionsBlocked(readyToLand, workItems.gitChildren);
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
@@ -357,6 +360,8 @@ function QueueLayout() {
 						onPush={push}
 						actionsBlocked={actionsBlocked}
 						onLandByPushing={landByPushing}
+						outcomes={outcomes}
+						onDismissOutcome={dismissOutcome}
 					/>
 					<Outlet />
 				</main>

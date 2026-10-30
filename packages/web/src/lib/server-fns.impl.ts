@@ -126,7 +126,8 @@ import {doTodoTaskPrompt} from "./category-actions.js";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
 import {captureActionLogs, runQueuedAction} from "./queued-action.js";
-import {repoResource} from "./repo-resource.js";
+import {repoResource, testWorktreeResource} from "./repo-resource.js";
+import type {ActionEvent} from "./server-events-schema.js";
 import {workQueue} from "./shared-work-queue.js";
 import {runEscapeHatch, topUpReadyBuffer} from "./bulk-actions.js";
 import {currentReadyBuffer} from "./ready-buffer-instance.js";
@@ -889,10 +890,21 @@ async function pushPrBranch(dir: string, branch: string, env: Record<string, str
 	return push.exitCode === 0 ? null : `Failed to push ${branch} to origin: ${push.stderr}`;
 }
 
+/** The latest progress or result of a user action, for the tab Open PR opened; null when unknown. */
+export async function getActionStatusHandler(id: string): Promise<ActionEvent | null> {
+	const {latestActionEvent} = await import("./action-events.js");
+	return latestActionEvent(id);
+}
+
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction("createPr", async () => {
 		const p = await resolveProject(data.project);
-		return runQueuedAction(data.project, {label: "createPr", target: data.title}, async () => {
+		const action = {
+			label: "createPr",
+			target: data.title,
+			...(data.actionId === undefined ? {} : {id: data.actionId}),
+		};
+		return runQueuedAction(data.project, action, async (step) => {
 			const env = await getMiseEnv(p.dir);
 
 			const refused = openPrRefusal(data.branch, p.upstreamBranch);
@@ -941,6 +953,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				return {ok: false, message: `${data.branch} is behind ${p.upstreamRef}; rebase before creating a PR`};
 			}
 
+			step(`Pushing ${data.branch}…`);
 			const pushed = await pushPrBranch(p.dir, data.branch, env);
 			if (pushed !== null) return {ok: false, message: pushed};
 
@@ -963,6 +976,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
 			}
 
+			step("Opening the pull request…");
 			const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
 			// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
 			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(repo));
@@ -1495,11 +1509,14 @@ function scheduleMainPushTest(p: ProjectInfo, sha: string): void {
 		costClass: "build",
 		priority: "background",
 		pauseOnBattery: true,
-		resources: [repoResource(p.name)],
-		run: async () => {
+		// Only the test worktree: user actions on the checkout run beside it, and a user test preempts it.
+		resources: [testWorktreeResource(p.name)],
+		preemptible: true,
+		run: async (signal) => {
 			await gitTestRun(p.dir, sha, {
 				logDir: getTestLogDir(p.name),
 				background: {workers: getBackgroundTestWorkers()},
+				signal,
 			});
 		},
 	});

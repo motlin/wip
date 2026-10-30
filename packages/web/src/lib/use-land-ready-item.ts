@@ -56,7 +56,8 @@ async function runWithOutcome(
 
 /**
  * Runs a ready commit's landing action (merge PR, open PR or fast-forward local main), keeping its
- * outcome on the row and toasting the result. Open PR opens the new PR in a new tab.
+ * outcome on the row and toasting the result. Open PR opens a wip tab following the action (its
+ * progress, then the new PR or the reason it failed).
  */
 export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResult | undefined) => void {
 	const queryClient = useQueryClient();
@@ -64,8 +65,10 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 		(item: ReadyToLandItem, commit: GitChildResult | undefined) => {
 			const action = landingAction(item, commit);
 			if (action === null) return;
-			// Opened inside the confirm click so popup blockers allow it; it goes to the PR once it exists.
-			const tab = action.kind === "open-pr" ? window.open("", "_blank") : null;
+			// Opened inside the confirm click so popup blockers allow it. It shows the action's progress
+			// from the server under this id and goes to the PR once it exists; a failure stays on it.
+			const actionId = action.kind === "open-pr" ? crypto.randomUUID() : undefined;
+			const tab = actionId === undefined ? null : window.open(`/opening/${actionId}`, "_blank");
 			if (tab !== null) tab.opener = null;
 			const landing = async () =>
 				action.kind === "merge-pr"
@@ -78,6 +81,7 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 									title: commit?.subject ?? action.branch,
 									// Opened ready for review; the server turns on auto-merge only where the repo allows it.
 									autoMerge: true,
+									...(actionId === undefined ? {} : {actionId}),
 								},
 							})
 						: landFastForward({data: {project: item.project, sha: item.sha}});
@@ -90,8 +94,12 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 			).then((result) => {
 				const {prNumber, prUrl} = result;
 				if (tab !== null) {
-					if (result.ok && prUrl !== undefined) tab.location.href = prUrl;
-					else tab.close();
+					// The tab's own poll gets there too; this also covers a request that threw before the
+					// server recorded the action. A failure stays visible in the tab, never closed.
+					tab.location.href =
+						result.ok && prUrl !== undefined
+							? prUrl
+							: `/opening/${actionId}?failed=${encodeURIComponent(result.message)}`;
 				}
 				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {
 					// Its checks have not reported yet: without a refetch the row leaves Ready to land (or

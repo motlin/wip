@@ -92,6 +92,30 @@ export function actionEventToast(event: ActionEvent): ToastInput | null {
 	return null;
 }
 
+/** What a user-facing action is called in its failure message, by its internal runQueuedAction label. */
+const ACTION_NAMES: Record<string, string> = {
+	createPr: "Open PR",
+	mergePr: "Merge PR",
+	landFastForward: "Fast-forward main",
+	pushUpstreamBranch: "Push main",
+};
+
+/** The name a failed action's message starts with ("Open PR failed"). */
+export function actionName(label: string): string {
+	return ACTION_NAMES[label] ?? "The action";
+}
+
+/** The progress line for an action's tab: waiting behind a job, its current step, or starting. */
+export function actionProgressText(event: ActionEvent | null): string {
+	if (event === null) return "Starting…";
+	if (event.status === "waiting") {
+		return event.waitingFor === undefined
+			? `Waiting for ${event.project}…`
+			: `Waiting for ${describeJob(event.waitingFor)} in ${event.project}…`;
+	}
+	return event.step ?? `${describeAction(event.label)}…`;
+}
+
 /** The toast for a finished action: its result with a GitHub link, or a short reason and the log. */
 export function actionResultToast(action: string, result: ActionResult): ToastInput {
 	if (!result.ok) {

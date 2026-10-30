@@ -33,7 +33,7 @@ import type {Category} from "@wip/shared/schemas.js";
 import {probeHerdr} from "./herdr/availability.js";
 import {runAiConflictRung, runAiTestFixLoop, type AiRungDeps} from "./herdr/ai-rungs.js";
 import {stageRank} from "./stage-rank.js";
-import {repoResource} from "./repo-resource.js";
+import {repoResource, testWorktreeResource} from "./repo-resource.js";
 import {workQueue} from "./shared-work-queue.js";
 import type {JobHandle} from "./work-queue.js";
 
@@ -718,7 +718,11 @@ function registerTask(task: Task): Task {
 		coalesceKey: `task:${task.taskType}:${task.project}:${task.sha}${task.todoKey ? `:${task.todoKey}` : ""}`,
 		// Every type, push included, holds the shared per-repo resource, so a test,
 		// a rebase, a push and a refresh never touch the same repo at once.
-		resources: [repoResource(task.project)],
+		// A test also holds the test worktree, preempting a background test running there.
+		resources:
+			task.taskType === "test"
+				? [repoResource(task.project), testWorktreeResource(task.project)]
+				: [repoResource(task.project)],
 		kind: task.taskType,
 		project: task.project,
 		costClass: TASK_COST_CLASS[task.taskType],

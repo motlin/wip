@@ -4,7 +4,8 @@ import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
-import {
+import
+{
 	diffInventories,
 	draftPrVerification,
 	inventoryExists,
@@ -18,24 +19,40 @@ import {
 	type ProjectRecord,
 } from "./inventory.js";
 
-describe("inventory", () => {
+describe("inventory", () =>
+{
 	let tmp: string;
 	let originalXdg: string | undefined;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wip-inventory-"));
 		originalXdg = process.env.XDG_CONFIG_HOME;
 		process.env.XDG_CONFIG_HOME = tmp;
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
 		else process.env.XDG_CONFIG_HOME = originalXdg;
-		fs.rmSync(tmp, {recursive: true, force: true});
+		fs.rmSync(
+			tmp,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	const beta: ProjectRecord = {name: "beta", dir: "/p/beta", template: "typescript", kind: "own"};
-	const alpha: ProjectRecord = {
+	const beta: ProjectRecord =
+	{
+		name: "beta",
+		dir: "/p/beta",
+		template: "typescript",
+		kind: "own",
+	};
+	const alpha: ProjectRecord =
+	{
 		name: "alpha",
 		dir: "/p/alpha",
 		template: "java",
@@ -45,184 +62,523 @@ describe("inventory", () => {
 		notes: "n",
 	};
 
-	it("loads a missing file as an empty inventory", () => {
-		expect(loadInventory()).toEqual({projects: [], errors: []});
+	it("loads a missing file as an empty inventory", () =>
+	{
+		expect(loadInventory()).toEqual(
+			{
+				projects: [],
+				errors: [],
+			},
+		);
 	});
 
-	it("round trips and orders by name", () => {
+	it("round trips and orders by name", () =>
+	{
 		saveInventory([beta, alpha]);
 		expect(fs.existsSync(path.join(tmp, "wip", "projects.json5"))).toBe(true);
-		expect(loadInventory()).toEqual({projects: [alpha, beta], errors: []});
+		expect(loadInventory()).toEqual(
+			{
+				projects: [alpha, beta],
+				errors: [],
+			},
+		);
 	});
 
-	it("reports invalid entries without dropping valid ones", () => {
-		fs.mkdirSync(path.join(tmp, "wip"), {recursive: true});
+	it("reports invalid entries without dropping valid ones", () =>
+	{
+		fs.mkdirSync(
+			path.join(tmp, "wip"),
+			{
+				recursive: true,
+			},
+		);
 		fs.writeFileSync(
 			path.join(tmp, "wip", "projects.json5"),
-			JSON.stringify([beta, {name: "bad", dir: "relative", template: "cobol", kind: "own"}]),
+			JSON.stringify([
+				beta,
+				{
+					name: "bad",
+					dir: "relative",
+					template: "cobol",
+					kind: "own",
+				},
+			]),
 		);
 		const result = loadInventory();
 		expect(result.projects).toEqual([beta]);
 		expect(result.errors).toHaveLength(1);
-		expect(result.errors[0]).toMatchObject({index: 1});
+		expect(result.errors[0]).toMatchObject(
+			{
+				index: 1,
+			},
+		);
 	});
 
-	it("reports whether a registry file exists", () => {
+	it("reports whether a registry file exists", () =>
+	{
 		expect(inventoryExists()).toBe(false);
 		saveInventory([]);
 		expect(inventoryExists()).toBe(true);
 	});
 });
 
-describe("diffInventories", () => {
-	const a: ProjectRecord = {name: "a", dir: "/p/a", template: "java", kind: "own"};
-	const b: ProjectRecord = {name: "b", dir: "/p/b", template: "rust", kind: "fork"};
-	const c: ProjectRecord = {name: "c", dir: "/p/c", template: "rust", kind: "own"};
+describe("diffInventories", () =>
+{
+	const a: ProjectRecord =
+	{
+		name: "a",
+		dir: "/p/a",
+		template: "java",
+		kind: "own",
+	};
+	const b: ProjectRecord =
+	{
+		name: "b",
+		dir: "/p/b",
+		template: "rust",
+		kind: "fork",
+	};
+	const c: ProjectRecord =
+	{
+		name: "c",
+		dir: "/p/c",
+		template: "rust",
+		kind: "own",
+	};
 
-	it("splits added, removed, changed by dir", () => {
-		const bChanged: ProjectRecord = {...b, kind: "skip"};
-		expect(diffInventories([a, b], [bChanged, c])).toEqual({
-			added: [c],
-			removed: [a],
-			changed: [{before: b, after: bChanged}],
-		});
+	it("splits added, removed, changed by dir", () =>
+	{
+		const bChanged: ProjectRecord =
+		{
+			...b,
+			kind: "skip",
+		};
+		expect(diffInventories([a, b], [bChanged, c])).toEqual(
+			{
+				added: [c],
+				removed: [a],
+				changed: [
+					{
+						before: b,
+						after: bChanged,
+					},
+				],
+			},
+		);
 	});
 
-	it("is empty for identical inventories", () => {
-		expect(diffInventories([a], [{...a}])).toEqual({added: [], removed: [], changed: []});
+	it("is empty for identical inventories", () =>
+	{
+		expect(
+			diffInventories(
+				[a],
+				[
+					{
+						...a,
+					},
+				],
+			),
+		).toEqual(
+			{
+				added: [],
+				removed: [],
+				changed: [],
+			},
+		);
 	});
 });
 
-describe("selectTrackedProjects", () => {
+describe("selectTrackedProjects", () =>
+{
 	const records: ProjectRecord[] = [
-		{name: "own", dir: "/p/own", template: "typescript", kind: "own"},
-		{name: "fork", dir: "/p/fork/", template: "typescript", kind: "fork"},
-		{name: "nested", dir: "/p/nested", template: "java", kind: "nested"},
-		{name: "skipped", dir: "/p/skipped", template: "project", kind: "skip"},
-		{name: "missing", dir: "/p/missing", template: "rust", kind: "own"},
+		{
+			name: "own",
+			dir: "/p/own",
+			template: "typescript",
+			kind: "own",
+		},
+		{
+			name: "fork",
+			dir: "/p/fork/",
+			template: "typescript",
+			kind: "fork",
+		},
+		{
+			name: "nested",
+			dir: "/p/nested",
+			template: "java",
+			kind: "nested",
+		},
+		{
+			name: "skipped",
+			dir: "/p/skipped",
+			template: "project",
+			kind: "skip",
+		},
+		{
+			name: "missing",
+			dir: "/p/missing",
+			template: "rust",
+			kind: "own",
+		},
 	];
 
-	it("keeps only discovered projects whose directory the registry tracks as own, fork, or nested", () => {
+	it("keeps only discovered projects whose directory the registry tracks as own, fork, or nested", () =>
+	{
 		const discovered = [
-			{name: "fork", dir: "/p/fork"},
-			{name: "nested", dir: "/p/nested"},
-			{name: "own", dir: "/p/own"},
-			{name: "skipped", dir: "/p/skipped"},
-			{name: "stray", dir: "/p/stray"},
+			{
+				name: "fork",
+				dir: "/p/fork",
+			},
+			{
+				name: "nested",
+				dir: "/p/nested",
+			},
+			{
+				name: "own",
+				dir: "/p/own",
+			},
+			{
+				name: "skipped",
+				dir: "/p/skipped",
+			},
+			{
+				name: "stray",
+				dir: "/p/stray",
+			},
 		];
 		expect(selectTrackedProjects(discovered, records)).toEqual([
-			{name: "fork", dir: "/p/fork"},
-			{name: "nested", dir: "/p/nested"},
-			{name: "own", dir: "/p/own"},
+			{
+				name: "fork",
+				dir: "/p/fork",
+			},
+			{
+				name: "nested",
+				dir: "/p/nested",
+			},
+			{
+				name: "own",
+				dir: "/p/own",
+			},
 		]);
 	});
 });
 
-function record(overrides: Partial<ProjectRecord>): ProjectRecord {
-	return {name: "r", dir: "/p/r", template: "typescript", kind: "own", ...overrides};
+function record(overrides: Partial<ProjectRecord>): ProjectRecord
+{
+	return {
+		name: "r",
+		dir: "/p/r",
+		template: "typescript",
+		kind: "own",
+		...overrides,
+	};
 }
 
-describe("landingMode and trustsPatchIdGreen", () => {
-	it("lands by pull request until the registry configures otherwise, whatever the kind", () => {
-		expect({
-			fork: landingMode(record({kind: "fork"})),
-			own: landingMode(record({kind: "own"})),
-			ownPr: landingMode(record({kind: "own", landing: "pull-request"})),
-			forkFf: landingMode(record({kind: "fork", landing: "fast-forward"})),
-		}).toStrictEqual({fork: "pull-request", own: "pull-request", ownPr: "pull-request", forkFf: "fast-forward"});
+describe("landingMode and trustsPatchIdGreen", () =>
+{
+	it("lands by pull request until the registry configures otherwise, whatever the kind", () =>
+	{
+		expect(
+			{
+				fork: landingMode(
+					record(
+						{
+							kind: "fork",
+						},
+					),
+				),
+				own: landingMode(
+					record(
+						{
+							kind: "own",
+						},
+					),
+				),
+				ownPr: landingMode(
+					record(
+						{
+							kind: "own",
+							landing: "pull-request",
+						},
+					),
+				),
+				forkFf: landingMode(
+					record(
+						{
+							kind: "fork",
+							landing: "fast-forward",
+						},
+					),
+				),
+			},
+		).toStrictEqual(
+			{
+				fork: "pull-request",
+				own: "pull-request",
+				ownPr: "pull-request",
+				forkFf: "fast-forward",
+			},
+		);
 	});
 
-	it("trusts a pre-replay green only with the setting on in a repo explicitly set to pull request", () => {
-		expect({
-			onPr: trustsPatchIdGreen(record({kind: "fork", landing: "pull-request", trustPatchIdGreen: true})),
-			offPr: trustsPatchIdGreen(record({kind: "fork", landing: "pull-request"})),
-			onUnsetFork: trustsPatchIdGreen(record({kind: "fork", trustPatchIdGreen: true})),
-			onUnsetOwn: trustsPatchIdGreen(record({kind: "own", trustPatchIdGreen: true})),
-			onFastForward: trustsPatchIdGreen(record({kind: "fork", landing: "fast-forward", trustPatchIdGreen: true})),
-		}).toStrictEqual({onPr: true, offPr: false, onUnsetFork: false, onUnsetOwn: false, onFastForward: false});
+	it("trusts a pre-replay green only with the setting on in a repo explicitly set to pull request", () =>
+	{
+		expect(
+			{
+				onPr: trustsPatchIdGreen(
+					record(
+						{
+							kind: "fork",
+							landing: "pull-request",
+							trustPatchIdGreen: true,
+						},
+					),
+				),
+				offPr: trustsPatchIdGreen(
+					record(
+						{
+							kind: "fork",
+							landing: "pull-request",
+						},
+					),
+				),
+				onUnsetFork: trustsPatchIdGreen(
+					record(
+						{
+							kind: "fork",
+							trustPatchIdGreen: true,
+						},
+					),
+				),
+				onUnsetOwn: trustsPatchIdGreen(
+					record(
+						{
+							kind: "own",
+							trustPatchIdGreen: true,
+						},
+					),
+				),
+				onFastForward: trustsPatchIdGreen(
+					record(
+						{
+							kind: "fork",
+							landing: "fast-forward",
+							trustPatchIdGreen: true,
+						},
+					),
+				),
+			},
+		).toStrictEqual(
+			{
+				onPr: true,
+				offPr: false,
+				onUnsetFork: false,
+				onUnsetOwn: false,
+				onFastForward: false,
+			},
+		);
 	});
 
-	it("pushes in the background only in a repo explicitly set to land by pull request", () => {
-		expect({
-			explicitPr: pushesInBackground(record({kind: "own", landing: "pull-request"})),
-			unsetOwn: pushesInBackground(record({kind: "own"})),
-			unsetFork: pushesInBackground(record({kind: "fork"})),
-			fastForward: pushesInBackground(record({kind: "fork", landing: "fast-forward"})),
-			unregistered: pushesInBackground(undefined),
-		}).toStrictEqual({
-			explicitPr: true,
-			unsetOwn: false,
-			unsetFork: false,
-			fastForward: false,
-			unregistered: false,
-		});
+	it("pushes in the background only in a repo explicitly set to land by pull request", () =>
+	{
+		expect(
+			{
+				explicitPr: pushesInBackground(
+					record(
+						{
+							kind: "own",
+							landing: "pull-request",
+						},
+					),
+				),
+				unsetOwn: pushesInBackground(
+					record(
+						{
+							kind: "own",
+						},
+					),
+				),
+				unsetFork: pushesInBackground(
+					record(
+						{
+							kind: "fork",
+						},
+					),
+				),
+				fastForward: pushesInBackground(
+					record(
+						{
+							kind: "fork",
+							landing: "fast-forward",
+						},
+					),
+				),
+				unregistered: pushesInBackground(undefined),
+			},
+		).toStrictEqual(
+			{
+				explicitPr: true,
+				unsetOwn: false,
+				unsetFork: false,
+				fastForward: false,
+				unregistered: false,
+			},
+		);
 	});
 });
 
-describe("draftPrVerification", () => {
-	const draft = record({kind: "fork", landing: "pull-request", verify: "draft-pr"});
-	const publicWithPrChecks = {
+describe("draftPrVerification", () =>
+{
+	const draft = record(
+		{
+			kind: "fork",
+			landing: "pull-request",
+			verify: "draft-pr",
+		},
+	);
+	const publicWithPrChecks =
+	{
 		repository: "alice/repo",
 		isPrivate: false,
 		hasPullRequestWorkflows: true,
 		tokenShortfall: null,
 	};
 
-	it("is off unless the repo sets verify: draft-pr, whatever the repo is", () => {
-		expect({
-			unset: draftPrVerification(record({kind: "fork", landing: "pull-request"}), publicWithPrChecks),
-			local: draftPrVerification(
-				record({kind: "fork", landing: "pull-request", verify: "local"}),
-				publicWithPrChecks,
-			),
-			unregistered: draftPrVerification(undefined, publicWithPrChecks),
-		}).toStrictEqual({unset: null, local: null, unregistered: null});
+	it("is off unless the repo sets verify: draft-pr, whatever the repo is", () =>
+	{
+		expect(
+			{
+				unset: draftPrVerification(
+					record(
+						{
+							kind: "fork",
+							landing: "pull-request",
+						},
+					),
+					publicWithPrChecks,
+				),
+				local: draftPrVerification(
+					record(
+						{
+							kind: "fork",
+							landing: "pull-request",
+							verify: "local",
+						},
+					),
+					publicWithPrChecks,
+				),
+				unregistered: draftPrVerification(undefined, publicWithPrChecks),
+			},
+		).toStrictEqual(
+			{
+				unset: null,
+				local: null,
+				unregistered: null,
+			},
+		);
 	});
 
-	it("is in effect for a public PR target with pull_request workflows in a repo explicitly landing by pull request", () => {
-		expect(draftPrVerification(draft, publicWithPrChecks)).toStrictEqual({active: true});
+	it("is in effect for a public PR target with pull_request workflows in a repo explicitly landing by pull request", () =>
+	{
+		expect(draftPrVerification(draft, publicWithPrChecks)).toStrictEqual(
+			{
+				active: true,
+			},
+		);
 	});
 
-	it("says why it is not in effect, and keeps local tests, when the repo is ineligible", () => {
-		expect({
-			unsetLanding: draftPrVerification(record({kind: "fork", verify: "draft-pr"}), publicWithPrChecks),
-			fastForward: draftPrVerification(
-				record({kind: "fork", landing: "fast-forward", verify: "draft-pr"}),
-				publicWithPrChecks,
-			),
-			unknown: draftPrVerification(draft, null),
-			private: draftPrVerification(draft, {...publicWithPrChecks, isPrivate: true}),
-			noWorkflows: draftPrVerification(draft, {...publicWithPrChecks, hasPullRequestWorkflows: false}),
-			readOnlyToken: draftPrVerification(draft, {...publicWithPrChecks, tokenShortfall: "read-only"}),
-		}).toStrictEqual({
-			unsetLanding: {
-				active: false,
-				reason: 'verify: "draft-pr" needs landing: "pull-request" in the registry; testing locally',
+	it("says why it is not in effect, and keeps local tests, when the repo is ineligible", () =>
+	{
+		expect(
+			{
+				unsetLanding: draftPrVerification(
+					record(
+						{
+							kind: "fork",
+							verify: "draft-pr",
+						},
+					),
+					publicWithPrChecks,
+				),
+				fastForward: draftPrVerification(
+					record(
+						{
+							kind: "fork",
+							landing: "fast-forward",
+							verify: "draft-pr",
+						},
+					),
+					publicWithPrChecks,
+				),
+				unknown: draftPrVerification(draft, null),
+				private: draftPrVerification(
+					draft,
+					{
+						...publicWithPrChecks,
+						isPrivate: true,
+					},
+				),
+				noWorkflows: draftPrVerification(
+					draft,
+					{
+						...publicWithPrChecks,
+						hasPullRequestWorkflows: false,
+					},
+				),
+				readOnlyToken: draftPrVerification(
+					draft,
+					{
+						...publicWithPrChecks,
+						tokenShortfall: "read-only",
+					},
+				),
 			},
-			fastForward: {
-				active: false,
-				reason: 'verify: "draft-pr" needs landing: "pull-request" in the registry; testing locally',
+		).toStrictEqual(
+			{
+				unsetLanding:
+				{
+					active: false,
+					reason: 'verify: "draft-pr" needs landing: "pull-request" in the registry; testing locally',
+				},
+				fastForward:
+				{
+					active: false,
+					reason: 'verify: "draft-pr" needs landing: "pull-request" in the registry; testing locally',
+				},
+				unknown:
+				{
+					active: false,
+					reason: "Can't tell yet whether the PR repo is public with pull_request checks; testing locally",
+				},
+				private:
+				{
+					active: false,
+					reason: "alice/repo is private (GitHub Actions minutes cost money); testing locally",
+				},
+				noWorkflows:
+				{
+					active: false,
+					reason: "alice/repo has no GitHub Actions workflow that runs on pull_request; testing locally",
+				},
+				readOnlyToken:
+				{
+					active: false,
+					reason: "your GitHub token has read-only access to alice/repo; grant it access to open PRs; testing locally",
+				},
 			},
-			unknown: {
-				active: false,
-				reason: "Can't tell yet whether the PR repo is public with pull_request checks; testing locally",
-			},
-			private: {
-				active: false,
-				reason: "alice/repo is private (GitHub Actions minutes cost money); testing locally",
-			},
-			noWorkflows: {
-				active: false,
-				reason: "alice/repo has no GitHub Actions workflow that runs on pull_request; testing locally",
-			},
-			readOnlyToken: {
-				active: false,
-				reason: "your GitHub token has read-only access to alice/repo; grant it access to open PRs; testing locally",
-			},
-		});
+		);
 	});
 
-	it("reads the setting from the registry file", () => {
-		expect(ProjectRecordSchema.parse({...draft, verify: "draft-pr"}).verify).toBe("draft-pr");
+	it("reads the setting from the registry file", () =>
+	{
+		expect(
+			ProjectRecordSchema.parse(
+				{
+					...draft,
+					verify: "draft-pr",
+				},
+			).verify,
+		).toBe("draft-pr");
 	});
 });

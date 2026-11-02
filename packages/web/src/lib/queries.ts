@@ -1,5 +1,6 @@
 import {queryOptions} from "@tanstack/react-query";
-import {
+import
+{
 	getActionLog,
 	getActionStatus,
 	getRecentActionLogs,
@@ -29,194 +30,346 @@ import {
 import {isStaleBundleError} from "./stale-bundle.js";
 
 export const projectsQueryOptions = () =>
-	queryOptions({
-		queryKey: ["projects"],
-		queryFn: async () => getProjects(),
-	});
+	queryOptions(
+		{
+			queryKey: ["projects"],
+			queryFn: async () => getProjects(),
+		},
+	);
 
 export const projectChildrenQueryOptions = (project: string) =>
-	queryOptions({
-		queryKey: ["children", project],
-		queryFn: async () => getProjectChildren({data: {project}}),
-	});
+	queryOptions(
+		{
+			queryKey: ["children", project],
+			queryFn: async () =>
+				getProjectChildren(
+					{
+						data:
+						{
+							project,
+						},
+					},
+				),
+		},
+	);
 
 export const projectTodosQueryOptions = (project: string) =>
-	queryOptions({
-		queryKey: ["todos", project],
-		queryFn: async () => getProjectTodos({data: {project}}),
-	});
+	queryOptions(
+		{
+			queryKey: ["todos", project],
+			queryFn: async () =>
+				getProjectTodos(
+					{
+						data:
+						{
+							project,
+						},
+					},
+				),
+		},
+	);
 
 export const issuesQueryOptions = () =>
-	queryOptions({
-		queryKey: ["issues"],
-		queryFn: async () => getIssues(),
-		staleTime: 0,
-	});
+	queryOptions(
+		{
+			queryKey: ["issues"],
+			queryFn: async () => getIssues(),
+			staleTime: 0,
+		},
+	);
 
 export const projectItemsQueryOptions = () =>
-	queryOptions({
-		queryKey: ["projectItems"],
-		queryFn: async () => getProjectItemsFn(),
-		staleTime: 0,
-	});
+	queryOptions(
+		{
+			queryKey: ["projectItems"],
+			queryFn: async () => getProjectItemsFn(),
+			staleTime: 0,
+		},
+	);
 
 export const snoozedQueryOptions = () =>
-	queryOptions({
-		queryKey: ["snoozed"],
-		queryFn: async () => getSnoozedList(),
-		staleTime: Infinity,
-	});
+	queryOptions(
+		{
+			queryKey: ["snoozed"],
+			queryFn: async () => getSnoozedList(),
+			staleTime: Infinity,
+		},
+	);
 
 export const taskQueueQueryOptions = () =>
-	queryOptions({
-		queryKey: ["taskQueue"],
-		queryFn: async () => getTaskQueue(),
-		staleTime: 5_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["taskQueue"],
+			queryFn: async () => getTaskQueue(),
+			staleTime: 5_000,
+		},
+	);
 
 export const systemStatusQueryOptions = () =>
-	queryOptions({
-		queryKey: ["systemStatus"],
-		queryFn: async () => getSystemStatus(),
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["systemStatus"],
+			queryFn: async () => getSystemStatus(),
+			staleTime: 30_000,
+			refetchInterval: 60_000,
+		},
+	);
 
 /** Loaded once; the SSE "ready-buffer" channel writes every later state with setQueryData. */
 export const readyToLandQueryOptions = () =>
-	queryOptions({
-		queryKey: ["readyToLand"],
-		queryFn: async () => getReadyToLand(),
-		staleTime: Infinity,
-	});
+	queryOptions(
+		{
+			queryKey: ["readyToLand"],
+			queryFn: async () => getReadyToLand(),
+			staleTime: Infinity,
+		},
+	);
 
 /** Push main rows; polled, so a background test finishing grows the green prefix. */
 export const mainPushesQueryOptions = () =>
-	queryOptions({
-		queryKey: ["mainPushes"],
-		queryFn: async () => getMainPushes({data: {}}),
-		staleTime: 30_000,
-		refetchInterval: 30_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["mainPushes"],
+			queryFn: async () =>
+				getMainPushes(
+					{
+						data: {},
+					},
+				),
+			staleTime: 30_000,
+			refetchInterval: 30_000,
+		},
+	);
 
 /** Whether a ready commit's PR checks can't run because its private repo's Actions are unavailable for billing. */
 export const actionsBillingBlockQueryOptions = (project: string, sha: string) =>
-	queryOptions({
-		queryKey: ["actionsBillingBlock", project, sha],
-		queryFn: async () => getActionsBillingBlock({data: {project, sha}}),
-		staleTime: 10 * 60_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["actionsBillingBlock", project, sha],
+			queryFn: async () =>
+				getActionsBillingBlock(
+					{
+						data:
+						{
+							project,
+							sha,
+						},
+					},
+				),
+			staleTime: 10 * 60_000,
+		},
+	);
 
 /** Ledger flow metrics; polled like systemStatus, since the ledger changes on every children refresh. */
 export const flowMetricsQueryOptions = () =>
-	queryOptions({
-		queryKey: ["flowMetrics"],
-		queryFn: async () => getFlowMetrics(),
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["flowMetrics"],
+			queryFn: async () => getFlowMetrics(),
+			staleTime: 30_000,
+			refetchInterval: 60_000,
+		},
+	);
 
 /** Ledger state history for the /flow page; polled like the flow metrics. */
 export const flowHistoryQueryOptions = () =>
-	queryOptions({
-		queryKey: ["flowHistory"],
-		queryFn: async () => getFlowHistory(),
-		staleTime: 30_000,
-		refetchInterval: 60_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["flowHistory"],
+			queryFn: async () => getFlowHistory(),
+			staleTime: 30_000,
+			refetchInterval: 60_000,
+		},
+	);
 
 export const advancePlanQueryOptions = () =>
-	queryOptions({
-		queryKey: ["advancePlan"],
-		queryFn: async () => generateAdvancePlan({data: {}}),
-		staleTime: 30_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["advancePlan"],
+			queryFn: async () =>
+				generateAdvancePlan(
+					{
+						data: {},
+					},
+				),
+			staleTime: 30_000,
+		},
+	);
 
 export const workingTreeDiffQueryOptions = (project: string) =>
-	queryOptions({
-		queryKey: ["workingTreeDiff", project],
-		queryFn: async () => getWorkingTreeDiff({data: {project}}),
-		staleTime: 10_000,
-	});
+	queryOptions(
+		{
+			queryKey: ["workingTreeDiff", project],
+			queryFn: async () =>
+				getWorkingTreeDiff(
+					{
+						data:
+						{
+							project,
+						},
+					},
+				),
+			staleTime: 10_000,
+		},
+	);
 
 export const diffQueryOptions = (project: string, sha: string) =>
-	queryOptions({
-		queryKey: ["diff", project, sha],
-		queryFn: async () => getCommitDiff({data: {project, sha}}),
-		staleTime: Infinity,
-		gcTime: 10 * 60 * 1000,
-	});
+	queryOptions(
+		{
+			queryKey: ["diff", project, sha],
+			queryFn: async () =>
+				getCommitDiff(
+					{
+						data:
+						{
+							project,
+							sha,
+						},
+					},
+				),
+			staleTime: Infinity,
+			gcTime: 10 * 60 * 1000,
+		},
+	);
 
 export const testLogQueryOptions = (project: string, sha: string) =>
-	queryOptions({
-		queryKey: ["testLog", project, sha],
-		queryFn: async () => getTestLog({data: {project, sha}}),
-		staleTime: Infinity,
-		gcTime: 10 * 60 * 1000,
-	});
+	queryOptions(
+		{
+			queryKey: ["testLog", project, sha],
+			queryFn: async () =>
+				getTestLog(
+					{
+						data:
+						{
+							project,
+							sha,
+						},
+					},
+				),
+			staleTime: Infinity,
+			gcTime: 10 * 60 * 1000,
+		},
+	);
 
 /** A user action's latest progress or result, polled until it finishes; SSE action events write it too. */
 export const actionStatusQueryOptions = (id: string) =>
-	queryOptions({
-		queryKey: ["actionStatus", id],
-		queryFn: async () => getActionStatus({data: {id}}),
-		refetchInterval: (query) => {
-			const status = query.state.data?.status;
-			return status === "done" || status === "busy" ? false : 1000;
+	queryOptions(
+		{
+			queryKey: ["actionStatus", id],
+			queryFn: async () =>
+				getActionStatus(
+					{
+						data:
+						{
+							id,
+						},
+					},
+				),
+			refetchInterval: (query) =>
+			{
+				const status = query.state.data?.status;
+				return status === "done" || status === "busy" ? false : 1000;
+			},
 		},
-	});
+	);
 
 /** A failed action's own log; it is kept once the action finishes and never changes. */
 export const actionLogQueryOptions = (id: string) =>
-	queryOptions({
-		queryKey: ["actionLog", id],
-		queryFn: async () => getActionLog({data: {id}}),
-		staleTime: Infinity,
-	});
+	queryOptions(
+		{
+			queryKey: ["actionLog", id],
+			queryFn: async () =>
+				getActionLog(
+					{
+						data:
+						{
+							id,
+						},
+					},
+				),
+			staleTime: Infinity,
+		},
+	);
 
 /** The kept failed actions' logs, newest first, read once when the page opens. */
 export const recentActionLogsQueryOptions = () =>
-	queryOptions({
-		queryKey: ["recentActionLogs"],
-		queryFn: async () => getRecentActionLogs(),
-	});
+	queryOptions(
+		{
+			queryKey: ["recentActionLogs"],
+			queryFn: async () => getRecentActionLogs(),
+		},
+	);
 
 export const issueByNumberQueryOptions = (project: string, number: number) =>
-	queryOptions({
-		queryKey: ["issue", project, number],
-		queryFn: async () => getIssueByNumber({data: {project, number}}),
-	});
+	queryOptions(
+		{
+			queryKey: ["issue", project, number],
+			queryFn: async () =>
+				getIssueByNumber(
+					{
+						data:
+						{
+							project,
+							number,
+						},
+					},
+				),
+		},
+	);
 
 export const boardItemByNumberQueryOptions = (project: string, number: number) =>
-	queryOptions({
-		queryKey: ["boardItem", project, number],
-		queryFn: async () => getProjectItemByNumber({data: {project, number}}),
-	});
+	queryOptions(
+		{
+			queryKey: ["boardItem", project, number],
+			queryFn: async () =>
+				getProjectItemByNumber(
+					{
+						data:
+						{
+							project,
+							number,
+						},
+					},
+				),
+		},
+	);
 
 /** Poll every 5 s, but never against a server that no longer knows this bundle's function ids. */
-export function ladderRefetchInterval(query: {state: {error: unknown}}): number | false {
+export function ladderRefetchInterval(query: {
+	state:
+	{
+		error: unknown;
+	};
+}): number | false
+{
 	return isStaleBundleError(query.state.error) ? false : 5000;
 }
 
 export const ladderResultsQueryOptions = () =>
-	queryOptions({
-		queryKey: ["ladderResults"],
-		queryFn: async () => getLadderResults(),
-		refetchInterval: ladderRefetchInterval,
-	});
+	queryOptions(
+		{
+			queryKey: ["ladderResults"],
+			queryFn: async () => getLadderResults(),
+			refetchInterval: ladderRefetchInterval,
+		},
+	);
 
 export const inventoryStatusQueryOptions = () =>
-	queryOptions({
-		queryKey: ["inventoryStatus"],
-		queryFn: async () => getInventoryStatus(),
-		// A save in another tab rewrites the registry; refetch on every mount and focus.
-		staleTime: 0,
-	});
+	queryOptions(
+		{
+			queryKey: ["inventoryStatus"],
+			queryFn: async () => getInventoryStatus(),
+			// A save in another tab rewrites the registry; refetch on every mount and focus.
+			staleTime: 0,
+		},
+	);
 
 export const registryCandidatesQueryOptions = () =>
-	queryOptions({
-		queryKey: ["registryCandidates"],
-		queryFn: async () => getRegistryCandidates(),
-		// A save in another tab rewrites the registry; refetch on every mount and focus.
-		staleTime: 0,
-	});
+	queryOptions(
+		{
+			queryKey: ["registryCandidates"],
+			queryFn: async () => getRegistryCandidates(),
+			// A save in another tab rewrites the registry; refetch on every mount and focus.
+			staleTime: 0,
+		},
+	);

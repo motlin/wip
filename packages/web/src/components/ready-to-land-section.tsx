@@ -1,7 +1,8 @@
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
-import {
+import
+{
 	openPrRefusal,
 	prChecksFailed,
 	prChecksPending,
@@ -32,19 +33,42 @@ const CANCEL_CLASS = "rounded-md border border-border-300 px-2.5 py-1 font-mediu
  * (`draftPrNumber`) instead of opening another.
  */
 export type LandingAction =
-	| {kind: "merge-pr"; label: string; prNumber: number; autoMerge: boolean}
-	| {kind: "open-pr"; label: string; branch: string; autoMerge: boolean; draftPrNumber?: number}
-	| {kind: "fast-forward"; label: string};
+	|
+	  {
+			kind: "merge-pr";
+			label: string;
+			prNumber: number;
+			autoMerge: boolean;
+	  }
+	|
+	  {
+			kind: "open-pr";
+			label: string;
+			branch: string;
+			autoMerge: boolean;
+			draftPrNumber?: number;
+	  }
+	|
+	  {
+			kind: "fast-forward";
+			label: string;
+	  };
 
 export function landingAction(
 	item: ReadyToLandItem,
 	commit: GitChildResult | undefined,
 	upstreamBranch = "main",
-): LandingAction | null {
-	if (item.landing !== "pull-request") return {kind: "fast-forward", label: `Fast-forward ${upstreamBranch}`};
+): LandingAction | null
+{
+	if (item.landing !== "pull-request")
+		return {
+			kind: "fast-forward",
+			label: `Fast-forward ${upstreamBranch}`,
+		};
 	const autoMergeAllowed = commit?.autoMergeAllowed === true;
 	const draftBranch = item.branch ?? commit?.branch;
-	if (commit?.prNumber !== undefined && commit.mergeStateStatus === "DRAFT" && draftBranch !== undefined) {
+	if (commit?.prNumber !== undefined && commit.mergeStateStatus === "DRAFT" && draftBranch !== undefined)
+	{
 		return {
 			kind: "open-pr",
 			label: "Open PR",
@@ -53,7 +77,8 @@ export function landingAction(
 			draftPrNumber: commit.prNumber,
 		};
 	}
-	if (commit?.prNumber !== undefined) {
+	if (commit?.prNumber !== undefined)
+	{
 		return {
 			kind: "merge-pr",
 			label: `Merge PR #${commit.prNumber}`,
@@ -62,10 +87,19 @@ export function landingAction(
 		};
 	}
 	const branch = item.branch ?? commit?.branch;
-	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch, autoMerge: autoMergeAllowed};
+	return branch === undefined
+		? null
+		:
+			{
+				kind: "open-pr",
+				label: "Open PR",
+				branch,
+				autoMerge: autoMergeAllowed,
+			};
 }
 
-function sizeText(commit: GitChildResult | undefined): string | null {
+function sizeText(commit: GitChildResult | undefined): string | null
+{
 	if (commit?.insertions === undefined && commit?.deletions === undefined) return null;
 	const files = commit.files ?? 0;
 	return `+${commit.insertions ?? 0} −${commit.deletions ?? 0} · ${files} ${files === 1 ? "file" : "files"}`;
@@ -82,9 +116,11 @@ function LandingPrompt({
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo | undefined;
-}) {
+})
+{
 	const what = `"${commit?.subject ?? item.sha.slice(0, 7)}" (${item.sha.slice(0, 7)})`;
-	if (action.kind === "merge-pr") {
+	if (action.kind === "merge-pr")
+	{
 		const pr = `PR #${action.prNumber}`;
 		return (
 			<>
@@ -106,7 +142,8 @@ function LandingPrompt({
 			</>
 		);
 	}
-	if (action.kind === "open-pr" && action.draftPrNumber !== undefined) {
+	if (action.kind === "open-pr" && action.draftPrNumber !== undefined)
+	{
 		return (
 			<>
 				Mark draft PR #{action.draftPrNumber} for {what} ready for review in {item.project}.
@@ -114,7 +151,8 @@ function LandingPrompt({
 			</>
 		);
 	}
-	if (action.kind === "open-pr") {
+	if (action.kind === "open-pr")
+	{
 		return (
 			<>
 				Open a PR for {what} from branch {action.branch} in {item.project}.
@@ -131,7 +169,8 @@ function LandingPrompt({
 	);
 }
 
-const OUTCOME_STYLES: Record<ActionOutcome["status"], string> = {
+const OUTCOME_STYLES: Record<ActionOutcome["status"], string> =
+{
 	running: "text-text-300",
 	success: "text-status-green",
 	failure: "text-status-red",
@@ -153,7 +192,8 @@ function ActionOutcomeLine({
 	onDismiss?: (() => void) | undefined;
 	prefix?: string;
 	className?: string;
-}) {
+})
+{
 	if (outcome === undefined) return null;
 	const link = outcome.status === "running" ? undefined : outcome.link;
 	return (
@@ -172,7 +212,13 @@ function ActionOutcomeLine({
 			{link !== undefined && (
 				<a
 					href={link.href}
-					{...(/^https?:\/\//.test(link.href) ? {target: "_blank", rel: "noreferrer"} : {})}
+					{...(/^https?:\/\//.test(link.href)
+						?
+							{
+								target: "_blank",
+								rel: "noreferrer",
+							}
+						: {})}
 					className="font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400"
 				>
 					{link.label}
@@ -202,20 +248,25 @@ function ActionPopover({
 	onClose?: (() => void) | undefined;
 	closeOnOutside?: boolean;
 	children: ReactNode;
-}) {
+})
+{
 	const ref = useRef<HTMLDialogElement>(null);
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (onClose === undefined) return undefined;
-		const onKeyDown = (event: KeyboardEvent) => {
+		const onKeyDown = (event: KeyboardEvent) =>
+		{
 			if (event.key === "Escape") onClose();
 		};
-		const onMouseDown = (event: MouseEvent) => {
+		const onMouseDown = (event: MouseEvent) =>
+		{
 			const inside = event.target instanceof Node && ref.current?.contains(event.target) === true;
 			if (closeOnOutside && !inside) onClose();
 		};
 		document.addEventListener("keydown", onKeyDown);
 		document.addEventListener("mousedown", onMouseDown);
-		return () => {
+		return () =>
+		{
 			document.removeEventListener("keydown", onKeyDown);
 			document.removeEventListener("mousedown", onMouseDown);
 		};
@@ -252,7 +303,8 @@ function ActionSlot({
 	onCancel?: () => void;
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
-}) {
+})
+{
 	return (
 		<div className="relative flex shrink-0 items-center">
 			{children}
@@ -275,7 +327,8 @@ function ActionSlot({
 	);
 }
 
-interface LandControlProps {
+interface LandControlProps
+{
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo | undefined;
@@ -289,7 +342,8 @@ interface LandControlProps {
  * The landing button plus the overlay it opens (the confirm, then the outcome); nothing lands until
  * the user confirms.
  */
-function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome}: LandControlProps): ReactNode {
+function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome}: LandControlProps): ReactNode
+{
 	const running = outcome?.status === "running";
 	const [confirming, setConfirming] = useState(false);
 	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
@@ -307,7 +361,8 @@ function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOu
 				<button
 					type="button"
 					disabled={running}
-					onClick={() => {
+					onClick={() =>
+					{
 						setConfirming(false);
 						onLand(item, commit);
 					}}
@@ -317,7 +372,8 @@ function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOu
 				</button>
 				<button
 					type="button"
-					onClick={() => {
+					onClick={() =>
+					{
 						setConfirming(false);
 					}}
 					className={CANCEL_CLASS}
@@ -331,7 +387,8 @@ function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOu
 		<ActionSlot
 			confirm={confirm}
 			confirmLabel="Confirm landing"
-			onCancel={() => {
+			onCancel={() =>
+			{
 				setConfirming(false);
 			}}
 			outcome={outcome}
@@ -341,7 +398,8 @@ function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOu
 				type="button"
 				disabled={running}
 				aria-expanded={confirming}
-				onClick={() => {
+				onClick={() =>
+				{
 					setConfirming(true);
 				}}
 				className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -359,10 +417,12 @@ function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOu
 export function billingCheckCandidates(
 	state: ReadyToLandState | null | undefined,
 	commits: readonly GitChildResult[],
-): ReadyToLandItem[] {
+): ReadyToLandItem[]
+{
 	if (!state) return [];
 	const commitOf = commitLookup(commits);
-	return [...state.ready, ...(state.checksFailed ?? [])].filter((item) => {
+	return [...state.ready, ...(state.checksFailed ?? [])].filter((item) =>
+	{
 		const commit = commitOf(item);
 		return item.landing === "pull-request" && commit !== undefined && prChecksFailed(commit);
 	});
@@ -380,7 +440,8 @@ function LandByPushing({
 	project: string;
 	upstreamBranch: string;
 	onLandByPushing: (project: string) => void;
-}) {
+})
+{
 	const [confirming, setConfirming] = useState(false);
 	return (
 		<div className="mt-2 flex flex-col gap-2 text-xs text-text-300">
@@ -391,7 +452,8 @@ function LandByPushing({
 				<button
 					type="button"
 					aria-expanded={confirming}
-					onClick={() => {
+					onClick={() =>
+					{
 						setConfirming(true);
 					}}
 					className={REVIEW_CLASS}
@@ -412,7 +474,8 @@ function LandByPushing({
 					<div className="flex gap-2">
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setConfirming(false);
 								onLandByPushing(project);
 							}}
@@ -422,7 +485,8 @@ function LandByPushing({
 						</button>
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setConfirming(false);
 							}}
 							className={CANCEL_CLASS}
@@ -439,16 +503,22 @@ function LandByPushing({
 const REVIEW_CLASS =
 	"rounded-md border border-border-300 px-2.5 py-1 text-xs font-medium text-text-100 hover:bg-bg-200 hover:text-text-000";
 
-interface ReadyRowProps extends LandControlProps {
+interface ReadyRowProps extends LandControlProps
+{
 	noTests: boolean;
 	age: string | null;
 }
 
-function ReadyRow({noTests, age, ...land}: ReadyRowProps) {
+function ReadyRow({noTests, age, ...land}: ReadyRowProps)
+{
 	const {item, commit} = land;
 	const action = useLandControl(land);
 	const size = sizeText(commit);
-	const params = {project: item.project, sha: commit?.sha ?? item.sha};
+	const params =
+	{
+		project: item.project,
+		sha: commit?.sha ?? item.sha,
+	};
 	const hasChips =
 		noTests ||
 		commit?.localTestSkipped === true ||
@@ -511,7 +581,12 @@ function ReadyRow({noTests, age, ...land}: ReadyRowProps) {
 
 const NO_PUSHES: readonly MainPush[] = [];
 
-const STATUS_WORDS = {good: "green", bad: "red", unknown: "unknown"} as const;
+const STATUS_WORDS =
+{
+	good: "green",
+	bad: "red",
+	unknown: "unknown",
+} as const;
 
 const commitLabel = (c: MainPushCommit): string => `"${c.subject}" (${c.sha.slice(0, 7)})`;
 
@@ -521,7 +596,8 @@ const statusLabel = (c: MainPushCommit): string => `${commitLabel(c)} ${STATUS_W
  * The commits after the green prefix, as one line: how many, how many unknown and red, and the first
  * (never green) by name. The full list sits behind a disclosure so a long tail never floods the row.
  */
-function NotPushed({rest}: {rest: readonly MainPushCommit[]}) {
+function NotPushed({rest}: {rest: readonly MainPushCommit[]})
+{
 	const [first] = rest;
 	const unknown = rest.filter((c) => c.status === "unknown").length;
 	const red = rest.filter((c) => c.status === "bad").length;
@@ -561,11 +637,13 @@ function PushRow({
 	onPush: (push: MainPush, sha: string) => void;
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
-}) {
+})
+{
 	const [confirming, setConfirming] = useState(false);
 	const {project, branch, remote} = push;
 	const target = `${remote}/${branch}`;
-	if (push.diverged) {
+	if (push.diverged)
+	{
 		return (
 			<li data-testid="push-row" className="px-1 py-1 text-xs text-text-300">
 				{project}: local {branch} has diverged from {target}; rebase first
@@ -587,7 +665,8 @@ function PushRow({
 					<button
 						type="button"
 						disabled={outcome?.status === "running"}
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirming(false);
 							onPush(push, last.sha);
 						}}
@@ -597,7 +676,8 @@ function PushRow({
 					</button>
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirming(false);
 						}}
 						className={CANCEL_CLASS}
@@ -618,7 +698,8 @@ function PushRow({
 					<ActionSlot
 						confirm={confirm}
 						confirmLabel="Confirm push"
-						onCancel={() => {
+						onCancel={() =>
+						{
 							setConfirming(false);
 						}}
 						outcome={outcome}
@@ -630,7 +711,8 @@ function PushRow({
 								type="button"
 								disabled={outcome?.status === "running"}
 								aria-expanded={confirming}
-								onClick={() => {
+								onClick={() =>
+								{
 									setConfirming(true);
 								}}
 								className="rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -647,7 +729,8 @@ function PushRow({
 }
 
 /** Push main rows worth showing: diverged, a non-empty green prefix, or a background test running. */
-function visiblePushes(pushes: readonly MainPush[]): MainPush[] {
+function visiblePushes(pushes: readonly MainPush[]): MainPush[]
+{
 	return pushes.filter(
 		(push) => push.diverged || push.testing !== undefined || greenPrefix(push.commits).green.length > 0,
 	);
@@ -676,7 +759,8 @@ function WaitingRow({
 	/** Set when PR checks can't run (private repo, Actions unavailable for billing). */
 	onLandByPushing?: ((project: string) => void) | undefined;
 	upstreamBranch: string;
-}) {
+})
+{
 	const pr = `PR #${commit?.prNumber ?? "?"}`;
 	const failedRun = commit?.failedChecks?.find((check) => check.url !== undefined)?.url;
 	const linkClass = "font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400";
@@ -689,7 +773,11 @@ function WaitingRow({
 				<p className="min-w-0 flex-1 truncate">
 					<Link
 						to="/item/$project/$sha"
-						params={{project: item.project, sha: commit?.sha ?? item.sha}}
+						params={
+						{
+							project: item.project,
+							sha: commit?.sha ?? item.sha,
+						}}
 						className="font-medium text-text-000 hover:underline"
 					>
 						{commit?.subject ?? item.sha.slice(0, 7)}
@@ -733,7 +821,8 @@ function WaitingRow({
 	);
 }
 
-export interface ReadyToLandSectionProps {
+export interface ReadyToLandSectionProps
+{
 	state: ReadyToLandState | null | undefined;
 	/** The cached children, joined by project and sha for subject, size and markers. */
 	commits: readonly GitChildResult[];
@@ -773,7 +862,8 @@ export function ReadyToLandSection({
 	onLandByPushing,
 	outcomes = NO_OUTCOMES,
 	onDismissOutcome,
-}: ReadyToLandSectionProps) {
+}: ReadyToLandSectionProps)
+{
 	const pushes = visiblePushes(mainPushes);
 	// A push whose row left (every green commit pushed) keeps its outcome as a line of its own.
 	const shownPushes = new Set(pushes.map((push) => push.project));
@@ -784,10 +874,12 @@ export function ReadyToLandSection({
 	const dismiss = (key: string) =>
 		onDismissOutcome === undefined
 			? undefined
-			: () => {
+			: () =>
+				{
 					onDismissOutcome(key);
 				};
-	if (state === undefined) {
+	if (state === undefined)
+	{
 		// Not loaded yet: hold the section's place instead of popping in later.
 		return (
 			<section
@@ -805,9 +897,14 @@ export function ReadyToLandSection({
 	// Merge PR can turn on auto-merge; see readyRowView. Rows keep one stable order across server
 	// updates and state changes (see stableRowOrder): no reflow.
 	const rows = stableRowOrder([...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])]).map(
-		(item) => {
+		(item) =>
+		{
 			const commit = commitOf(item);
-			return {item, commit, view: readyRowView(item, commit)};
+			return {
+				item,
+				commit,
+				view: readyRowView(item, commit),
+			};
 		},
 	);
 	const paused = state.pausedOnBattery === true;
@@ -819,7 +916,8 @@ export function ReadyToLandSection({
 		leftPushes.length === 0 &&
 		!paused &&
 		verifyNotices.length === 0
-	) {
+	)
+	{
 		return null;
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
@@ -848,12 +946,14 @@ export function ReadyToLandSection({
 				</p>
 			))}
 			<ul className="flex flex-col gap-2">
-				{rows.map(({item, commit, view}) => {
+				{rows.map(({item, commit, view}) =>
+				{
 					const outcomeKey = landOutcomeKey(item.project, item.sha);
 					const projectInfo = projectMap.get(item.project);
 					const landByPushingHere =
 						actionsBlocked?.has(`${item.project}:${item.sha}`) === true ? onLandByPushing : undefined;
-					if (view !== "land") {
+					if (view !== "land")
+					{
 						return (
 							<WaitingRow
 								key={`${item.project}:${item.id}`}
@@ -912,7 +1012,8 @@ export function ReadyToLandSection({
 	);
 }
 
-export interface ReadyLandPanelProps {
+export interface ReadyLandPanelProps
+{
 	state: ReadyToLandState | null | undefined;
 	sha: string;
 	commit: GitChildResult | undefined;
@@ -932,7 +1033,8 @@ export function ReadyLandPanel({
 	onLand,
 	outcome,
 	onDismissOutcome,
-}: ReadyLandPanelProps) {
+}: ReadyLandPanelProps)
+{
 	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? []), ...(state?.checksFailed ?? [])].find(
 		(r) => r.project === projectInfo.name && r.sha === sha,
 	);
@@ -949,7 +1051,8 @@ export function ReadyLandPanel({
 	);
 }
 
-function ReadyLandPanelBody(props: LandControlProps) {
+function ReadyLandPanelBody(props: LandControlProps)
+{
 	const action = useLandControl(props);
 	return (
 		<div className="mb-4 rounded-lg border border-status-green/40 bg-bg-100 px-4 py-2.5">

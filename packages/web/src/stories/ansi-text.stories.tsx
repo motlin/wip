@@ -1,7 +1,8 @@
 import type {Meta, StoryObj} from "@storybook/react-vite";
 import {AnsiText} from "../components/ansi-text.js";
 
-const meta: Meta<typeof AnsiText> = {
+const meta: Meta<typeof AnsiText> =
+{
 	title: "Components/AnsiText",
 	component: AnsiText,
 };
@@ -9,15 +10,19 @@ const meta: Meta<typeof AnsiText> = {
 export default meta;
 type Story = StoryObj<typeof AnsiText>;
 
-export const HappyPath: Story = {
-	args: {
+export const HappyPath: Story =
+{
+	args:
+	{
 		text: "✓ All 42 tests passed in 3.2s",
 		className: "p-4 font-mono text-xs",
 	},
 };
 
-export const WithAnsiColors: Story = {
-	args: {
+export const WithAnsiColors: Story =
+{
+	args:
+	{
 		text: [
 			"\x1b[1m\x1b[32m✓\x1b[0m src/db.test.ts (12 tests) \x1b[32m3.1s\x1b[0m",
 			"\x1b[1m\x1b[31m✗\x1b[0m src/git.test.ts (3 tests) \x1b[31m1.4s\x1b[0m",
@@ -32,8 +37,10 @@ export const WithAnsiColors: Story = {
 	},
 };
 
-export const MultiLine: Story = {
-	args: {
+export const MultiLine: Story =
+{
+	args:
+	{
 		text: [
 			"$ vitest run --reporter=verbose",
 			"",

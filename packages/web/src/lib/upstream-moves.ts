@@ -1,5 +1,6 @@
 import * as events from "node:events";
-import {
+import
+{
 	detectLandings,
 	findLandingSuspects,
 	getMergedPrHeads,
@@ -17,14 +18,16 @@ import type {ProjectInfo} from "@wip/shared";
 export const mergeQueueEvents = new events.EventEmitter();
 mergeQueueEvents.setMaxListeners(100);
 
-interface UpstreamMovedEvent {
+interface UpstreamMovedEvent
+{
 	project: string;
 	/** The previously cached upstream tip, or null on the first fetch for this project. */
 	from: string | null;
 	to: string;
 }
 
-interface LandedEvent {
+interface LandedEvent
+{
 	project: string;
 	/** The tip that landed (its sha before any replay). */
 	sha: string;
@@ -32,21 +35,37 @@ interface LandedEvent {
 }
 
 /** Replay-first landing detection after upstream moved; emits `landed` for each tip the replay shows landed. */
-async function detectProjectLandings(p: ProjectInfo, from: string, to: string): Promise<void> {
+async function detectProjectLandings(p: ProjectInfo, from: string, to: string): Promise<void>
+{
 	const found = await findLandingSuspects(p.dir, from, to);
 	if (found.length === 0) return;
 	// A squash-merged PR leaves no patch-id evidence; its MERGED state is the landing signal.
 	const suspects = found.some((s) => s.branch !== undefined)
 		? markMergedPrs(found, await getMergedPrHeads(p.dir, p.upstreamRemote))
 		: found;
-	const outcomes = await detectLandings({dir: p.dir, project: p.name, from, to, suspects});
+	const outcomes = await detectLandings(
+		{
+			dir: p.dir,
+			project: p.name,
+			from,
+			to,
+			suspects,
+		},
+	);
 	if (outcomes.length > 0) await recordLandingOutcomes(p.dir, p.name, from, to, outcomes);
-	for (const outcome of outcomes) {
+	for (const outcome of outcomes)
+	{
 		if (outcome.outcome !== "landed") continue;
-		const landed: LandedEvent = {
+		const landed: LandedEvent =
+		{
 			project: p.name,
 			sha: outcome.sha,
-			...(outcome.branch === undefined ? {} : {branch: outcome.branch}),
+			...(outcome.branch === undefined
+				? {}
+				:
+					{
+						branch: outcome.branch,
+					}),
 		};
 		mergeQueueEvents.emit("landed", landed);
 	}
@@ -55,10 +74,25 @@ async function detectProjectLandings(p: ProjectInfo, from: string, to: string): 
 /** A newly fetched upstream tip: `upstreamMoved`, then landing detection over the new range. */
 export async function upstreamTipSeen(
 	p: ProjectInfo,
-	{changed, from, sha}: {changed: boolean; from: string | null; sha: string},
-): Promise<void> {
+	{
+		changed,
+		from,
+		sha,
+	}:
+	{
+		changed: boolean;
+		from: string | null;
+		sha: string;
+	},
+): Promise<void>
+{
 	if (!sha || !changed) return;
-	const moved: UpstreamMovedEvent = {project: p.name, from, to: sha};
+	const moved: UpstreamMovedEvent =
+	{
+		project: p.name,
+		from,
+		to: sha,
+	};
 	mergeQueueEvents.emit("upstreamMoved", moved);
 	// With no previous tip there is no new upstream range to compare against.
 	if (from) await detectProjectLandings(p, from, sha);
@@ -71,7 +105,8 @@ export async function upstreamTipSeen(
  * the call that announces it (`upstreamMoved`, landing detection), for the caller to make once its
  * own work on the new tip shows; the queue's next fetch sees no change, so it never announces it.
  */
-export async function upstreamFetched(p: ProjectInfo): Promise<(() => Promise<void>) | null> {
+export async function upstreamFetched(p: ProjectInfo): Promise<(() => Promise<void>) | null>
+{
 	const seen = await recordUpstreamRef(p.dir, p.upstreamRef, p.name);
 	return seen.changed && seen.sha ? async () => upstreamTipSeen(p, seen) : null;
 }

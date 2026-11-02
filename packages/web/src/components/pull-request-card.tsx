@@ -10,7 +10,8 @@ import {CategoryBadge} from "./category-badge.js";
 import {UpstreamRedBlockedMarker} from "./upstream-ci-card";
 import {PullRequestActions} from "./commit-actions.js";
 
-function relativeTime(dateStr: string): string {
+function relativeTime(dateStr: string): string
+{
 	const date = new Date(dateStr);
 	const now = new Date();
 	const diffMs = now.getTime() - date.getTime();
@@ -23,7 +24,8 @@ function relativeTime(dateStr: string): string {
 	return `${Math.floor(diffDays / 365)} years ago`;
 }
 
-export function PullRequestCard({pr, category}: {pr: GitChildResult; category: Category}) {
+export function PullRequestCard({pr, category}: {pr: GitChildResult; category: Category})
+{
 	// Test status flows into the ["children"] cache through the single SSE
 	// writer (server-events-apply); this card only reads.
 	const testJob = useTestJob(pr.sha, pr.project);
@@ -39,9 +41,17 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 
 	const ghBranchUrl = branchRemoteUrl(pr);
 
-	const handleCancelTest = async () => {
+	const handleCancelTest = async () =>
+	{
 		if (!testJob) return;
-		await cancelTestFn({data: {id: testJob.id}});
+		await cancelTestFn(
+			{
+				data:
+				{
+					id: testJob.id,
+				},
+			},
+		);
 	};
 
 	return (
@@ -140,7 +150,11 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 
 			<Link
 				to="/item/$project/$sha"
-				params={{project: pr.project, sha: pr.sha}}
+				params={
+				{
+					project: pr.project,
+					sha: pr.sha,
+				}}
 				className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors"
 			>
 				{pr.subject}
@@ -210,7 +224,8 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 							<Loader2 className="h-3 w-3 animate-spin text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									void handleCancelTest();
 								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
@@ -226,7 +241,8 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 							<Clock className="h-3 w-3 text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									void handleCancelTest();
 								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"

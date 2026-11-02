@@ -14,7 +14,8 @@ import {makeChild} from "./test-factories";
 import {clearToasts} from "./toast-store";
 import {useLandReadyItem, usePushUpstreamBranch} from "./use-land-ready-item";
 
-const serverFns = vi.hoisted(() => ({
+const serverFns = vi.hoisted(() => (
+{
 	createPr: vi.fn<(...args: unknown[]) => Promise<ActionResult>>(),
 	mergePr: vi.fn<(...args: unknown[]) => Promise<ActionResult>>(),
 	landFastForward: vi.fn<(...args: unknown[]) => Promise<ActionResult>>(),
@@ -25,7 +26,8 @@ const serverFns = vi.hoisted(() => ({
 
 vi.mock("./server-fns", () => serverFns);
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", () => (
+{
 	Link: ({children, className}: {children: ReactNode; className?: string}) => (
 		<a href="/" className={className}>
 			{children}
@@ -35,7 +37,8 @@ vi.mock("@tanstack/react-router", () => ({
 
 const SHA = "p1".padEnd(40, "0");
 
-const plain: ProjectInfo = {
+const plain: ProjectInfo =
+{
 	name: "plain",
 	dir: "/tmp/plain",
 	remote: "motlin/plain",
@@ -50,31 +53,61 @@ const plain: ProjectInfo = {
 	branchCount: 1,
 };
 
-const state: ReadyToLandState = {
+const state: ReadyToLandState =
+{
 	slots: 3,
-	ready: [{project: "plain", id: "pp1", sha: SHA, landing: "pull-request"}],
+	ready: [
+		{
+			project: "plain",
+			id: "pp1",
+			sha: SHA,
+			landing: "pull-request",
+		},
+	],
 	inFlight: [],
 	next: [],
 	stoppedProjects: [],
 };
 
-const commit = makeChild({project: "plain", sha: SHA, subject: "Add parser", branch: "add-parser"});
+const commit = makeChild(
+	{
+		project: "plain",
+		sha: SHA,
+		subject: "Add parser",
+		branch: "add-parser",
+	},
+);
 
-const push: MainPush = {
+const push: MainPush =
+{
 	project: "plain",
 	remote: "origin",
 	branch: "main",
 	diverged: false,
-	commits: [{sha: "k1".padEnd(40, "0"), subject: "Add parser", status: "good"}],
+	commits: [
+		{
+			sha: "k1".padEnd(40, "0"),
+			subject: "Add parser",
+			status: "good",
+		},
+	],
 };
 
 /** The ready row's commit, from the static fixture or, with `fromCache`, the children cache the hooks write. */
-function useCommits(fromCache: boolean) {
-	const {data} = useQuery({queryKey: ["children", "plain"], queryFn: skipToken, enabled: fromCache});
+function useCommits(fromCache: boolean)
+{
+	const {data} = useQuery(
+		{
+			queryKey: ["children", "plain"],
+			queryFn: skipToken,
+			enabled: fromCache,
+		},
+	);
 	return fromCache ? ((data as (typeof commit)[] | undefined) ?? []) : [commit];
 }
 
-function Harness({fromCache = false}: {fromCache?: boolean}) {
+function Harness({fromCache = false}: {fromCache?: boolean})
+{
 	const commits = useCommits(fromCache);
 	const land = useLandReadyItem();
 	const pushMain = usePushUpstreamBranch();
@@ -98,8 +131,19 @@ function Harness({fromCache = false}: {fromCache?: boolean}) {
 	);
 }
 
-function renderHarness(fromCache = false) {
-	const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
+function renderHarness(fromCache = false)
+{
+	const queryClient = new QueryClient(
+		{
+			defaultOptions:
+			{
+				queries:
+				{
+					retry: false,
+				},
+			},
+		},
+	);
 	queryClient.setQueryData(["children", "plain"], [commit]);
 	render(
 		<QueryClientProvider client={queryClient}>
@@ -111,14 +155,17 @@ function renderHarness(fromCache = false) {
 const outcomeText = (): string | null => screen.queryByTestId("action-outcome")?.textContent ?? null;
 const toastText = (): string | null => screen.queryByLabelText("Notifications")?.textContent ?? null;
 
-describe("landing outcomes outlive their toasts", () => {
-	beforeEach(() => {
+describe("landing outcomes outlive their toasts", () =>
+{
+	beforeEach(() =>
+	{
 		vi.useFakeTimers();
 		// jsdom has no window.open; a browser that blocks the popup returns null too.
 		vi.spyOn(window, "open").mockReturnValue(null);
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.mocked(window.open).mockRestore();
 		vi.restoreAllMocks();
 		cleanup();
@@ -127,256 +174,507 @@ describe("landing outcomes outlive their toasts", () => {
 		vi.clearAllMocks();
 	});
 
-	it("shows Open PR in progress, then its PR link on the row after the toast expires", async () => {
+	it("shows Open PR in progress, then its PR link on the row after the toast expires", async () =>
+	{
 		let finish: ((result: ActionResult) => void) | undefined;
 		serverFns.createPr.mockImplementation(
 			async () =>
-				new Promise<ActionResult>((resolve) => {
+				new Promise<ActionResult>((resolve) =>
+				{
 					finish = resolve;
 				}),
 		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		act(() => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		act(() =>
+		{
 			vi.advanceTimersByTime(0);
 		});
 		const running = outcomeText();
-		await act(async () => {
-			finish?.({
-				ok: true,
-				message: "PR #12 opened",
-				prNumber: 12,
-				prUrl: "https://github.com/motlin/plain/pull/12",
-			});
+		await act(async () =>
+		{
+			finish?.(
+				{
+					ok: true,
+					message: "PR #12 opened",
+					prNumber: 12,
+					prUrl: "https://github.com/motlin/plain/pull/12",
+				},
+			);
 			await Promise.resolve();
 		});
 		const toastBefore = toastText();
-		act(() => {
+		act(() =>
+		{
 			vi.advanceTimersByTime(30_000);
 		});
 		const row = screen.getByTestId("ready-to-land-row");
 
-		expect({
-			running,
-			toastBefore,
-			toastAfter: toastText(),
-			outcome: outcomeText(),
-			link: within(screen.getByTestId("action-outcome"))
-				.getByRole("link", {name: "View on GitHub"})
-				.getAttribute("href"),
-			inRow: row.contains(screen.getByTestId("action-outcome")),
-		}).toStrictEqual({
-			running: "Opening a pull request…",
-			toastBefore: "PR #12 openedView on GitHub",
-			toastAfter: null,
-			outcome: "PR #12 openedView on GitHubDismiss",
-			link: "https://github.com/motlin/plain/pull/12",
-			inRow: true,
-		});
+		expect(
+			{
+				running,
+				toastBefore,
+				toastAfter: toastText(),
+				outcome: outcomeText(),
+				link: within(screen.getByTestId("action-outcome"))
+					.getByRole(
+						"link",
+						{
+							name: "View on GitHub",
+						},
+					)
+					.getAttribute("href"),
+				inRow: row.contains(screen.getByTestId("action-outcome")),
+			},
+		).toStrictEqual(
+			{
+				running: "Opening a pull request…",
+				toastBefore: "PR #12 openedView on GitHub",
+				toastAfter: null,
+				outcome: "PR #12 openedView on GitHubDismiss",
+				link: "https://github.com/motlin/plain/pull/12",
+				inRow: true,
+			},
+		);
 	});
 
-	it("turns the row into a waiting row linking to the new PR while its checks run in a repo without auto-merge", async () => {
-		serverFns.createPr.mockResolvedValue({
-			ok: true,
-			message: "Opened PR #12",
-			prNumber: 12,
-			prUrl: "https://github.com/motlin/plain/pull/12",
-		});
+	it("turns the row into a waiting row linking to the new PR while its checks run in a repo without auto-merge", async () =>
+	{
+		serverFns.createPr.mockResolvedValue(
+			{
+				ok: true,
+				message: "Opened PR #12",
+				prNumber: 12,
+				prUrl: "https://github.com/motlin/plain/pull/12",
+			},
+		);
 		renderHarness(true);
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		await act(async () => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		await act(async () =>
+		{
 			await Promise.resolve();
 		});
-		act(() => {
+		act(() =>
+		{
 			vi.advanceTimersByTime(30_000);
 		});
 		const waiting = screen.getByTestId("waiting-row");
 
-		expect({
-			toast: toastText(),
-			rows: screen.queryAllByTestId("ready-to-land-row").length,
-			waiting: waiting.textContent,
-			link: within(waiting).getByRole("link", {name: "PR #12"}).getAttribute("href"),
-			outcome: outcomeText(),
-		}).toStrictEqual({
-			toast: null,
-			rows: 0,
-			waiting: "Add parser · plain · PR #12 · waiting for checksOpened PR #12View on GitHubDismiss",
-			link: "https://github.com/motlin/plain/pull/12",
-			outcome: "Opened PR #12View on GitHubDismiss",
-		});
+		expect(
+			{
+				toast: toastText(),
+				rows: screen.queryAllByTestId("ready-to-land-row").length,
+				waiting: waiting.textContent,
+				link: within(waiting)
+					.getByRole(
+						"link",
+						{
+							name: "PR #12",
+						},
+					)
+					.getAttribute("href"),
+				outcome: outcomeText(),
+			},
+		).toStrictEqual(
+			{
+				toast: null,
+				rows: 0,
+				waiting: "Add parser · plain · PR #12 · waiting for checksOpened PR #12View on GitHubDismiss",
+				link: "https://github.com/motlin/plain/pull/12",
+				outcome: "Opened PR #12View on GitHubDismiss",
+			},
+		);
 	});
 
-	it("opens a wip tab following the action in the confirm click and sends it to the new PR once it opens", async () => {
+	it("opens a wip tab following the action in the confirm click and sends it to the new PR once it opens", async () =>
+	{
 		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
-		const tab = {location: {href: ""}, opener: {} as unknown, close: vi.fn<() => void>()};
+		const tab =
+		{
+			location:
+			{
+				href: "",
+			},
+			opener: {} as unknown,
+			close: vi.fn<() => void>(),
+		};
 		const open = vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
 		let finish: ((result: ActionResult) => void) | undefined;
 		serverFns.createPr.mockImplementation(
 			async () =>
-				new Promise<ActionResult>((resolve) => {
+				new Promise<ActionResult>((resolve) =>
+				{
 					finish = resolve;
 				}),
 		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
 		const openedInClick = [...open.mock.calls];
 		const hrefBefore = tab.location.href;
-		await act(async () => {
-			finish?.({
-				ok: true,
-				message: "Opened PR #12",
-				prNumber: 12,
-				prUrl: "https://github.com/motlin/plain/pull/12",
-			});
+		await act(async () =>
+		{
+			finish?.(
+				{
+					ok: true,
+					message: "Opened PR #12",
+					prNumber: 12,
+					prUrl: "https://github.com/motlin/plain/pull/12",
+				},
+			);
 			await Promise.resolve();
 		});
 
-		expect({
-			openedInClick,
-			request: serverFns.createPr.mock.calls,
-			hrefBefore,
-			href: tab.location.href,
-			opener: tab.opener,
-			closed: tab.close.mock.calls.length,
-		}).toStrictEqual({
-			openedInClick: [["/opening/0000-0000-0000-0000-tab", "_blank"]],
-			request: [
-				[
-					{
-						data: {
-							project: "plain",
-							branch: "add-parser",
-							title: "Add parser",
-							autoMerge: true,
-							actionId: "0000-0000-0000-0000-tab",
+		expect(
+			{
+				openedInClick,
+				request: serverFns.createPr.mock.calls,
+				hrefBefore,
+				href: tab.location.href,
+				opener: tab.opener,
+				closed: tab.close.mock.calls.length,
+			},
+		).toStrictEqual(
+			{
+				openedInClick: [["/opening/0000-0000-0000-0000-tab", "_blank"]],
+				request: [
+					[
+						{
+							data:
+							{
+								project: "plain",
+								branch: "add-parser",
+								title: "Add parser",
+								autoMerge: true,
+								actionId: "0000-0000-0000-0000-tab",
+							},
 						},
-					},
+					],
 				],
-			],
-			hrefBefore: "",
-			href: "https://github.com/motlin/plain/pull/12",
-			opener: null,
-			closed: 0,
-		});
+				hrefBefore: "",
+				href: "https://github.com/motlin/plain/pull/12",
+				opener: null,
+				closed: 0,
+			},
+		);
 	});
 
-	it("sends the tab to GitHub's new-PR page when the token couldn't open the PR, leaving the row ready", async () => {
+	it("sends the tab to GitHub's new-PR page when the token couldn't open the PR, leaving the row ready", async () =>
+	{
 		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
-		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
+		const tab =
+		{
+			location:
+			{
+				href: "",
+			},
+			opener: null,
+			close: vi.fn<() => void>(),
+		};
 		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
 		const compareUrl = "https://github.com/motlin/plain/compare/main...add-parser?quick_pull=1&title=Add+parser";
-		serverFns.createPr.mockResolvedValue({
-			ok: true,
-			message:
-				"Pushed add-parser; your GitHub token has read-only access to motlin/plain, so create the PR on GitHub",
-			compareUrl,
-		});
+		serverFns.createPr.mockResolvedValue(
+			{
+				ok: true,
+				message:
+					"Pushed add-parser; your GitHub token has read-only access to motlin/plain, so create the PR on GitHub",
+				compareUrl,
+			},
+		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		await act(async () => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		await act(async () =>
+		{
 			await Promise.resolve();
 		});
 
-		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({
-			href: compareUrl,
-			closed: 0,
-		});
+		expect(
+			{
+				href: tab.location.href,
+				closed: tab.close.mock.calls.length,
+			},
+		).toStrictEqual(
+			{
+				href: compareUrl,
+				closed: 0,
+			},
+		);
 	});
 
-	it("keeps the tab open on the wip page showing why Open PR failed", async () => {
+	it("keeps the tab open on the wip page showing why Open PR failed", async () =>
+	{
 		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
-		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
+		const tab =
+		{
+			location:
+			{
+				href: "",
+			},
+			opener: null,
+			close: vi.fn<() => void>(),
+		};
 		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
-		serverFns.createPr.mockResolvedValue({ok: false, message: "base branch main does not exist on origin"});
+		serverFns.createPr.mockResolvedValue(
+			{
+				ok: false,
+				message: "base branch main does not exist on origin",
+			},
+		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		await act(async () => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		await act(async () =>
+		{
 			await Promise.resolve();
 		});
 
-		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({
-			href: `/opening/0000-0000-0000-0000-tab?failed=${encodeURIComponent("base branch main does not exist on origin")}`,
-			closed: 0,
-		});
+		expect(
+			{
+				href: tab.location.href,
+				closed: tab.close.mock.calls.length,
+			},
+		).toStrictEqual(
+			{
+				href: `/opening/0000-0000-0000-0000-tab?failed=${encodeURIComponent("base branch main does not exist on origin")}`,
+				closed: 0,
+			},
+		);
 	});
 
-	it("keeps the tab open on the wip page when the Open PR request itself throws", async () => {
+	it("keeps the tab open on the wip page when the Open PR request itself throws", async () =>
+	{
 		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
-		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
+		const tab =
+		{
+			location:
+			{
+				href: "",
+			},
+			opener: null,
+			close: vi.fn<() => void>(),
+		};
 		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
 		serverFns.createPr.mockRejectedValue(
 			new Error("repo busy: advance-commit is running on plain; try again shortly"),
 		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		await act(async () => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		await act(async () =>
+		{
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 
-		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({
-			href: `/opening/0000-0000-0000-0000-tab?failed=${encodeURIComponent("repo busy: advance-commit is running on plain; try again shortly")}`,
-			closed: 0,
-		});
+		expect(
+			{
+				href: tab.location.href,
+				closed: tab.close.mock.calls.length,
+			},
+		).toStrictEqual(
+			{
+				href: `/opening/0000-0000-0000-0000-tab?failed=${encodeURIComponent("repo busy: advance-commit is running on plain; try again shortly")}`,
+				closed: 0,
+			},
+		);
 	});
 
-	it("keeps an Open PR failure and its log link on the row after the toast expires, with the button to retry", async () => {
-		serverFns.createPr.mockResolvedValue({ok: false, message: "base branch main does not exist on origin\nmore"});
+	it("keeps an Open PR failure and its log link on the row after the toast expires, with the button to retry", async () =>
+	{
+		serverFns.createPr.mockResolvedValue(
+			{
+				ok: false,
+				message: "base branch main does not exist on origin\nmore",
+			},
+		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		await act(async () => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Open PR",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		await act(async () =>
+		{
 			await Promise.resolve();
 		});
-		act(() => {
+		act(() =>
+		{
 			vi.advanceTimersByTime(30_000);
 		});
 
-		expect({
-			toast: toastText(),
-			outcome: outcomeText(),
-			retry: screen.getByRole("button", {name: "Open PR"}).hasAttribute("disabled"),
-		}).toStrictEqual({
-			toast: null,
-			outcome: "Open PR failedbase branch main does not exist on originSee the logDismiss",
-			retry: false,
-		});
+		expect(
+			{
+				toast: toastText(),
+				outcome: outcomeText(),
+				retry: screen
+					.getByRole(
+						"button",
+						{
+							name: "Open PR",
+						},
+					)
+					.hasAttribute("disabled"),
+			},
+		).toStrictEqual(
+			{
+				toast: null,
+				outcome: "Open PR failedbase branch main does not exist on originSee the logDismiss",
+				retry: false,
+			},
+		);
 	});
 
-	it("keeps a push result on the Push main row after the toast expires", async () => {
-		serverFns.pushUpstreamBranch.mockResolvedValue({
-			ok: true,
-			message: "Pushed 1 commit to origin/main",
-			compareUrl: "https://github.com/motlin/plain/compare/a...b",
-		});
+	it("keeps a push result on the Push main row after the toast expires", async () =>
+	{
+		serverFns.pushUpstreamBranch.mockResolvedValue(
+			{
+				ok: true,
+				message: "Pushed 1 commit to origin/main",
+				compareUrl: "https://github.com/motlin/plain/compare/a...b",
+			},
+		);
 		renderHarness();
 
-		fireEvent.click(screen.getByRole("button", {name: "Push 1 green commit to origin/main"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-		await act(async () => {
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Push 1 green commit to origin/main",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Confirm",
+				},
+			),
+		);
+		await act(async () =>
+		{
 			await Promise.resolve();
 		});
-		act(() => {
+		act(() =>
+		{
 			vi.advanceTimersByTime(30_000);
 		});
 
-		expect({toast: toastText(), push: screen.getByTestId("push-row").textContent}).toStrictEqual({
-			toast: null,
-			push: "plain: 1 of 1 unpushed commits on main are greenPush 1 green commit to origin/mainPushed 1 commit to origin/mainView on GitHubDismiss",
-		});
+		expect(
+			{
+				toast: toastText(),
+				push: screen.getByTestId("push-row").textContent,
+			},
+		).toStrictEqual(
+			{
+				toast: null,
+				push: "plain: 1 of 1 unpushed commits on main are greenPush 1 green commit to origin/mainPushed 1 commit to origin/mainView on GitHubDismiss",
+			},
+		);
 	});
 });

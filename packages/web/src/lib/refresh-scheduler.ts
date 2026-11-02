@@ -23,27 +23,35 @@ const REPO_INDEPENDENT_KINDS: ReadonlySet<RefreshKind> = new Set(["discovery", "
 export type RefreshSchedulerState = WorkQueueState;
 
 /** Live queue snapshot, for the Tasks page's background-work panel. */
-export function getSchedulerState(): RefreshSchedulerState {
+export function getSchedulerState(): RefreshSchedulerState
+{
 	return workQueue.getState();
 }
 
 /** Subscribe to queue changes (enqueue, start, settle). Returns an unsubscribe function. */
-export function onSchedulerStateChange(listener: (state: RefreshSchedulerState) => void): () => void {
+export function onSchedulerStateChange(listener: (state: RefreshSchedulerState) => void): () => void
+{
 	return workQueue.onStateChange(listener);
 }
 
 /** Subscribe to job failures. Returns an unsubscribe function. */
-export function onRefreshError(
-	listener: (event: {kind: string; project: string; message: string}) => void,
-): () => void {
+export function onRefreshError(listener: (event: {kind: string; project: string; message: string}) => void): () => void
+{
 	return workQueue.onJobError(listener);
 }
 
 let outcomeSeq = 0;
-const refreshOutcomes = new Map<string, {seq: number; error?: unknown}>();
+const refreshOutcomes = new Map<
+	string,
+	{
+		seq: number;
+		error?: unknown;
+	}
+>();
 
 /** Monotonic marker; pass to refreshFailureSince to ask what happened after this point. */
-export function refreshOutcomeMark(): number {
+export function refreshOutcomeMark(): number
+{
 	return outcomeSeq;
 }
 
@@ -54,17 +62,37 @@ export function refreshOutcomeMark(): number {
 export function trackRefreshOutcome(
 	key: string,
 	run: (signal: AbortSignal) => Promise<void>,
-): (signal: AbortSignal) => Promise<void> {
-	return async (signal) => {
-		try {
+): (signal: AbortSignal) => Promise<void>
+{
+	return async (signal) =>
+	{
+		try
+		{
 			await run(signal);
-		} catch (error: unknown) {
-			refreshOutcomes.set(key, {seq: ++outcomeSeq, error});
+		}
+		catch (error: unknown)
+		{
+			refreshOutcomes.set(
+				key,
+				{
+					seq: ++outcomeSeq,
+					error,
+				},
+			);
 			throw error;
 		}
 		refreshOutcomes.set(
 			key,
-			signal.aborted ? {seq: ++outcomeSeq, error: new Error(`Refresh cancelled: ${key}`)} : {seq: ++outcomeSeq},
+			signal.aborted
+				?
+					{
+						seq: ++outcomeSeq,
+						error: new Error(`Refresh cancelled: ${key}`),
+					}
+				:
+					{
+						seq: ++outcomeSeq,
+					},
 		);
 	};
 }
@@ -73,15 +101,33 @@ export function trackRefreshOutcome(
  * The failure of the job under `key` that settled after `mark`, if any. A job that was
  * cancelled before it ever ran records nothing, so that is reported as a cancellation too.
  */
-export function refreshFailureSince(key: string, mark: number): {error: unknown} | undefined {
+export function refreshFailureSince(
+	key: string,
+	mark: number,
+):
+	|
+	  {
+			error: unknown;
+	  }
+	| undefined
+{
 	const outcome = refreshOutcomes.get(key);
-	if (outcome === undefined || outcome.seq <= mark) {
-		return {error: new Error(`Refresh cancelled: ${key}`)};
+	if (outcome === undefined || outcome.seq <= mark)
+	{
+		return {
+			error: new Error(`Refresh cancelled: ${key}`),
+		};
 	}
-	return outcome.error === undefined ? undefined : {error: outcome.error};
+	return outcome.error === undefined
+		? undefined
+		:
+			{
+				error: outcome.error,
+			};
 }
 
-export function runningRefreshCount(): number {
+export function runningRefreshCount(): number
+{
 	return workQueue.runningCount();
 }
 
@@ -99,36 +145,49 @@ export function enqueueRefresh(options: {
 	project: string;
 	run: () => Promise<void>;
 	force?: boolean;
-}): {queued: boolean} {
+}):
+{
+	queued: boolean;
+}
+{
 	const key = `${options.kind}:${options.project}`;
-	const handle = workQueue.enqueue({
-		coalesceKey: key,
-		// Repo refresh kinds touch the repo's git state (fetch, ref reads), so
-		// they share one exclusive per-repo resource with tasks. Discovery and
-		// GitHub API refreshes are not tied to a single repo.
-		resources: REPO_INDEPENDENT_KINDS.has(options.kind) ? [key] : [repoResource(options.project)],
-		kind: options.kind,
-		project: options.project,
-		costClass: options.kind === "merge-status" || options.kind === "merge-status-deferred" ? "git-write" : "cheap",
-		run: trackRefreshOutcome(key, async () => options.run()),
-	});
-	if (handle.coalesced && options.force === true) {
+	const handle = workQueue.enqueue(
+		{
+			coalesceKey: key,
+			// Repo refresh kinds touch the repo's git state (fetch, ref reads), so
+			// they share one exclusive per-repo resource with tasks. Discovery and
+			// GitHub API refreshes are not tied to a single repo.
+			resources: REPO_INDEPENDENT_KINDS.has(options.kind) ? [key] : [repoResource(options.project)],
+			kind: options.kind,
+			project: options.project,
+			costClass:
+				options.kind === "merge-status" || options.kind === "merge-status-deferred" ? "git-write" : "cheap",
+			run: trackRefreshOutcome(key, async () => options.run()),
+		},
+	);
+	if (handle.coalesced && options.force === true)
+	{
 		// One pending rerun per key: further forced requests just replace its options.
 		const alreadyPending = pendingForcedReruns.has(key);
 		pendingForcedReruns.set(key, options);
-		if (!alreadyPending) {
-			void handle.settled.then(() => {
+		if (!alreadyPending)
+		{
+			void handle.settled.then(() =>
+			{
 				const rerun = pendingForcedReruns.get(key);
 				pendingForcedReruns.delete(key);
 				return rerun === undefined ? undefined : enqueueRefresh(rerun);
 			});
 		}
 	}
-	return {queued: !handle.coalesced};
+	return {
+		queued: !handle.coalesced,
+	};
 }
 
 /** Test-only: drop queued jobs, await in-flight jobs, and clear all state. */
-export async function resetScheduler(): Promise<void> {
+export async function resetScheduler(): Promise<void>
+{
 	pendingForcedReruns.clear();
 	await workQueue.reset();
 }
@@ -142,9 +201,11 @@ export function startPeriodicSweep(options: {
 	intervalMs: number;
 	listProjects: () => string[];
 	enqueueForProject: (project: string) => void;
-}): () => void {
+}): () => void
+{
 	let index = 0;
-	const timer = setInterval(() => {
+	const timer = setInterval(() =>
+	{
 		const projects = options.listProjects();
 		if (projects.length === 0) return;
 		const project = projects[index % projects.length];
@@ -153,7 +214,8 @@ export function startPeriodicSweep(options: {
 		options.enqueueForProject(project);
 	}, options.intervalMs);
 	timer.unref();
-	return () => {
+	return () =>
+	{
 		clearInterval(timer);
 	};
 }

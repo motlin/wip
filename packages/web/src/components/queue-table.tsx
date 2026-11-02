@@ -1,14 +1,16 @@
 import {useNavigate} from "@tanstack/react-router";
 import {useState, useMemo} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {
+import
+{
 	isGitChildPullRequest,
 	isGitChildBranch,
 	isGitChildPrRefsMissing,
 	isGitChildUpstreamCi,
 } from "@wip/shared/git-child-discriminators.js";
 import {upstreamRedCommand} from "@wip/shared/upstream-red.js";
-import {
+import
+{
 	BLOCKING_CATEGORIES,
 	CATEGORIES,
 	CATEGORY_PRIORITY,
@@ -20,7 +22,8 @@ import {bucketCount} from "../lib/grouping.js";
 
 type ItemType = "ci" | "repo" | "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
 
-interface FlatRow {
+interface FlatRow
+{
 	key: string;
 	type: ItemType;
 	subject: string;
@@ -37,7 +40,8 @@ interface FlatRow {
 	llmCommand?: string;
 }
 
-function gitChildToRow(child: GitChildResult, category: Category): FlatRow {
+function gitChildToRow(child: GitChildResult, category: Category): FlatRow
+{
 	const type: ItemType = isGitChildUpstreamCi(child)
 		? "ci"
 		: isGitChildPrRefsMissing(child)
@@ -64,7 +68,8 @@ function gitChildToRow(child: GitChildResult, category: Category): FlatRow {
 	};
 }
 
-function issueToRow(issue: IssueResult, category: Category): FlatRow {
+function issueToRow(issue: IssueResult, category: Category): FlatRow
+{
 	return {
 		key: `issue-${issue.repository.name}-${issue.number}`,
 		type: "issue",
@@ -81,7 +86,8 @@ function issueToRow(issue: IssueResult, category: Category): FlatRow {
 	};
 }
 
-function projectItemToRow(item: ProjectItemResult, category: Category): FlatRow {
+function projectItemToRow(item: ProjectItemResult, category: Category): FlatRow
+{
 	return {
 		key: `project-${item.project}-${item.number ?? item.title}`,
 		type: "project_item",
@@ -98,7 +104,8 @@ function projectItemToRow(item: ProjectItemResult, category: Category): FlatRow 
 	};
 }
 
-function todoToRow(todo: TodoItem, category: Category, index: number): FlatRow {
+function todoToRow(todo: TodoItem, category: Category, index: number): FlatRow
+{
 	return {
 		key: `todo-${todo.project}-${todo.sourceFile}-${index}`,
 		type: "todo",
@@ -117,17 +124,43 @@ function todoToRow(todo: TodoItem, category: Category, index: number): FlatRow {
 
 type TypeFilter = "all" | "ci" | "pr" | "branch" | "commit" | "issue" | "todo";
 
-const TYPE_FILTERS: {value: TypeFilter; label: string}[] = [
-	{value: "all", label: "All"},
-	{value: "ci", label: "CI"},
-	{value: "pr", label: "PRs"},
-	{value: "branch", label: "Branches"},
-	{value: "commit", label: "Commits"},
-	{value: "issue", label: "Issues"},
-	{value: "todo", label: "TODOs"},
+const TYPE_FILTERS:
+{
+	value: TypeFilter;
+	label: string;
+}[] = [
+	{
+		value: "all",
+		label: "All",
+	},
+	{
+		value: "ci",
+		label: "CI",
+	},
+	{
+		value: "pr",
+		label: "PRs",
+	},
+	{
+		value: "branch",
+		label: "Branches",
+	},
+	{
+		value: "commit",
+		label: "Commits",
+	},
+	{
+		value: "issue",
+		label: "Issues",
+	},
+	{
+		value: "todo",
+		label: "TODOs",
+	},
 ];
 
-function typeFilterMatches(filter: TypeFilter, type: ItemType): boolean {
+function typeFilterMatches(filter: TypeFilter, type: ItemType): boolean
+{
 	if (filter === "all") return true;
 	if (filter === "issue") return type === "issue" || type === "project_item";
 	if (filter === "todo") return type === "todo";
@@ -145,14 +178,18 @@ const RED_BADGE_CATEGORIES = new Set<Category>([
 ]);
 const PURPLE_BADGE_CATEGORIES = new Set<Category>(["pushed_no_pr", "triaged", "review_comments"]);
 
-function statusBadgeClass(category: Category): string {
-	if (GREEN_BADGE_CATEGORIES.has(category)) {
+function statusBadgeClass(category: Category): string
+{
+	if (GREEN_BADGE_CATEGORIES.has(category))
+	{
 		return "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400";
 	}
-	if (RED_BADGE_CATEGORIES.has(category)) {
+	if (RED_BADGE_CATEGORIES.has(category))
+	{
 		return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400";
 	}
-	if (PURPLE_BADGE_CATEGORIES.has(category)) {
+	if (PURPLE_BADGE_CATEGORIES.has(category))
+	{
 		return "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400";
 	}
 	return "bg-bg-200 text-text-500";
@@ -161,7 +198,8 @@ function statusBadgeClass(category: Category): string {
 const HEADER_CLASS =
 	"border-b-2 border-border-300 px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500";
 
-function itemLink(row: FlatRow): string | undefined {
+function itemLink(row: FlatRow): string | undefined
+{
 	if (row.type === "ci" || row.type === "repo") return undefined;
 	if (row.sha) return `/item/${row.project}/${row.sha}`;
 	if (row.issueNumber) return `/issue/${row.project}/${row.issueNumber}`;
@@ -173,14 +211,21 @@ function itemLink(row: FlatRow): string | undefined {
  * Upstream Red) as their own table, which /queue/table shows above Ready to land; the default renders
  * the rest, with the search and type filters.
  */
-export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
+export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"})
+{
 	const {grouped, visibleCategories, filterByProject, selectedCategory} = useQueueContext();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
-	const {rowsByCategory, typeCounts} = useMemo(() => {
-		const result: {category: Category; rows: FlatRow[]}[] = [];
-		const counts: Record<TypeFilter, number> = {
+	const {rowsByCategory, typeCounts} = useMemo(() =>
+	{
+		const result:
+		{
+			category: Category;
+			rows: FlatRow[];
+		}[] = [];
+		const counts: Record<TypeFilter, number> =
+		{
 			all: 0,
 			ci: 0,
 			pr: 0,
@@ -190,7 +235,8 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 			todo: 0,
 		};
 
-		for (const category of visibleCategories) {
+		for (const category of visibleCategories)
+		{
 			if (BLOCKING_CATEGORIES.includes(category) !== (part === "blocking")) continue;
 			const rawItems = grouped[category];
 			const items = filterByProject(rawItems);
@@ -198,7 +244,8 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 
 			const rows: FlatRow[] = [];
 
-			for (const child of items.gitChildren ?? []) {
+			for (const child of items.gitChildren ?? [])
+			{
 				const row = gitChildToRow(child, category);
 				rows.push(row);
 				counts.all++;
@@ -208,54 +255,74 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 				else counts.commit++;
 			}
 
-			for (const issue of items.issues ?? []) {
+			for (const issue of items.issues ?? [])
+			{
 				rows.push(issueToRow(issue, category));
 				counts.all++;
 				counts.issue++;
 			}
 
-			for (const item of items.projectItems ?? []) {
+			for (const item of items.projectItems ?? [])
+			{
 				rows.push(projectItemToRow(item, category));
 				counts.all++;
 				counts.issue++;
 			}
 
-			for (const [index, todo] of (items.todos ?? []).entries()) {
+			for (const [index, todo] of (items.todos ?? []).entries())
+			{
 				rows.push(todoToRow(todo, category, index));
 				counts.all++;
 				counts.todo++;
 			}
 
-			if (rows.length > 0) {
-				result.push({category, rows});
+			if (rows.length > 0)
+			{
+				result.push(
+					{
+						category,
+						rows,
+					},
+				);
 			}
 		}
 
-		return {rowsByCategory: result, typeCounts: counts};
+		return {
+			rowsByCategory: result,
+			typeCounts: counts,
+		};
 	}, [grouped, visibleCategories, filterByProject, part]);
 
-	const filteredGroups = useMemo(() => {
+	const filteredGroups = useMemo(() =>
+	{
 		const lowerQuery = searchQuery.toLowerCase();
 		return rowsByCategory
-			.map(({category, rows}) => {
-				const filtered = rows.filter((row) => {
+			.map(({category, rows}) =>
+			{
+				const filtered = rows.filter((row) =>
+				{
 					if (!typeFilterMatches(typeFilter, row.type)) return false;
 					if (
 						lowerQuery &&
 						!row.subject.toLowerCase().includes(lowerQuery) &&
 						!row.repository.toLowerCase().includes(lowerQuery) &&
 						!row.branch.toLowerCase().includes(lowerQuery)
-					) {
+					)
+					{
 						return false;
 					}
 					return true;
 				});
-				return {category, rows: filtered};
+				return {
+					category,
+					rows: filtered,
+				};
 			})
 			.filter(({rows}) => rows.length > 0);
 	}, [rowsByCategory, searchQuery, typeFilter]);
 
-	if (part === "blocking") {
+	if (part === "blocking")
+	{
 		if (rowsByCategory.length === 0) return null;
 		return (
 			<div className="mb-6">
@@ -277,7 +344,8 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 					type="text"
 					placeholder="Filter items..."
 					value={searchQuery}
-					onChange={(e) => {
+					onChange={(e) =>
+					{
 						setSearchQuery(e.target.value);
 					}}
 					className="w-60 rounded-md border border-border-300 bg-bg-000 px-3 py-1.5 font-sans text-[0.8125rem] text-text-000 outline-none placeholder:text-text-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -287,7 +355,8 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 						<button
 							key={value}
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setTypeFilter(value);
 							}}
 							className={`rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors ${
@@ -307,7 +376,16 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 	);
 }
 
-function RowsTable({groups}: {groups: {category: Category; rows: FlatRow[]}[]}) {
+function RowsTable({
+	groups,
+}: {
+	groups:
+	{
+		category: Category;
+		rows: FlatRow[];
+	}[];
+})
+{
 	return (
 		<table className="w-full border-collapse text-[0.8125rem]">
 			<thead>
@@ -333,7 +411,8 @@ function RowsTable({groups}: {groups: {category: Category; rows: FlatRow[]}[]}) 
 	);
 }
 
-function CategoryGroup({category, rows}: {category: Category; rows: FlatRow[]}) {
+function CategoryGroup({category, rows}: {category: Category; rows: FlatRow[]})
+{
 	return (
 		<>
 			<tr>
@@ -352,13 +431,19 @@ function CategoryGroup({category, rows}: {category: Category; rows: FlatRow[]}) 
 	);
 }
 
-function TableRow({row}: {row: FlatRow}) {
+function TableRow({row}: {row: FlatRow})
+{
 	const navigate = useNavigate();
 	const link = itemLink(row);
 
 	const handleRowClick = link
-		? () => {
-				void navigate({to: link});
+		? () =>
+			{
+				void navigate(
+					{
+						to: link,
+					},
+				);
 			}
 		: undefined;
 
@@ -390,7 +475,8 @@ function TableRow({row}: {row: FlatRow}) {
 						target="_blank"
 						rel="noopener noreferrer"
 						className="font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
-						onClick={(e) => {
+						onClick={(e) =>
+						{
 							e.stopPropagation();
 						}}
 					>
@@ -408,23 +494,30 @@ function TableRow({row}: {row: FlatRow}) {
 	);
 }
 
-function RowActions({row}: {row: FlatRow}) {
+function RowActions({row}: {row: FlatRow})
+{
 	const actions: string[] = [];
 
-	if (row.prUrl) {
+	if (row.prUrl)
+	{
 		actions.push(row.type === "ci" ? "Open Actions" : "Open PR");
-	} else if (row.type === "branch" || row.type === "commit") {
-		if (row.category === "pushed_no_pr") {
+	}
+	else if (row.type === "branch" || row.type === "commit")
+	{
+		if (row.category === "pushed_no_pr")
+		{
 			actions.push("Create PR");
 		}
 	}
 
 	const llmCommand = row.llmCommand ?? CATEGORIES[row.category].llmCommand;
-	if (llmCommand) {
+	if (llmCommand)
+	{
 		actions.push(llmCommand);
 	}
 
-	if (!actions.some((a) => a === "Open Actions" || a === "Open PR" || a === "Create PR")) {
+	if (!actions.some((a) => a === "Open Actions" || a === "Open PR" || a === "Create PR"))
+	{
 		actions.push("Snooze");
 	}
 

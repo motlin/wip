@@ -12,16 +12,20 @@ export function StalenessIndicator({
 }: {
 	projectRefreshedAt: Readonly<Record<string, string>>;
 	staleAfterMinutes: number;
-}) {
+})
+{
 	const [nowMs, setNowMs] = useState<number | null>(null);
 
-	useEffect(() => {
-		const tick = () => {
+	useEffect(() =>
+	{
+		const tick = () =>
+		{
 			setNowMs(Date.now());
 		};
 		const first = setTimeout(tick, 0);
 		const timer = setInterval(tick, 30_000);
-		return () => {
+		return () =>
+		{
 			clearTimeout(first);
 			clearInterval(timer);
 		};

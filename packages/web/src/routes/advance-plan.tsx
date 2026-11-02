@@ -6,30 +6,54 @@ import {advancePlanQueryOptions} from "../lib/queries.js";
 import {rebaseChild, runClaudeCommand, testChild} from "../lib/server-fns.js";
 import type {AdvancePlanBranchSummary, AdvancePlanProjectSummary, TestJobStatus} from "../lib/server-fns.js";
 import {useAllTasks, type TaskEvent} from "../lib/server-events-context.js";
-import {
+import
+{
 	ProjectSection,
 	actionKey,
 	type ActionMessage,
 	type BranchAction,
 } from "../components/advance-plan-project-section.js";
 
-export const Route = createFileRoute("/advance-plan")({
-	loader: async ({context: {queryClient}}) => queryClient.query({...advancePlanQueryOptions(), staleTime: "static"}),
-	head: () => ({
-		meta: [{title: "WIP Advance Plan"}],
-	}),
-	component: AdvancePlanPage,
-});
+export const Route = createFileRoute("/advance-plan")(
+	{
+		loader: async ({context: {queryClient}}) =>
+			queryClient.query(
+				{
+					...advancePlanQueryOptions(),
+					staleTime: "static",
+				},
+			),
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP Advance Plan",
+				},
+			],
+		}),
+		component: AdvancePlanPage,
+	},
+);
 
-function formatGeneratedAt(generatedAt: number): string {
-	return new Date(generatedAt).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+function formatGeneratedAt(generatedAt: number): string
+{
+	return new Date(generatedAt).toLocaleTimeString(
+		[],
+		{
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+		},
+	);
 }
 
-function taskMessage(result: TestJobStatus): string {
+function taskMessage(result: TestJobStatus): string
+{
 	return `Task ${result.id} ${result.status}${result.message ? `: ${result.message}` : ""}`;
 }
 
-function AdvancePlanPage() {
+function AdvancePlanPage()
+{
 	const query = useSuspenseQuery(advancePlanQueryOptions());
 	const {getTask} = useAllTasks();
 	const [refreshing, setRefreshing] = useState(false);
@@ -41,69 +65,139 @@ function AdvancePlanPage() {
 	const noopProjects = query.data.projects.filter((project) => project.status === "noop");
 	const branchCount = readyProjects.reduce((sum, project) => sum + project.branches.length, 0);
 
-	const refreshPlan = async () => {
+	const refreshPlan = async () =>
+	{
 		setRefreshing(true);
 		await query.refetch();
 		setRefreshing(false);
 	};
 
-	const runBaselineTest = async (project: AdvancePlanProjectSummary) => {
+	const runBaselineTest = async (project: AdvancePlanProjectSummary) =>
+	{
 		const key = `${project.project}:baseline`;
 		setPendingAction(key);
-		try {
+		try
+		{
 			if (!project.baselineSha) throw new Error("Baseline commit is unknown; refresh the plan");
-			const result = await testChild({data: {project: project.project, sha: project.baselineSha}});
-			setMessages((previous) => ({...previous, [key]: {level: "success", text: taskMessage(result)}}));
-		} catch (error) {
-			setMessages((previous) => ({
+			const result = await testChild(
+				{
+					data:
+					{
+						project: project.project,
+						sha: project.baselineSha,
+					},
+				},
+			);
+			setMessages((previous) => (
+			{
 				...previous,
-				[key]: {level: "error", text: error instanceof Error ? error.message : "Action failed"},
+				[key]:
+				{
+					level: "success",
+					text: taskMessage(result),
+				},
 			}));
-		} finally {
+		}
+		catch (error)
+		{
+			setMessages((previous) => (
+			{
+				...previous,
+				[key]:
+				{
+					level: "error",
+					text: error instanceof Error ? error.message : "Action failed",
+				},
+			}));
+		}
+		finally
+		{
 			setPendingAction(null);
 		}
 	};
 
-	const runBranchAction = async (branch: AdvancePlanBranchSummary, action: BranchAction) => {
+	const runBranchAction = async (branch: AdvancePlanBranchSummary, action: BranchAction) =>
+	{
 		const key = actionKey(branch, action);
 		setPendingAction(key);
-		try {
+		try
+		{
 			let result: TestJobStatus;
-			switch (action) {
+			switch (action)
+			{
 				case "test":
-					result = await testChild({data: {project: branch.project, sha: branch.tipSha}});
+					result = await testChild(
+						{
+							data:
+							{
+								project: branch.project,
+								sha: branch.tipSha,
+							},
+						},
+					);
 					break;
 				case "rebase":
-					result = await rebaseChild({data: {project: branch.project, branch: branch.branch}});
+					result = await rebaseChild(
+						{
+							data:
+							{
+								project: branch.project,
+								branch: branch.branch,
+							},
+						},
+					);
 					break;
 				case "resolve-conflicts":
-					result = await runClaudeCommand({
-						data: {
-							project: branch.project,
-							sha: branch.tipSha,
-							branch: branch.branch,
-							command: "/git:conflicts",
+					result = await runClaudeCommand(
+						{
+							data:
+							{
+								project: branch.project,
+								sha: branch.tipSha,
+								branch: branch.branch,
+								command: "/git:conflicts",
+							},
 						},
-					});
+					);
 					break;
 				case "fix-failure":
-					result = await runClaudeCommand({
-						data: {
-							project: branch.project,
-							sha: branch.tipSha,
-							branch: branch.branch,
-							command: "/build:fix",
+					result = await runClaudeCommand(
+						{
+							data:
+							{
+								project: branch.project,
+								sha: branch.tipSha,
+								branch: branch.branch,
+								command: "/build:fix",
+							},
 						},
-					});
+					);
 					break;
 			}
-			setMessages((previous) => ({...previous, [key]: {level: "success", text: taskMessage(result)}}));
-		} catch (error) {
-			setMessages((previous) => ({
+			setMessages((previous) => (
+			{
 				...previous,
-				[key]: {level: "error", text: error instanceof Error ? error.message : "Action failed"},
+				[key]:
+				{
+					level: "success",
+					text: taskMessage(result),
+				},
 			}));
-		} finally {
+		}
+		catch (error)
+		{
+			setMessages((previous) => (
+			{
+				...previous,
+				[key]:
+				{
+					level: "error",
+					text: error instanceof Error ? error.message : "Action failed",
+				},
+			}));
+		}
+		finally
+		{
 			setPendingAction(null);
 		}
 	};
@@ -138,7 +232,8 @@ function AdvancePlanPage() {
 					</Link>
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void refreshPlan();
 						}}
 						disabled={refreshing}
@@ -174,7 +269,8 @@ function AdvancePlanPage() {
 	);
 }
 
-function SummaryTile({label, value, detail}: {label: string; value: number; detail: string}) {
+function SummaryTile({label, value, detail}: {label: string; value: number; detail: string})
+{
 	return (
 		<div className="rounded-lg border border-border-300/40 bg-bg-000 px-3 py-2">
 			<div className="text-xs font-medium text-text-500">{label}</div>
@@ -204,7 +300,8 @@ function ProjectGroup({
 	pendingAction?: string | null;
 	runBranchAction?: (branch: AdvancePlanBranchSummary, action: BranchAction) => Promise<void>;
 	runBaselineTest?: (project: AdvancePlanProjectSummary) => Promise<void>;
-}) {
+})
+{
 	return (
 		<section>
 			<div className="mb-2 flex items-center gap-2">

@@ -1,18 +1,22 @@
-interface Label {
+interface Label
+{
 	name: string;
 	color: string;
 }
 
-interface LabelListProps {
+interface LabelListProps
+{
 	labels: Label[];
 	size: "compact" | "detail";
 }
 
-function uniqueLabels(labels: Label[]): Label[] {
+function uniqueLabels(labels: Label[]): Label[]
+{
 	const seen = new Set<string>();
 	const unique: Label[] = [];
 
-	for (const label of labels) {
+	for (const label of labels)
+	{
 		if (seen.has(label.name)) continue;
 		seen.add(label.name);
 		unique.push(label);
@@ -21,7 +25,8 @@ function uniqueLabels(labels: Label[]): Label[] {
 	return unique;
 }
 
-export function LabelList({labels, size}: LabelListProps) {
+export function LabelList({labels, size}: LabelListProps)
+{
 	const unique = uniqueLabels(labels);
 	if (unique.length === 0) return null;
 
@@ -37,7 +42,8 @@ export function LabelList({labels, size}: LabelListProps) {
 				<span
 					key={label.name}
 					className={className}
-					style={{
+					style={
+					{
 						backgroundColor: `#${label.color}20`,
 						color: `#${label.color}`,
 						border: `1px solid #${label.color}40`,

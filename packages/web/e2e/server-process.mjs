@@ -12,59 +12,82 @@ import * as path from "node:path";
 const liveGroups = new Set();
 let hooksInstalled = false;
 
-function killGroup(pgid, signal) {
-	try {
+function killGroup(pgid, signal)
+{
+	try
+	{
 		process.kill(-pgid, signal);
-	} catch {
+	}
+	catch
+	{
 		// the group is already gone
 	}
 }
 
-function installExitHooks() {
+function installExitHooks()
+{
 	if (hooksInstalled) return;
 	hooksInstalled = true;
-	process.once("exit", () => {
+	process.once("exit", () =>
+	{
 		for (const pgid of liveGroups) killGroup(pgid, "SIGKILL");
 	});
 	for (const [signal, number] of [
 		["SIGHUP", 1],
 		["SIGINT", 2],
 		["SIGTERM", 15],
-	]) {
-		process.once(signal, () => {
+	])
+	{
+		process.once(signal, () =>
+		{
 			process.exit(128 + number);
 		});
 	}
 }
 
 /** spawn() in a new process group that dies with the harness. */
-export function startProcessTree(command, args, options) {
+export function startProcessTree(command, args, options)
+{
 	installExitHooks();
-	const child = spawn(command, args, {...options, detached: true});
+	const child = spawn(
+		command,
+		args,
+		{
+			...options,
+			detached: true,
+		},
+	);
 	if (child.pid !== undefined) liveGroups.add(child.pid);
 	return child;
 }
 
-function exited(child) {
+function exited(child)
+{
 	return child.exitCode !== null || child.signalCode !== null;
 }
 
 /** SIGTERM the tree's whole group, SIGKILL it if the leader is still up after 10s, and SIGKILL any stragglers. */
-export async function stopProcessTree(child, graceMs = 10_000) {
+export async function stopProcessTree(child, graceMs = 10_000)
+{
 	const pgid = child.pid;
 	if (pgid === undefined) return;
-	if (!exited(child)) {
-		const done = new Promise((resolve) => {
+	if (!exited(child))
+	{
+		const done = new Promise((resolve) =>
+		{
 			child.once("exit", resolve);
 		});
 		killGroup(pgid, "SIGTERM");
 		let timer;
-		const timedOut = new Promise((resolve) => {
-			timer = setTimeout(() => {
+		const timedOut = new Promise((resolve) =>
+		{
+			timer = setTimeout(() =>
+			{
 				resolve("timeout");
 			}, graceMs);
 		});
-		if ((await Promise.race([done, timedOut])) === "timeout") {
+		if ((await Promise.race([done, timedOut])) === "timeout")
+		{
 			killGroup(pgid, "SIGKILL");
 			await done;
 		}
@@ -78,13 +101,22 @@ export async function stopProcessTree(child, graceMs = 10_000) {
  * Pids of this user's processes that started no earlier than `sinceMs` (`ps` start times have
  * one-second resolution, so a process from the same second counts).
  */
-function processesStartedSince(sinceMs) {
+function processesStartedSince(sinceMs)
+{
 	const cutoff = Math.floor(sinceMs / 1000) * 1000;
 	const uid = process.getuid();
-	const result = spawnSync("ps", ["-axo", "pid=,uid=,lstart="], {
-		encoding: "utf8",
-		env: {...process.env, LC_ALL: "C"},
-	});
+	const result = spawnSync(
+		"ps",
+		["-axo", "pid=,uid=,lstart="],
+		{
+			encoding: "utf8",
+			env:
+			{
+				...process.env,
+				LC_ALL: "C",
+			},
+		},
+	);
 	return result.stdout
 		.split("\n")
 		.map((line) => /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line))
@@ -129,7 +161,8 @@ for pid in map(int, sys.argv[3:]):
  * flags (-b included), which blocks for as long as any mounted network share stalls. The kernel's
  * per-descriptor vnode info touches only the candidates' own files.
  */
-export function processesHolding(file) {
+export function processesHolding(file)
+{
 	if (!fs.existsSync(file)) return [];
 	const candidates = processesStartedSince(fs.statSync(path.dirname(file)).birthtimeMs);
 	if (candidates.length === 0) return [];

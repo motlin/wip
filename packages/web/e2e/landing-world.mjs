@@ -21,15 +21,18 @@ const TEST_COMMAND = "test ! -e RED";
 const CHILDREN_ALIAS =
 	"!PARENT=$(git rev-parse ${1:-HEAD}); git rev-list --all --parents | awk -v p=\"$PARENT\" 'NF==2 && $2==p {print $1}'; :";
 
-function writeExecutable(file, content) {
+function writeExecutable(file, content)
+{
 	fs.writeFileSync(file, content);
 	fs.chmodSync(file, 0o755);
 }
 
 /** Makes the temp dir and the env every git call and the server run with. */
-function createRoot() {
+function createRoot()
+{
 	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-e2e-landing-")));
-	const dirs = {
+	const dirs =
+	{
 		root,
 		home: path.join(root, "home"),
 		config: path.join(root, "config"),
@@ -40,7 +43,13 @@ function createRoot() {
 		seeds: path.join(root, "seeds"),
 		projects: path.join(root, "projects"),
 	};
-	for (const dir of Object.values(dirs)) fs.mkdirSync(dir, {recursive: true});
+	for (const dir of Object.values(dirs))
+		fs.mkdirSync(
+			dir,
+			{
+				recursive: true,
+			},
+		);
 	fs.writeFileSync(
 		path.join(dirs.home, ".gitconfig"),
 		"[user]\n\tname = WIP E2E\n\temail = e2e@example.invalid\n[init]\n\tdefaultBranch = main\n[advice]\n\tdetachedHead = false\n",
@@ -48,7 +57,8 @@ function createRoot() {
 	// wip lists a project's work with `git children`, an alias the user's own git config provides.
 	execFileSync("git", ["config", "--file", path.join(dirs.home, ".gitconfig"), "alias.children", CHILDREN_ALIAS]);
 	const ghLog = path.join(root, "gh-calls.jsonl");
-	const env = {
+	const env =
+	{
 		...process.env,
 		HOME: dirs.home,
 		XDG_CONFIG_HOME: dirs.config,
@@ -77,10 +87,15 @@ function createRoot() {
 	delete env.CLAUDE_CONFIG_DIR;
 	delete env.UPSTREAM_REMOTE;
 	delete env.UPSTREAM_BRANCH;
-	return {dirs, env, ghLog};
+	return {
+		dirs,
+		env,
+		ghLog,
+	};
 }
 
-function writeFakes(bin) {
+function writeFakes(bin)
+{
 	writeExecutable(
 		path.join(bin, "gh"),
 		`#!/bin/sh\nexec "${process.execPath}" "${path.join(e2eDir, "fake-gh.mjs")}" "$@"\n`,
@@ -114,9 +129,15 @@ function writeFakes(bin) {
 }
 
 /** The registry entry for one of the world's clones. */
-function record(repo, landing, priority) {
+function record(repo, landing, priority)
+{
 	return {
-		...(priority === undefined ? {} : {priority}),
+		...(priority === undefined
+			? {}
+			:
+				{
+					priority,
+				}),
 		name: repo.name,
 		dir: repo.clone,
 		template: "unknown",
@@ -124,31 +145,54 @@ function record(repo, landing, priority) {
 		upstreamRemote: repo.forkBare === undefined ? "origin" : "upstream",
 		upstreamBranch: "main",
 		landing,
-		...(repo.verify === undefined ? {} : {verify: repo.verify}),
+		...(repo.verify === undefined
+			? {}
+			:
+				{
+					verify: repo.verify,
+				}),
 	};
 }
 
 /** Every git fsmonitor--daemon socket under `root`: one exists while a daemon watches that repo. */
-export function fsmonitorDaemonSockets(root) {
+export function fsmonitorDaemonSockets(root)
+{
 	return fs
-		.readdirSync(root, {recursive: true})
+		.readdirSync(
+			root,
+			{
+				recursive: true,
+			},
+		)
 		.filter((entry) => path.basename(entry) === "fsmonitor--daemon.ipc")
 		.map((entry) => path.join(root, entry));
 }
 
-export function createWorld() {
+export function createWorld()
+{
 	const {dirs, env, ghLog} = createRoot();
 	writeFakes(dirs.bin);
 
 	const git = (cwd, ...args) =>
-		execFileSync("git", args, {cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim();
-	const commitFile = (cwd, file, content, message) => {
+		execFileSync(
+			"git",
+			args,
+			{
+				cwd,
+				env,
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		).trim();
+	const commitFile = (cwd, file, content, message) =>
+	{
 		fs.writeFileSync(path.join(cwd, file), content);
 		git(cwd, "add", "--all");
 		git(cwd, "commit", "--quiet", "-m", message);
 		return git(cwd, "rev-parse", "HEAD");
 	};
-	const removeFile = (cwd, file, message) => {
+	const removeFile = (cwd, file, message) =>
+	{
 		git(cwd, "rm", "--quiet", file);
 		git(cwd, "commit", "--quiet", "-m", message);
 		return git(cwd, "rev-parse", "HEAD");
@@ -163,19 +207,32 @@ export function createWorld() {
 	 * With `noFork`, the clone's only remote is origin = acme/<name> itself: branches push to the
 	 * upstream repo and PRs open from there, so the GitHub token needs WRITE on it to open them.
 	 */
-	const repo = (name, {owner = "acme", red = false, noFork = false, workflow, verify, prRefs = true} = {}) => {
+	const repo = (name, {owner = "acme", red = false, noFork = false, workflow, verify, prRefs = true} = {}) =>
+	{
 		const upstreamBare = bare(owner, name);
 		const forkBare = noFork ? undefined : bare("e2e-user", name);
-		for (const dir of [upstreamBare, forkBare].filter((d) => d !== undefined)) {
-			fs.mkdirSync(dir, {recursive: true});
+		for (const dir of [upstreamBare, forkBare].filter((d) => d !== undefined))
+		{
+			fs.mkdirSync(
+				dir,
+				{
+					recursive: true,
+				},
+			);
 			git(dir, "init", "--quiet", "--bare");
 		}
 		const seed = path.join(dirs.seeds, name);
 		fs.mkdirSync(seed);
 		git(seed, "init", "--quiet");
 		commitFile(seed, "README.md", `# ${name}\n`, `Start ${name}`);
-		if (workflow !== undefined) {
-			fs.mkdirSync(path.join(seed, ".github", "workflows"), {recursive: true});
+		if (workflow !== undefined)
+		{
+			fs.mkdirSync(
+				path.join(seed, ".github", "workflows"),
+				{
+					recursive: true,
+				},
+			);
 			commitFile(seed, path.join(".github", "workflows", "ci.yml"), workflow, `Add ${name}'s CI`);
 		}
 		if (red) commitFile(seed, "RED", "upstream is broken\n", `Break ${name}'s tests`);
@@ -186,28 +243,42 @@ export function createWorld() {
 		const upstreamRemote = noFork ? "origin" : "upstream";
 		git(dirs.projects, "clone", "--quiet", "--origin", upstreamRemote, upstreamBare, clone);
 		// Like the user's repos, the PR remote fetches GitHub's PR heads; without it the repo gets a Set up PR refs item.
-		if (prRefs) {
+		if (prRefs)
+		{
 			const spec = `+refs/pull/*/head:refs/remotes/${upstreamRemote}/pr/*`;
 			git(clone, "config", "--add", `remote.${upstreamRemote}.fetch`, spec);
 		}
-		if (forkBare !== undefined) {
+		if (forkBare !== undefined)
+		{
 			git(clone, "remote", "add", "origin", forkBare);
 			git(clone, "fetch", "--quiet", "origin");
 		}
 		git(clone, "config", "test.default.command", TEST_COMMAND);
-		const branch = (branchName, file, message) => {
+		const branch = (branchName, file, message) =>
+		{
 			git(clone, "checkout", "--quiet", "-b", branchName, `${upstreamRemote}/main`);
 			const sha = commitFile(clone, file, `${branchName}\n`, message);
 			git(clone, "checkout", "--quiet", "main");
 			return sha;
 		};
 		/** Someone else lands a commit upstream; the clone only learns of it when it fetches. */
-		const landUpstream = (file, message) => {
+		const landUpstream = (file, message) =>
+		{
 			const sha = commitFile(seed, file, `${file}\n`, message);
 			git(seed, "push", "--quiet", "upstream", "main");
 			return sha;
 		};
-		return {name, owner, clone, seed, upstreamBare, forkBare, verify, branch, landUpstream};
+		return {
+			name,
+			owner,
+			clone,
+			seed,
+			upstreamBare,
+			forkBare,
+			verify,
+			branch,
+			landUpstream,
+		};
 	};
 
 	// Pull-request repo: one ready commit, one that goes behind upstream after the first Open PR, and
@@ -235,8 +306,14 @@ export function createWorld() {
 	const ffSha = gadgets.branch("ff-feature", "ff.txt", "Add the fast-forward feature");
 
 	// Red upstream: its line stops, so nothing lands, not even the commit that removes RED.
-	const broken = repo("broken", {red: true});
-	const fixSha = (() => {
+	const broken = repo(
+		"broken",
+		{
+			red: true,
+		},
+	);
+	const fixSha = (() =>
+	{
 		git(broken.clone, "checkout", "--quiet", "-b", "fix-red", "upstream/main");
 		const sha = removeFile(broken.clone, "RED", "Fix broken's tests");
 		// The ready buffer tests nothing in a repo whose upstream is red, so the user tested the fix by hand.
@@ -256,13 +333,21 @@ export function createWorld() {
 	// Draft-PR verification asked for, but the GitHub token has read-only access to acme/gears (the fake
 	// GitHub says READ) and branches push straight to it: it tests locally and says why, and Open PR
 	// pushes with git, then sends the tab to GitHub's new-PR page instead of opening the PR itself.
-	const gears = repo("gears", {noFork: true, workflow: "on: [push, pull_request]\n", verify: "draft-pr"});
+	const gears = repo(
+		"gears",
+		{
+			noFork: true,
+			workflow: "on: [push, pull_request]\n",
+			verify: "draft-pr",
+		},
+	);
 	const gearSha = gears.branch("gear-feature", "gear.txt", "Add the gear feature");
 
 	// Auto-fix repo: its one commit breaks the test, so the buffer's test fix (the fake claude in the fake herdr)
 	// commits a fixup the user reviews and accepts. The RED file names the failure the marker shows.
 	const bolts = repo("bolts");
-	const fragileSha = (() => {
+	const fragileSha = (() =>
+	{
 		git(bolts.clone, "checkout", "--quiet", "-b", "fragile-feature", "upstream/main");
 		fs.writeFileSync(path.join(bolts.clone, "fragile.txt"), "fragile-feature\n");
 		const sha = commitFile(
@@ -279,14 +364,30 @@ export function createWorld() {
 	// wip launches a background agent only where Claude trusts the repo (its .claude.json, read-only).
 	fs.writeFileSync(
 		path.join(dirs.home, ".claude.json"),
-		JSON.stringify({projects: {[bolts.clone]: {hasTrustDialogAccepted: true}}}),
+		JSON.stringify(
+			{
+				projects:
+				{
+					[bolts.clone]:
+					{
+						hasTrustDialogAccepted: true,
+					},
+				},
+			},
+		),
 	);
 
 	// Foreign red upstream: other-org is neither the user's login nor an ownership org, so its red upstream is
 	// the baseline, not a stop. The test names each failure (go's "--- FAIL:" line) so the buffer can compare
 	// a commit's failures with the baseline's: a commit failing only what upstream fails lines up, one adding
 	// a failure does not.
-	const levers = repo("levers", {owner: "other-org", red: true});
+	const levers = repo(
+		"levers",
+		{
+			owner: "other-org",
+			red: true,
+		},
+	);
 	git(
 		levers.clone,
 		"config",
@@ -299,21 +400,37 @@ export function createWorld() {
 	// Private repo whose upstream check GitHub never started (Actions billing refused the job): no CI result,
 	// so its upstream is not red, and its commit lines up by its local test.
 	// Its PR remote fetches no PR heads: one Set up PR refs item until the user clicks it.
-	const vaults = repo("vaults", {prRefs: false});
+	const vaults = repo(
+		"vaults",
+		{
+			prRefs: false,
+		},
+	);
 	const vaultSha = vaults.branch("vault-feature", "vault.txt", "Add the vault feature");
 
 	// GitHub Actions gate: pulleys and winches share the owner acme, cranks belongs to other-org. They start with
 	// no branches; the harness adds one at a time so it controls which background push goes first.
 	const pulleys = repo("pulleys");
 	const winches = repo("winches");
-	const cranks = repo("cranks", {owner: "other-org"});
+	const cranks = repo(
+		"cranks",
+		{
+			owner: "other-org",
+		},
+	);
 
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
-	fs.mkdirSync(wipConfig, {recursive: true});
+	fs.mkdirSync(
+		wipConfig,
+		{
+			recursive: true,
+		},
+	);
 	const priorities = new Map();
-	const writeRegistry = () => {
+	const writeRegistry = () =>
+	{
 		const records = [
 			[broken, "pull-request"],
 			[gadgets, "fast-forward"],
@@ -332,15 +449,25 @@ export function createWorld() {
 	};
 	writeRegistry();
 	/** Sets one repo's registry priority, read the next time the server loads the registry. */
-	const setPriority = (name, priority) => {
+	const setPriority = (name, priority) =>
+	{
 		priorities.set(name, priority);
 		writeRegistry();
 	};
 	/** Sets the global ready target the next pull reads. */
-	const setReadyTarget = (size) => {
+	const setReadyTarget = (size) =>
+	{
 		fs.writeFileSync(
 			path.join(wipConfig, "config.json5"),
-			`${JSON.stringify({projectsDir: dirs.projects, "readyBuffer.size": String(size), "ownership.orgs": ["acme"]}, null, "\t")}\n`,
+			`${JSON.stringify(
+				{
+					projectsDir: dirs.projects,
+					"readyBuffer.size": String(size),
+					"ownership.orgs": ["acme"],
+				},
+				null,
+				"\t",
+			)}\n`,
 		);
 	};
 	setReadyTarget(10);
@@ -352,8 +479,23 @@ export function createWorld() {
 		git,
 		setReadyTarget,
 		setPriority,
-		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults, pulleys, winches, cranks},
-		shas: {
+		repos:
+		{
+			widgets,
+			gadgets,
+			broken,
+			cogs,
+			sprockets,
+			gears,
+			bolts,
+			levers,
+			vaults,
+			pulleys,
+			winches,
+			cranks,
+		},
+		shas:
+		{
 			readySha,
 			behindSha,
 			waitingSha,
@@ -373,14 +515,41 @@ export function createWorld() {
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
 		fakeRepos: [
 			...[widgets, gadgets, broken, cogs, sprockets, bolts, levers, pulleys, winches, cranks].flatMap((r) => [
-				{owner: r.owner, name: r.name, bareDir: r.upstreamBare},
-				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `${r.owner}/${r.name}`},
+				{
+					owner: r.owner,
+					name: r.name,
+					bareDir: r.upstreamBare,
+				},
+				{
+					owner: "e2e-user",
+					name: r.name,
+					bareDir: r.forkBare,
+					parent: `${r.owner}/${r.name}`,
+				},
 			]),
-			{owner: "acme", name: gears.name, bareDir: gears.upstreamBare, viewerPermission: "READ"},
-			{owner: "acme", name: vaults.name, bareDir: vaults.upstreamBare, isPrivate: true, baseCheck: "NOT_STARTED"},
-			{owner: "e2e-user", name: vaults.name, bareDir: vaults.forkBare, isPrivate: true, parent: "acme/vaults"},
+			{
+				owner: "acme",
+				name: gears.name,
+				bareDir: gears.upstreamBare,
+				viewerPermission: "READ",
+			},
+			{
+				owner: "acme",
+				name: vaults.name,
+				bareDir: vaults.upstreamBare,
+				isPrivate: true,
+				baseCheck: "NOT_STARTED",
+			},
+			{
+				owner: "e2e-user",
+				name: vaults.name,
+				bareDir: vaults.forkBare,
+				isPrivate: true,
+				parent: "acme/vaults",
+			},
 		],
-		ghCalls() {
+		ghCalls()
+		{
 			if (!fs.existsSync(ghLog)) return [];
 			return fs
 				.readFileSync(ghLog, "utf8")
@@ -388,8 +557,15 @@ export function createWorld() {
 				.filter(Boolean)
 				.map((line) => JSON.parse(line).args);
 		},
-		remove() {
-			fs.rmSync(dirs.root, {recursive: true, force: true});
+		remove()
+		{
+			fs.rmSync(
+				dirs.root,
+				{
+					recursive: true,
+					force: true,
+				},
+			);
 		},
 	};
 }

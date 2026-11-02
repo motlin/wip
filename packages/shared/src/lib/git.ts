@@ -23,12 +23,18 @@ const SKIPPABLE_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
 // Cap for repo-independent git fan-outs (project discovery).
 const DISCOVERY_CONCURRENCY = 8;
 
-function parseEnvrc(dir: string): {upstreamRemote: string; upstreamBranch: string} {
+function parseEnvrc(dir: string):
+{
+	upstreamRemote: string;
+	upstreamBranch: string;
+}
+{
 	const envrcPath = path.join(dir, ".envrc");
 	let upstreamRemote = "upstream";
 	let upstreamBranch = "main";
 
-	if (fs.existsSync(envrcPath)) {
+	if (fs.existsSync(envrcPath))
+	{
 		const content = fs.readFileSync(envrcPath, "utf-8");
 		const remoteMatch = content.match(/^export UPSTREAM_REMOTE=(\S+)/m);
 		const branchMatch = content.match(/^export UPSTREAM_BRANCH=(\S+)/m);
@@ -36,22 +42,35 @@ function parseEnvrc(dir: string): {upstreamRemote: string; upstreamBranch: strin
 		if (branchMatch?.[1]) upstreamBranch = branchMatch[1];
 	}
 
-	return {upstreamRemote, upstreamBranch};
+	return {
+		upstreamRemote,
+		upstreamBranch,
+	};
 }
 
-export function isSkippable(message: string): boolean {
+export function isSkippable(message: string): boolean
+{
 	return SKIPPABLE_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
-export async function getPatchId(dir: string, sha: string): Promise<string> {
-	const formatPatch = await tracedExeca("git", ["-C", dir, "diff-tree", "-p", sha], {
-		reject: false,
-	});
+export async function getPatchId(dir: string, sha: string): Promise<string>
+{
+	const formatPatch = await tracedExeca(
+		"git",
+		["-C", dir, "diff-tree", "-p", sha],
+		{
+			reject: false,
+		},
+	);
 	if (formatPatch.exitCode !== 0 || !formatPatch.stdout) return "";
-	const patchId = await tracedExeca("git", ["-C", dir, "patch-id", "--stable"], {
-		input: formatPatch.stdout,
-		reject: false,
-	});
+	const patchId = await tracedExeca(
+		"git",
+		["-C", dir, "patch-id", "--stable"],
+		{
+			input: formatPatch.stdout,
+			reject: false,
+		},
+	);
 	if (patchId.exitCode !== 0 || !patchId.stdout) return "";
 	return patchId.stdout.trim().split(/\s+/)[0] ?? "";
 }
@@ -64,19 +83,22 @@ async function findRemoteBranchByPatchId(
 	dir: string,
 	sha: string,
 	remoteBranchRefs: Map<string, string>,
-): Promise<string | undefined> {
+): Promise<string | undefined>
+{
 	const commitPatchId = await getPatchId(dir, sha);
 	if (!commitPatchId) return undefined;
 
 	// Check remote branch tips in parallel (limited to avoid overwhelming git)
 	const entries = Array.from(remoteBranchRefs.entries());
 	const BATCH_SIZE = 10;
-	for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+	for (let i = 0; i < entries.length; i += BATCH_SIZE)
+	{
 		const batch = entries.slice(i, i + BATCH_SIZE);
 		// Sequential batches by design: stops at the first matching batch and bounds git fan-out.
 		// eslint-disable-next-line no-await-in-loop
 		const results = await Promise.all(
-			batch.map(async ([branchName, refName]) => {
+			batch.map(async ([branchName, refName]) =>
+			{
 				const remoteSha = await git(dir, "rev-parse", refName);
 				if (!remoteSha) return null;
 				const remotePatchId = await getPatchId(dir, remoteSha);
@@ -90,38 +112,59 @@ async function findRemoteBranchByPatchId(
 	return undefined;
 }
 
-export async function isDirty(dir: string): Promise<boolean> {
-	const diffResult = await tracedExeca("git", ["-C", dir, "diff", "--quiet", "HEAD"], {
-		reject: false,
-	});
+export async function isDirty(dir: string): Promise<boolean>
+{
+	const diffResult = await tracedExeca(
+		"git",
+		["-C", dir, "diff", "--quiet", "HEAD"],
+		{
+			reject: false,
+		},
+	);
 	if (diffResult.exitCode !== 0) return true;
 
 	const untracked = await git(dir, "ls-files", "--others", "--exclude-standard");
 	return untracked.length > 0;
 }
 
-export async function isDetachedHead(dir: string): Promise<boolean> {
-	const result = await tracedExeca("git", ["-C", dir, "symbolic-ref", "-q", "HEAD"], {
-		reject: false,
-	});
+export async function isDetachedHead(dir: string): Promise<boolean>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, "symbolic-ref", "-q", "HEAD"],
+		{
+			reject: false,
+		},
+	);
 	return result.exitCode !== 0;
 }
 
-export async function hasUpstreamRef(dir: string, ref: string): Promise<boolean> {
-	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", ref], {
-		reject: false,
-	});
+export async function hasUpstreamRef(dir: string, ref: string): Promise<boolean>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, "rev-parse", "--verify", ref],
+		{
+			reject: false,
+		},
+	);
 	return result.exitCode === 0;
 }
 
-export async function hasTestConfigured(dir: string): Promise<boolean> {
-	const result = await tracedExeca("git", ["-C", dir, "config", "--get-regexp", "^test\\."], {
-		reject: false,
-	});
+export async function hasTestConfigured(dir: string): Promise<boolean>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, "config", "--get-regexp", "^test\\."],
+		{
+			reject: false,
+		},
+	);
 	return result.exitCode === 0;
 }
 
-export async function getChildren(dir: string, upstreamRef: string): Promise<string[]> {
+export async function getChildren(dir: string, upstreamRef: string): Promise<string[]>
+{
 	const output = await git(dir, "children", upstreamRef);
 	if (!output) return [];
 	return output.split("\n").filter(Boolean);
@@ -135,7 +178,14 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 export async function getBehindBranchTips(
 	dir: string,
 	upstreamRef: string,
-): Promise<Array<{sha: string; branch: string}>> {
+): Promise<
+	Array<
+	{
+		sha: string;
+		branch: string;
+	}>
+>
+{
 	const output = await git(
 		dir,
 		"for-each-ref",
@@ -146,7 +196,16 @@ export async function getBehindBranchTips(
 	return output
 		.split("\n")
 		.map((line) => line.split(" "))
-		.flatMap(([sha, branch]) => (sha && branch && !/^(main|master)$/.test(branch) ? [{sha, branch}] : []));
+		.flatMap(([sha, branch]) =>
+			sha && branch && !/^(main|master)$/.test(branch)
+				? [
+						{
+							sha,
+							branch,
+						},
+					]
+				: [],
+		);
 }
 
 export async function getNeedsRebaseBranches(
@@ -155,8 +214,16 @@ export async function getNeedsRebaseBranches(
 	prStatuses?: PrStatuses,
 	remoteBranches?: Set<string>,
 	remoteBranchRefs?: Map<string, string>,
-	mergeStatusMap?: Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>,
-): Promise<ChildCommit[]> {
+	mergeStatusMap?: Map<
+		string,
+		{
+			commitsAhead: number;
+			commitsBehind: number;
+			rebaseable: boolean | null;
+		}
+	>,
+): Promise<ChildCommit[]>
+{
 	// --no-contains does a full ancestry check, not just direct-parent matching.
 	// Without this, multi-commit branches whose tip's parent is an intermediate
 	// commit (not the upstream ref itself) would be incorrectly flagged.
@@ -178,7 +245,8 @@ export async function getNeedsRebaseBranches(
 	const needsRebase: ChildCommit[] = [];
 	const format = "%H%x00%h%x00%s%x00%B%x00%ai%x00%P";
 
-	for (const branch of nonMainBranches) {
+	for (const branch of nonMainBranches)
+	{
 		// Sequential by design: bounds concurrent git subprocesses across many branches.
 		// eslint-disable-next-line no-await-in-loop
 		const logResult = await tracedExeca(
@@ -215,40 +283,44 @@ export async function getNeedsRebaseBranches(
 		const ms = mergeStatusMap?.get(sha);
 
 		let localAhead: boolean | undefined;
-		if (pushedToRemote && remoteBranchRefs) {
+		if (pushedToRemote && remoteBranchRefs)
+		{
 			const remoteRef = remoteBranchRefs.get(branch);
-			if (remoteRef) {
+			if (remoteRef)
+			{
 				// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 				const remoteSha = await git(dir, "rev-parse", remoteRef);
 				localAhead = remoteSha !== "" && remoteSha !== sha;
 			}
 		}
 
-		needsRebase.push({
-			sha,
-			shortSha,
-			parentSha,
-			subject,
-			date,
-			branch,
-			testStatus: "unknown",
-			checkStatus,
-			skippable: isSkippable(fullMessage),
-			pushedToRemote,
-			localAhead,
-			needsRebase: true,
-			reviewStatus,
-			prUrl,
-			prNumber,
-			prHeadSha,
-			failedChecks,
-			externalCiBlockers,
-			behind,
-			commitsBehind: ms?.commitsBehind,
-			commitsAhead: ms?.commitsAhead,
-			rebaseable: ms?.rebaseable ?? undefined,
-			mergeStateStatus,
-		});
+		needsRebase.push(
+			{
+				sha,
+				shortSha,
+				parentSha,
+				subject,
+				date,
+				branch,
+				testStatus: "unknown",
+				checkStatus,
+				skippable: isSkippable(fullMessage),
+				pushedToRemote,
+				localAhead,
+				needsRebase: true,
+				reviewStatus,
+				prUrl,
+				prNumber,
+				prHeadSha,
+				failedChecks,
+				externalCiBlockers,
+				behind,
+				commitsBehind: ms?.commitsBehind,
+				commitsAhead: ms?.commitsAhead,
+				rebaseable: ms?.rebaseable ?? undefined,
+				mergeStateStatus,
+			},
+		);
 	}
 
 	if (needsRebase.length === 0) return needsRebase;
@@ -260,37 +332,47 @@ export async function getNeedsRebaseBranches(
 	return needsRebase;
 }
 
-export interface RemoteBranchInfo {
+export interface RemoteBranchInfo
+{
 	remoteBranches: Set<string>;
 	remoteBranchRefs: Map<string, string>;
 	defaultBranch: string | undefined;
 }
 
-export function parseRemoteBranchOutput(output: string): RemoteBranchInfo {
+export function parseRemoteBranchOutput(output: string): RemoteBranchInfo
+{
 	const remoteBranches = new Set<string>();
 	const remoteBranchRefs = new Map<string, string>();
 	let defaultBranch: string | undefined;
-	for (const line of output.split("\n")) {
+	for (const line of output.split("\n"))
+	{
 		const trimmed = line.trim();
 		if (!trimmed) continue;
 		const arrowIdx = trimmed.indexOf(" -> ");
-		if (arrowIdx >= 0) {
+		if (arrowIdx >= 0)
+		{
 			const target = trimmed.slice(arrowIdx + 4);
 			const slashIdx = target.indexOf("/");
 			if (slashIdx >= 0) defaultBranch = target.slice(slashIdx + 1);
 			continue;
 		}
 		const slashIdx = trimmed.indexOf("/");
-		if (slashIdx >= 0) {
+		if (slashIdx >= 0)
+		{
 			const branchName = trimmed.slice(slashIdx + 1);
 			remoteBranches.add(branchName);
 			remoteBranchRefs.set(branchName, trimmed);
 		}
 	}
-	return {remoteBranches, remoteBranchRefs, defaultBranch};
+	return {
+		remoteBranches,
+		remoteBranchRefs,
+		defaultBranch,
+	};
 }
 
-export async function getRemoteBranchInfo(dir: string): Promise<RemoteBranchInfo> {
+export async function getRemoteBranchInfo(dir: string): Promise<RemoteBranchInfo>
+{
 	const output = await git(dir, "branch", "-r");
 	return parseRemoteBranchOutput(output);
 }
@@ -301,23 +383,27 @@ export async function getRemoteBranchInfo(dir: string): Promise<RemoteBranchInfo
  * GitHub — making `pushedToRemote` a lie and breaking downstream classification
  * and branch-URL construction. Silent on remotes that can't be contacted.
  */
-export async function pruneRemote(dir: string, remote: string): Promise<void> {
+export async function pruneRemote(dir: string, remote: string): Promise<void>
+{
 	await git(dir, "remote", "prune", remote);
 }
 
-export function parseBranch(decoration: string): string | undefined {
+export function parseBranch(decoration: string): string | undefined
+{
 	const refs = decoration
 		.split(",")
 		.map((r) => r.trim())
 		.filter(Boolean);
-	for (const ref of refs) {
+	for (const ref of refs)
+	{
 		const branch = ref.replace(/^HEAD -> /, "");
 		if (branch && branch !== "HEAD") return branch;
 	}
 	return undefined;
 }
 
-function parseContainingBranch(output: string, defaultBranch?: string): string | undefined {
+function parseContainingBranch(output: string, defaultBranch?: string): string | undefined
+{
 	const excludedBranches = new Set(["main", "master"]);
 	if (defaultBranch) excludedBranches.add(defaultBranch);
 
@@ -328,7 +414,8 @@ function parseContainingBranch(output: string, defaultBranch?: string): string |
 	return branches.length === 1 ? branches[0] : undefined;
 }
 
-async function findContainingBranch(dir: string, sha: string, defaultBranch?: string): Promise<string | undefined> {
+async function findContainingBranch(dir: string, sha: string, defaultBranch?: string): Promise<string | undefined>
+{
 	const output = await git(dir, "branch", "--format", "%(refname:short)", "--contains", sha);
 	return parseContainingBranch(output, defaultBranch);
 }
@@ -337,26 +424,48 @@ async function findContainingBranch(dir: string, sha: string, defaultBranch?: st
  * Parse owner and repo name from a git remote URL.
  * Supports formats: git@host:owner/repo.git, https://host/owner/repo.git
  */
-export async function getRepoOwnerAndName(dir: string): Promise<{owner: string; name: string}> {
+export async function getRepoOwnerAndName(dir: string): Promise<
+{
+	owner: string;
+	name: string;
+}>
+{
 	const remoteUrl = await git(dir, "remote", "get-url", "origin");
 	const match = remoteUrl.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
-	if (!match?.[1] || !match[2]) {
+	if (!match?.[1] || !match[2])
+	{
 		throw new Error(`Could not parse owner/repo from remote URL: ${remoteUrl}`);
 	}
-	return {owner: match[1], name: match[2]};
+	return {
+		owner: match[1],
+		name: match[2],
+	};
 }
 
 export async function fetchUpstreamRef(
 	dir: string,
 	upstreamRef: string,
 	projectName: string,
-): Promise<{changed: boolean; from: string | null; sha: string}> {
+): Promise<
+{
+	changed: boolean;
+	from: string | null;
+	sha: string;
+}>
+{
 	const parts = upstreamRef.split("/");
 	const remote = parts[0] ?? "";
 	const branch = parts.slice(1).join("/");
 	const env = await getMiseEnv(dir);
 
-	await tracedExeca("git", ["-C", dir, "fetch", remote, branch], {reject: false, env});
+	await tracedExeca(
+		"git",
+		["-C", dir, "fetch", remote, branch],
+		{
+			reject: false,
+			env,
+		},
+	);
 	return recordUpstreamRef(dir, upstreamRef, projectName);
 }
 
@@ -368,45 +477,82 @@ export async function recordUpstreamRef(
 	dir: string,
 	upstreamRef: string,
 	projectName: string,
-): Promise<{changed: boolean; from: string | null; sha: string}> {
+): Promise<
+{
+	changed: boolean;
+	from: string | null;
+	sha: string;
+}>
+{
 	const result = await git(dir, "rev-parse", upstreamRef);
 	const newSha = result.trim();
 	const cachedSha = getCachedUpstreamSha(projectName);
-	if (!newSha) return {changed: false, from: cachedSha, sha: ""};
-	if (cachedSha === newSha) return {changed: false, from: cachedSha, sha: newSha};
+	if (!newSha)
+		return {
+			changed: false,
+			from: cachedSha,
+			sha: "",
+		};
+	if (cachedSha === newSha)
+		return {
+			changed: false,
+			from: cachedSha,
+			sha: newSha,
+		};
 
 	cacheUpstreamSha(projectName, upstreamRef, newSha);
-	return {changed: true, from: cachedSha, sha: newSha};
+	return {
+		changed: true,
+		from: cachedSha,
+		sha: newSha,
+	};
 }
 
 export async function computeMergeStatus(
 	dir: string,
 	sha: string,
 	upstreamSha: string,
-): Promise<{commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}> {
+): Promise<
+{
+	commitsAhead: number;
+	commitsBehind: number;
+	rebaseable: boolean | null;
+}>
+{
 	const behindResult = await git(dir, "rev-list", "--count", `${sha}..${upstreamSha}`);
 	const aheadResult = await git(dir, "rev-list", "--count", `${upstreamSha}..${sha}`);
 	const commitsBehind = parseInt(behindResult.trim(), 10) || 0;
 	const commitsAhead = parseInt(aheadResult.trim(), 10) || 0;
 
 	let rebaseable: boolean | null = null;
-	if (commitsBehind > 0) {
+	if (commitsBehind > 0)
+	{
 		const mergeTree = await tracedExeca(
 			"git",
 			["-C", dir, "merge-tree", "--quiet", "--write-tree", upstreamSha, sha],
-			{reject: false},
+			{
+				reject: false,
+			},
 		);
 		rebaseable = mergeTree.exitCode === 0;
 	}
 
-	return {commitsAhead, commitsBehind, rebaseable};
+	return {
+		commitsAhead,
+		commitsBehind,
+		rebaseable,
+	};
 }
 
 /** `dir` and its real path, for comparing paths git printed against one wip built. */
-function pathForms(dir: string): string[] {
-	try {
+function pathForms(dir: string): string[]
+{
+	try
+	{
 		return [dir, fs.realpathSync(dir)];
-	} catch {
+	}
+	catch
+	{
 		return [dir];
 	}
 }
@@ -420,17 +566,38 @@ function pathForms(dir: string): string[] {
  * worktree under the wip cache dir, where a branch rewrite (Accept fix's squash, a rebase) leaves its
  * old commit on no branch. One `git rev-list`, bounded by the upstream tip.
  */
-async function notHeldLocally(dir: string, shas: readonly string[], upstreamRef: string): Promise<Set<string>> {
-	const list = await tracedExeca("git", ["-C", dir, "worktree", "list", "--porcelain"], {reject: false});
+async function notHeldLocally(dir: string, shas: readonly string[], upstreamRef: string): Promise<Set<string>>
+{
+	const list = await tracedExeca(
+		"git",
+		["-C", dir, "worktree", "list", "--porcelain"],
+		{
+			reject: false,
+		},
+	);
 	if (list.exitCode !== 0) return new Set();
 	const worktrees = list.stdout
 		.split("\n\n")
-		.map((entry) => {
+		.map((entry) =>
+		{
 			const lines = entry.split("\n");
 			const field = (name: string) => lines.find((line) => line.startsWith(`${name} `))?.slice(name.length + 1);
-			return {path: field("worktree"), head: field("HEAD"), detached: lines.includes("detached")};
+			return {
+				path: field("worktree"),
+				head: field("HEAD"),
+				detached: lines.includes("detached"),
+			};
 		})
-		.filter((w): w is {path: string; head: string; detached: boolean} => !!w.path && !!w.head);
+		.filter(
+			(
+				w,
+			): w is
+			{
+				path: string;
+				head: string;
+				detached: boolean;
+			} => !!w.path && !!w.head,
+		);
 	const main = worktrees[0]?.path;
 	if (main === undefined) return new Set();
 	const testWorktree = `${main}-test-worktree`;
@@ -438,10 +605,16 @@ async function notHeldLocally(dir: string, shas: readonly string[], upstreamRef:
 	const isWips = (w: {path: string; detached: boolean}) =>
 		w.detached && (w.path === testWorktree || cacheRoots.some((root) => w.path.startsWith(root)));
 	const userHeads = worktrees.filter((w) => !isWips(w)).map((w) => w.head);
-	const unheld = await tracedExeca("git", ["-C", dir, "rev-list", "--stdin"], {
-		input: [...shas, "--not", "--exclude=refs/remotes/*", "--glob=refs/*", upstreamRef, ...userHeads].join("\n"),
-		reject: false,
-	});
+	const unheld = await tracedExeca(
+		"git",
+		["-C", dir, "rev-list", "--stdin"],
+		{
+			input: [...shas, "--not", "--exclude=refs/remotes/*", "--glob=refs/*", upstreamRef, ...userHeads].join(
+				"\n",
+			),
+			reject: false,
+		},
+	);
 	if (unheld.exitCode !== 0) return new Set();
 	return new Set(unheld.stdout.split("\n").filter(Boolean));
 }
@@ -456,7 +629,8 @@ async function remoteOnlyCommits(
 	dir: string,
 	unheld: ReadonlySet<string>,
 	prStatuses: PrStatuses | undefined,
-): Promise<Map<string, RemoteOnly>> {
+): Promise<Map<string, RemoteOnly>>
+{
 	const result = new Map<string, RemoteOnly>();
 	if (unheld.size === 0) return result;
 	// Longest first, so a remote named like another's prefix claims its own refs. A fresh array (es2022: no toSorted).
@@ -464,17 +638,26 @@ async function remoteOnlyCommits(
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array
 	const remotes = names.sort((a, b) => b.length - a.length);
 	const prHeads = new Set(prStatuses?.headShas.values() ?? []);
-	for (const sha of unheld) {
+	for (const sha of unheld)
+	{
 		if (prHeads.has(sha)) continue;
 		// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 		const refs = (await git(dir, "for-each-ref", "--contains", sha, "--format=%(refname)", "refs/remotes/"))
 			.split("\n")
 			.filter(Boolean)
-			.flatMap((ref) => {
+			.flatMap((ref) =>
+			{
 				const remote = remotes.find((r) => ref.startsWith(`refs/remotes/${r}/`));
 				if (remote === undefined) return [];
 				const branch = ref.slice(`refs/remotes/${remote}/`.length);
-				return branch === "HEAD" ? [] : [{remote, branch}];
+				return branch === "HEAD"
+					? []
+					: [
+							{
+								remote,
+								branch,
+							},
+						];
 			});
 		const prCovered =
 			refs.some((ref) => ref.branch.startsWith("pr/")) ||
@@ -486,7 +669,8 @@ async function remoteOnlyCommits(
 }
 
 /** The fetch refspec that maps a GitHub remote's pull request heads to `refs/remotes/<remote>/pr/<n>`. */
-export function prRefspec(remote: string): string {
+export function prRefspec(remote: string): string
+{
 	return `+refs/pull/*/head:refs/remotes/${remote}/pr/*`;
 }
 
@@ -494,22 +678,26 @@ export function prRefspec(remote: string): string {
  * True when the repo has `remote` but fetches no `refs/pull/*` from it: wip cannot tell which
  * remote-only commits a pull request covers. A remote the repo lacks is not missing anything.
  */
-export async function prRefsMissing(dir: string, remote: string): Promise<boolean> {
+export async function prRefsMissing(dir: string, remote: string): Promise<boolean>
+{
 	if ((await git(dir, "config", "--get", `remote.${remote}.url`)) === "") return false;
 	const specs = await git(dir, "config", "--get-all", `remote.${remote}.fetch`);
 	return !specs.split("\n").some((spec) => spec.includes("refs/pull/"));
 }
 
 /** Set up PR refs (user-initiated only): add the PR refspec to `remote` once, then fetch it. */
-export async function setUpPrRefs(dir: string, remote: string): Promise<void> {
-	if (await prRefsMissing(dir, remote)) {
+export async function setUpPrRefs(dir: string, remote: string): Promise<void>
+{
+	if (await prRefsMissing(dir, remote))
+	{
 		await tracedExeca("git", ["-C", dir, "config", "--add", `remote.${remote}.fetch`, prRefspec(remote)]);
 	}
 	await tracedExeca("git", ["-C", dir, "fetch", "--quiet", remote]);
 }
 
 /** The first parent from a `%P` field (space-separated parents); undefined for a root commit. */
-function firstParent(field: string | undefined): string | undefined {
+function firstParent(field: string | undefined): string | undefined
+{
 	const parent = field?.trim().split(" ")[0];
 	return parent === undefined || parent === "" ? undefined : parent;
 }
@@ -519,8 +707,16 @@ export async function getChildCommits(
 	upstreamRef: string,
 	hasTest: boolean,
 	prStatuses?: PrStatuses,
-	mergeStatusMap?: Map<string, {commitsAhead: number; commitsBehind: number; rebaseable: boolean | null}>,
-): Promise<ChildCommit[]> {
+	mergeStatusMap?: Map<
+		string,
+		{
+			commitsAhead: number;
+			commitsBehind: number;
+			rebaseable: boolean | null;
+		}
+	>,
+): Promise<ChildCommit[]>
+{
 	const childrenOutput = await git(dir, "children", upstreamRef);
 	if (!childrenOutput) return [];
 
@@ -557,7 +753,8 @@ export async function getChildCommits(
 	const records = logResult.stdout.split(RS).filter((r) => r.trim());
 	const children: ChildCommit[] = [];
 
-	for (const record of records) {
+	for (const record of records)
+	{
 		const trimmedRecord = record.replace(/^\n+/, "");
 		const fields = trimmedRecord.split("\0");
 		if (fields.length < 8) continue;
@@ -583,9 +780,11 @@ export async function getChildCommits(
 		const pushedToRemote = branch ? remoteBranches.has(branch) : false;
 		// Detect if local branch is ahead of remote tracking branch
 		let localAhead: boolean | undefined;
-		if (branch && pushedToRemote && branch !== defaultBranch) {
+		if (branch && pushedToRemote && branch !== defaultBranch)
+		{
 			const remoteRef = remoteBranchRefs.get(branch);
-			if (remoteRef) {
+			if (remoteRef)
+			{
 				// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 				const remoteSha = await git(dir, "rev-parse", remoteRef);
 				localAhead = remoteSha !== "" && remoteSha !== sha;
@@ -606,18 +805,30 @@ export async function getChildCommits(
 		const rebaseable = ms?.rebaseable ?? undefined;
 
 		// For branchless commits, check if the same patch exists on a remote branch with a PR
-		let alreadyOnRemote: {branch: string} | undefined;
-		if (!branch && prStatuses && prStatuses.urls.size > 0) {
+		let alreadyOnRemote:
+			|
+			  {
+					branch: string;
+			  }
+			| undefined;
+		if (!branch && prStatuses && prStatuses.urls.size > 0)
+		{
 			// Only check remote branches that have open PRs (much smaller set)
 			const prBranchRefs = new Map<string, string>();
-			for (const prBranch of prStatuses.urls.keys()) {
+			for (const prBranch of prStatuses.urls.keys())
+			{
 				const ref = remoteBranchRefs.get(prBranch);
 				if (ref) prBranchRefs.set(prBranch, ref);
 			}
-			if (prBranchRefs.size > 0) {
+			if (prBranchRefs.size > 0)
+			{
 				// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 				const matchedBranch = await findRemoteBranchByPatchId(dir, sha, prBranchRefs);
-				if (matchedBranch) alreadyOnRemote = {branch: matchedBranch};
+				if (matchedBranch)
+					alreadyOnRemote =
+					{
+						branch: matchedBranch,
+					};
 			}
 		}
 		const containingBranch =
@@ -626,33 +837,35 @@ export async function getChildCommits(
 				: // eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
 					await findContainingBranch(dir, sha, defaultBranch);
 
-		children.push({
-			sha,
-			shortSha,
-			parentSha,
-			subject,
-			date,
-			branch,
-			testStatus,
-			checkStatus,
-			skippable,
-			pushedToRemote,
-			localAhead,
-			reviewStatus,
-			prUrl,
-			prNumber,
-			prHeadSha,
-			failedChecks,
-			externalCiBlockers,
-			behind,
-			commitsBehind,
-			commitsAhead,
-			rebaseable,
-			mergeStateStatus,
-			alreadyOnRemote,
-			containingBranch,
-			remoteOnly: remoteOnly.get(sha),
-		});
+		children.push(
+			{
+				sha,
+				shortSha,
+				parentSha,
+				subject,
+				date,
+				branch,
+				testStatus,
+				checkStatus,
+				skippable,
+				pushedToRemote,
+				localAhead,
+				reviewStatus,
+				prUrl,
+				prNumber,
+				prHeadSha,
+				failedChecks,
+				externalCiBlockers,
+				behind,
+				commitsBehind,
+				commitsAhead,
+				rebaseable,
+				mergeStateStatus,
+				alreadyOnRemote,
+				containingBranch,
+				remoteOnly: remoteOnly.get(sha),
+			},
+		);
 	}
 
 	return children;
@@ -662,10 +875,15 @@ export async function getChildCommits(
 const BRANCH_NAME_ALTERNATIVES = 20;
 
 /** Where `refs/heads/<name>` points, or null when no such local branch exists. */
-async function localBranchSha(dir: string, name: string): Promise<string | null> {
-	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", "--quiet", `refs/heads/${name}`], {
-		reject: false,
-	});
+async function localBranchSha(dir: string, name: string): Promise<string | null>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, "rev-parse", "--verify", "--quiet", `refs/heads/${name}`],
+		{
+			reject: false,
+		},
+	);
 	return result.exitCode === 0 ? result.stdout.trim() : null;
 }
 
@@ -678,21 +896,33 @@ export async function createBranchForChild(
 	dir: string,
 	child: Pick<ChildCommit, "sha" | "shortSha" | "subject" | "branch">,
 	project: string,
-): Promise<string> {
+): Promise<string>
+{
 	if (child.branch) return child.branch;
 
 	const suggested =
-		getBranchName(child.sha, project) ?? (await nameBranch({sha: child.sha, project, subject: child.subject, dir}));
-	if (!suggested) {
+		getBranchName(child.sha, project) ??
+		(await nameBranch(
+			{
+				sha: child.sha,
+				project,
+				subject: child.subject,
+				dir,
+			},
+		));
+	if (!suggested)
+	{
 		throw new Error(`Failed to generate branch name for ${child.shortSha} (${child.subject})`);
 	}
 
-	for (let i = 1; i <= BRANCH_NAME_ALTERNATIVES; i++) {
+	for (let i = 1; i <= BRANCH_NAME_ALTERNATIVES; i++)
+	{
 		const name = i === 1 ? suggested : `${suggested}-${i}`;
 		// eslint-disable-next-line no-await-in-loop -- each candidate name depends on the previous being taken
 		const existing = await localBranchSha(dir, name);
 		if (existing !== null && existing !== child.sha) continue;
-		if (existing === null) {
+		if (existing === null)
+		{
 			// eslint-disable-next-line no-await-in-loop -- see above
 			await tracedExeca("git", ["-C", dir, "branch", name, child.sha]);
 		}
@@ -707,8 +937,17 @@ export async function testBranch(
 	branch: string,
 	upstreamRef: string,
 	env: Record<string, string>,
-	opts?: {force?: boolean; retest?: boolean},
-): Promise<{exitCode: number; logContent: string}> {
+	opts?:
+	{
+		force?: boolean;
+		retest?: boolean;
+	},
+): Promise<
+{
+	exitCode: number;
+	logContent: string;
+}>
+{
 	// Write JUSTFILE_BRANCH as crash-recovery courtesy
 	const branchFilePath = path.join(dir, "JUSTFILE_BRANCH");
 	fs.writeFileSync(branchFilePath, branch + "\n");
@@ -719,26 +958,49 @@ export async function testBranch(
 	if (opts?.force) testArgs.push("--force");
 	testArgs.push(`${upstreamRef}..${branch}`);
 
-	const result = await tracedExeca("git", ["-C", dir, ...testArgs], {reject: false, env});
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, ...testArgs],
+		{
+			reject: false,
+			env,
+		},
+	);
 
 	const logContent = [result.stdout, result.stderr].filter(Boolean).join("\n");
-	return {exitCode: result.exitCode, logContent};
+	return {
+		exitCode: result.exitCode,
+		logContent,
+	};
 }
 
-export async function hasLocalModifications(dir: string): Promise<boolean> {
-	const diffResult = await tracedExeca("git", ["-C", dir, "diff", "--ignore-submodules", "--quiet"], {
-		reject: false,
-	});
+export async function hasLocalModifications(dir: string): Promise<boolean>
+{
+	const diffResult = await tracedExeca(
+		"git",
+		["-C", dir, "diff", "--ignore-submodules", "--quiet"],
+		{
+			reject: false,
+		},
+	);
 	if (diffResult.exitCode !== 0) return true;
 
-	const stagedResult = await tracedExeca("git", ["-C", dir, "diff", "--ignore-submodules", "--staged", "--quiet"], {
-		reject: false,
-	});
+	const stagedResult = await tracedExeca(
+		"git",
+		["-C", dir, "diff", "--ignore-submodules", "--staged", "--quiet"],
+		{
+			reject: false,
+		},
+	);
 	if (stagedResult.exitCode !== 0) return true;
 
-	const untrackedResult = await tracedExeca("git", ["-C", dir, "status", "--porcelain", "--ignore-submodules"], {
-		reject: false,
-	});
+	const untrackedResult = await tracedExeca(
+		"git",
+		["-C", dir, "status", "--porcelain", "--ignore-submodules"],
+		{
+			reject: false,
+		},
+	);
 	if (untrackedResult.stdout.split("\n").some((line) => line.startsWith("??"))) return true;
 
 	return false;
@@ -749,48 +1011,100 @@ export async function testFix(
 	branch: string,
 	upstreamRef: string,
 	env: Record<string, string>,
-	opts?: {force?: boolean},
-): Promise<{ok: boolean; message: string}> {
+	opts?:
+	{
+		force?: boolean;
+	},
+): Promise<
+{
+	ok: boolean;
+	message: string;
+}>
+{
 	// 1. Stage modified tracked files
-	await tracedExeca("git", ["-C", dir, "add", "--update"], {reject: false});
+	await tracedExeca(
+		"git",
+		["-C", dir, "add", "--update"],
+		{
+			reject: false,
+		},
+	);
 
 	// 2. Run pre-commit hooks on staged files (allow failure — hooks may auto-format)
-	const cachedFiles = await tracedExeca("git", ["-C", dir, "diff", "--cached", "--name-only"], {
-		reject: false,
-	});
-	if (cachedFiles.stdout.trim()) {
-		const files = cachedFiles.stdout.trim().split("\n").join(" ");
-		await tracedExeca("uv", ["tool", "run", "pre-commit", "run", "--files", ...files.split(" ")], {
-			cwd: dir,
+	const cachedFiles = await tracedExeca(
+		"git",
+		["-C", dir, "diff", "--cached", "--name-only"],
+		{
 			reject: false,
-			env,
-		});
+		},
+	);
+	if (cachedFiles.stdout.trim())
+	{
+		const files = cachedFiles.stdout.trim().split("\n").join(" ");
+		await tracedExeca(
+			"uv",
+			["tool", "run", "pre-commit", "run", "--files", ...files.split(" ")],
+			{
+				cwd: dir,
+				reject: false,
+				env,
+			},
+		);
 	}
 
 	// 3. Re-stage after pre-commit modifications
-	await tracedExeca("git", ["-C", dir, "add", "--update"], {reject: false});
+	await tracedExeca(
+		"git",
+		["-C", dir, "add", "--update"],
+		{
+			reject: false,
+		},
+	);
 
 	// 4. Create fixup commit
-	const commitResult = await tracedExeca("git", ["-C", dir, "commit", "--quiet", "--fixup", "HEAD", "--no-verify"], {
-		reject: false,
-	});
-	if (commitResult.exitCode !== 0) {
-		return {ok: false, message: `fixup commit failed: ${commitResult.stderr}`};
+	const commitResult = await tracedExeca(
+		"git",
+		["-C", dir, "commit", "--quiet", "--fixup", "HEAD", "--no-verify"],
+		{
+			reject: false,
+		},
+	);
+	if (commitResult.exitCode !== 0)
+	{
+		return {
+			ok: false,
+			message: `fixup commit failed: ${commitResult.stderr}`,
+		};
 	}
 
 	// 5. Check for remaining dirty files
-	if (await hasLocalModifications(dir)) {
-		return {ok: false, message: "worktree still dirty after fixup commit"};
+	if (await hasLocalModifications(dir))
+	{
+		return {
+			ok: false,
+			message: "worktree still dirty after fixup commit",
+		};
 	}
 
 	// 6. Autosquash rebase — squashes the fixup commit into its target and rebases onto upstream
 	const autosquash = await tracedExeca(
 		"git",
 		["-C", dir, "rebase", "--autosquash", "--rebase-merges", "--update-refs", upstreamRef],
-		{reject: false, env: {...env, GIT_SEQUENCE_EDITOR: "true"}},
+		{
+			reject: false,
+			env:
+			{
+				...env,
+				GIT_SEQUENCE_EDITOR: "true",
+			},
+		},
 	);
-	if (autosquash.exitCode !== 0) {
-		return {ok: false, message: `autosquash rebase failed: ${autosquash.stderr}`};
+	if (autosquash.exitCode !== 0)
+	{
+		return {
+			ok: false,
+			message: `autosquash rebase failed: ${autosquash.stderr}`,
+		};
 	}
 
 	// 7. Clean up JUSTFILE_BRANCH
@@ -799,18 +1113,30 @@ export async function testFix(
 
 	// 8. Re-run test on fixed branch
 	const retest = await testBranch(dir, branch, upstreamRef, env, opts);
-	if (retest.exitCode === 0) {
-		return {ok: true, message: "fixed and retested successfully"};
+	if (retest.exitCode === 0)
+	{
+		return {
+			ok: true,
+			message: "fixed and retested successfully",
+		};
 	}
 
-	return {ok: false, message: `retest failed after fix (exit ${retest.exitCode})`};
+	return {
+		ok: false,
+		message: `retest failed after fix (exit ${retest.exitCode})`,
+	};
 }
 
 async function gatherProjectInfo(
 	name: string,
 	dir: string,
-	override?: {upstreamRemote?: string; upstreamBranch?: string},
-): Promise<ProjectInfo | null> {
+	override?:
+	{
+		upstreamRemote?: string;
+		upstreamBranch?: string;
+	},
+): Promise<ProjectInfo | null>
+{
 	const envrc = parseEnvrc(dir);
 	const upstreamRemote = override?.upstreamRemote ?? envrc.upstreamRemote;
 	const upstreamBranch = override?.upstreamBranch ?? envrc.upstreamBranch;
@@ -852,37 +1178,67 @@ async function gatherProjectInfo(
 		branchCount,
 		hasTestConfigured: hasTest,
 		rebaseInProgress,
-		...(gitTopLevel === undefined ? {} : {gitTopLevel}),
+		...(gitTopLevel === undefined
+			? {}
+			:
+				{
+					gitTopLevel,
+				}),
 	} satisfies ProjectInfo;
 }
 
-export async function discoverProjects(projectsDir: string): Promise<ProjectInfo[]> {
-	const entries = fs.readdirSync(projectsDir, {withFileTypes: true});
+export async function discoverProjects(projectsDir: string): Promise<ProjectInfo[]>
+{
+	const entries = fs.readdirSync(
+		projectsDir,
+		{
+			withFileTypes: true,
+		},
+	);
 
 	// Filter to git root repos (synchronous filesystem checks)
-	const gitDirs: Array<{name: string; dir: string}> = [];
-	for (const entry of entries) {
+	const gitDirs: Array<
+	{
+		name: string;
+		dir: string;
+	}> = [];
+	for (const entry of entries)
+	{
 		if (!entry.isDirectory()) continue;
 		const dir = path.join(projectsDir, entry.name);
 		const gitPath = path.join(dir, ".git");
 		if (!fs.existsSync(gitPath)) continue;
 		if (!fs.statSync(gitPath).isDirectory()) continue;
-		gitDirs.push({name: entry.name, dir});
+		gitDirs.push(
+			{
+				name: entry.name,
+				dir,
+			},
+		);
 	}
 
 	// Gather per-project info with bounded concurrency — each project's git calls
 	// are independent, but an unbounded fan-out spawns hundreds of subprocesses
 	// at once on a large projects dir.
-	const results = await mapWithConcurrency(gitDirs, DISCOVERY_CONCURRENCY, async ({name, dir}) => {
+	const results = await mapWithConcurrency(gitDirs, DISCOVERY_CONCURRENCY, async ({name, dir}) =>
+	{
 		return gatherProjectInfo(name, dir);
 	});
 
 	return results.filter((p): p is ProjectInfo => p !== null);
 }
 
-export async function discoverRegisteredProjects(inventory: Inventory): Promise<ProjectInfo[]> {
-	for (const error of inventory.errors) {
-		log.general.warn({index: error.index, message: error.message}, "invalid project inventory record");
+export async function discoverRegisteredProjects(inventory: Inventory): Promise<ProjectInfo[]>
+{
+	for (const error of inventory.errors)
+	{
+		log.general.warn(
+			{
+				index: error.index,
+				message: error.message,
+			},
+			"invalid project inventory record",
+		);
 	}
 	// A <repo>-test-worktree is wip's own place to run git test, never a project, even if registered.
 	const records = inventory.projects.filter(
@@ -894,8 +1250,10 @@ export async function discoverRegisteredProjects(inventory: Inventory): Promise<
 	return results.filter((p): p is ProjectInfo => p !== null);
 }
 
-export async function discoverAllProjects(projectsDirs: string[]): Promise<ProjectInfo[]> {
-	if (getConfigValue("inventory.enabled") !== "false" && inventoryExists()) {
+export async function discoverAllProjects(projectsDirs: string[]): Promise<ProjectInfo[]>
+{
+	if (getConfigValue("inventory.enabled") !== "false" && inventoryExists())
+	{
 		return discoverRegisteredProjects(loadInventory());
 	}
 	const results = await Promise.all(projectsDirs.map(async (dir) => discoverProjects(dir)));

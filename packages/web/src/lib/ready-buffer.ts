@@ -1,4 +1,5 @@
-import type {
+import type
+{
 	EnqueueOptions,
 	GitChildResult,
 	GitTestStatus,
@@ -12,7 +13,8 @@ import {withinBaseline} from "@wip/shared/baseline-failures.js";
 import {isGreen, readinessOf, type ReadinessCommit} from "@wip/shared/readiness.js";
 import {DEFAULT_PRIORITY, effectivePriority} from "@wip/shared/priority.js";
 import {orderReadyQueue, planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
-import {
+import
+{
 	landingOrder,
 	prChecksFailed,
 	prChecksPending,
@@ -43,11 +45,13 @@ import {repoResource, testWorktreeResource} from "./repo-resource.js";
 const READY_BUFFER_OFF = new Set(["false", "0", "off"]);
 
 /** On by default (production); `just dev` sets WIP_READY_BUFFER=false so only one server replays real repos. */
-export function readyBufferEnabled(env: Record<string, string | undefined>): boolean {
+export function readyBufferEnabled(env: Record<string, string | undefined>): boolean
+{
 	return !READY_BUFFER_OFF.has((env.WIP_READY_BUFFER ?? "").toLowerCase());
 }
 
-export interface BufferCandidate {
+export interface BufferCandidate
+{
 	id: string;
 	sha: string;
 	branch?: string;
@@ -85,7 +89,8 @@ export interface BufferCandidate {
 	checksFailed?: boolean;
 }
 
-export interface BufferRepo {
+export interface BufferRepo
+{
 	name: string;
 	priority?: Priority;
 	upstreamRed: boolean;
@@ -148,7 +153,8 @@ export const VERIFY_HELD_RETRY_MS = 60_000;
  */
 export const MOVED_RETRY_MS = 60_000;
 
-export interface TestStepInput {
+export interface TestStepInput
+{
 	/** The repo's patch-id fast path applies (setting on, pull-request repo). */
 	trustPatchIdGreen: boolean;
 	/** Draft-PR verification is in effect: publish as a draft PR instead of testing locally. */
@@ -166,7 +172,8 @@ export interface TestStepInput {
 	autoFixed?: boolean;
 }
 
-export interface TestStepDeps {
+export interface TestStepDeps
+{
 	/** `git test results` for one sha. */
 	results: (sha: string) => Promise<GitTestStatus>;
 	/** `git test run`; its exit code. */
@@ -192,9 +199,11 @@ export interface TestStepDeps {
 export async function testStep(
 	input: TestStepInput,
 	deps: TestStepDeps,
-): Promise<"ready" | "test_failed" | "checks_pending" | "verify_held"> {
+): Promise<"ready" | "test_failed" | "checks_pending" | "verify_held">
+{
 	if (!input.hasTestConfigured) return "ready";
-	if (input.verifyByDraftPr === true && input.autoFixed !== true) {
+	if (input.verifyByDraftPr === true && input.autoFixed !== true)
+	{
 		return (await deps.publish(input.sha)) ? "checks_pending" : "verify_held";
 	}
 	if (
@@ -203,7 +212,8 @@ export async function testStep(
 		input.replayed &&
 		(await deps.results(input.preReplaySha)) === "good" &&
 		(await deps.publish(input.sha))
-	) {
+	)
+	{
 		return "checks_pending";
 	}
 	if ((await deps.run(input.sha)) === 0) return "ready";
@@ -211,8 +221,12 @@ export async function testStep(
 	return withinBaseline(input.baselineFailures, await deps.failedTests(input.sha)) ? "ready" : "test_failed";
 }
 
-export interface ReadyBufferDeps {
-	queue: {enqueue(options: EnqueueOptions): JobHandle};
+export interface ReadyBufferDeps
+{
+	queue:
+	{
+		enqueue(options: EnqueueOptions): JobHandle;
+	};
 	snapshot: () => Promise<BufferRepo[]>;
 	/** How many commits to keep ready across all repos (readyBuffer.size). */
 	target: () => number;
@@ -253,11 +267,13 @@ export interface ReadyBufferDeps {
 }
 
 /** Ready to land's note for a repo whose background agents Claude would stop at its folder-trust prompt. */
-function claudeTrustNotice(folder: string): string {
+function claudeTrustNotice(folder: string): string
+{
 	return `trust ${folder} in Claude (open \`claude\` there once and accept) so background fixes can run`;
 }
 
-export interface ReadyBuffer {
+export interface ReadyBuffer
+{
 	/** Top up the buffer toward its ready target. Pulls are serialized; a pull requested mid-pull runs once more after it. */
 	pull(): Promise<void>;
 	landed(project: string): Promise<void>;
@@ -274,7 +290,8 @@ export interface ReadyBuffer {
 	onStateChange(listener: (state: ReadyToLandState) => void): () => void;
 }
 
-export interface BufferRepoContext {
+export interface BufferRepoContext
+{
 	/** The user's GitHub login and orgs; null (unknown) treats every upstream as foreign. */
 	identity: GitHubIdentity | null;
 	priority?: Priority;
@@ -300,7 +317,13 @@ export interface BufferRepoContext {
 	 * The merge status cached for a sha against the current upstream tip. It overrides the children
 	 * cache's, which a refresh that ran before the merge-tree check on a new upstream tip left stale.
 	 */
-	mergeStatus?: (sha: string) => {commitsBehind: number; rebaseable: boolean | null} | undefined;
+	mergeStatus?: (sha: string) =>
+		|
+		  {
+				commitsBehind: number;
+				rebaseable: boolean | null;
+		  }
+		| undefined;
 }
 
 /**
@@ -313,22 +336,30 @@ export function bufferRepoFromChildren(
 	project: Pick<ProjectInfo, "name" | "remote" | "dirty" | "hasTestConfigured">,
 	children: readonly GitChildResult[],
 	context: BufferRepoContext,
-): BufferRepo {
-	const measured = (child: GitChildResult): GitChildResult => {
+): BufferRepo
+{
+	const measured = (child: GitChildResult): GitChildResult =>
+	{
 		const status = context.mergeStatus?.(child.sha);
 		if (status === undefined) return child;
 		const {rebaseable: _stale, ...rest} = child;
 		return {
 			...rest,
 			commitsBehind: status.commitsBehind,
-			...(status.rebaseable === null ? {} : {rebaseable: status.rebaseable}),
+			...(status.rebaseable === null
+				? {}
+				:
+					{
+						rebaseable: status.rebaseable,
+					}),
 		};
 	};
 	// A commit already fast-forwarded onto local main waits for the user's push, not a landing. An
 	// empty commit (measured, zero files changed) carries no change to land. Project-level items (a
 	// red upstream, missing PR refs) are not commits, and a remote-only commit is lost work the user
 	// restores or drops: never a candidate, never ready.
-	if (context.repoOwner !== undefined) {
+	if (context.repoOwner !== undefined)
+	{
 		return {
 			name: project.name,
 			upstreamRed: false,
@@ -357,13 +388,21 @@ export function bufferRepoFromChildren(
 		(context.verifyByDraftPr === true &&
 			child.prNumber !== undefined &&
 			(child.localTestSkipped === true || child.prHeadSha === child.sha)) ||
-		isGreen({
-			parentSha: "",
-			testStatus: child.testStatus,
-			hasTestConfigured: project.hasTestConfigured,
-			onHold: false,
-			...(child.localTestSkipped === true ? {localTestSkipped: true, checkStatus: child.checkStatus} : {}),
-		});
+		isGreen(
+			{
+				parentSha: "",
+				testStatus: child.testStatus,
+				hasTestConfigured: project.hasTestConfigured,
+				onHold: false,
+				...(child.localTestSkipped === true
+					?
+						{
+							localTestSkipped: true,
+							checkStatus: child.checkStatus,
+						}
+					: {}),
+			},
+		);
 	// Ready comes from the one predicate (readinessOf): landable = directly on the upstream tip and green,
 	// ready-stacked = green on a ready parent. The children carry no upstream sha, so a commit known to be
 	// up to date (unknown merge status is not: the advance job finds out cheaply) whose parent is not
@@ -372,7 +411,8 @@ export function bufferRepoFromChildren(
 	const shas = new Set(work.map((child) => child.sha));
 	const readiness = readinessOf(
 		new Map(
-			work.map((child): [string, ReadinessCommit] => {
+			work.map((child): [string, ReadinessCommit] =>
+			{
 				const parentSha = child.parentSha ?? "";
 				return [
 					child.sha,
@@ -390,23 +430,55 @@ export function bufferRepoFromChildren(
 	);
 	return {
 		name: project.name,
-		...(context.priority === undefined ? {} : {priority: context.priority}),
+		...(context.priority === undefined
+			? {}
+			:
+				{
+					priority: context.priority,
+				}),
 		upstreamRed: children.some((child) => child.kind === "upstream_ci"),
 		ownership: context.identity === null ? "foreign" : upstreamOwnership(project.remote, context.identity),
 		localChanges: project.dirty,
 		checkedOutBranches: context.checkedOutBranches,
-		...(context.trustPatchIdGreen === true ? {trustPatchIdGreen: true} : {}),
-		...(context.landing === undefined ? {} : {landing: context.landing}),
-		...(context.backgroundPush === true ? {backgroundPush: true} : {}),
-		...(context.verifyByDraftPr === true ? {verifyByDraftPr: true} : {}),
-		...(context.verifyNotice === undefined ? {} : {verifyNotice: context.verifyNotice}),
+		...(context.trustPatchIdGreen === true
+			?
+				{
+					trustPatchIdGreen: true,
+				}
+			: {}),
+		...(context.landing === undefined
+			? {}
+			:
+				{
+					landing: context.landing,
+				}),
+		...(context.backgroundPush === true
+			?
+				{
+					backgroundPush: true,
+				}
+			: {}),
+		...(context.verifyByDraftPr === true
+			?
+				{
+					verifyByDraftPr: true,
+				}
+			: {}),
+		...(context.verifyNotice === undefined
+			? {}
+			:
+				{
+					verifyNotice: context.verifyNotice,
+				}),
 		// A stacked commit becomes a candidate once its parent is ready.
 		candidates: dropStackedOnUnready(
 			onePerPatchId(
-				work.map((child) => {
+				work.map((child) =>
+				{
 					const override = child.patchId === undefined ? undefined : context.override(child.patchId);
 					const green = greenOf(child);
-					const candidate: BufferCandidate = {
+					const candidate: BufferCandidate =
+					{
 						id: child.patchId ?? child.sha,
 						sha: child.sha,
 						// Never ready while behind, even on a ready parent.
@@ -421,7 +493,8 @@ export function bufferRepoFromChildren(
 					if (child.autoFixed !== undefined) candidate.autoFixed = true;
 					// Green and not behind, merge status known or not: the buffer may already hold an unmeasured
 					// commit ready from its own advance (Open PR rebases to a new sha the refresh hasn't measured).
-					if (green && candidate.behind !== true && context.landing === "pull-request") {
+					if (green && candidate.behind !== true && context.landing === "pull-request")
+					{
 						if (prChecksFailed(child)) candidate.checksFailed = true;
 						else if (prChecksPending(child)) candidate.checksPending = true;
 					}
@@ -444,16 +517,19 @@ const upToDate = (child: GitChildResult): boolean => child.commitsBehind === 0 &
  * candidate is stacked on (so the stack keeps its parent), then a named branch; the dropped
  * duplicates' branch names ride along as otherBranches.
  */
-function onePerPatchId(candidates: BufferCandidate[]): BufferCandidate[] {
+function onePerPatchId(candidates: BufferCandidate[]): BufferCandidate[]
+{
 	const stackedOn = new Set(candidates.flatMap((c) => (c.parentSha === undefined ? [] : [c.parentSha])));
 	const preference = (c: BufferCandidate): number => (stackedOn.has(c.sha) ? 0 : c.branch === undefined ? 2 : 1);
 	const groups = new Map<string, BufferCandidate[]>();
-	for (const c of candidates) {
+	for (const c of candidates)
+	{
 		const group = groups.get(c.id);
 		if (group) group.push(c);
 		else groups.set(c.id, [c]);
 	}
-	return [...groups.values()].map((group) => {
+	return [...groups.values()].map((group) =>
+	{
 		const [kept, ...rest] = group.toSorted((a, b) => preference(a) - preference(b));
 		if (kept === undefined) throw new Error("empty patch-id group");
 		const others = rest.flatMap((c) => (c.branch === undefined ? [] : [c.branch]));
@@ -466,10 +542,12 @@ function onePerPatchId(candidates: BufferCandidate[]): BufferCandidate[] {
 /** Ranked ahead of other background work (default rank 0) in the shared queue. */
 const BUFFER_RANK = -10;
 
-export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
+export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer
+{
 	const warn =
 		deps.warn ??
-		((error: unknown, context: string) => {
+		((error: unknown, context: string) =>
+		{
 			console.error(`Ready-buffer item ${context} failed`, error);
 		});
 	/** project → item id → last outcome. `ready` = buffered; anything else = parked. */
@@ -482,7 +560,16 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	/** project → item id → when its draft-PR publish was held; it is pulled again VERIFY_HELD_RETRY_MS later. */
 	const heldAt = new Map<string, Map<string, number>>();
 	/** project → item id → the snapshot sha its advance found its branch had moved from, and when. */
-	const movedFrom = new Map<string, Map<string, {sha: string; at: number}>>();
+	const movedFrom = new Map<
+		string,
+		Map<
+			string,
+			{
+				sha: string;
+				at: number;
+			}
+		>
+	>();
 	/** Repos whose own upstream is red as of the last pull; their queued jobs stop on start. */
 	const stopped = new Set<string>();
 	/** The last pull's snapshot and the candidates it would pull next, for state(). */
@@ -490,17 +577,20 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	let lastNext: ReadyQueueItem[] = [];
 	const listeners = new Set<(state: ReadyToLandState) => void>();
 
-	const resultsOf = (project: string): Map<string, AdvanceOutcome> => {
+	const resultsOf = (project: string): Map<string, AdvanceOutcome> =>
+	{
 		const map = results.get(project) ?? new Map<string, AdvanceOutcome>();
 		results.set(project, map);
 		return map;
 	};
-	const advancedShasOf = (project: string): Map<string, string> => {
+	const advancedShasOf = (project: string): Map<string, string> =>
+	{
 		const map = advancedShas.get(project) ?? new Map<string, string>();
 		advancedShas.set(project, map);
 		return map;
 	};
-	const inFlightOf = (project: string): Map<string, Promise<void>> => {
+	const inFlightOf = (project: string): Map<string, Promise<void>> =>
+	{
 		const map = inFlight.get(project) ?? new Map<string, Promise<void>>();
 		inFlight.set(project, map);
 		return map;
@@ -512,19 +602,29 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		kind: "buffer-conflicts" | "buffer-test-fix",
 		key: string,
 		run: (signal: AbortSignal) => Promise<string | null>,
-	): Promise<string | null> {
-		const result: {sha: string | null} = {sha: null};
-		await deps.queue.enqueue({
-			coalesceKey: key,
-			kind,
-			project: repo.name,
-			costClass: "ai",
-			resources: [repoResource(repo.name)],
-			pauseOnBattery: true,
-			run: async (signal) => {
-				result.sha = await run(signal);
+	): Promise<string | null>
+	{
+		const result:
+		{
+			sha: string | null;
+		} =
+		{
+			sha: null,
+		};
+		await deps.queue.enqueue(
+			{
+				coalesceKey: key,
+				kind,
+				project: repo.name,
+				costClass: "ai",
+				resources: [repoResource(repo.name)],
+				pauseOnBattery: true,
+				run: async (signal) =>
+				{
+					result.sha = await run(signal);
+				},
 			},
-		}).settled;
+		).settled;
 		return result.sha;
 	}
 
@@ -536,54 +636,84 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	async function advanceItem(
 		repo: BufferRepo,
 		candidate: BufferCandidate,
-		tried: {conflicts: boolean; fix: boolean},
-	): Promise<void> {
+		tried:
+		{
+			conflicts: boolean;
+			fix: boolean;
+		},
+	): Promise<void>
+	{
 		const done = resultsOf(repo.name);
 		// A preempted job reruns this closure; it starts from the branch's replayed tip.
 		let current = candidate;
-		const handle = deps.queue.enqueue({
-			coalesceKey: `ready:${repo.name}:${candidate.id}`,
-			kind: "advance-commit",
-			project: repo.name,
-			costClass: "build",
-			priority: "background",
-			rank: BUFFER_RANK,
-			// It tests in the test worktree too, so it queues behind a Push main pre-test there
-			// instead of blocking inside git test run, where a preempting user action would wait.
-			resources: [repoResource(repo.name), testWorktreeResource(repo.name)],
-			buffer: true,
-			pauseOnBattery: true,
-			// It replays and pushes the user's refs, so it holds the repo; a user action preempts it.
-			preemptible: true,
-			run: async (signal) => {
-				if (stopped.has(repo.name)) return;
-				const outcome = await deps.advance(repo, current, signal, (sha) => {
-					current = {...current, replayedSha: sha};
-				});
-				if (outcome === "moved") {
-					done.delete(candidate.id);
-					const moved = movedFrom.get(repo.name) ?? new Map<string, {sha: string; at: number}>();
-					movedFrom.set(repo.name, moved);
-					moved.set(candidate.id, {sha: current.sha, at: now()});
-					return;
-				}
-				done.set(candidate.id, outcome);
-				advancedShasOf(repo.name).set(candidate.id, current.replayedSha ?? current.sha);
-				const held = heldAt.get(repo.name) ?? new Map<string, number>();
-				heldAt.set(repo.name, held);
-				if (outcome === "verify_held") held.set(candidate.id, now());
-				else held.delete(candidate.id);
+		const handle = deps.queue.enqueue(
+			{
+				coalesceKey: `ready:${repo.name}:${candidate.id}`,
+				kind: "advance-commit",
+				project: repo.name,
+				costClass: "build",
+				priority: "background",
+				rank: BUFFER_RANK,
+				// It tests in the test worktree too, so it queues behind a Push main pre-test there
+				// instead of blocking inside git test run, where a preempting user action would wait.
+				resources: [repoResource(repo.name), testWorktreeResource(repo.name)],
+				buffer: true,
+				pauseOnBattery: true,
+				// It replays and pushes the user's refs, so it holds the repo; a user action preempts it.
+				preemptible: true,
+				run: async (signal) =>
+				{
+					if (stopped.has(repo.name)) return;
+					const outcome = await deps.advance(repo, current, signal, (sha) =>
+					{
+						current =
+						{
+							...current,
+							replayedSha: sha,
+						};
+					});
+					if (outcome === "moved")
+					{
+						done.delete(candidate.id);
+						const moved =
+							movedFrom.get(repo.name) ??
+							new Map<
+								string,
+								{
+									sha: string;
+									at: number;
+								}
+							>();
+						movedFrom.set(repo.name, moved);
+						moved.set(
+							candidate.id,
+							{
+								sha: current.sha,
+								at: now(),
+							},
+						);
+						return;
+					}
+					done.set(candidate.id, outcome);
+					advancedShasOf(repo.name).set(candidate.id, current.replayedSha ?? current.sha);
+					const held = heldAt.get(repo.name) ?? new Map<string, number>();
+					heldAt.set(repo.name, held);
+					if (outcome === "verify_held") held.set(candidate.id, now());
+					else held.delete(candidate.id);
+				},
 			},
-		});
+		);
 		await handle.settled;
 		const outcome = done.get(candidate.id);
-		if (outcome === "ready" && tried.fix) {
+		if (outcome === "ready" && tried.fix)
+		{
 			done.set(candidate.id, "auto_fixed");
 			return undefined;
 		}
 		if (outcome !== "rebase_conflicts" && outcome !== "test_failed") return undefined;
 		const conflict = outcome === "rebase_conflicts";
-		if (conflict ? tried.conflicts : tried.fix) {
+		if (conflict ? tried.conflicts : tried.fix)
+		{
 			done.set(candidate.id, "stuck");
 			return undefined;
 		}
@@ -594,15 +724,37 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			: await agentJob(repo, "buffer-test-fix", `test-fix:${repo.name}:${candidate.id}`, async (signal) =>
 					deps.fixTest(repo, candidate, signal),
 				);
-		if (sha === null) {
+		if (sha === null)
+		{
 			done.set(candidate.id, "stuck");
 			return undefined;
 		}
 		// The fixup's retest is flagged so the advance never pushes the unreviewed fixup.
 		return advanceItem(
 			repo,
-			conflict ? {...candidate, sha} : {...candidate, sha, autoFixed: true},
-			conflict ? {...tried, conflicts: true} : {...tried, fix: true},
+			conflict
+				?
+					{
+						...candidate,
+						sha,
+					}
+				:
+					{
+						...candidate,
+						sha,
+						autoFixed: true,
+					},
+			conflict
+				?
+					{
+						...tried,
+						conflicts: true,
+					}
+				:
+					{
+						...tried,
+						fix: true,
+					},
 		);
 	}
 
@@ -611,34 +763,62 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	 * whose advance needs a local branch to replay and push. The candidate carrying its new branch,
 	 * or unchanged (and skipped by the advance) when naming failed.
 	 */
-	async function named(repo: BufferRepo, candidate: BufferCandidate): Promise<BufferCandidate> {
+	async function named(repo: BufferRepo, candidate: BufferCandidate): Promise<BufferCandidate>
+	{
 		if (candidate.branch !== undefined || repo.landing !== "pull-request") return candidate;
-		const result: {branch: string | null} = {branch: null};
-		await deps.queue.enqueue({
-			coalesceKey: `branch-name:${repo.name}:${candidate.sha}`,
-			laneKey: "branch-name",
-			kind: "branch-name",
-			project: repo.name,
-			costClass: "ai",
-			pauseOnBattery: true,
-			run: async (signal) => {
-				result.branch = await deps.nameBranch(repo, candidate, signal);
+		const result:
+		{
+			branch: string | null;
+		} =
+		{
+			branch: null,
+		};
+		await deps.queue.enqueue(
+			{
+				coalesceKey: `branch-name:${repo.name}:${candidate.sha}`,
+				laneKey: "branch-name",
+				kind: "branch-name",
+				project: repo.name,
+				costClass: "ai",
+				pauseOnBattery: true,
+				run: async (signal) =>
+				{
+					result.branch = await deps.nameBranch(repo, candidate, signal);
+				},
 			},
-		}).settled;
-		return result.branch === null ? candidate : {...candidate, branch: result.branch};
+		).settled;
+		return result.branch === null
+			? candidate
+			:
+				{
+					...candidate,
+					branch: result.branch,
+				};
 	}
 
-	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void {
+	function enqueue(repo: BufferRepo, candidate: BufferCandidate): void
+	{
 		const jobs = inFlightOf(repo.name);
 		if (jobs.has(candidate.id)) return;
 		const settled = named(repo, candidate)
-			.then(async (ready) => advanceItem(repo, ready, {conflicts: false, fix: false}))
+			.then(async (ready) =>
+				advanceItem(
+					repo,
+					ready,
+					{
+						conflicts: false,
+						fix: false,
+					},
+				),
+			)
 			// A rejected advance frees the slot too, or the item could never be enqueued again.
-			.finally(() => {
+			.finally(() =>
+			{
 				jobs.delete(candidate.id);
 			})
 			.then(async () => requestPull())
-			.catch((error: unknown) => {
+			.catch((error: unknown) =>
+			{
 				warn(error, `${repo.name}:${candidate.id}`);
 			});
 		jobs.set(candidate.id, settled);
@@ -649,16 +829,19 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	 * item at behind upstream: upstream moved during or after the advance. A behind pre-replay sha
 	 * is only a children cache that hasn't caught up with the replay, so that outcome stands.
 	 */
-	function forgetStaleReady(repo: BufferRepo): void {
+	function forgetStaleReady(repo: BufferRepo): void
+	{
 		const done = resultsOf(repo.name);
 		const shas = advancedShasOf(repo.name);
-		for (const c of repo.candidates) {
+		for (const c of repo.candidates)
+		{
 			if (c.behind === true && done.get(c.id) === "ready" && shas.get(c.id) === c.sha) done.delete(c.id);
 		}
 	}
 
 	/** The repo's candidates as global queue items; parked and checked-out work is not pullable. */
-	function queueItems(repo: BufferRepo): ReadyQueueItem[] {
+	function queueItems(repo: BufferRepo): ReadyQueueItem[]
+	{
 		const done = resultsOf(repo.name);
 		const jobs = inFlightOf(repo.name);
 		const present = new Set(repo.candidates.map((c) => c.id));
@@ -667,21 +850,33 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		const shas = advancedShasOf(repo.name);
 		for (const id of shas.keys()) if (!present.has(id)) shas.delete(id);
 		// A held draft-PR publish stays parked until its retry delay passes, then is pullable again.
-		for (const [id, at] of heldAt.get(repo.name) ?? []) {
-			if (!present.has(id) || now() - at >= VERIFY_HELD_RETRY_MS) {
+		for (const [id, at] of heldAt.get(repo.name) ?? [])
+		{
+			if (!present.has(id) || now() - at >= VERIFY_HELD_RETRY_MS)
+			{
 				heldAt.get(repo.name)?.delete(id);
 				if (done.get(id) === "verify_held") done.delete(id);
 			}
 		}
 		forgetStaleReady(repo);
 		// A moved item stays parked while the snapshot still shows the sha its branch moved from.
-		const moved = movedFrom.get(repo.name) ?? new Map<string, {sha: string; at: number}>();
+		const moved =
+			movedFrom.get(repo.name) ??
+			new Map<
+				string,
+				{
+					sha: string;
+					at: number;
+				}
+			>();
 		const bySha = new Map(repo.candidates.map((c) => [c.id, c.sha]));
-		for (const [id, {sha, at}] of moved) {
+		for (const [id, {sha, at}] of moved)
+		{
 			if (bySha.get(id) !== sha || now() - at >= MOVED_RETRY_MS) moved.delete(id);
 		}
 		const checkedOut = new Set(repo.checkedOutBranches);
-		return repo.candidates.map((c) => {
+		return repo.candidates.map((c) =>
+		{
 			const ready = c.state === "ready" || done.get(c.id) === "ready";
 			const parked = (done.has(c.id) || moved.has(c.id)) && !ready;
 			const blocked = !ready && c.branch !== undefined && checkedOut.has(c.branch);
@@ -696,8 +891,18 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 					(ready && (c.checksPending === true || c.checksFailed === true)) ||
 					parked ||
 					blocked,
-				...(c.override === undefined ? {} : {override: c.override}),
-				...(c.job === undefined ? {} : {job: c.job}),
+				...(c.override === undefined
+					? {}
+					:
+						{
+							override: c.override,
+						}),
+				...(c.job === undefined
+					? {}
+					:
+						{
+							job: c.job,
+						}),
 			};
 		});
 	}
@@ -706,7 +911,8 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	 * A repo verified by draft PRs: how many of its draft PRs await checks. They count toward the ready
 	 * target, so only the target's worth are in flight on GitHub Actions at once.
 	 */
-	function awaitingDraftPrs(repo: BufferRepo): number {
+	function awaitingDraftPrs(repo: BufferRepo): number
+	{
 		if (repo.verifyByDraftPr !== true) return 0;
 		const done = resultsOf(repo.name);
 		const jobs = inFlightOf(repo.name);
@@ -718,27 +924,43 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		).length;
 	}
 
-	async function runPull(): Promise<void> {
+	async function runPull(): Promise<void>
+	{
 		const repos = await deps.snapshot();
 		stopped.clear();
 		const active: BufferRepo[] = [];
-		for (const repo of repos) {
+		for (const repo of repos)
+		{
 			if (stopsLine(repo)) stopped.add(repo.name);
 			else if (!repo.localChanges) active.push(repo);
 		}
 		const byName = new Map(active.map((r) => [r.name, r]));
 		const queueRepos = active.map((r) =>
-			r.priority === undefined ? {name: r.name} : {name: r.name, priority: r.priority},
+			r.priority === undefined
+				?
+					{
+						name: r.name,
+					}
+				:
+					{
+						name: r.name,
+						priority: r.priority,
+					},
 		);
 		const items = active.flatMap(queueItems);
 		const pulls = deps.onBattery?.()
 			? []
-			: planReadyPulls(queueRepos, items, {
-					target: deps.target() - active.reduce((sum, r) => sum + awaitingDraftPrs(r), 0),
-					capacity: deps.capacity(),
-					inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
-				});
-		for (const pull of pulls) {
+			: planReadyPulls(
+					queueRepos,
+					items,
+					{
+						target: deps.target() - active.reduce((sum, r) => sum + awaitingDraftPrs(r), 0),
+						capacity: deps.capacity(),
+						inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
+					},
+				);
+		for (const pull of pulls)
+		{
 			const repo = byName.get(pull.repo);
 			const candidate = repo?.candidates.find((c) => c.id === pull.id);
 			if (repo && candidate) enqueue(repo, candidate);
@@ -751,19 +973,55 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		notify();
 	}
 
-	function stateItem(repo: BufferRepo, candidate: BufferCandidate): ReadyToLandItem {
+	function stateItem(repo: BufferRepo, candidate: BufferCandidate): ReadyToLandItem
+	{
 		const firstSeen = deps.firstSeen?.(repo.name, candidate.id);
-		const priority = effectivePriority({repo: repo.priority, override: candidate.override});
+		const priority = effectivePriority(
+			{
+				repo: repo.priority,
+				override: candidate.override,
+			},
+		);
 		return {
 			project: repo.name,
 			id: candidate.id,
 			sha: candidate.sha,
-			...(candidate.branch === undefined ? {} : {branch: candidate.branch}),
-			...(candidate.otherBranches === undefined ? {} : {otherBranches: candidate.otherBranches}),
-			...(candidate.parentSha === undefined ? {} : {parentSha: candidate.parentSha}),
-			...(repo.landing === undefined ? {} : {landing: repo.landing}),
-			...(firstSeen === undefined ? {} : {firstSeen}),
-			...(priority === DEFAULT_PRIORITY ? {} : {priority}),
+			...(candidate.branch === undefined
+				? {}
+				:
+					{
+						branch: candidate.branch,
+					}),
+			...(candidate.otherBranches === undefined
+				? {}
+				:
+					{
+						otherBranches: candidate.otherBranches,
+					}),
+			...(candidate.parentSha === undefined
+				? {}
+				:
+					{
+						parentSha: candidate.parentSha,
+					}),
+			...(repo.landing === undefined
+				? {}
+				:
+					{
+						landing: repo.landing,
+					}),
+			...(firstSeen === undefined
+				? {}
+				:
+					{
+						firstSeen,
+					}),
+			...(priority === DEFAULT_PRIORITY
+				? {}
+				:
+					{
+						priority,
+					}),
 		};
 	}
 
@@ -773,22 +1031,26 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	 * whose PR checks are still running is listed as awaiting checks instead, and one whose PR checks
 	 * failed as checks failed.
 	 */
-	function state(): ReadyToLandState {
+	function state(): ReadyToLandState
+	{
 		type Entry = [BufferRepo, BufferCandidate];
 		const ready: Entry[] = [];
 		const awaitingChecks: Entry[] = [];
 		const checksFailed: Entry[] = [];
 		const running: Entry[] = [];
 		const byKey = new Map<string, Entry>();
-		for (const repo of lastRepos) {
+		for (const repo of lastRepos)
+		{
 			const done = resultsOf(repo.name);
 			const jobs = inFlightOf(repo.name);
-			for (const c of repo.candidates) {
+			for (const c of repo.candidates)
+			{
 				const entry: Entry = [repo, c];
 				byKey.set(`${repo.name}:${c.id}`, entry);
 				if (jobs.has(c.id)) running.push(entry);
 				else if (stopped.has(repo.name)) continue;
-				else if ((c.state === "ready" || done.get(c.id) === "ready") && !c.onHold && c.autoFixed !== true) {
+				else if ((c.state === "ready" || done.get(c.id) === "ready") && !c.onHold && c.autoFixed !== true)
+				{
 					(c.checksFailed === true ? checksFailed : c.checksPending === true ? awaitingChecks : ready).push([
 						repo,
 						c,
@@ -797,11 +1059,26 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			}
 		}
 		const untrusted = deps.untrustedAgentFolders?.() ?? new Map<string, string>();
-		const verifyNotices = lastRepos.flatMap((r) => {
+		const verifyNotices = lastRepos.flatMap((r) =>
+		{
 			const folder = untrusted.get(r.name);
 			return [
-				...(r.verifyNotice === undefined ? [] : [{project: r.name, reason: r.verifyNotice}]),
-				...(folder === undefined ? [] : [{project: r.name, reason: claudeTrustNotice(folder)}]),
+				...(r.verifyNotice === undefined
+					? []
+					: [
+							{
+								project: r.name,
+								reason: r.verifyNotice,
+							},
+						]),
+				...(folder === undefined
+					? []
+					: [
+							{
+								project: r.name,
+								reason: claudeTrustNotice(folder),
+							},
+						]),
 			];
 		});
 		// The ledger is read only for the items shown.
@@ -818,12 +1095,23 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 					.filter((e): e is Entry => e !== undefined && !ready.includes(e)),
 			),
 			stoppedProjects: lastRepos.filter((r) => stopped.has(r.name)).map((r) => r.name),
-			...(deps.onBattery?.() ? {pausedOnBattery: true as const} : {}),
-			...(verifyNotices.length === 0 ? {} : {verifyNotices}),
+			...(deps.onBattery?.()
+				?
+					{
+						pausedOnBattery: true as const,
+					}
+				: {}),
+			...(verifyNotices.length === 0
+				? {}
+				:
+					{
+						verifyNotices,
+					}),
 		};
 	}
 
-	function notify(): void {
+	function notify(): void
+	{
 		if (listeners.size === 0) return;
 		const current = state();
 		for (const listener of listeners) listener(current);
@@ -833,26 +1121,33 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	/** Counts pull requests, so a request that arrives mid-pull runs one more pass. */
 	let requests = 0;
 
-	async function requestPull(): Promise<void> {
+	async function requestPull(): Promise<void>
+	{
 		requests += 1;
 		if (current) return current;
-		current = (async () => {
-			try {
-				for (;;) {
+		current = (async () =>
+		{
+			try
+			{
+				for (;;)
+				{
 					const seen = requests;
 					// Sequential on purpose: each pass must see the jobs the previous one enqueued
 					// eslint-disable-next-line no-await-in-loop
 					await runPull();
 					if (requests === seen) break;
 				}
-			} finally {
+			}
+			finally
+			{
 				current = null;
 			}
 		})();
 		return current;
 	}
 
-	async function upstreamMoved(project: string): Promise<void> {
+	async function upstreamMoved(project: string): Promise<void>
+	{
 		const done = resultsOf(project);
 		const buffered = [...done].filter(([, outcome]) => outcome === "ready").map(([id]) => id);
 		done.clear();
@@ -860,11 +1155,13 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		const repo = (await deps.snapshot()).find((r) => r.name === project);
 		if (!repo || stopsLine(repo) || repo.localChanges) return undefined;
 		const checkedOut = new Set(repo.checkedOutBranches);
-		for (const candidate of repo.candidates) {
+		for (const candidate of repo.candidates)
+		{
 			if (!buffered.includes(candidate.id) || candidate.onHold || candidate.autoFixed) continue;
 			// Its PR's checks are running or failed on a sha not behind the moved upstream (Open PR just
 			// rebased it there): it stays parked as it was, not re-advanced out of its waiting row.
-			if (candidate.checksPending === true || candidate.checksFailed === true) {
+			if (candidate.checksPending === true || candidate.checksFailed === true)
+			{
 				done.set(candidate.id, "ready");
 				continue;
 			}
@@ -874,8 +1171,10 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		return undefined;
 	}
 
-	async function idle(): Promise<void> {
-		for (;;) {
+	async function idle(): Promise<void>
+	{
+		for (;;)
+		{
 			const pending: Array<Promise<void>> = current ? [current] : [];
 			for (const jobs of inFlight.values()) pending.push(...jobs.values());
 			if (pending.length === 0) return;
@@ -892,9 +1191,11 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		outcomes: (project) => Object.fromEntries(resultsOf(project)),
 		idle,
 		state,
-		onStateChange: (listener) => {
+		onStateChange: (listener) =>
+		{
 			listeners.add(listener);
-			return () => {
+			return () =>
+			{
 				listeners.delete(listener);
 			};
 		},

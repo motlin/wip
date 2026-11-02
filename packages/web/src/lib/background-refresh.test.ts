@@ -1,47 +1,70 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
-interface CapturedJob {
+interface CapturedJob
+{
 	kind: string;
 	project: string;
 	force?: boolean;
 	run: () => Promise<void>;
 }
 
-const {jobs, refs, cache, checkProject, checkDeferredMergeStatus, refreshProjectChildren} = vi.hoisted(() => ({
+const {jobs, refs, cache, checkProject, checkDeferredMergeStatus, refreshProjectChildren} = vi.hoisted(() => (
+{
 	jobs: [] as CapturedJob[],
 	// The children cache's freshness mark and the refs each project's last children refresh read (the DB).
-	cache: {fresh: false, recordedRefs: new Map<string, string>()},
+	cache:
+	{
+		fresh: false,
+		recordedRefs: new Map<string, string>(),
+	},
 	// The repo's live ref state; tests move it to simulate a branch ref change.
-	refs: {value: "refs/heads/feature f7917ba"},
+	refs:
+	{
+		value: "refs/heads/feature f7917ba",
+	},
 	checkProject: vi.fn<(project: string) => Promise<void>>(),
 	checkDeferredMergeStatus: vi.fn<(project: string) => Promise<void>>(),
 	refreshProjectChildren: vi.fn<(project: string) => Promise<unknown>>(),
 }));
 
-vi.mock("./refresh-scheduler.js", () => ({
-	enqueueRefresh: (job: CapturedJob) => {
+vi.mock("./refresh-scheduler.js", () => (
+{
+	enqueueRefresh: (job: CapturedJob) =>
+	{
 		jobs.push(job);
-		return {queued: true};
+		return {
+			queued: true,
+		};
 	},
 	startPeriodicSweep: vi.fn<() => void>(),
 }));
 
-vi.mock("./server-fns.js", () => ({
-	listProjects: async () => Promise.resolve([{name: "avalon-online", dir: "/repos/avalon-online"}]),
+vi.mock("./server-fns.js", () => (
+{
+	listProjects: async () =>
+		Promise.resolve([
+			{
+				name: "avalon-online",
+				dir: "/repos/avalon-online",
+			},
+		]),
 	refreshProjectChildren,
 	CHILDREN_CACHE_TTL_MS: 60_000,
 	TODOS_CACHE_TTL_MS: 60_000,
 }));
 
-vi.mock("./merge-queue.js", () => ({
+vi.mock("./merge-queue.js", () => (
+{
 	checkProject,
 	checkDeferredMergeStatus,
 	deferredMergeStatusProjects: () => ["avalon-online"],
 }));
 
-vi.mock("@wip/shared", () => ({
+vi.mock("@wip/shared", () => (
+{
 	isCacheFresh: () => cache.fresh,
-	recordChildrenRefs: (project: string, snapshot: string) => {
+	recordChildrenRefs: (project: string, snapshot: string) =>
+	{
 		cache.recordedRefs.set(project, snapshot);
 	},
 	childrenRefsMatch: (project: string, snapshot: string) => cache.recordedRefs.get(project) === snapshot,
@@ -49,30 +72,45 @@ vi.mock("@wip/shared", () => ({
 	pruneRemote: vi.fn<() => Promise<void>>(async () => Promise.resolve()),
 }));
 
-vi.mock("@wip/shared/services/traced-execa.js", () => ({
+vi.mock("@wip/shared/services/traced-execa.js", () => (
+{
 	tracedExeca: async (_cmd: string, args: string[]) =>
-		Promise.resolve({
-			exitCode: 0,
-			stdout: args.includes("rev-parse") ? "head-sha" : refs.value,
-		}),
+		Promise.resolve(
+			{
+				exitCode: 0,
+				stdout: args.includes("rev-parse") ? "head-sha" : refs.value,
+			},
+		),
 }));
 
 const {enqueueDeferredMergeStatus, enqueueProjectRefresh, handleRepoChange, resetWatchGate} =
 	await import("./background-refresh.js");
 
-async function runJob(kind: string): Promise<void> {
+async function runJob(kind: string): Promise<void>
+{
 	const index = jobs.findIndex((job) => job.kind === kind);
 	expect(index).toBeGreaterThanOrEqual(0);
 	const [job] = jobs.splice(index, 1);
 	await job?.run();
 }
 
-function queuedKinds(): Array<{kind: string; force: boolean}> {
-	return jobs.map((job) => ({kind: job.kind, force: job.force === true}));
+function queuedKinds(): Array<
+{
+	kind: string;
+	force: boolean;
+}>
+{
+	return jobs.map((job) => (
+	{
+		kind: job.kind,
+		force: job.force === true,
+	}));
 }
 
-describe("handleRepoChange", () => {
-	beforeEach(async () => {
+describe("handleRepoChange", () =>
+{
+	beforeEach(async () =>
+	{
 		jobs.length = 0;
 		refs.value = "refs/heads/feature f7917ba";
 		cache.fresh = false;
@@ -87,16 +125,19 @@ describe("handleRepoChange", () => {
 		jobs.length = 0;
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		jobs.length = 0;
 	});
 
-	it("drops a fire whose refs match what the children refresh read", async () => {
+	it("drops a fire whose refs match what the children refresh read", async () =>
+	{
 		await expect(handleRepoChange("avalon-online")).resolves.toBe(false);
 		expect(queuedKinds()).toStrictEqual([]);
 	});
 
-	it("still refreshes children when a merge-status job ran between the ref change and the fire", async () => {
+	it("still refreshes children when a merge-status job ran between the ref change and the fire", async () =>
+	{
 		refs.value = "refs/heads/feature 7f5692c";
 		enqueueProjectRefresh("avalon-online");
 		await runJob("merge-status");
@@ -104,13 +145,23 @@ describe("handleRepoChange", () => {
 
 		await expect(handleRepoChange("avalon-online")).resolves.toBe(true);
 		expect(queuedKinds()).toStrictEqual([
-			{kind: "children", force: true},
-			{kind: "todos", force: true},
-			{kind: "merge-status", force: true},
+			{
+				kind: "children",
+				force: true,
+			},
+			{
+				kind: "todos",
+				force: true,
+			},
+			{
+				kind: "merge-status",
+				force: true,
+			},
 		]);
 	});
 
-	it("still refreshes children when a deferred merge-status job ran between the ref change and the fire", async () => {
+	it("still refreshes children when a deferred merge-status job ran between the ref change and the fire", async () =>
+	{
 		refs.value = "refs/heads/feature 7f5692c";
 		await enqueueDeferredMergeStatus();
 		await runJob("merge-status-deferred");
@@ -118,8 +169,10 @@ describe("handleRepoChange", () => {
 		await expect(handleRepoChange("avalon-online")).resolves.toBe(true);
 	});
 
-	it("absorbs a merge-status job's own upstream fetch when nothing else was pending", async () => {
-		checkProject.mockImplementation(async () => {
+	it("absorbs a merge-status job's own upstream fetch when nothing else was pending", async () =>
+	{
+		checkProject.mockImplementation(async () =>
+		{
 			refs.value = "refs/heads/feature f7917ba\nrefs/remotes/upstream/main 1111111";
 			return Promise.resolve();
 		});
@@ -130,19 +183,27 @@ describe("handleRepoChange", () => {
 		await expect(handleRepoChange("avalon-online")).resolves.toBe(false);
 	});
 
-	it("records the refs the children refresh read, not refs that moved while it ran", async () => {
-		refreshProjectChildren.mockImplementation(async () => {
+	it("records the refs the children refresh read, not refs that moved while it ran", async () =>
+	{
+		refreshProjectChildren.mockImplementation(async () =>
+		{
 			// The leader moves the branch after the refresh read its refs.
 			refs.value = "refs/heads/feature 7f5692c";
 			return Promise.resolve([]);
 		});
-		enqueueProjectRefresh("avalon-online", {force: true});
+		enqueueProjectRefresh(
+			"avalon-online",
+			{
+				force: true,
+			},
+		);
 		await runJob("children");
 
 		await expect(handleRepoChange("avalon-online")).resolves.toBe(true);
 	});
 
-	it("after a restart, rereads a fresh children cache whose branch was deleted while the server was down", async () => {
+	it("after a restart, rereads a fresh children cache whose branch was deleted while the server was down", async () =>
+	{
 		refreshProjectChildren.mockClear();
 		// Restart: the cache is still fresh, the in-memory gate is empty, and vault-feature is gone.
 		resetWatchGate();
@@ -154,7 +215,8 @@ describe("handleRepoChange", () => {
 		expect(refreshProjectChildren.mock.calls).toStrictEqual([["avalon-online"]]);
 	});
 
-	it("after a restart, keeps a fresh children cache whose refs are unchanged, and drops a fire on those refs", async () => {
+	it("after a restart, keeps a fresh children cache whose refs are unchanged, and drops a fire on those refs", async () =>
+	{
 		refreshProjectChildren.mockClear();
 		resetWatchGate();
 		cache.fresh = true;

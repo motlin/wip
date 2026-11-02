@@ -9,17 +9,28 @@ export type Priority = z.infer<typeof PrioritySchema>;
 export const DEFAULT_PRIORITY: Priority = "medium";
 
 /** Sort rank of each priority: high first. */
-export const PRIORITY_RANK: Record<Priority, number> = {high: 0, medium: 1, low: 2};
+export const PRIORITY_RANK: Record<Priority, number> =
+{
+	high: 0,
+	medium: 1,
+	low: 2,
+};
 
 /** What an override is attached to: a commit by patch-id (so it survives rebases) or a todo by todoItemKey. */
-export type PriorityItemRef = {kind: "commit" | "todo"; key: string};
+export type PriorityItemRef =
+{
+	kind: "commit" | "todo";
+	key: string;
+};
 
 /** A todo has no id of its own; its source file and title identify it. */
-export function todoItemKey(todo: Pick<TodoItem, "sourceFile" | "title">): string {
+export function todoItemKey(todo: Pick<TodoItem, "sourceFile" | "title">): string
+{
 	return `${todo.sourceFile}\u0000${todo.title}`;
 }
 
 /** An item override wins over its repo's registry priority, which defaults to medium. */
-export function effectivePriority(item: {repo: Priority | undefined; override: Priority | undefined}): Priority {
+export function effectivePriority(item: {repo: Priority | undefined; override: Priority | undefined}): Priority
+{
 	return item.override ?? item.repo ?? DEFAULT_PRIORITY;
 }

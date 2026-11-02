@@ -1,7 +1,8 @@
 import type {Category, ProjectInfo} from "@wip/shared";
 import {projectCondition} from "@wip/shared/classify.js";
 
-export interface SidebarProject {
+export interface SidebarProject
+{
 	name: string;
 	count: number;
 	condition: Category | undefined;
@@ -14,14 +15,35 @@ export function sidebarProjects(
 	projects: readonly ProjectInfo[],
 	max: number,
 	showAll: boolean,
-): {visible: SidebarProject[]; hiddenCount: number} {
+):
+{
+	visible: SidebarProject[];
+	hiddenCount: number;
+}
+{
 	const conditions = new Map(projects.map((p) => [p.name, projectCondition(p)]));
 	const all: SidebarProject[] = [...counts.entries()]
-		.map(([name, count]) => ({name, count, condition: conditions.get(name)}))
+		.map(([name, count]) => (
+		{
+			name,
+			count,
+			condition: conditions.get(name),
+		}))
 		.toSorted((a, b) => b.count - a.count);
-	for (const [name, condition] of conditions) {
-		if (condition && !counts.has(name)) all.push({name, count: 0, condition});
+	for (const [name, condition] of conditions)
+	{
+		if (condition && !counts.has(name))
+			all.push(
+				{
+					name,
+					count: 0,
+					condition,
+				},
+			);
 	}
 	const collapsed = all.filter((entry, index) => index < max || entry.condition !== undefined);
-	return {visible: showAll ? all : collapsed, hiddenCount: all.length - collapsed.length};
+	return {
+		visible: showAll ? all : collapsed,
+		hiddenCount: all.length - collapsed.length,
+	};
 }

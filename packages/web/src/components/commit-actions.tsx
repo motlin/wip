@@ -1,5 +1,6 @@
 import {useQueryClient, useQuery} from "@tanstack/react-query";
-import {
+import
+{
 	ArrowRight,
 	Play,
 	Loader2,
@@ -20,7 +21,8 @@ import {
 	GitHubIcon,
 } from "./icons.js";
 import {useState, useRef, useEffect} from "react";
-import {
+import
+{
 	pushChild,
 	testChild,
 	snoozeChildFn,
@@ -50,7 +52,8 @@ import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {applyRenameToChild} from "../lib/branch-rename.js";
 import type {ActionResult, GitChildResult, SnoozedChild, Category, ProjectInfo} from "@wip/shared";
 import type {ProjectChildrenResult} from "../lib/server-fns.js";
-import {
+import
+{
 	CATEGORIES,
 	SPLIT_BRANCH_COMMAND,
 	addTestCommand,
@@ -76,13 +79,15 @@ type SlotKey =
 	| "review_fix"
 	| "marker";
 
-interface ItemActionsProps {
+interface ItemActionsProps
+{
 	item: ActionableItem;
 	category: Category;
 	layout?: "row" | "column";
 }
 
-function clickedOutside(e: MouseEvent, form: Node | null, button: Node | null): boolean {
+function clickedOutside(e: MouseEvent, form: Node | null, button: Node | null): boolean
+{
 	return (
 		form !== null &&
 		button !== null &&
@@ -92,7 +97,8 @@ function clickedOutside(e: MouseEvent, form: Node | null, button: Node | null): 
 	);
 }
 
-function isPullRequest(item: ActionableItem): boolean {
+function isPullRequest(item: ActionableItem): boolean
+{
 	return item.prUrl !== undefined;
 }
 
@@ -101,47 +107,59 @@ function isPullRequest(item: ActionableItem): boolean {
  * the log on failure). Subprocess logs are surfaced only for warnings and errors;
  * the raw git/gh chatter is jargon and lives on the logs page.
  */
-function showActionToasts(action: string, result: ActionResult): void {
+function showActionToasts(action: string, result: ActionResult): void
+{
 	toastLogs((result.logs ?? []).filter((entry) => entry.level >= 40));
 	pushToast(actionResultToast(action, result));
 }
 
-function showActionError(action: string, error: unknown): void {
-	pushToast({
-		level: "error",
-		message: action,
-		detail: error instanceof Error ? error.message : String(error),
-		link: actionLogLink(undefined),
-	});
+function showActionError(action: string, error: unknown): void
+{
+	pushToast(
+		{
+			level: "error",
+			message: action,
+			detail: error instanceof Error ? error.message : String(error),
+			link: actionLogLink(undefined),
+		},
+	);
 }
 
-function useChildrenCache(project: string) {
+function useChildrenCache(project: string)
+{
 	const queryClient = useQueryClient();
 	const queryKey = ["children", project] as const;
 
 	return {
 		queryClient,
 		/** Update a single item in the cache by SHA */
-		updateItem(sha: string, updater: (item: ActionableItem) => ActionableItem) {
-			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
+		updateItem(sha: string, updater: (item: ActionableItem) => ActionableItem)
+		{
+			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) =>
+			{
 				if (!old) return old;
 				return old.map((c) => (c.sha === sha ? updater(c) : c));
 			});
 		},
 		/** Remove an item from the cache by SHA */
-		removeItem(sha: string) {
-			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
+		removeItem(sha: string)
+		{
+			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) =>
+			{
 				if (!old) return old;
 				return old.filter((c) => c.sha !== sha);
 			});
 		},
 		/** Promote a branch to a PR by updating its fields */
-		promoteToPr(sha: string, prUrl: string, prNumber: number) {
-			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) => {
+		promoteToPr(sha: string, prUrl: string, prNumber: number)
+		{
+			queryClient.setQueryData<ProjectChildrenResult>(queryKey, (old) =>
+			{
 				if (!old) return old;
 				return old.map((c) =>
 					c.sha === sha
-						? {
+						?
+							{
 								...c,
 								pushedToRemote: true,
 								prUrl,
@@ -157,7 +175,8 @@ function useChildrenCache(project: string) {
 	};
 }
 
-function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
+function ItemActions({item, category, layout = "column"}: ItemActionsProps)
+{
 	// branch is always present when this component is rendered (branches and PRs)
 	const branch = item.branch ?? "";
 	const queryClient = useQueryClient();
@@ -174,24 +193,34 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [aborting, setAborting] = useState(false);
 	// Set by a successful Abort rebase: the branch whose next action is "Rebase again".
 	const rebaseAgainKey = ["rebase-again", item.project];
-	const {data: rebaseAgainBranch} = useQuery<string | null>({
-		queryKey: rebaseAgainKey,
-		queryFn: () => null,
-		enabled: false,
-		staleTime: Number.POSITIVE_INFINITY,
-		gcTime: Number.POSITIVE_INFINITY,
-	});
+	const {data: rebaseAgainBranch} = useQuery<string | null>(
+		{
+			queryKey: rebaseAgainKey,
+			queryFn: () => null,
+			enabled: false,
+			staleTime: Number.POSITIVE_INFINITY,
+			gcTime: Number.POSITIVE_INFINITY,
+		},
+	);
 	const rebaseAgain = category !== "rebase_stuck" && branch !== "" && rebaseAgainBranch === branch;
 	const snoozeRef = useRef<HTMLDivElement>(null);
 	const snoozeButtonRef = useRef<HTMLButtonElement>(null);
-	const [snoozePos, setSnoozePos] = useState<{top: number; left: number} | null>(null);
+	const [snoozePos, setSnoozePos] = useState<
+	{
+		top: number;
+		left: number;
+	} | null>(null);
 	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 	const [deleteLoading, setDeleteLoading] = useState(false);
 	const [deleteDiffLoading, setDeleteDiffLoading] = useState(false);
 	const [deleteDiffStat, setDeleteDiffStat] = useState<string>("");
 	const deleteButtonRef = useRef<HTMLButtonElement>(null);
 	const deleteFormRef = useRef<HTMLDivElement>(null);
-	const [deletePos, setDeletePos] = useState<{top: number; left: number} | null>(null);
+	const [deletePos, setDeletePos] = useState<
+	{
+		top: number;
+		left: number;
+	} | null>(null);
 	const [forcePushing, setForcePushing] = useState(false);
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [newBranchName, setNewBranchName] = useState(
@@ -199,13 +228,21 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	);
 	const renameButtonRef = useRef<HTMLButtonElement>(null);
 	const renameFormRef = useRef<HTMLDivElement>(null);
-	const [renamePos, setRenamePos] = useState<{top: number; left: number} | null>(null);
+	const [renamePos, setRenamePos] = useState<
+	{
+		top: number;
+		left: number;
+	} | null>(null);
 	const [renaming, setRenaming] = useState(false);
 	const [applyingFixes, setApplyingFixes] = useState(false);
 	const [fixesConfirmOpen, setFixesConfirmOpen] = useState(false);
 	const fixesButtonRef = useRef<HTMLButtonElement>(null);
 	const fixesFormRef = useRef<HTMLDivElement>(null);
-	const [fixesPos, setFixesPos] = useState<{top: number; left: number} | null>(null);
+	const [fixesPos, setFixesPos] = useState<
+	{
+		top: number;
+		left: number;
+	} | null>(null);
 	const [rebasingLocal, setRebasingLocal] = useState(false);
 	const [committing, setCommitting] = useState(false);
 	const [merging, setMerging] = useState(false);
@@ -220,15 +257,19 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
 	const pr = isPullRequest(item) ? item : null;
 	// Push / Force Push on an unverified commit warns on the first click and pushes on the second; never blocked.
-	const unverifiedReason = unverifiedPushReason({
-		testStatus: item.testStatus,
-		commitsBehind,
-		needsRebase: item.needsRebase,
-		noTests,
-	});
+	const unverifiedReason = unverifiedPushReason(
+		{
+			testStatus: item.testStatus,
+			commitsBehind,
+			needsRebase: item.needsRebase,
+			noTests,
+		},
+	);
 	const [armedPush, setArmedPush] = useState<"push" | "force_push" | null>(null);
-	const confirmUnverified = (kind: "push" | "force_push") => {
-		if (unverifiedReason === null || armedPush === kind) {
+	const confirmUnverified = (kind: "push" | "force_push") =>
+	{
+		if (unverifiedReason === null || armedPush === kind)
+		{
 			setArmedPush(null);
 			return true;
 		}
@@ -236,54 +277,70 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 		return false;
 	};
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (!deleteConfirmOpen) return undefined;
-		function handleClick(e: MouseEvent) {
-			if (clickedOutside(e, deleteFormRef.current, deleteButtonRef.current)) {
+		function handleClick(e: MouseEvent)
+		{
+			if (clickedOutside(e, deleteFormRef.current, deleteButtonRef.current))
+			{
 				setDeleteConfirmOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => {
+		return () =>
+		{
 			document.removeEventListener("mousedown", handleClick);
 		};
 	}, [deleteConfirmOpen]);
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (!snoozeOpen) return undefined;
-		function handleClick(e: MouseEvent) {
-			if (clickedOutside(e, snoozeRef.current, snoozeButtonRef.current)) {
+		function handleClick(e: MouseEvent)
+		{
+			if (clickedOutside(e, snoozeRef.current, snoozeButtonRef.current))
+			{
 				setSnoozeOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => {
+		return () =>
+		{
 			document.removeEventListener("mousedown", handleClick);
 		};
 	}, [snoozeOpen]);
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (!renameOpen) return undefined;
-		function handleClick(e: MouseEvent) {
-			if (clickedOutside(e, renameFormRef.current, renameButtonRef.current)) {
+		function handleClick(e: MouseEvent)
+		{
+			if (clickedOutside(e, renameFormRef.current, renameButtonRef.current))
+			{
 				setRenameOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => {
+		return () =>
+		{
 			document.removeEventListener("mousedown", handleClick);
 		};
 	}, [renameOpen]);
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (!fixesConfirmOpen) return undefined;
-		function handleClick(e: MouseEvent) {
-			if (clickedOutside(e, fixesFormRef.current, fixesButtonRef.current)) {
+		function handleClick(e: MouseEvent)
+		{
+			if (clickedOutside(e, fixesFormRef.current, fixesButtonRef.current))
+			{
 				setFixesConfirmOpen(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
-		return () => {
+		return () =>
+		{
 			document.removeEventListener("mousedown", handleClick);
 		};
 	}, [fixesConfirmOpen]);
@@ -291,75 +348,125 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	// Popovers use position: fixed with coordinates captured at open time, so
 	// they stay pinned to the viewport when the page scrolls. Close them on
 	// scroll rather than tracking the button's new position.
-	useEffect(() => {
+	useEffect(() =>
+	{
 		const anyOpen = snoozeOpen || deleteConfirmOpen || renameOpen || fixesConfirmOpen;
 		if (!anyOpen) return undefined;
-		function handleScroll() {
+		function handleScroll()
+		{
 			setSnoozeOpen(false);
 			setDeleteConfirmOpen(false);
 			setRenameOpen(false);
 			setFixesConfirmOpen(false);
 		}
 		window.addEventListener("scroll", handleScroll, true);
-		return () => {
+		return () =>
+		{
 			window.removeEventListener("scroll", handleScroll, true);
 		};
 	}, [snoozeOpen, deleteConfirmOpen, renameOpen, fixesConfirmOpen]);
 
 	const pushLabel = item.containingBranch ? "Push Split" : "Push";
 
-	const handlePush = async () => {
+	const handlePush = async () =>
+	{
 		setError(null);
-		cache.updateItem(item.sha, (i) => ({...i, pushing: true}));
-		try {
-			await pushChild({
-				data: {
-					project: item.project,
-					sha: item.sha,
-					branch,
+		cache.updateItem(item.sha, (i) => (
+		{
+			...i,
+			pushing: true,
+		}));
+		try
+		{
+			await pushChild(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						branch,
+					},
 				},
-			});
-		} catch (e) {
-			cache.updateItem(item.sha, (i) => ({...i, pushing: false}));
+			);
+		}
+		catch (e)
+		{
+			cache.updateItem(item.sha, (i) => (
+			{
+				...i,
+				pushing: false,
+			}));
 			showActionError("Push", e);
 			setError(e instanceof Error ? e.message : "Failed to enqueue push");
 		}
 	};
 
-	const handleTest = async () => {
+	const handleTest = async () =>
+	{
 		setError(null);
-		await runPendingAction("Test", undefined, async () => {
-			await testChild({
-				data: {
-					project: item.project,
-					sha: item.sha,
+		await runPendingAction("Test", undefined, async () =>
+		{
+			await testChild(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+					},
 				},
-			});
+			);
 		});
 	};
 
-	const handleCancelTest = async () => {
+	const handleCancelTest = async () =>
+	{
 		if (!testJob) return;
 		setError(null);
-		try {
-			const result = await cancelTestFn({data: {id: testJob.id}});
+		try
+		{
+			const result = await cancelTestFn(
+				{
+					data:
+					{
+						id: testJob.id,
+					},
+				},
+			);
 			showActionToasts("Cancel test", result);
 			if (!result.ok) setError(result.message);
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Cancel test", e);
 			setError(e instanceof Error ? e.message : "Failed to cancel test");
 		}
 	};
 
-	const handleSnooze = async (hours: number | null) => {
+	const handleSnooze = async (hours: number | null) =>
+	{
 		setSnoozeOpen(false);
 		setError(null);
 		const until = snoozeUntil(hours);
-		try {
-			const result = await snoozeChildFn({data: {project: item.project, sha: item.sha, until}});
+		try
+		{
+			const result = await snoozeChildFn(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						until,
+					},
+				},
+			);
 			showActionToasts("Snooze", result);
-			if (result.ok) {
-				cache.updateItem(item.sha, (i) => ({...i, onHold: true}));
+			if (result.ok)
+			{
+				cache.updateItem(item.sha, (i) => (
+				{
+					...i,
+					onHold: true,
+				}));
 				queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) => [
 					...(old ?? []),
 					{
@@ -372,363 +479,654 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						orphaned: false,
 					},
 				]);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Snooze", e);
 			setError(e instanceof Error ? e.message : "Failed to snooze");
 		}
 	};
 
-	const handleUnsnooze = async () => {
+	const handleUnsnooze = async () =>
+	{
 		setSnoozeOpen(false);
 		setError(null);
-		try {
-			const result = await unsnoozeChildFn({data: {project: item.project, sha: item.sha}});
+		try
+		{
+			const result = await unsnoozeChildFn(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+					},
+				},
+			);
 			showActionToasts("Unsnooze", result);
-			if (result.ok) {
+			if (result.ok)
+			{
 				queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) =>
 					(old ?? []).filter((s) => !(s.project === item.project && s.sha === item.sha)),
 				);
-				const fresh = await getProjectChildren({data: {project: item.project}});
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Unsnooze", e);
 			setError(e instanceof Error ? e.message : "Failed to unsnooze");
 		}
 	};
 
-	const handleCommit = async () => {
+	const handleCommit = async () =>
+	{
 		setCommitting(true);
 		setError(null);
-		try {
-			const result = await commitWorkingTree({data: {project: item.project}});
+		try
+		{
+			const result = await commitWorkingTree(
+				{
+					data:
+					{
+						project: item.project,
+					},
+				},
+			);
 			showActionToasts("Commit", result);
-			if (result.ok) {
-				const fresh = await getProjectChildren({data: {project: item.project}});
+			if (result.ok)
+			{
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Commit", e);
 			setError(e instanceof Error ? e.message : "Failed to commit");
-		} finally {
+		}
+		finally
+		{
 			setCommitting(false);
 		}
 	};
 
 	const [creatingPr, setCreatingPr] = useState(false);
-	const handleCreatePr = async () => {
+	const handleCreatePr = async () =>
+	{
 		setCreatingPr(true);
 		setError(null);
-		try {
-			const result = await createPr({
-				data: {
-					project: item.project,
-					branch,
-					title: item.subject,
-					draft: true,
+		try
+		{
+			const result = await createPr(
+				{
+					data:
+					{
+						project: item.project,
+						branch,
+						title: item.subject,
+						draft: true,
+					},
 				},
-			});
+			);
 			showActionToasts("Open PR", result);
-			if (result.ok) {
+			if (result.ok)
+			{
 				cache.promoteToPr(item.sha, result.prUrl ?? "", result.prNumber ?? 0);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Open PR", e);
 			setError(e instanceof Error ? e.message : "Failed to create PR");
-		} finally {
+		}
+		finally
+		{
 			setCreatingPr(false);
 		}
 	};
 
-	const handleRefresh = async () => {
+	const handleRefresh = async () =>
+	{
 		setRefreshing(true);
 		setError(null);
-		try {
-			const result = await refreshChild({data: {project: item.project, sha: item.sha}});
+		try
+		{
+			const result = await refreshChild(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+					},
+				},
+			);
 			showActionToasts("Refresh", result);
-			if (result.ok) {
-				const fresh = await getProjectChildren({data: {project: item.project}});
+			if (result.ok)
+			{
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData(["children", item.project], fresh);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Refresh", e);
 			setError(e instanceof Error ? e.message : "Failed to refresh");
-		} finally {
+		}
+		finally
+		{
 			setRefreshing(false);
 		}
 	};
 
-	const handleAbortRebase = async () => {
+	const handleAbortRebase = async () =>
+	{
 		setAborting(true);
 		setError(null);
-		try {
-			const result = await abortRebase({data: {project: item.project}});
+		try
+		{
+			const result = await abortRebase(
+				{
+					data:
+					{
+						project: item.project,
+					},
+				},
+			);
 			showActionToasts("Abort rebase", result);
-			if (result.ok) {
+			if (result.ok)
+			{
 				queryClient.setQueryData(rebaseAgainKey, result.rebaseAgainBranch ?? null);
 				queryClient.setQueryData<ProjectInfo[]>(["projects"], (old) =>
-					old?.map((p) => (p.name === item.project ? {...p, rebaseInProgress: false} : p)),
+					old?.map((p) =>
+						p.name === item.project
+							?
+								{
+									...p,
+									rebaseInProgress: false,
+								}
+							: p,
+					),
 				);
-				const fresh = await getProjectChildren({data: {project: item.project}});
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData(["children", item.project], fresh);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Abort rebase", e);
 			setError(e instanceof Error ? e.message : "Failed to abort rebase");
-		} finally {
+		}
+		finally
+		{
 			setAborting(false);
 		}
 	};
 
-	const handleForcePush = async () => {
+	const handleForcePush = async () =>
+	{
 		setForcePushing(true);
 		setError(null);
-		try {
-			const result = await forcePush({
-				data: {
-					project: item.project,
-					branch,
+		try
+		{
+			const result = await forcePush(
+				{
+					data:
+					{
+						project: item.project,
+						branch,
+					},
 				},
-			});
+			);
 			showActionToasts("Force push", result);
-			if (result.ok) {
-				cache.updateItem(item.sha, (i) => ({...i, localAhead: false}));
-			} else {
+			if (result.ok)
+			{
+				cache.updateItem(item.sha, (i) => (
+				{
+					...i,
+					localAhead: false,
+				}));
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Force push", e);
 			setError(e instanceof Error ? e.message : "Failed to force push");
-		} finally {
+		}
+		finally
+		{
 			setForcePushing(false);
 		}
 	};
 
-	const handleRenameBranch = async () => {
+	const handleRenameBranch = async () =>
+	{
 		if (!newBranchName.trim() || newBranchName === branch) return;
 		setRenaming(true);
 		setError(null);
-		try {
-			const result = await renameBranch({
-				data: {
-					project: item.project,
-					oldBranch: branch,
-					newBranch: newBranchName.trim(),
+		try
+		{
+			const result = await renameBranch(
+				{
+					data:
+					{
+						project: item.project,
+						oldBranch: branch,
+						newBranch: newBranchName.trim(),
+					},
 				},
-			});
+			);
 			showActionToasts("Rename branch", result);
-			if (result.ok) {
+			if (result.ok)
+			{
 				setRenameOpen(false);
 				const renamed = newBranchName.trim();
 				cache.updateItem(item.sha, (i) => applyRenameToChild(i, renamed));
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Rename branch", e);
 			setError(e instanceof Error ? e.message : "Failed to rename branch");
-		} finally {
+		}
+		finally
+		{
 			setRenaming(false);
 		}
 	};
 
-	const handleApplyFixes = async () => {
+	const handleApplyFixes = async () =>
+	{
 		if (!pr) return;
 		setApplyingFixes(true);
 		setError(null);
-		try {
-			const result = await applyFixes({
-				data: {
-					project: item.project,
-					branch: branch,
-					prNumber: pr.prNumber,
+		try
+		{
+			const result = await applyFixes(
+				{
+					data:
+					{
+						project: item.project,
+						branch: branch,
+						prNumber: pr.prNumber,
+					},
 				},
-			});
+			);
 			showActionToasts("Apply fixes", result);
-			if (result.ok) {
-				cache.updateItem(item.sha, (i) => ({
+			if (result.ok)
+			{
+				cache.updateItem(item.sha, (i) => (
+				{
 					...i,
 					checkStatus: "pending" as const,
 					failedChecks: undefined,
 				}));
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Apply fixes", e);
 			setError(e instanceof Error ? e.message : "Failed to apply fixes");
-		} finally {
+		}
+		finally
+		{
 			setApplyingFixes(false);
 		}
 	};
 
-	const handleRebaseLocal = async () => {
+	const handleRebaseLocal = async () =>
+	{
 		if (rebaseAgain) queryClient.setQueryData(rebaseAgainKey, null);
 		setRebasingLocal(true);
 		setError(null);
-		try {
+		try
+		{
 			// Enqueue a background rebase task; progress and completion show on the
 			// Tasks page and via the rebase toast, consistent with "Rebase All".
-			await rebaseChild({
-				data: {
-					project: item.project,
-					branch: branch,
+			await rebaseChild(
+				{
+					data:
+					{
+						project: item.project,
+						branch: branch,
+					},
 				},
-			});
-		} catch (e) {
+			);
+		}
+		catch (e)
+		{
 			showActionError("Rebase", e);
 			setError(e instanceof Error ? e.message : "Failed to enqueue rebase");
-		} finally {
+		}
+		finally
+		{
 			setRebasingLocal(false);
 		}
 	};
 
-	const handleMergePr = async () => {
+	const handleMergePr = async () =>
+	{
 		if (!pr) return;
 		setError(null);
-		await runPendingAction("Merge PR", setMerging, async () => {
-			const result = await mergePr({
-				data: {
-					project: item.project,
-					prNumber: pr.prNumber,
+		await runPendingAction("Merge PR", setMerging, async () =>
+		{
+			const result = await mergePr(
+				{
+					data:
+					{
+						project: item.project,
+						prNumber: pr.prNumber,
+					},
 				},
-			});
+			);
 			showActionToasts("Merge PR", result);
-			if (result.ok) {
+			if (result.ok)
+			{
 				cache.removeItem(item.sha);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
 		});
 	};
 
-	const handleCreateBranch = async () => {
+	const handleCreateBranch = async () =>
+	{
 		setError(null);
-		await runPendingAction("Create branch", setCreatingBranch, async () => {
+		await runPendingAction("Create branch", setCreatingBranch, async () =>
+		{
 			// Plan step 39: names are lazy, so Create branch asks for one when none is cached.
 			const branchName =
 				item.suggestedBranch ??
 				item.branch ??
-				(await suggestBranchName({data: {project: item.project, sha: item.sha}})).name;
-			if (!branchName) {
+				(
+					await suggestBranchName(
+						{
+							data:
+							{
+								project: item.project,
+								sha: item.sha,
+							},
+						},
+					)
+				).name;
+			if (!branchName)
+			{
 				setError("Could not suggest a branch name");
 				return;
 			}
-			const result = await createBranch({
-				data: {
-					project: item.project,
-					sha: item.sha,
-					branchName,
+			const result = await createBranch(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						branchName,
+					},
 				},
-			});
+			);
 			showActionToasts("Create branch", result);
-			if (result.ok) {
-				const fresh = await getProjectChildren({data: {project: item.project}});
+			if (result.ok)
+			{
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData<ProjectChildrenResult>(["children", item.project], fresh);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
 		});
 	};
 
-	const handleDeleteBranchClick = async () => {
-		if (!deleteConfirmOpen && deleteButtonRef.current) {
+	const handleDeleteBranchClick = async () =>
+	{
+		if (!deleteConfirmOpen && deleteButtonRef.current)
+		{
 			const rect = deleteButtonRef.current.getBoundingClientRect();
-			setDeletePos({top: rect.bottom + 4, left: rect.left});
+			setDeletePos(
+				{
+					top: rect.bottom + 4,
+					left: rect.left,
+				},
+			);
 		}
-		if (deleteConfirmOpen) {
+		if (deleteConfirmOpen)
+		{
 			setDeleteConfirmOpen(false);
-		} else {
+		}
+		else
+		{
 			setDeleteConfirmOpen(true);
 			setDeleteDiffLoading(true);
-			try {
-				const diff = await getCommitDiff({data: {project: item.project, sha: item.sha}});
+			try
+			{
+				const diff = await getCommitDiff(
+					{
+						data:
+						{
+							project: item.project,
+							sha: item.sha,
+						},
+					},
+				);
 				setDeleteDiffStat(diff.stat);
-			} catch {
+			}
+			catch
+			{
 				setDeleteDiffStat("Failed to load diff");
 			}
 			setDeleteDiffLoading(false);
 		}
 	};
 
-	const handleDeleteBranch = async () => {
+	const handleDeleteBranch = async () =>
+	{
 		setDeleteLoading(true);
 		setError(null);
-		try {
-			const result = await deleteBranch({
-				data: {
-					project: item.project,
-					branch: branch,
+		try
+		{
+			const result = await deleteBranch(
+				{
+					data:
+					{
+						project: item.project,
+						branch: branch,
+					},
 				},
-			});
+			);
 			showActionToasts("Delete branch", result);
-			if (result.ok) {
+			if (result.ok)
+			{
 				setDeleteConfirmOpen(false);
 				cache.removeItem(item.sha);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			showActionError("Delete branch", e);
 			setError(e instanceof Error ? e.message : "Failed to delete branch");
-		} finally {
+		}
+		finally
+		{
 			setDeleteLoading(false);
 		}
 	};
 
-	const handleRunClaude = async () => {
+	const handleRunClaude = async () =>
+	{
 		if (!llmCommand || !branch) return;
-		await runPendingAction("Run Claude", setRunningClaude, async () => {
-			await runClaudeCommand({
-				data: {project: item.project, sha: item.sha, branch, command: llmCommand},
-			});
+		await runPendingAction("Run Claude", setRunningClaude, async () =>
+		{
+			await runClaudeCommand(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						branch,
+						command: llmCommand,
+					},
+				},
+			);
 		});
 	};
 
-	const handleAddTest = async () => {
+	const handleAddTest = async () =>
+	{
 		if (!branch) return;
-		await runPendingAction("Add a test", setAddingTest, async () => {
-			await runClaudeCommand({
-				data: {project: item.project, sha: item.sha, branch, command: addTestCommand(item.sha)},
-			});
+		await runPendingAction("Add a test", setAddingTest, async () =>
+		{
+			await runClaudeCommand(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						branch,
+						command: addTestCommand(item.sha),
+					},
+				},
+			);
 		});
 	};
 
-	const handleSplit = async () => {
+	const handleSplit = async () =>
+	{
 		if (!branch) return;
-		await runPendingAction("Split", setSplitting, async () => {
-			await runClaudeCommand({
-				data: {project: item.project, sha: item.sha, branch, command: SPLIT_BRANCH_COMMAND},
-			});
+		await runPendingAction("Split", setSplitting, async () =>
+		{
+			await runClaudeCommand(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						branch,
+						command: SPLIT_BRANCH_COMMAND,
+					},
+				},
+			);
 		});
 	};
 
 	/** Runs one of the auto-fix review's actions and writes the refreshed children into the cache. */
 	const autoFixAction =
-		(label: string, call: (input: {data: {project: string; sha: string}}) => Promise<ActionResult>) => async () => {
-			await runPendingAction(label, undefined, async () => {
-				const result = await call({data: {project: item.project, sha: item.sha}});
+		(
+			label: string,
+			call: (input: {
+				data:
+				{
+					project: string;
+					sha: string;
+				};
+			}) => Promise<ActionResult>,
+		) =>
+		async () =>
+		{
+			await runPendingAction(label, undefined, async () =>
+			{
+				const result = await call(
+					{
+						data:
+						{
+							project: item.project,
+							sha: item.sha,
+						},
+					},
+				);
 				showActionToasts(label, result);
 				if (!result.ok) return;
 				setReviewOpen(false);
-				const fresh = await getProjectChildren({data: {project: item.project}});
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData(["children", item.project], fresh);
 			});
 		};
-	const autoFixActions = {
+	const autoFixActions =
+	{
 		onAccept: autoFixAction("Accept fix", acceptAutoFix),
 		onFixMyself: autoFixAction("Fix it myself", assignAutoFix),
 		onHold: async () => handleSnooze(null),
@@ -743,7 +1141,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const isRow = layout === "row";
 
 	// The card's one filled button: an auto-fix review or a Rebase again outranks the state's own next step.
-	const primary: SlotKey | null = (() => {
+	const primary: SlotKey | null = (() =>
+	{
 		if (item.autoFixed) return "review_fix";
 		if (rebaseAgain) return "rebase_again";
 		const next = primaryAction(category);
@@ -752,9 +1151,21 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	})();
 	const fill = (key: SlotKey, filled: string): string =>
 		key === primary ? filled : "text-text-300 hover:bg-bg-200 hover:text-text-100";
-	const primaryProps = (key: SlotKey): {"data-primary"?: "true"} => (key === primary ? {"data-primary": "true"} : {});
+	const primaryProps = (
+		key: SlotKey,
+	):
+	{
+		"data-primary"?: "true";
+	} =>
+		key === primary
+			?
+				{
+					"data-primary": "true",
+				}
+			: {};
 
-	const renderActions = (where: "primary" | "more") => {
+	const renderActions = (where: "primary" | "more") =>
+	{
 		const at = (key: SlotKey): boolean =>
 			key === "marker" ? where === "primary" : (key === primary) === (where === "primary");
 		return (
@@ -764,7 +1175,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("rebase_again")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleRebaseLocal();
 						}}
 						disabled={rebasingLocal}
@@ -789,7 +1201,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("abort_rebase")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleAbortRebase();
 						}}
 						disabled={aborting}
@@ -810,7 +1223,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("merge")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleMergePr();
 						}}
 						disabled={merging}
@@ -848,7 +1262,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("force_push")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							if (confirmUnverified("force_push")) void handleForcePush();
 						}}
 						disabled={forcePushing}
@@ -872,7 +1287,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("rebase_local")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleRebaseLocal();
 						}}
 						disabled={rebasingLocal}
@@ -896,7 +1312,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				{at("apply_fixes") &&
 					actions.has("apply_fixes") &&
 					pr?.failedChecks?.some((c) => c.name.endsWith("-fix")) &&
-					(() => {
+					(() =>
+					{
 						const fixChecks = pr.failedChecks.filter((c) => c.name.endsWith("-fix"));
 						return (
 							<div className="relative">
@@ -904,10 +1321,17 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									{...primaryProps("apply_fixes")}
 									ref={fixesButtonRef}
 									type="button"
-									onClick={() => {
-										if (!fixesConfirmOpen && fixesButtonRef.current) {
+									onClick={() =>
+									{
+										if (!fixesConfirmOpen && fixesButtonRef.current)
+										{
 											const rect = fixesButtonRef.current.getBoundingClientRect();
-											setFixesPos({top: rect.bottom + 4, left: rect.left});
+											setFixesPos(
+												{
+													top: rect.bottom + 4,
+													left: rect.left,
+												},
+											);
 										}
 										setFixesConfirmOpen(!fixesConfirmOpen);
 									}}
@@ -930,7 +1354,11 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									<div
 										ref={fixesFormRef}
 										className="fixed z-50 w-72 max-h-64 overflow-y-auto rounded-lg border border-border-300/50 bg-bg-000 p-3 shadow-lg"
-										style={{top: fixesPos.top, left: fixesPos.left}}
+										style={
+										{
+											top: fixesPos.top,
+											left: fixesPos.left,
+										}}
 									>
 										<div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-orange-600 dark:text-orange-400">
 											<Wrench className="h-3.5 w-3.5" />
@@ -965,7 +1393,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 										<div className="flex gap-1.5">
 											<button
 												type="button"
-												onClick={() => {
+												onClick={() =>
+												{
 													setFixesConfirmOpen(false);
 													void handleApplyFixes();
 												}}
@@ -985,7 +1414,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 											</button>
 											<button
 												type="button"
-												onClick={() => {
+												onClick={() =>
+												{
 													setFixesConfirmOpen(false);
 												}}
 												className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
@@ -1004,7 +1434,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("commit")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleCommit();
 						}}
 						disabled={committing}
@@ -1030,10 +1461,12 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						<input
 							type="text"
 							value={newBranchName}
-							onChange={(e) => {
+							onChange={(e) =>
+							{
 								setNewBranchName(e.target.value);
 							}}
-							onKeyDown={(e) => {
+							onKeyDown={(e) =>
+							{
 								if (e.key === "Enter") void handleRenameBranch();
 							}}
 							placeholder="branch-name"
@@ -1042,7 +1475,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 						<button
 							{...primaryProps("rename")}
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								void handleRenameBranch();
 							}}
 							disabled={renaming || !newBranchName.trim() || newBranchName === branch}
@@ -1065,10 +1499,17 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							{...primaryProps("rename")}
 							ref={renameButtonRef}
 							type="button"
-							onClick={() => {
-								if (!renameOpen && renameButtonRef.current) {
+							onClick={() =>
+							{
+								if (!renameOpen && renameButtonRef.current)
+								{
 									const rect = renameButtonRef.current.getBoundingClientRect();
-									setRenamePos({top: rect.bottom + 4, left: rect.left});
+									setRenamePos(
+										{
+											top: rect.bottom + 4,
+											left: rect.left,
+										},
+									);
 								}
 								setRenameOpen(!renameOpen);
 							}}
@@ -1081,12 +1522,17 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							<div
 								ref={renameFormRef}
 								className="fixed z-50 w-56 rounded-lg border border-border-300/50 bg-bg-000 p-2 shadow-lg"
-								style={{top: renamePos.top, left: renamePos.left}}
+								style={
+								{
+									top: renamePos.top,
+									left: renamePos.left,
+								}}
 							>
 								<input
 									type="text"
 									value={newBranchName}
-									onChange={(e) => {
+									onChange={(e) =>
+									{
 										setNewBranchName(e.target.value);
 									}}
 									placeholder="New branch name"
@@ -1095,7 +1541,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 								<div className="mt-1.5 flex gap-1.5">
 									<button
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											void handleRenameBranch();
 										}}
 										disabled={renaming || !newBranchName.trim() || newBranchName === branch}
@@ -1114,7 +1561,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									</button>
 									<button
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											setRenameOpen(false);
 										}}
 										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
@@ -1132,7 +1580,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("create_branch")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleCreateBranch();
 						}}
 						disabled={creatingBranch}
@@ -1156,7 +1605,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("create_pr")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleCreatePr();
 						}}
 						disabled={creatingPr}
@@ -1180,7 +1630,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("push")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							if (confirmUnverified("push")) void handlePush();
 						}}
 						disabled={item.pushing}
@@ -1204,7 +1655,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("test")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleTest();
 						}}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("test", "bg-yellow-600 hover:bg-yellow-700 text-white")}`}
@@ -1231,7 +1683,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("cancel_test")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleCancelTest();
 						}}
 						className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
@@ -1262,10 +1715,17 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							{...primaryProps("snooze")}
 							ref={snoozeButtonRef}
 							type="button"
-							onClick={() => {
-								if (!snoozeOpen && snoozeButtonRef.current) {
+							onClick={() =>
+							{
+								if (!snoozeOpen && snoozeButtonRef.current)
+								{
 									const rect = snoozeButtonRef.current.getBoundingClientRect();
-									setSnoozePos({top: rect.bottom + 4, left: rect.left});
+									setSnoozePos(
+										{
+											top: rect.bottom + 4,
+											left: rect.left,
+										},
+									);
 								}
 								setSnoozeOpen(!snoozeOpen);
 							}}
@@ -1278,7 +1738,13 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							{snoozedEntry ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
 							{snoozedEntry
 								? snoozedEntry.until
-									? `Snoozed until ${new Date(snoozedEntry.until).toLocaleDateString(undefined, {month: "short", day: "numeric"})}`
+									? `Snoozed until ${new Date(snoozedEntry.until).toLocaleDateString(
+											undefined,
+											{
+												month: "short",
+												day: "numeric",
+											},
+										)}`
 									: "On hold"
 								: "Snooze"}
 						</button>
@@ -1286,13 +1752,18 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							<div
 								ref={snoozeRef}
 								className="fixed z-50 w-28 rounded-lg border border-border-300/50 bg-bg-000 py-1 shadow-lg"
-								style={{top: snoozePos.top, left: snoozePos.left}}
+								style={
+								{
+									top: snoozePos.top,
+									left: snoozePos.left,
+								}}
 							>
 								{snoozedEntry && (
 									<>
 										<button
 											type="button"
-											onClick={() => {
+											onClick={() =>
+											{
 												void handleUnsnooze();
 											}}
 											className="block w-full px-3 py-1.5 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-bg-200"
@@ -1306,7 +1777,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									<button
 										key={preset.label}
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											void handleSnooze(preset.hours);
 										}}
 										className="block w-full px-3 py-1.5 text-left text-xs text-text-100 transition-colors hover:bg-bg-200"
@@ -1343,7 +1815,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("add_test")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleAddTest();
 						}}
 						disabled={addingTest || !branch}
@@ -1381,7 +1854,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("review_fix")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setReviewOpen((open) => !open);
 						}}
 						className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${fill("review_fix", "bg-amber-600 hover:bg-amber-700 text-white")}`}
@@ -1422,7 +1896,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("split")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleSplit();
 						}}
 						disabled={splitting || !branch}
@@ -1447,7 +1922,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("run_claude")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleRunClaude();
 						}}
 						disabled={runningClaude}
@@ -1472,7 +1948,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					<button
 						{...primaryProps("refresh")}
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleRefresh();
 						}}
 						disabled={refreshing}
@@ -1490,7 +1967,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							{...primaryProps("delete_branch")}
 							ref={deleteButtonRef}
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								void handleDeleteBranchClick();
 							}}
 							disabled={deleteLoading}
@@ -1503,7 +1981,11 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 							<div
 								ref={deleteFormRef}
 								className="fixed z-50 w-72 max-h-64 overflow-y-auto rounded-lg border border-border-300/50 bg-bg-000 p-3 shadow-lg"
-								style={{top: deletePos.top, left: deletePos.left}}
+								style={
+								{
+									top: deletePos.top,
+									left: deletePos.left,
+								}}
 							>
 								<div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
 									<AlertCircle className="h-3.5 w-3.5" />
@@ -1523,7 +2005,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 								<div className="flex gap-1.5">
 									<button
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											void handleDeleteBranch();
 										}}
 										disabled={deleteLoading}
@@ -1542,7 +2025,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 									</button>
 									<button
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											setDeleteConfirmOpen(false);
 										}}
 										className="rounded px-2 py-1 text-xs text-text-400 transition-colors hover:bg-bg-200"
@@ -1565,7 +2049,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 				<button
 					type="button"
 					aria-expanded={moreOpen}
-					onClick={() => {
+					onClick={() =>
+					{
 						setMoreOpen((open) => !open);
 					}}
 					className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
@@ -1612,7 +2097,8 @@ export function BranchActions({
 	item: GitChildResult;
 	category: Category;
 	layout?: "row" | "column";
-}) {
+})
+{
 	return <ItemActions item={item} category={category} layout={layout} />;
 }
 
@@ -1624,6 +2110,7 @@ export function PullRequestActions({
 	item: GitChildResult;
 	category: Category;
 	layout?: "row" | "column";
-}) {
+})
+{
 	return <ItemActions item={item} category={category} layout={layout} />;
 }

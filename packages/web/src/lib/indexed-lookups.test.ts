@@ -1,7 +1,8 @@
 import {describe, it, expect, vi, beforeEach} from "vite-plus/test";
 import type {GitHubIssue, GitHubProjectItem} from "@wip/shared";
 
-vi.mock("@wip/shared", async () => {
+vi.mock("@wip/shared", async () =>
+{
 	const actual = await vi.importActual<typeof import("@wip/shared")>("@wip/shared");
 	return {
 		...actual,
@@ -16,33 +17,48 @@ import {lookupIssueByNumber, lookupProjectItemByNumber} from "./indexed-lookups"
 const mockFetchIssues = vi.mocked(fetchAssignedIssues);
 const mockFetchItems = vi.mocked(fetchAllProjectItems);
 
-describe("lookupIssueByNumber", () => {
-	beforeEach(() => {
+describe("lookupIssueByNumber", () =>
+{
+	beforeEach(() =>
+	{
 		vi.clearAllMocks();
 	});
 
-	it("returns the matching issue by repo and number", async () => {
+	it("returns the matching issue by repo and number", async () =>
+	{
 		const issues: GitHubIssue[] = [
 			{
 				number: 1,
 				title: "First",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 			{
 				number: 42,
 				title: "Target",
 				url: "https://github.com/owner/repo/issues/42",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 			{
 				number: 42,
 				title: "Different repo",
 				url: "https://github.com/other/repo/issues/42",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "other/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "other/repo",
+				},
 			},
 		];
 		mockFetchIssues.mockResolvedValue(issues);
@@ -51,14 +67,19 @@ describe("lookupIssueByNumber", () => {
 		expect(result).toEqual(issues[1]);
 	});
 
-	it("returns null when no issue matches", async () => {
+	it("returns null when no issue matches", async () =>
+	{
 		mockFetchIssues.mockResolvedValue([
 			{
 				number: 1,
 				title: "Only",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -66,7 +87,8 @@ describe("lookupIssueByNumber", () => {
 		expect(result).toBeNull();
 	});
 
-	it("uses cached data from fetchAssignedIssues", async () => {
+	it("uses cached data from fetchAssignedIssues", async () =>
+	{
 		mockFetchIssues.mockResolvedValue([]);
 
 		await lookupIssueByNumber("owner/repo", 1);
@@ -78,12 +100,15 @@ describe("lookupIssueByNumber", () => {
 	});
 });
 
-describe("lookupProjectItemByNumber", () => {
-	beforeEach(() => {
+describe("lookupProjectItemByNumber", () =>
+{
+	beforeEach(() =>
+	{
 		vi.clearAllMocks();
 	});
 
-	it("returns the matching project item by repo and number", async () => {
+	it("returns the matching project item by repo and number", async () =>
+	{
 		const items: GitHubProjectItem[] = [
 			{
 				id: "1",
@@ -119,7 +144,8 @@ describe("lookupProjectItemByNumber", () => {
 		expect(result).toEqual(items[1]);
 	});
 
-	it("returns null when no item matches", async () => {
+	it("returns null when no item matches", async () =>
+	{
 		mockFetchItems.mockResolvedValue([
 			{
 				id: "1",
@@ -136,9 +162,16 @@ describe("lookupProjectItemByNumber", () => {
 		expect(result).toBeNull();
 	});
 
-	it("handles items without number or repository", async () => {
+	it("handles items without number or repository", async () =>
+	{
 		const items: GitHubProjectItem[] = [
-			{id: "1", title: "Draft", status: "Todo", type: "DRAFT_ISSUE", labels: []},
+			{
+				id: "1",
+				title: "Draft",
+				status: "Todo",
+				type: "DRAFT_ISSUE",
+				labels: [],
+			},
 			{
 				id: "2",
 				title: "Target",

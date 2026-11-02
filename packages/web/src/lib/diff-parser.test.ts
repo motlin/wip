@@ -30,56 +30,98 @@ index 4444444..0000000
 -export const gone = true;
 `;
 
-describe("parseDiffFiles", () => {
-	it("splits a multi-file diff and fetches both contents per file", async () => {
+describe("parseDiffFiles", () =>
+{
+	it("splits a multi-file diff and fetches both contents per file", async () =>
+	{
 		const fetchOld = vi.fn<(file: string) => Promise<string>>(async (file) => Promise.resolve(`old ${file}`));
 		const fetchNew = vi.fn<(file: string) => Promise<string>>(async (file) => Promise.resolve(`new ${file}`));
 
-		const files = await parseDiffFiles(MODIFIED_DIFF + NEW_FILE_DIFF, {old: fetchOld, new: fetchNew});
+		const files = await parseDiffFiles(
+			MODIFIED_DIFF + NEW_FILE_DIFF,
+			{
+				old: fetchOld,
+				new: fetchNew,
+			},
+		);
 
 		expect(files).toHaveLength(2);
-		expect(files[0]).toMatchObject({
-			oldFileName: "src/app.ts",
-			newFileName: "src/app.ts",
-			oldContent: "old src/app.ts",
-			newContent: "new src/app.ts",
-		});
+		expect(files[0]).toMatchObject(
+			{
+				oldFileName: "src/app.ts",
+				newFileName: "src/app.ts",
+				oldContent: "old src/app.ts",
+				newContent: "new src/app.ts",
+			},
+		);
 		expect(files[0]?.hunks).toContain("diff --git a/src/app.ts b/src/app.ts");
 	});
 
-	it("skips fetching old content for new files", async () => {
+	it("skips fetching old content for new files", async () =>
+	{
 		const fetchOld = vi.fn<() => Promise<string>>(async () => Promise.resolve("should not be called"));
 		const fetchNew = vi.fn<() => Promise<string>>(async () => Promise.resolve("created content"));
 
-		const files = await parseDiffFiles(NEW_FILE_DIFF, {old: fetchOld, new: fetchNew});
+		const files = await parseDiffFiles(
+			NEW_FILE_DIFF,
+			{
+				old: fetchOld,
+				new: fetchNew,
+			},
+		);
 
 		expect(fetchOld).not.toHaveBeenCalled();
-		expect(files[0]).toMatchObject({oldContent: "", newContent: "created content"});
+		expect(files[0]).toMatchObject(
+			{
+				oldContent: "",
+				newContent: "created content",
+			},
+		);
 	});
 
-	it("skips fetching new content for deleted files", async () => {
+	it("skips fetching new content for deleted files", async () =>
+	{
 		const fetchOld = vi.fn<() => Promise<string>>(async () => Promise.resolve("old content"));
 		const fetchNew = vi.fn<() => Promise<string>>(async () => Promise.resolve("should not be called"));
 
-		const files = await parseDiffFiles(DELETED_FILE_DIFF, {old: fetchOld, new: fetchNew});
+		const files = await parseDiffFiles(
+			DELETED_FILE_DIFF,
+			{
+				old: fetchOld,
+				new: fetchNew,
+			},
+		);
 
 		expect(fetchNew).not.toHaveBeenCalled();
-		expect(files[0]).toMatchObject({oldContent: "old content", newContent: ""});
+		expect(files[0]).toMatchObject(
+			{
+				oldContent: "old content",
+				newContent: "",
+			},
+		);
 	});
 
-	it("returns an empty list for empty diff output", async () => {
-		const files = await parseDiffFiles("", {
-			old: async () => Promise.resolve(""),
-			new: async () => Promise.resolve(""),
-		});
+	it("returns an empty list for empty diff output", async () =>
+	{
+		const files = await parseDiffFiles(
+			"",
+			{
+				old: async () => Promise.resolve(""),
+				new: async () => Promise.resolve(""),
+			},
+		);
 		expect(files).toStrictEqual([]);
 	});
 
-	it("ignores chunks without a diff header", async () => {
-		const files = await parseDiffFiles("not a diff at all\n", {
-			old: async () => Promise.resolve(""),
-			new: async () => Promise.resolve(""),
-		});
+	it("ignores chunks without a diff header", async () =>
+	{
+		const files = await parseDiffFiles(
+			"not a diff at all\n",
+			{
+				old: async () => Promise.resolve(""),
+				new: async () => Promise.resolve(""),
+			},
+		);
 		expect(files).toStrictEqual([]);
 	});
 });

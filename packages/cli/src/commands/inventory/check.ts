@@ -8,24 +8,30 @@ export type {InventoryCheckResult} from "@wip/shared";
  * Reports drift between the project registry and the directories on disk, listing present skip
  * entries informationally and gone skip entries as removable. Exits 1 when inconsistent.
  */
-export default class InventoryCheck extends Command {
+export default class InventoryCheck extends Command
+{
 	static override description = "Compare the wip project registry with the git repos on disk";
 
 	static enableJsonFlag = true;
 
 	static override examples = ["<%= config.bin %> inventory check", "<%= config.bin %> inventory check --json"];
 
-	static override flags = {
-		"projects-dir": Flags.string({
-			description: "Projects directory to scan (default: configured projectsDirs)",
-		}),
+	static override flags =
+	{
+		"projects-dir": Flags.string(
+			{
+				description: "Projects directory to scan (default: configured projectsDirs)",
+			},
+		),
 	};
 
-	async run(): Promise<InventoryCheckResult> {
+	async run(): Promise<InventoryCheckResult>
+	{
 		const {flags} = await this.parse(InventoryCheck);
 		const result = checkInventory(loadInventory().projects, getProjectsDirs(flags["projects-dir"]));
 
-		if (this.jsonEnabled()) {
+		if (this.jsonEnabled())
+		{
 			// oclif prints the returned result; exiting via this.exit would print a second, error document.
 			if (!result.consistent) process.exitCode = 1;
 			return result;
@@ -33,10 +39,12 @@ export default class InventoryCheck extends Command {
 		if (result.consistent) this.log("Registry and disk are consistent");
 		for (const dir of result.unregistered) this.log(`unregistered: ${dir}`);
 		for (const entry of result.missing) this.log(`${entry.reason}: ${entry.name} (${entry.dir})`);
-		for (const {name, dir, reason, note} of result.skipped) {
+		for (const {name, dir, reason, note} of result.skipped)
+		{
 			this.log(`skipped: ${name} (${dir}): ${reason.text}${note === undefined ? "" : ` (${note})`}`);
 		}
-		for (const {name, dir} of result.removableSkips) {
+		for (const {name, dir} of result.removableSkips)
+		{
 			this.log(`removable skip: ${name} (${dir}): directory gone, safe to remove from the registry`);
 		}
 		if (result.consistent) return result;

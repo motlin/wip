@@ -11,25 +11,42 @@ import {getCacheDir} from "./config.js";
  * temporary worktree is created and removed when the unit finishes.
  */
 
-export interface BranchWorktree {
+export interface BranchWorktree
+{
 	dir: string;
 	created: boolean;
 	cleanup: () => Promise<void>;
 }
 
-export interface WorktreeEntry {
+export interface WorktreeEntry
+{
 	dir: string;
 	branch: string | undefined;
 }
 
-export function parseWorktreeList(porcelain: string): WorktreeEntry[] {
+export function parseWorktreeList(porcelain: string): WorktreeEntry[]
+{
 	const entries: WorktreeEntry[] = [];
-	let current: {dir: string; branch: string | undefined} | undefined;
-	for (const line of porcelain.split("\n")) {
-		if (line.startsWith("worktree ")) {
+	let current:
+		|
+		  {
+				dir: string;
+				branch: string | undefined;
+		  }
+		| undefined;
+	for (const line of porcelain.split("\n"))
+	{
+		if (line.startsWith("worktree "))
+		{
 			if (current) entries.push(current);
-			current = {dir: line.slice("worktree ".length), branch: undefined};
-		} else if (line.startsWith("branch ") && current) {
+			current =
+			{
+				dir: line.slice("worktree ".length),
+				branch: undefined,
+			};
+		}
+		else if (line.startsWith("branch ") && current)
+		{
 			current.branch = line.slice("branch refs/heads/".length);
 		}
 	}
@@ -37,12 +54,30 @@ export function parseWorktreeList(porcelain: string): WorktreeEntry[] {
 	return entries;
 }
 
-async function git(dir: string, args: string[]): Promise<{exitCode: number; stdout: string}> {
-	const result = await tracedExeca("git", ["-C", dir, ...args], {reject: false});
-	return {exitCode: result.exitCode, stdout: result.stdout.trim()};
+async function git(
+	dir: string,
+	args: string[],
+): Promise<
+{
+	exitCode: number;
+	stdout: string;
+}>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, ...args],
+		{
+			reject: false,
+		},
+	);
+	return {
+		exitCode: result.exitCode,
+		stdout: result.stdout.trim(),
+	};
 }
 
-async function listWorktrees(repoDir: string): Promise<WorktreeEntry[]> {
+async function listWorktrees(repoDir: string): Promise<WorktreeEntry[]>
+{
 	const result = await git(repoDir, ["worktree", "list", "--porcelain"]);
 	return parseWorktreeList(result.stdout);
 }
@@ -52,30 +87,52 @@ export async function ensureBranchWorktree(opts: {
 	repoDir: string;
 	branch: string;
 	baseDir?: string;
-}): Promise<BranchWorktree> {
+}): Promise<BranchWorktree>
+{
 	const {project, repoDir, branch} = opts;
 
 	const existing = (await listWorktrees(repoDir)).find((e) => e.branch === branch);
-	if (existing) {
-		return {dir: existing.dir, created: false, cleanup: async () => {}};
+	if (existing)
+	{
+		return {
+			dir: existing.dir,
+			created: false,
+			cleanup: async () =>
+			{
+			},
+		};
 	}
 
 	const baseDir = opts.baseDir ?? path.join(getCacheDir(), "worktrees", project);
-	fs.mkdirSync(baseDir, {recursive: true});
+	fs.mkdirSync(
+		baseDir,
+		{
+			recursive: true,
+		},
+	);
 	const safeBranch = branch.replace(/[^\w.-]+/g, "-");
 	const dir = path.join(baseDir, safeBranch);
 
 	const add = await git(repoDir, ["worktree", "add", "--quiet", dir, branch]);
-	if (add.exitCode !== 0) {
+	if (add.exitCode !== 0)
+	{
 		throw new Error(`Failed to create worktree for ${branch} at ${dir}`);
 	}
 
 	return {
 		dir,
 		created: true,
-		cleanup: async () => {
+		cleanup: async () =>
+		{
 			await git(repoDir, ["worktree", "remove", "--force", dir]);
-			if (fs.existsSync(dir)) fs.rmSync(dir, {recursive: true, force: true});
+			if (fs.existsSync(dir))
+				fs.rmSync(
+					dir,
+					{
+						recursive: true,
+						force: true,
+					},
+				);
 			await git(repoDir, ["worktree", "prune"]);
 		},
 	};

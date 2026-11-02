@@ -85,7 +85,8 @@ export type Transition = z.infer<typeof TransitionSchema>;
 
 export type TransitionOutcome = "clean" | "conflicts";
 
-export interface StateTransition {
+export interface StateTransition
+{
 	from: Category;
 	transition: Transition;
 	to: Category;
@@ -98,55 +99,259 @@ export interface StateTransition {
 // States are nouns/adjectives (what the item IS); transitions are verbs (what HAPPENS).
 const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	// Snooze — available from most states
-	{from: "ready_to_test", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "test_failed", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "ready_to_push", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "needs_rebase", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "rebase_unknown", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "rebase_stuck", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "pushed_no_pr", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "checks_passed", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "checks_failed", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "untriaged", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "triaged", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "blocked", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "no_test", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "detached_head", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "local_changes", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "rebase_conflicts", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "checks_unknown", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "checks_running", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "review_comments", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "changes_requested", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "approved", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "upstream_red", transition: "snooze", to: "snoozed", kind: "active"},
-	{from: "remote_only", transition: "snooze", to: "snoozed", kind: "active"},
+	{
+		from: "ready_to_test",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "test_failed",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "ready_to_push",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "needs_rebase",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "rebase_unknown",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "rebase_stuck",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "pushed_no_pr",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "checks_passed",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "checks_failed",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "untriaged",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "triaged",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "blocked",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "no_test",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "detached_head",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "local_changes",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "rebase_conflicts",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "checks_unknown",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "checks_running",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "review_comments",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "changes_requested",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "approved",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "upstream_red",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
+	{
+		from: "remote_only",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
 
 	// Local development flow
-	{from: "triaged", transition: "create_branch", to: "ready_to_test", kind: "active"},
-	{from: "untriaged", transition: "create_branch", to: "ready_to_test", kind: "active"},
-	{from: "detached_head", transition: "create_branch", to: "ready_to_test", kind: "active"},
-	{from: "local_changes", transition: "commit", to: "ready_to_test", kind: "active"},
+	{
+		from: "triaged",
+		transition: "create_branch",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "untriaged",
+		transition: "create_branch",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "detached_head",
+		transition: "create_branch",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "local_changes",
+		transition: "commit",
+		to: "ready_to_test",
+		kind: "active",
+	},
 
 	// Remote only: a commit no local branch and no PR holds. Restore a local branch from the remote
 	// one (`git branch <name> <remote>/<name>`) or open a PR from it; deleting the remote branch drops it.
-	{from: "remote_only", transition: "restore_branch", to: "ready_to_test", kind: "active"},
-	{from: "remote_only", transition: "create_pr", to: "checks_unknown", kind: "active"},
+	{
+		from: "remote_only",
+		transition: "restore_branch",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "remote_only",
+		transition: "create_pr",
+		to: "checks_unknown",
+		kind: "active",
+	},
 
 	// Testing flow
-	{from: "no_test", transition: "run_test", to: "test_running", kind: "active"},
-	{from: "ready_to_test", transition: "run_test", to: "test_running", kind: "active"},
-	{from: "test_failed", transition: "run_test", to: "test_running", kind: "active"},
-	{from: "test_running", transition: "test_pass", to: "ready_to_push", kind: "passive"},
-	{from: "test_running", transition: "test_fail", to: "test_failed", kind: "passive"},
-	{from: "test_running", transition: "cancel_test", to: "ready_to_test", kind: "active"},
-	{from: "test_running", transition: "snooze", to: "snoozed", kind: "active"},
+	{
+		from: "no_test",
+		transition: "run_test",
+		to: "test_running",
+		kind: "active",
+	},
+	{
+		from: "ready_to_test",
+		transition: "run_test",
+		to: "test_running",
+		kind: "active",
+	},
+	{
+		from: "test_failed",
+		transition: "run_test",
+		to: "test_running",
+		kind: "active",
+	},
+	{
+		from: "test_running",
+		transition: "test_pass",
+		to: "ready_to_push",
+		kind: "passive",
+	},
+	{
+		from: "test_running",
+		transition: "test_fail",
+		to: "test_failed",
+		kind: "passive",
+	},
+	{
+		from: "test_running",
+		transition: "cancel_test",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "test_running",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
 
 	// Rebase flow
-	{from: "needs_rebase", transition: "rebase", to: "ready_to_test", kind: "active", outcome: "clean"},
-	{from: "needs_rebase", transition: "rebase", to: "rebase_conflicts", kind: "active", outcome: "conflicts"},
-	{from: "rebase_unknown", transition: "rebase", to: "ready_to_test", kind: "active", outcome: "clean"},
-	{from: "rebase_unknown", transition: "rebase", to: "rebase_conflicts", kind: "active", outcome: "conflicts"},
+	{
+		from: "needs_rebase",
+		transition: "rebase",
+		to: "ready_to_test",
+		kind: "active",
+		outcome: "clean",
+	},
+	{
+		from: "needs_rebase",
+		transition: "rebase",
+		to: "rebase_conflicts",
+		kind: "active",
+		outcome: "conflicts",
+	},
+	{
+		from: "rebase_unknown",
+		transition: "rebase",
+		to: "ready_to_test",
+		kind: "active",
+		outcome: "clean",
+	},
+	{
+		from: "rebase_unknown",
+		transition: "rebase",
+		to: "rebase_conflicts",
+		kind: "active",
+		outcome: "conflicts",
+	},
 	{
 		from: "rebase_conflicts",
 		transition: "resolve_conflicts",
@@ -154,61 +359,211 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 		kind: "active",
 	},
 	// Abort, don't rescue: backing a stuck rebase out leaves the branch needing the rebase again
-	{from: "rebase_stuck", transition: "abort_rebase", to: "needs_rebase", kind: "active"},
+	{
+		from: "rebase_stuck",
+		transition: "abort_rebase",
+		to: "needs_rebase",
+		kind: "active",
+	},
 
 	// Split: a commit marked "consider splitting" can be split (git:split-branch) alongside its
 	// normal path, from any branch state before push. The split commits are new and untested.
-	{from: "ready_to_test", transition: "split", to: "ready_to_test", kind: "active"},
-	{from: "test_failed", transition: "split", to: "ready_to_test", kind: "active"},
-	{from: "needs_rebase", transition: "split", to: "ready_to_test", kind: "active"},
-	{from: "rebase_unknown", transition: "split", to: "ready_to_test", kind: "active"},
-	{from: "ready_to_push", transition: "split", to: "ready_to_test", kind: "active"},
+	{
+		from: "ready_to_test",
+		transition: "split",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "test_failed",
+		transition: "split",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "needs_rebase",
+		transition: "split",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "rebase_unknown",
+		transition: "split",
+		to: "ready_to_test",
+		kind: "active",
+	},
+	{
+		from: "ready_to_push",
+		transition: "split",
+		to: "ready_to_test",
+		kind: "active",
+	},
 
 	// Push flow
-	{from: "ready_to_push", transition: "push", to: "pushing", kind: "active"},
-	{from: "ready_to_push", transition: "force_push", to: "pushed_no_pr", kind: "active"},
-	{from: "no_test", transition: "push", to: "pushing", kind: "active"},
-	{from: "pushing", transition: "push_complete", to: "pushed_no_pr", kind: "passive"},
-	{from: "pushing", transition: "push_complete", to: "checks_unknown", kind: "passive"},
-	{from: "pushing", transition: "snooze", to: "snoozed", kind: "active"},
+	{
+		from: "ready_to_push",
+		transition: "push",
+		to: "pushing",
+		kind: "active",
+	},
+	{
+		from: "ready_to_push",
+		transition: "force_push",
+		to: "pushed_no_pr",
+		kind: "active",
+	},
+	{
+		from: "no_test",
+		transition: "push",
+		to: "pushing",
+		kind: "active",
+	},
+	{
+		from: "pushing",
+		transition: "push_complete",
+		to: "pushed_no_pr",
+		kind: "passive",
+	},
+	{
+		from: "pushing",
+		transition: "push_complete",
+		to: "checks_unknown",
+		kind: "passive",
+	},
+	{
+		from: "pushing",
+		transition: "snooze",
+		to: "snoozed",
+		kind: "active",
+	},
 
 	// PR creation
-	{from: "pushed_no_pr", transition: "create_pr", to: "checks_unknown", kind: "active"},
+	{
+		from: "pushed_no_pr",
+		transition: "create_pr",
+		to: "checks_unknown",
+		kind: "active",
+	},
 
 	// CI checks flow
-	{from: "checks_unknown", transition: "checks_start", to: "checks_running", kind: "passive"},
-	{from: "checks_unknown", transition: "checks_pass", to: "checks_passed", kind: "passive"},
-	{from: "checks_unknown", transition: "checks_fail", to: "checks_failed", kind: "passive"},
-	{from: "checks_running", transition: "checks_pass", to: "checks_passed", kind: "passive"},
-	{from: "checks_running", transition: "checks_fail", to: "checks_failed", kind: "passive"},
-	{from: "checks_failed", transition: "force_push", to: "checks_running", kind: "active"},
+	{
+		from: "checks_unknown",
+		transition: "checks_start",
+		to: "checks_running",
+		kind: "passive",
+	},
+	{
+		from: "checks_unknown",
+		transition: "checks_pass",
+		to: "checks_passed",
+		kind: "passive",
+	},
+	{
+		from: "checks_unknown",
+		transition: "checks_fail",
+		to: "checks_failed",
+		kind: "passive",
+	},
+	{
+		from: "checks_running",
+		transition: "checks_pass",
+		to: "checks_passed",
+		kind: "passive",
+	},
+	{
+		from: "checks_running",
+		transition: "checks_fail",
+		to: "checks_failed",
+		kind: "passive",
+	},
+	{
+		from: "checks_failed",
+		transition: "force_push",
+		to: "checks_running",
+		kind: "active",
+	},
 
 	// Code review flow
-	{from: "checks_passed", transition: "review_comment", to: "review_comments", kind: "passive"},
+	{
+		from: "checks_passed",
+		transition: "review_comment",
+		to: "review_comments",
+		kind: "passive",
+	},
 	{
 		from: "checks_passed",
 		transition: "request_changes",
 		to: "changes_requested",
 		kind: "passive",
 	},
-	{from: "checks_passed", transition: "approve", to: "approved", kind: "passive"},
-	{from: "review_comments", transition: "approve", to: "approved", kind: "passive"},
+	{
+		from: "checks_passed",
+		transition: "approve",
+		to: "approved",
+		kind: "passive",
+	},
+	{
+		from: "review_comments",
+		transition: "approve",
+		to: "approved",
+		kind: "passive",
+	},
 	{
 		from: "review_comments",
 		transition: "request_changes",
 		to: "changes_requested",
 		kind: "passive",
 	},
-	{from: "changes_requested", transition: "dismiss_review", to: "checks_passed", kind: "passive"},
-	{from: "review_comments", transition: "dismiss_review", to: "checks_passed", kind: "passive"},
-	{from: "approved", transition: "request_changes", to: "changes_requested", kind: "passive"},
-	{from: "approved", transition: "dismiss_review", to: "checks_passed", kind: "passive"},
-	{from: "changes_requested", transition: "approve", to: "approved", kind: "passive"},
-	{from: "changes_requested", transition: "force_push", to: "checks_running", kind: "active"},
-	{from: "review_comments", transition: "force_push", to: "checks_running", kind: "active"},
+	{
+		from: "changes_requested",
+		transition: "dismiss_review",
+		to: "checks_passed",
+		kind: "passive",
+	},
+	{
+		from: "review_comments",
+		transition: "dismiss_review",
+		to: "checks_passed",
+		kind: "passive",
+	},
+	{
+		from: "approved",
+		transition: "request_changes",
+		to: "changes_requested",
+		kind: "passive",
+	},
+	{
+		from: "approved",
+		transition: "dismiss_review",
+		to: "checks_passed",
+		kind: "passive",
+	},
+	{
+		from: "changes_requested",
+		transition: "approve",
+		to: "approved",
+		kind: "passive",
+	},
+	{
+		from: "changes_requested",
+		transition: "force_push",
+		to: "checks_running",
+		kind: "active",
+	},
+	{
+		from: "review_comments",
+		transition: "force_push",
+		to: "checks_running",
+		kind: "active",
+	},
 
 	// Merge: landed is terminal (no outgoing transitions)
-	{from: "approved", transition: "merge", to: "landed", kind: "active"},
+	{
+		from: "approved",
+		transition: "merge",
+		to: "landed",
+		kind: "active",
+	},
 
 	// Skippable — orthogonal state (no incoming transitions; derived from item.skippable flag)
 	// Skippable items are terminal and cannot transition to other states via actions
@@ -220,7 +575,8 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 // state gets a return edge.
 export const STATE_MACHINE: readonly StateTransition[] = [
 	...FLOW_TRANSITIONS,
-	...FLOW_TRANSITIONS.filter((t) => t.transition === "snooze").map((t): StateTransition => ({
+	...FLOW_TRANSITIONS.filter((t) => t.transition === "snooze").map((t): StateTransition => (
+	{
 		from: "snoozed",
 		transition: "unsnooze",
 		to: t.from,
@@ -229,11 +585,13 @@ export const STATE_MACHINE: readonly StateTransition[] = [
 ];
 
 // Lookup helpers
-export function getTransitionsFrom(state: Category): StateTransition[] {
+export function getTransitionsFrom(state: Category): StateTransition[]
+{
 	return STATE_MACHINE.filter((t) => t.from === state);
 }
 
-export function getTransitionsTo(state: Category): StateTransition[] {
+export function getTransitionsTo(state: Category): StateTransition[]
+{
 	return STATE_MACHINE.filter((t) => t.to === state);
 }
 
@@ -241,13 +599,15 @@ export function applyTransition(
 	from: Category,
 	transition: Transition,
 	outcome: TransitionOutcome = "clean",
-): Category | undefined {
+): Category | undefined
+{
 	const matches = STATE_MACHINE.filter((t) => t.from === from && t.transition === transition);
 	const match = matches.find((t) => t.outcome === outcome) ?? matches.find((t) => t.outcome === undefined);
 	return match?.to;
 }
 
-export function mapProjectStatusToCategory(status: string): Category {
+export function mapProjectStatusToCategory(status: string): Category
+{
 	const lower = status.toLowerCase().trim();
 
 	if (lower === "done" || lower === "closed" || lower === "completed") return "approved";
@@ -264,443 +624,571 @@ const shortShaSchema = z.string().regex(/^[a-f0-9]{7,40}$/);
 const branchSchema = z.string().regex(/^[a-zA-Z0-9._\x2f-]+$/);
 const dateSchema = z.iso.date();
 const hexColorSchema = z.string().regex(/^[0-9a-fA-F]{6}$/);
-export const LabelSchema = z.object({name: z.string().min(1), color: hexColorSchema});
-export const RepositorySchema = z.object({
-	name: z.string().min(1),
-	nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
-});
+export const LabelSchema = z.object(
+	{
+		name: z.string().min(1),
+		color: hexColorSchema,
+	},
+);
+export const RepositorySchema = z.object(
+	{
+		name: z.string().min(1),
+		nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
+	},
+);
 
-export const ExternalCiBlockerSchema = z.object({
-	repository: z.string().regex(/^[^/]+\/[^/]+$/),
-	repositoryUrl: z.url(),
-	branch: branchSchema,
-	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})),
-});
+export const ExternalCiBlockerSchema = z.object(
+	{
+		repository: z.string().regex(/^[^/]+\/[^/]+$/),
+		repositoryUrl: z.url(),
+		branch: branchSchema,
+		failedChecks: z.array(
+			z.object(
+				{
+					name: z.string(),
+					url: z.url().optional(),
+				},
+			),
+		),
+	},
+);
 export type ExternalCiBlocker = z.infer<typeof ExternalCiBlockerSchema>;
 
-export const ProjectInfoSchema = z.object({
-	name: z.string(),
-	dir: z.string(),
-	remote: z.string(),
-	originRemote: z.string(),
-	upstreamRemote: z.string(),
-	upstreamBranch: z.string(),
-	upstreamRef: z.string(),
-	dirty: z.boolean(),
-	detachedHead: z.boolean(),
-	branchCount: z.number(),
-	hasTestConfigured: z.boolean(),
-	rebaseInProgress: z.boolean(),
-	/**
-	 * The git top level enclosing dir (dir itself for a repo root); a nested project shares its
-	 * parent's. Background repo work runs once per top level (see sharedRepoOwners).
-	 */
-	gitTopLevel: z.string().optional(),
-});
+export const ProjectInfoSchema = z.object(
+	{
+		name: z.string(),
+		dir: z.string(),
+		remote: z.string(),
+		originRemote: z.string(),
+		upstreamRemote: z.string(),
+		upstreamBranch: z.string(),
+		upstreamRef: z.string(),
+		dirty: z.boolean(),
+		detachedHead: z.boolean(),
+		branchCount: z.number(),
+		hasTestConfigured: z.boolean(),
+		rebaseInProgress: z.boolean(),
+		/**
+		 * The git top level enclosing dir (dir itself for a repo root); a nested project shares its
+		 * parent's. Background repo work runs once per top level (see sharedRepoOwners).
+		 */
+		gitTopLevel: z.string().optional(),
+	},
+);
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 
 /**
  * A commit only a remote-tracking branch holds (no local branch, no worktree) and no pull request
  * covers: effectively lost work, in its own state (`remote_only`), never ready.
  */
-export const RemoteOnlySchema = z.object({
-	remote: z.string(),
-	branch: branchSchema,
-	/** GitHub's prefilled new-PR page from that branch into the project's PR repo (set by the server). */
-	compareUrl: z.url().optional(),
-});
+export const RemoteOnlySchema = z.object(
+	{
+		remote: z.string(),
+		branch: branchSchema,
+		/** GitHub's prefilled new-PR page from that branch into the project's PR repo (set by the server). */
+		compareUrl: z.url().optional(),
+	},
+);
 export type RemoteOnly = z.infer<typeof RemoteOnlySchema>;
 
-export const ChildCommitSchema = z.object({
-	sha: shaSchema,
-	shortSha: shortShaSchema,
-	/** First parent (`%P`); a stacked commit's parent is another child. */
-	parentSha: shaSchema.optional(),
-	subject: z.string(),
-	date: dateSchema,
-	branch: branchSchema.optional(),
-	testStatus: TestStatusSchema,
-	checkStatus: CheckStatusSchema,
-	skippable: z.boolean(),
-	pushedToRemote: z.boolean(),
-	pushing: z.boolean().optional(),
-	localAhead: z.boolean().optional(),
-	needsRebase: z.boolean().optional(),
-	reviewStatus: ReviewStatusSchema,
-	prUrl: z.url().optional(),
-	prNumber: z.number().optional(),
-	/** The sha at the PR's head, the commit its checks ran on. */
-	prHeadSha: shaSchema.optional(),
-	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})).optional(),
-	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
-	behind: z.boolean().optional(),
-	commitsBehind: z.number().optional(),
-	commitsAhead: z.number().optional(),
-	rebaseable: z.boolean().optional(),
-	mergeStateStatus: MergeStateStatusSchema.optional(),
-	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
-	containingBranch: branchSchema.optional(),
-	remoteOnly: RemoteOnlySchema.optional(),
-});
+export const ChildCommitSchema = z.object(
+	{
+		sha: shaSchema,
+		shortSha: shortShaSchema,
+		/** First parent (`%P`); a stacked commit's parent is another child. */
+		parentSha: shaSchema.optional(),
+		subject: z.string(),
+		date: dateSchema,
+		branch: branchSchema.optional(),
+		testStatus: TestStatusSchema,
+		checkStatus: CheckStatusSchema,
+		skippable: z.boolean(),
+		pushedToRemote: z.boolean(),
+		pushing: z.boolean().optional(),
+		localAhead: z.boolean().optional(),
+		needsRebase: z.boolean().optional(),
+		reviewStatus: ReviewStatusSchema,
+		prUrl: z.url().optional(),
+		prNumber: z.number().optional(),
+		/** The sha at the PR's head, the commit its checks ran on. */
+		prHeadSha: shaSchema.optional(),
+		failedChecks: z
+			.array(
+				z.object(
+					{
+						name: z.string(),
+						url: z.url().optional(),
+					},
+				),
+			)
+			.optional(),
+		externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
+		behind: z.boolean().optional(),
+		commitsBehind: z.number().optional(),
+		commitsAhead: z.number().optional(),
+		rebaseable: z.boolean().optional(),
+		mergeStateStatus: MergeStateStatusSchema.optional(),
+		alreadyOnRemote: z
+			.object(
+				{
+					branch: branchSchema,
+				},
+			)
+			.optional(),
+		containingBranch: branchSchema.optional(),
+		remoteOnly: RemoteOnlySchema.optional(),
+	},
+);
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
-export const DeleteBranchInputSchema = z.object({
-	project: z.string(),
-	branch: branchSchema,
-});
+export const DeleteBranchInputSchema = z.object(
+	{
+		project: z.string(),
+		branch: branchSchema,
+	},
+);
 export type DeleteBranchInput = z.infer<typeof DeleteBranchInputSchema>;
 
 /** Restore branch / Delete remote branch on a remote-only commit: the remote branch that holds it. */
-export const RemoteBranchInputSchema = z.object({
-	project: z.string(),
-	remote: z.string().regex(/^[a-zA-Z0-9._-]+$/),
-	branch: branchSchema,
-});
+export const RemoteBranchInputSchema = z.object(
+	{
+		project: z.string(),
+		remote: z.string().regex(/^[a-zA-Z0-9._-]+$/),
+		branch: branchSchema,
+	},
+);
 export type RemoteBranchInput = z.infer<typeof RemoteBranchInputSchema>;
 
-export const SetUpPrRefsInputSchema = z.object({project: z.string()});
+export const SetUpPrRefsInputSchema = z.object(
+	{
+		project: z.string(),
+	},
+);
 export type SetUpPrRefsInput = z.infer<typeof SetUpPrRefsInputSchema>;
 
-export const ForcePushInputSchema = z.object({
-	project: z.string(),
-	branch: branchSchema,
-});
+export const ForcePushInputSchema = z.object(
+	{
+		project: z.string(),
+		branch: branchSchema,
+	},
+);
 export type ForcePushInput = z.infer<typeof ForcePushInputSchema>;
 
-export const RenameBranchInputSchema = z.object({
-	project: z.string(),
-	oldBranch: branchSchema,
-	newBranch: branchSchema,
-});
+export const RenameBranchInputSchema = z.object(
+	{
+		project: z.string(),
+		oldBranch: branchSchema,
+		newBranch: branchSchema,
+	},
+);
 export type RenameBranchInput = z.infer<typeof RenameBranchInputSchema>;
 
-export const ApplyFixesInputSchema = z.object({
-	project: z.string(),
-	branch: branchSchema,
-	prNumber: z.number(),
-});
+export const ApplyFixesInputSchema = z.object(
+	{
+		project: z.string(),
+		branch: branchSchema,
+		prNumber: z.number(),
+	},
+);
 export type ApplyFixesInput = z.infer<typeof ApplyFixesInputSchema>;
 
-export const RebaseLocalInputSchema = z.object({
-	project: z.string(),
-	branch: branchSchema,
-});
+export const RebaseLocalInputSchema = z.object(
+	{
+		project: z.string(),
+		branch: branchSchema,
+	},
+);
 export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 
 // --- Work item types (each represents a distinct kind of work) ---
 
 // Flat git child result: all fields from ChildCommit (minus `behind`) plus server-computed fields.
 // Client discriminates by checking child.branch and child.prUrl.
-export const GitChildResultSchema = z.object({
-	/**
-	 * A project-level item, not a commit: upstream_ci is a red upstream; pr_refs_missing is a repo
-	 * whose PR remote (`prRemote`) fetches no `refs/pull/*` heads. Absent on every commit.
-	 */
-	kind: z.enum(["upstream_ci", "pr_refs_missing"]).optional(),
-	/** On a pr_refs_missing child: the git remote holding the PRs (upstream for a fork, origin otherwise). */
-	prRemote: z.string().optional(),
-	/** On an upstream_ci child: own stops the repo's line and gets a queue item; foreign is the baseline. */
-	ownership: z.enum(["own", "foreign"]).optional(),
-	/** The repo's own upstream is red: nothing in it lands until upstream is fixed. */
-	upstreamRedBlocked: z.boolean().optional(),
-	project: z.string(),
-	remote: z.string(),
-	originRemote: z.string(),
-	sha: shaSchema,
-	shortSha: shortShaSchema,
-	/** First parent: the upstream tip for a commit directly on it, another child for a stacked one. */
-	parentSha: shaSchema.optional(),
-	subject: z.string(),
-	date: dateSchema,
-	branch: branchSchema.optional(),
-	testStatus: TestStatusSchema,
-	checkStatus: CheckStatusSchema,
-	skippable: z.boolean(),
-	pushedToRemote: z.boolean(),
-	pushing: z.boolean().optional(),
-	localAhead: z.boolean().optional(),
-	needsRebase: z.boolean().optional(),
-	reviewStatus: ReviewStatusSchema,
-	prUrl: z.url().optional(),
-	prNumber: z.number().optional(),
-	/** The sha at the PR's head, the commit its checks ran on. */
-	prHeadSha: shaSchema.optional(),
-	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})).optional(),
-	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
-	commitsBehind: z.number().optional(),
-	commitsAhead: z.number().optional(),
-	rebaseable: z.boolean().optional(),
-	mergeStateStatus: MergeStateStatusSchema.optional(),
-	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
-	containingBranch: branchSchema.optional(),
-	remoteOnly: RemoteOnlySchema.optional(),
-	failureTail: z.string().optional(),
-	suggestedBranch: branchSchema.optional(),
-	blockReason: z.string().optional(),
-	blockCommand: z.string().optional(),
-	isHead: z.boolean().optional(),
-	/** Set when some On hold / Snooze row in the project carries a patch-id. */
-	patchId: z.string().optional(),
-	/** On hold or snoozed: returned flagged so the client can show it collapsed; classifies as `snoozed`. */
-	onHold: z.boolean().optional(),
-	/** Commit size from the commit_facts cache; absent when git could not read the commit. */
-	files: z.number().int().nonnegative().optional(),
-	insertions: z.number().int().nonnegative().optional(),
-	deletions: z.number().int().nonnegative().optional(),
-	/** Size above `flow.splitThresholdLines`: shows a marker and enables the state's split transition. */
-	considerSplitting: z.boolean().optional(),
-	/** When the work-item ledger first saw this change (by patch-id, so it survives a rebase); cards show "in wip Nd". */
-	firstSeen: z.string().optional(),
-	/** The ready buffer's patch-id fast path skipped the local test (green before replay); ready once PR checks pass. */
-	localTestSkipped: z.boolean().optional(),
-	/** With localTestSkipped: draft-PR verification skipped it, so its draft PR's checks decide instead. */
-	verifiedByDraftPr: z.boolean().optional(),
-	/** Local `<upstreamBranch>` already contains it but the upstream branch does not: fast-forwarded, waiting for a push. */
-	onLocalMain: z.boolean().optional(),
-	/** The PR has auto-merge on: GitHub merges it itself once its checks pass. */
-	autoMerge: z.literal(true).optional(),
-	/** The repo allows auto-merge: Open PR and Merge PR on running checks turn it on. */
-	autoMergeAllowed: z.literal(true).optional(),
-	/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
-	autoFixed: z
-		.object({
-			failure: z.string(),
-			fixupSha: shaSchema,
-			branch: branchSchema,
-			/** Fix it myself: the user took the failure over; the fixup stays until they decide. */
-			assigned: z.literal(true).optional(),
-		})
-		.optional(),
-});
+export const GitChildResultSchema = z.object(
+	{
+		/**
+		 * A project-level item, not a commit: upstream_ci is a red upstream; pr_refs_missing is a repo
+		 * whose PR remote (`prRemote`) fetches no `refs/pull/*` heads. Absent on every commit.
+		 */
+		kind: z.enum(["upstream_ci", "pr_refs_missing"]).optional(),
+		/** On a pr_refs_missing child: the git remote holding the PRs (upstream for a fork, origin otherwise). */
+		prRemote: z.string().optional(),
+		/** On an upstream_ci child: own stops the repo's line and gets a queue item; foreign is the baseline. */
+		ownership: z.enum(["own", "foreign"]).optional(),
+		/** The repo's own upstream is red: nothing in it lands until upstream is fixed. */
+		upstreamRedBlocked: z.boolean().optional(),
+		project: z.string(),
+		remote: z.string(),
+		originRemote: z.string(),
+		sha: shaSchema,
+		shortSha: shortShaSchema,
+		/** First parent: the upstream tip for a commit directly on it, another child for a stacked one. */
+		parentSha: shaSchema.optional(),
+		subject: z.string(),
+		date: dateSchema,
+		branch: branchSchema.optional(),
+		testStatus: TestStatusSchema,
+		checkStatus: CheckStatusSchema,
+		skippable: z.boolean(),
+		pushedToRemote: z.boolean(),
+		pushing: z.boolean().optional(),
+		localAhead: z.boolean().optional(),
+		needsRebase: z.boolean().optional(),
+		reviewStatus: ReviewStatusSchema,
+		prUrl: z.url().optional(),
+		prNumber: z.number().optional(),
+		/** The sha at the PR's head, the commit its checks ran on. */
+		prHeadSha: shaSchema.optional(),
+		failedChecks: z
+			.array(
+				z.object(
+					{
+						name: z.string(),
+						url: z.url().optional(),
+					},
+				),
+			)
+			.optional(),
+		externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
+		commitsBehind: z.number().optional(),
+		commitsAhead: z.number().optional(),
+		rebaseable: z.boolean().optional(),
+		mergeStateStatus: MergeStateStatusSchema.optional(),
+		alreadyOnRemote: z
+			.object(
+				{
+					branch: branchSchema,
+				},
+			)
+			.optional(),
+		containingBranch: branchSchema.optional(),
+		remoteOnly: RemoteOnlySchema.optional(),
+		failureTail: z.string().optional(),
+		suggestedBranch: branchSchema.optional(),
+		blockReason: z.string().optional(),
+		blockCommand: z.string().optional(),
+		isHead: z.boolean().optional(),
+		/** Set when some On hold / Snooze row in the project carries a patch-id. */
+		patchId: z.string().optional(),
+		/** On hold or snoozed: returned flagged so the client can show it collapsed; classifies as `snoozed`. */
+		onHold: z.boolean().optional(),
+		/** Commit size from the commit_facts cache; absent when git could not read the commit. */
+		files: z.number().int().nonnegative().optional(),
+		insertions: z.number().int().nonnegative().optional(),
+		deletions: z.number().int().nonnegative().optional(),
+		/** Size above `flow.splitThresholdLines`: shows a marker and enables the state's split transition. */
+		considerSplitting: z.boolean().optional(),
+		/** When the work-item ledger first saw this change (by patch-id, so it survives a rebase); cards show "in wip Nd". */
+		firstSeen: z.string().optional(),
+		/** The ready buffer's patch-id fast path skipped the local test (green before replay); ready once PR checks pass. */
+		localTestSkipped: z.boolean().optional(),
+		/** With localTestSkipped: draft-PR verification skipped it, so its draft PR's checks decide instead. */
+		verifiedByDraftPr: z.boolean().optional(),
+		/** Local `<upstreamBranch>` already contains it but the upstream branch does not: fast-forwarded, waiting for a push. */
+		onLocalMain: z.boolean().optional(),
+		/** The PR has auto-merge on: GitHub merges it itself once its checks pass. */
+		autoMerge: z.literal(true).optional(),
+		/** The repo allows auto-merge: Open PR and Merge PR on running checks turn it on. */
+		autoMergeAllowed: z.literal(true).optional(),
+		/** The ready buffer's AI test fix: a `fixup!` commit on `branch` awaiting review ("auto-fixed: <failure>"). */
+		autoFixed: z
+			.object(
+				{
+					failure: z.string(),
+					fixupSha: shaSchema,
+					branch: branchSchema,
+					/** Fix it myself: the user took the failure over; the fixup stays until they decide. */
+					assigned: z.literal(true).optional(),
+				},
+			)
+			.optional(),
+	},
+);
 export type GitChildResult = z.infer<typeof GitChildResultSchema>;
 
 // A GitHub issue assigned to me
-export const GitHubIssueSchema = z.object({
-	number: z.number().int().positive(),
-	title: z.string().min(1),
-	url: z.url(),
-	labels: z.array(LabelSchema),
-	repository: RepositorySchema,
-});
+export const GitHubIssueSchema = z.object(
+	{
+		number: z.number().int().positive(),
+		title: z.string().min(1),
+		url: z.url(),
+		labels: z.array(LabelSchema),
+		repository: RepositorySchema,
+	},
+);
 export type GitHubIssue = z.infer<typeof GitHubIssueSchema>;
 
 export const IssueResultSchema = GitHubIssueSchema;
 export type IssueResult = z.infer<typeof IssueResultSchema>;
 
-export const GitHubProjectItemSchema = z.object({
-	id: z.string().min(1),
-	title: z.string().min(1),
-	status: z.string(),
-	type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
-	url: z.url().optional(),
-	number: z.number().int().positive().optional(),
-	repository: z.string().min(1).optional(),
-	labels: z.array(LabelSchema),
-});
+export const GitHubProjectItemSchema = z.object(
+	{
+		id: z.string().min(1),
+		title: z.string().min(1),
+		status: z.string(),
+		type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
+		url: z.url().optional(),
+		number: z.number().int().positive().optional(),
+		repository: z.string().min(1).optional(),
+		labels: z.array(LabelSchema),
+	},
+);
 export type GitHubProjectItem = z.infer<typeof GitHubProjectItemSchema>;
 
 // A task from a todo.md file
-export const TodoItemSchema = z.object({
-	project: z.string(),
-	title: z.string(),
-	sourceFile: z.string(),
-	sourceLabel: z.string(),
-	// A `- [!]` task: blocked work that classifies as `blocked`.
-	blocked: z.boolean().optional(),
-	// On hold or snoozed (keyed by todoItemKey): classifies as `snoozed` and leaves WIP.
-	onHold: z.boolean().optional(),
-});
+export const TodoItemSchema = z.object(
+	{
+		project: z.string(),
+		title: z.string(),
+		sourceFile: z.string(),
+		sourceLabel: z.string(),
+		// A `- [!]` task: blocked work that classifies as `blocked`.
+		blocked: z.boolean().optional(),
+		// On hold or snoozed (keyed by todoItemKey): classifies as `snoozed` and leaves WIP.
+		onHold: z.boolean().optional(),
+	},
+);
 export type TodoItem = z.infer<typeof TodoItemSchema>;
 
-export const ActionLogEntrySchema = z.object({
-	time: z.number(),
-	level: z.number(),
-	category: z.string(),
-	msg: z.string(),
-});
+export const ActionLogEntrySchema = z.object(
+	{
+		time: z.number(),
+		level: z.number(),
+		category: z.string(),
+		msg: z.string(),
+	},
+);
 export type ActionLogEntry = z.infer<typeof ActionLogEntrySchema>;
 
-export const ActionResultSchema = z.object({
-	ok: z.boolean(),
-	message: z.string(),
-	compareUrl: z.url().optional(),
-	// Set by Open PR and Merge PR so the client can link the PR and update the row in place
-	prNumber: z.number().optional(),
-	prUrl: z.url().optional(),
-	// Set by Open PR and Merge PR when they turned on auto-merge: the PR merges itself when checks pass
-	autoMerge: z.literal(true).optional(),
-	logs: z.array(ActionLogEntrySchema).optional(),
-	// Set on a failure: the id of the action's own log, which its "See the log" link opens
-	actionId: z.string().optional(),
-	// Set by Abort rebase: the branch whose rebase was backed out, whose next action is "Rebase again"
-	rebaseAgainBranch: z.string().optional(),
-});
+export const ActionResultSchema = z.object(
+	{
+		ok: z.boolean(),
+		message: z.string(),
+		compareUrl: z.url().optional(),
+		// Set by Open PR and Merge PR so the client can link the PR and update the row in place
+		prNumber: z.number().optional(),
+		prUrl: z.url().optional(),
+		// Set by Open PR and Merge PR when they turned on auto-merge: the PR merges itself when checks pass
+		autoMerge: z.literal(true).optional(),
+		logs: z.array(ActionLogEntrySchema).optional(),
+		// Set on a failure: the id of the action's own log, which its "See the log" link opens
+		actionId: z.string().optional(),
+		// Set by Abort rebase: the branch whose rebase was backed out, whose next action is "Rebase again"
+		rebaseAgainBranch: z.string().optional(),
+	},
+);
 export type ActionResult = z.infer<typeof ActionResultSchema>;
 
-export const ProjectBoardItemSchema = z.object({
-	project: z.string(),
-	remote: z.string(),
-	url: z.url().optional(),
-	number: z.number().int().positive().optional(),
-	title: z.string(),
-	status: z.string(),
-	type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
-	labels: z.array(LabelSchema),
-});
+export const ProjectBoardItemSchema = z.object(
+	{
+		project: z.string(),
+		remote: z.string(),
+		url: z.url().optional(),
+		number: z.number().int().positive().optional(),
+		title: z.string(),
+		status: z.string(),
+		type: z.enum(["ISSUE", "PULL_REQUEST", "DRAFT_ISSUE"]),
+		labels: z.array(LabelSchema),
+	},
+);
 export type ProjectBoardItem = z.infer<typeof ProjectBoardItemSchema>;
 
-export const SnoozedChildSchema = z.object({
-	sha: shaSchema,
-	project: z.string(),
-	shortSha: shortShaSchema,
-	subject: z.string(),
-	/** Null = On hold (untimed); a datetime = Snooze (timed). */
-	until: z.iso.datetime().nullable(),
-	/** Identity across rebases; `sha` is the last-known sha. */
-	patchId: z.string().nullable(),
-	/** The sha is gone from the repo; listed for the user to remove. */
-	orphaned: z.boolean(),
-});
+export const SnoozedChildSchema = z.object(
+	{
+		sha: shaSchema,
+		project: z.string(),
+		shortSha: shortShaSchema,
+		subject: z.string(),
+		/** Null = On hold (untimed); a datetime = Snooze (timed). */
+		until: z.iso.datetime().nullable(),
+		/** Identity across rebases; `sha` is the last-known sha. */
+		patchId: z.string().nullable(),
+		/** The sha is gone from the repo; listed for the user to remove. */
+		orphaned: z.boolean(),
+	},
+);
 export type SnoozedChild = z.infer<typeof SnoozedChildSchema>;
 
 // Server function input schemas
-export const PushChildInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-	branch: branchSchema.optional(),
-});
+export const PushChildInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+		branch: branchSchema.optional(),
+	},
+);
 export type PushChildInput = z.infer<typeof PushChildInputSchema>;
 
-export const TestChildInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-});
+export const TestChildInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+	},
+);
 export type TestChildInput = z.infer<typeof TestChildInputSchema>;
 
-export const SnoozeChildInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-	until: z.iso.datetime().nullable(),
-});
+export const SnoozeChildInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+		until: z.iso.datetime().nullable(),
+	},
+);
 export type SnoozeChildInput = z.infer<typeof SnoozeChildInputSchema>;
 
-export const SnoozeTodoInputSchema = z.object({
-	project: z.string(),
-	sourceFile: z.string(),
-	title: z.string(),
-	until: z.iso.datetime().nullable(),
-});
+export const SnoozeTodoInputSchema = z.object(
+	{
+		project: z.string(),
+		sourceFile: z.string(),
+		title: z.string(),
+		until: z.iso.datetime().nullable(),
+	},
+);
 export type SnoozeTodoInput = z.infer<typeof SnoozeTodoInputSchema>;
 
-export const UnsnoozeTodoInputSchema = SnoozeTodoInputSchema.omit({until: true});
+export const UnsnoozeTodoInputSchema = SnoozeTodoInputSchema.omit(
+	{
+		until: true,
+	},
+);
 export type UnsnoozeTodoInput = z.infer<typeof UnsnoozeTodoInputSchema>;
 
 // Keyed like todoItemKey: the clicked todo's file and title.
-export const RunTodoTaskInputSchema = z.object({project: z.string(), sourceFile: z.string(), title: z.string()});
+export const RunTodoTaskInputSchema = z.object(
+	{
+		project: z.string(),
+		sourceFile: z.string(),
+		title: z.string(),
+	},
+);
 export type RunTodoTaskInput = z.infer<typeof RunTodoTaskInputSchema>;
 
-export const UnsnoozeChildInputSchema = z.object({
-	sha: shaSchema,
-	project: z.string(),
-});
+export const UnsnoozeChildInputSchema = z.object(
+	{
+		sha: shaSchema,
+		project: z.string(),
+	},
+);
 export type UnsnoozeChildInput = z.infer<typeof UnsnoozeChildInputSchema>;
 
-export const CancelTestInputSchema = z.object({
-	id: z.string(),
-});
+export const CancelTestInputSchema = z.object(
+	{
+		id: z.string(),
+	},
+);
 export type CancelTestInput = z.infer<typeof CancelTestInputSchema>;
 
-export const CreatePrInputSchema = z.object({
-	project: z.string(),
-	branch: branchSchema,
-	title: z.string(),
-	body: z.string().optional(),
-	draft: z.boolean().optional(),
-	/** Ready to land's Open PR: turn on auto-merge when the repo allows it (the PR is opened ready, not draft). */
-	autoMerge: z.boolean().optional(),
-	/** The client's id for this action, so the tab it opened can follow its progress and result. */
-	actionId: z.string().min(1).max(100).optional(),
-	/** The branch already has this draft PR (draft-PR verification opened it): mark it ready instead of opening one. */
-	draftPrNumber: z.number().int().positive().optional(),
-});
+export const CreatePrInputSchema = z.object(
+	{
+		project: z.string(),
+		branch: branchSchema,
+		title: z.string(),
+		body: z.string().optional(),
+		draft: z.boolean().optional(),
+		/** Ready to land's Open PR: turn on auto-merge when the repo allows it (the PR is opened ready, not draft). */
+		autoMerge: z.boolean().optional(),
+		/** The client's id for this action, so the tab it opened can follow its progress and result. */
+		actionId: z.string().min(1).max(100).optional(),
+		/** The branch already has this draft PR (draft-PR verification opened it): mark it ready instead of opening one. */
+		draftPrNumber: z.number().int().positive().optional(),
+	},
+);
 export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;
 
-export const RefreshChildInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-});
+export const RefreshChildInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+	},
+);
 export type RefreshChildInput = z.infer<typeof RefreshChildInputSchema>;
 
-export const AbortRebaseInputSchema = z.object({
-	project: z.string(),
-});
+export const AbortRebaseInputSchema = z.object(
+	{
+		project: z.string(),
+	},
+);
 export type AbortRebaseInput = z.infer<typeof AbortRebaseInputSchema>;
 
 /** An auto-fixed item (the failing commit): Accept fix, Fix it myself, Drop branch and the review. */
-export const AutoFixInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-});
+export const AutoFixInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+	},
+);
 export type AutoFixInput = z.infer<typeof AutoFixInputSchema>;
 
-export const CreateBranchInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-	branchName: branchSchema,
-});
+export const CreateBranchInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+		branchName: branchSchema,
+	},
+);
 export type CreateBranchInput = z.infer<typeof CreateBranchInputSchema>;
 
 /** Fast-forward local `<upstreamBranch>` to a ready commit in a fast-forward repo; never pushes. */
-export const LandFastForwardInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-});
+export const LandFastForwardInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+	},
+);
 export type LandFastForwardInput = z.infer<typeof LandFastForwardInputSchema>;
 
 /**
  * Push the green prefix of local `<upstreamBranch>`: `sha` (its last green commit) to
  * `<upstreamRemote>/<upstreamBranch>`, never forced; user-initiated only.
  */
-export const PushUpstreamBranchInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-});
+export const PushUpstreamBranchInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+	},
+);
 export type PushUpstreamBranchInput = z.infer<typeof PushUpstreamBranchInputSchema>;
 
-export const MergePrInputSchema = z.object({
-	project: z.string(),
-	prNumber: z.number(),
-	/** The PR's checks are still running: turn on auto-merge instead of merging now. */
-	autoMerge: z.boolean().optional(),
-});
+export const MergePrInputSchema = z.object(
+	{
+		project: z.string(),
+		prNumber: z.number(),
+		/** The PR's checks are still running: turn on auto-merge instead of merging now. */
+		autoMerge: z.boolean().optional(),
+	},
+);
 export type MergePrInput = z.infer<typeof MergePrInputSchema>;
 
-export const RunClaudeCommandInputSchema = z.object({
-	project: z.string(),
-	sha: shaSchema,
-	branch: branchSchema,
-	command: z.string(),
-});
+export const RunClaudeCommandInputSchema = z.object(
+	{
+		project: z.string(),
+		sha: shaSchema,
+		branch: branchSchema,
+		command: z.string(),
+	},
+);
 export type RunClaudeCommandInput = z.infer<typeof RunClaudeCommandInputSchema>;
 
 export const TaskTypeSchema = z.enum(["test", "claude", "rebase", "push", "ladder"]);
 export type TaskType = z.infer<typeof TaskTypeSchema>;
 
-export const TaskQueueJobSchema = z.object({
-	id: z.string(),
-	taskType: TaskTypeSchema.default("test"),
-	project: z.string(),
-	sha: z.string(),
-	shortSha: z.string(),
-	subject: z.string(),
-	branch: z.string().optional(),
-	command: z.string().optional(),
-	status: z.enum(["queued", "running", "passed", "failed", "cancelled"]),
-	message: z.string().optional(),
-	queuedAt: z.number(),
-	startedAt: z.number().optional(),
-	finishedAt: z.number().optional(),
-});
+export const TaskQueueJobSchema = z.object(
+	{
+		id: z.string(),
+		taskType: TaskTypeSchema.default("test"),
+		project: z.string(),
+		sha: z.string(),
+		shortSha: z.string(),
+		subject: z.string(),
+		branch: z.string().optional(),
+		command: z.string().optional(),
+		status: z.enum(["queued", "running", "passed", "failed", "cancelled"]),
+		message: z.string().optional(),
+		queuedAt: z.number(),
+		startedAt: z.number().optional(),
+		finishedAt: z.number().optional(),
+	},
+);
 export type TaskQueueJob = z.infer<typeof TaskQueueJobSchema>;
 
 // Backward-compatible aliases

@@ -1,7 +1,8 @@
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {useQuery, useQueryClient, useSuspenseQuery} from "@tanstack/react-query";
 import {useState} from "react";
-import {
+import
+{
 	runEscapeHatch,
 	topUpReadyBuffer,
 	cancelTestFn,
@@ -17,7 +18,8 @@ import {LadderSection} from "../components/ladder-section.js";
 import {RegistrySection} from "../components/registry-section.js";
 import {RefreshSchedulerPanel} from "../components/refresh-scheduler-panel.js";
 import {BulkActions} from "../components/bulk-actions.js";
-import {
+import
+{
 	Clock,
 	Play,
 	CheckCircle,
@@ -33,7 +35,8 @@ import {
 	GitMerge,
 	ArrowRight,
 } from "../components/icons.js";
-import {
+import
+{
 	inventoryStatusQueryOptions,
 	ladderResultsQueryOptions,
 	registryCandidatesQueryOptions,
@@ -41,13 +44,26 @@ import {
 } from "../lib/queries.js";
 import {useHydrated} from "../lib/use-hydrated.js";
 
-export const Route = createFileRoute("/tasks")({
-	loader: async ({context: {queryClient}}) => queryClient.query({...taskQueueQueryOptions(), staleTime: "static"}),
-	head: () => ({
-		meta: [{title: "WIP Tasks"}],
-	}),
-	component: Tasks,
-});
+export const Route = createFileRoute("/tasks")(
+	{
+		loader: async ({context: {queryClient}}) =>
+			queryClient.query(
+				{
+					...taskQueueQueryOptions(),
+					staleTime: "static",
+				},
+			),
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP Tasks",
+				},
+			],
+		}),
+		component: Tasks,
+	},
+);
 
 type GroupBy = "project" | "taskType";
 
@@ -55,7 +71,8 @@ type JobStatus = TaskQueueJob["status"];
 
 const STATUS_ORDER: JobStatus[] = ["running", "queued", "failed", "cancelled", "passed"];
 
-const TASK_TYPE_ICONS: Record<TaskType, React.ReactElement> = {
+const TASK_TYPE_ICONS: Record<TaskType, React.ReactElement> =
+{
 	test: <FlaskConical className="h-3.5 w-3.5 text-text-400" />,
 	claude: <Bot className="h-3.5 w-3.5 text-text-400" />,
 	rebase: <GitMerge className="h-3.5 w-3.5 text-text-400" />,
@@ -63,11 +80,13 @@ const TASK_TYPE_ICONS: Record<TaskType, React.ReactElement> = {
 	ladder: <GitMerge className="h-3.5 w-3.5 text-text-400" />,
 };
 
-function taskTypeIcon(taskType: TaskType) {
+function taskTypeIcon(taskType: TaskType)
+{
 	return TASK_TYPE_ICONS[taskType];
 }
 
-const TASK_TYPE_LABELS: Record<TaskType, string> = {
+const TASK_TYPE_LABELS: Record<TaskType, string> =
+{
 	test: "Test",
 	claude: "Claude",
 	rebase: "Rebase",
@@ -75,11 +94,13 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
 	ladder: "Ladder",
 };
 
-function taskTypeLabel(taskType: TaskType): string {
+function taskTypeLabel(taskType: TaskType): string
+{
 	return TASK_TYPE_LABELS[taskType];
 }
 
-const STATUS_ICONS: Record<JobStatus, React.ReactElement> = {
+const STATUS_ICONS: Record<JobStatus, React.ReactElement> =
+{
 	queued: <Clock className="h-4 w-4 text-text-400" />,
 	running: <Loader2 className="h-4 w-4 animate-spin text-status-yellow" />,
 	passed: <CheckCircle className="h-4 w-4 text-status-green" />,
@@ -87,11 +108,13 @@ const STATUS_ICONS: Record<JobStatus, React.ReactElement> = {
 	cancelled: <Ban className="h-4 w-4 text-text-500" />,
 };
 
-function statusIcon(status: JobStatus) {
+function statusIcon(status: JobStatus)
+{
 	return STATUS_ICONS[status];
 }
 
-const CARD_STYLES: Record<JobStatus, string> = {
+const CARD_STYLES: Record<JobStatus, string> =
+{
 	queued: "border-border-300/50 bg-bg-100",
 	running: "border-card-running-border bg-card-running-bg",
 	passed: "border-card-passed-border bg-card-passed-bg",
@@ -99,11 +122,13 @@ const CARD_STYLES: Record<JobStatus, string> = {
 	cancelled: "border-border-300/30 bg-bg-100/50",
 };
 
-function cardStyle(status: JobStatus): string {
+function cardStyle(status: JobStatus): string
+{
 	return CARD_STYLES[status];
 }
 
-function formatDuration(ms: number): string {
+function formatDuration(ms: number): string
+{
 	if (ms < 1000) return `${ms}ms`;
 	const seconds = Math.round(ms / 1000);
 	if (seconds < 60) return `${seconds}s`;
@@ -112,43 +137,68 @@ function formatDuration(ms: number): string {
 	return `${minutes}m ${remaining}s`;
 }
 
-function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: ReadonlyMap<string, TaskEvent>): TaskQueueJob[] {
+function mergeJobs(serverJobs: TaskQueueJob[], liveJobs: ReadonlyMap<string, TaskEvent>): TaskQueueJob[]
+{
 	const merged = new Map<string, TaskQueueJob>();
 
-	for (const job of serverJobs) {
+	for (const job of serverJobs)
+	{
 		merged.set(`${job.project}:${job.sha}`, job);
 	}
 
-	for (const [key, liveJob] of liveJobs) {
+	for (const [key, liveJob] of liveJobs)
+	{
 		const existing = merged.get(key);
-		if (existing) {
-			merged.set(key, {...existing, status: liveJob.status, message: liveJob.message});
-		} else {
-			merged.set(key, {
-				id: liveJob.id,
-				taskType: liveJob.taskType,
-				project: liveJob.project,
-				sha: liveJob.sha,
-				shortSha: liveJob.shortSha,
-				subject: liveJob.subject,
-				branch: liveJob.branch,
-				status: liveJob.status,
-				message: liveJob.message,
-				queuedAt: Date.now(),
-			});
+		if (existing)
+		{
+			merged.set(
+				key,
+				{
+					...existing,
+					status: liveJob.status,
+					message: liveJob.message,
+				},
+			);
+		}
+		else
+		{
+			merged.set(
+				key,
+				{
+					id: liveJob.id,
+					taskType: liveJob.taskType,
+					project: liveJob.project,
+					sha: liveJob.sha,
+					shortSha: liveJob.shortSha,
+					subject: liveJob.subject,
+					branch: liveJob.branch,
+					status: liveJob.status,
+					message: liveJob.message,
+					queuedAt: Date.now(),
+				},
+			);
 		}
 	}
 
 	return Array.from(merged.values());
 }
 
-function TaskCard({job}: {job: TaskQueueJob}) {
-	const handlePush = () => {
+function TaskCard({job}: {job: TaskQueueJob})
+{
+	const handlePush = () =>
+	{
 		if (!job.branch) return;
 		void runPendingAction("Push", undefined, async () =>
-			pushChild({
-				data: {project: job.project, sha: job.sha, branch: job.branch},
-			}),
+			pushChild(
+				{
+					data:
+					{
+						project: job.project,
+						sha: job.sha,
+						branch: job.branch,
+					},
+				},
+			),
 		);
 	};
 
@@ -162,7 +212,11 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 					<div className="flex items-baseline gap-2">
 						<Link
 							to="/item/$project/$sha"
-							params={{project: job.project, sha: job.sha}}
+							params={
+							{
+								project: job.project,
+								sha: job.sha,
+							}}
 							className="truncate text-sm font-medium text-text-100 hover:underline"
 						>
 							{job.subject || job.shortSha}
@@ -176,7 +230,11 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 						</span>
 						<Link
 							to="/item/$project/$sha"
-							params={{project: job.project, sha: job.sha}}
+							params={
+							{
+								project: job.project,
+								sha: job.sha,
+							}}
 							className="font-mono hover:underline"
 						>
 							{job.shortSha}
@@ -193,7 +251,11 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 					{job.status === "failed" && (
 						<Link
 							to="/log/$project/$sha"
-							params={{project: job.project, sha: job.sha}}
+							params={
+							{
+								project: job.project,
+								sha: job.sha,
+							}}
 							className="inline-flex items-center gap-1 rounded-md border border-btn-danger-border bg-btn-danger-bg px-2 py-1 text-xs font-medium text-btn-danger-text transition-colors hover:opacity-80"
 						>
 							<FileText className="h-3 w-3" />
@@ -213,7 +275,11 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 					{job.status === "passed" && (
 						<Link
 							to="/log/$project/$sha"
-							params={{project: job.project, sha: job.sha}}
+							params={
+							{
+								project: job.project,
+								sha: job.sha,
+							}}
 							className="inline-flex items-center gap-1 rounded-md border border-border-300/50 px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-200"
 						>
 							<FileText className="h-3 w-3" />
@@ -223,9 +289,17 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 					{(job.status === "queued" || job.status === "running") && (
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								void runPendingAction("Cancel test", undefined, async () =>
-									cancelTestFn({data: {id: job.id}}),
+									cancelTestFn(
+										{
+											data:
+											{
+												id: job.id,
+											},
+										},
+									),
 								);
 							}}
 							className="rounded-md border border-border-300/30 p-1 text-text-500 transition-colors hover:bg-bg-200 hover:text-text-300"
@@ -240,16 +314,26 @@ function TaskCard({job}: {job: TaskQueueJob}) {
 	);
 }
 
-type TaskGroup = {key: string; label: string; icon?: React.ReactNode; tasks: TaskQueueJob[]};
+type TaskGroup =
+{
+	key: string;
+	label: string;
+	icon?: React.ReactNode;
+	tasks: TaskQueueJob[];
+};
 
-function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
+function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[]
+{
 	const groups = new Map<string, TaskGroup>();
 
-	for (const job of allJobs) {
+	for (const job of allJobs)
+	{
 		const key = groupBy === "project" ? job.project : job.taskType;
 		let group = groups.get(key);
-		if (!group) {
-			group = {
+		if (!group)
+		{
+			group =
+			{
 				key,
 				label: groupBy === "taskType" ? taskTypeLabel(job.taskType) : job.project,
 				icon: groupBy === "taskType" ? taskTypeIcon(job.taskType) : undefined,
@@ -260,7 +344,8 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 		group.tasks.push(job);
 	}
 
-	const entries = Array.from(groups.values()).toSorted((a, b) => {
+	const entries = Array.from(groups.values()).toSorted((a, b) =>
+	{
 		const aActive = a.tasks.some((j) => j.status === "running" || j.status === "queued");
 		const bActive = b.tasks.some((j) => j.status === "running" || j.status === "queued");
 		if (aActive && !bActive) return -1;
@@ -268,8 +353,10 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 		return 0;
 	});
 
-	for (const group of entries) {
-		group.tasks.sort((a, b) => {
+	for (const group of entries)
+	{
+		group.tasks.sort((a, b) =>
+		{
 			const aIdx = STATUS_ORDER.indexOf(a.status);
 			const bIdx = STATUS_ORDER.indexOf(b.status);
 			if (aIdx !== bIdx) return aIdx - bIdx;
@@ -280,7 +367,8 @@ function groupTasks(allJobs: TaskQueueJob[], groupBy: GroupBy): TaskGroup[] {
 	return entries;
 }
 
-function Tasks() {
+function Tasks()
+{
 	const {data: serverJobs} = useSuspenseQuery(taskQueueQueryOptions());
 	// These queries are client-only (never fetched during SSR) but the localStorage
 	// persister restores them before hydration; hide them until hydrated so the
@@ -296,7 +384,8 @@ function Tasks() {
 	const allJobs = mergeJobs(serverJobs, liveJobs);
 	const groups = groupTasks(allJobs, groupBy);
 
-	const counts = {
+	const counts =
+	{
 		queued: allJobs.filter((j) => j.status === "queued").length,
 		running: allJobs.filter((j) => j.status === "running").length,
 		passed: allJobs.filter((j) => j.status === "passed").length,
@@ -340,7 +429,8 @@ function Tasks() {
 					<div className="flex rounded-lg border border-border-300/50 text-xs">
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setGroupBy("project");
 							}}
 							className={`px-2.5 py-1 rounded-l-lg transition-colors ${
@@ -353,7 +443,8 @@ function Tasks() {
 						</button>
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setGroupBy("taskType");
 							}}
 							className={`px-2.5 py-1 rounded-r-lg transition-colors ${
@@ -367,7 +458,16 @@ function Tasks() {
 					</div>
 					<BulkActions
 						topUp={async () => topUpReadyBuffer()}
-						runRecipe={async (recipe) => runEscapeHatch({data: {recipe}})}
+						runRecipe={async (recipe) =>
+							runEscapeHatch(
+								{
+									data:
+									{
+										recipe,
+									},
+								},
+							)
+						}
 					/>
 				</div>
 			</div>
@@ -378,14 +478,28 @@ function Tasks() {
 				inventory={hydrated ? inventory : undefined}
 				results={hydrated ? ladderResults : []}
 				runLadderAll={async () => runLadderAll()}
-				focusPane={async (paneId) => focusHerdrPaneFn({data: {paneId}})}
+				focusPane={async (paneId) =>
+					focusHerdrPaneFn(
+						{
+							data:
+							{
+								paneId,
+							},
+						},
+					)
+				}
 			/>
 
 			<RegistrySection
 				inventory={hydrated ? inventory : undefined}
 				candidates={hydrated ? registryCandidates : undefined}
-				saveRegistry={async (input) => {
-					const saved = await saveRegistry({data: input});
+				saveRegistry={async (input) =>
+				{
+					const saved = await saveRegistry(
+						{
+							data: input,
+						},
+					);
 					queryClient.setQueryData(inventoryStatusQueryOptions().queryKey, saved.status);
 					queryClient.setQueryData(registryCandidatesQueryOptions().queryKey, saved.candidates);
 					return saved.status;
@@ -400,7 +514,8 @@ function Tasks() {
 				</div>
 			) : (
 				<div className="flex flex-col gap-6">
-					{groups.map(({key, label, icon, tasks: groupJobs}) => {
+					{groups.map(({key, label, icon, tasks: groupJobs}) =>
+					{
 						const groupActive = groupJobs.some((j) => j.status === "running" || j.status === "queued");
 						return (
 							<section key={key}>

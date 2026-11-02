@@ -4,7 +4,8 @@ import {runPendingAction} from "../lib/pending-action.js";
 import {CheckCircle, ClipboardList} from "./icons.js";
 import {RegistryReview} from "./registry-review.js";
 
-function formatCounts(counts: Record<string, number>): string {
+function formatCounts(counts: Record<string, number>): string
+{
 	return Object.keys(counts)
 		.toSorted()
 		.map((key) => `${key} ${counts[key]}`)
@@ -17,7 +18,8 @@ const cardClass = "mb-3 rounded-lg border border-border-300/50 bg-bg-100 p-3 tex
  * The saved registry as a header over the review, so it reads as part of the step bar's flow; with
  * no registry yet it stays a highlighted card, since the import prompt is the thing to act on.
  */
-function SummaryCard({inventory}: {inventory: InventoryStatus}) {
+function SummaryCard({inventory}: {inventory: InventoryStatus})
+{
 	const {registry, registryPath, templatesDir} = inventory;
 	const title = (
 		<h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-text-200">
@@ -25,7 +27,8 @@ function SummaryCard({inventory}: {inventory: InventoryStatus}) {
 			Project registry
 		</h2>
 	);
-	if (!registry) {
+	if (!registry)
+	{
 		return (
 			<section aria-label="Project registry" className={`${cardClass} border-status-yellow/50`}>
 				{title}
@@ -62,7 +65,8 @@ function SaveConfirmation({
 	verb: "Imported" | "Saved";
 	registryPath: string;
 	registry: RegistrySummary;
-}) {
+})
+{
 	return (
 		<output
 			aria-label="Registry saved"
@@ -95,9 +99,14 @@ export function RegistrySection({
 	candidates: RegistryCandidates | undefined;
 	/** Writes the reviewed registry and resolves to the new status. */
 	saveRegistry: (input: SaveRegistryInput) => Promise<InventoryStatus>;
-}) {
+})
+{
 	const [saving, setSaving] = useState(false);
-	const [saved, setSaved] = useState<{verb: "Imported" | "Saved"; registry: RegistrySummary} | null>(null);
+	const [saved, setSaved] = useState<
+	{
+		verb: "Imported" | "Saved";
+		registry: RegistrySummary;
+	} | null>(null);
 
 	if (!inventory) return <p className="mb-6 text-xs text-text-500">Loading project registry…</p>;
 	const {registryPath, registry} = inventory;
@@ -119,10 +128,23 @@ export function RegistrySection({
 							: `Import ${projects} projects into ${registryPath}`
 					}
 					saving={saving}
-					onSave={(projects) => {
-						void runPendingAction(verb === "Saved" ? "Save registry" : "Import", setSaving, async () => {
-							const status = await saveRegistry({projects, baseModifiedAt: candidates.baseModifiedAt});
-							if (status.registry) setSaved({verb, registry: status.registry});
+					onSave={(projects) =>
+					{
+						void runPendingAction(verb === "Saved" ? "Save registry" : "Import", setSaving, async () =>
+						{
+							const status = await saveRegistry(
+								{
+									projects,
+									baseModifiedAt: candidates.baseModifiedAt,
+								},
+							);
+							if (status.registry)
+								setSaved(
+									{
+										verb,
+										registry: status.registry,
+									},
+								);
 						});
 					}}
 				/>

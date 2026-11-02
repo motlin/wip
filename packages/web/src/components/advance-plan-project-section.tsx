@@ -4,22 +4,26 @@ import type {TaskEvent} from "../lib/server-events-context.js";
 
 export type BranchAction = "test" | "rebase" | "resolve-conflicts" | "fix-failure";
 
-export interface ActionMessage {
+export interface ActionMessage
+{
 	level: "success" | "error";
 	text: string;
 }
 
-const STATUS_CLASSES: Record<AdvancePlanProjectSummary["status"], string> = {
+const STATUS_CLASSES: Record<AdvancePlanProjectSummary["status"], string> =
+{
 	ready: "border-status-green/40 bg-status-green/10 text-status-green",
 	skipped: "border-status-red/40 bg-status-red/10 text-status-red",
 	noop: "border-border-300/50 bg-bg-200 text-text-400",
 };
 
-function statusClass(status: AdvancePlanProjectSummary["status"]): string {
+function statusClass(status: AdvancePlanProjectSummary["status"]): string
+{
 	return STATUS_CLASSES[status];
 }
 
-const TASK_STATUS_ICONS: Record<TaskEvent["status"], React.ReactElement> = {
+const TASK_STATUS_ICONS: Record<TaskEvent["status"], React.ReactElement> =
+{
 	queued: <Clock className="h-3.5 w-3.5 text-text-400" />,
 	running: <Loader2 className="h-3.5 w-3.5 animate-spin text-status-yellow" />,
 	passed: <CheckCircle className="h-3.5 w-3.5 text-status-green" />,
@@ -27,33 +31,39 @@ const TASK_STATUS_ICONS: Record<TaskEvent["status"], React.ReactElement> = {
 	cancelled: <XCircle className="h-3.5 w-3.5 text-text-500" />,
 };
 
-function taskStatusIcon(status: TaskEvent["status"]) {
+function taskStatusIcon(status: TaskEvent["status"])
+{
 	return TASK_STATUS_ICONS[status];
 }
 
-const ACTION_ICONS: Record<BranchAction, React.ReactElement> = {
+const ACTION_ICONS: Record<BranchAction, React.ReactElement> =
+{
 	test: <FlaskConical className="h-3.5 w-3.5" />,
 	rebase: <GitMerge className="h-3.5 w-3.5" />,
 	"resolve-conflicts": <Bot className="h-3.5 w-3.5" />,
 	"fix-failure": <Wrench className="h-3.5 w-3.5" />,
 };
 
-function actionIcon(action: BranchAction) {
+function actionIcon(action: BranchAction)
+{
 	return ACTION_ICONS[action];
 }
 
-const ACTION_LABELS: Record<BranchAction, string> = {
+const ACTION_LABELS: Record<BranchAction, string> =
+{
 	test: "Run Tests",
 	rebase: "Rebase",
 	"resolve-conflicts": "Resolve",
 	"fix-failure": "Fix",
 };
 
-function actionLabel(action: BranchAction): string {
+function actionLabel(action: BranchAction): string
+{
 	return ACTION_LABELS[action];
 }
 
-export function actionKey(branch: AdvancePlanBranchSummary, action: BranchAction): string {
+export function actionKey(branch: AdvancePlanBranchSummary, action: BranchAction): string
+{
 	return `${branch.project}:${branch.branch}:${action}`;
 }
 
@@ -71,7 +81,8 @@ export function ProjectSection({
 	pendingAction?: string | null;
 	runBranchAction?: (branch: AdvancePlanBranchSummary, action: BranchAction) => Promise<void>;
 	runBaselineTest?: (project: AdvancePlanProjectSummary) => Promise<void>;
-}) {
+})
+{
 	const baselineKey = `${project.project}:baseline`;
 	const baselinePending = pendingAction === baselineKey;
 	const baselineMessage = messages?.[baselineKey];
@@ -164,7 +175,8 @@ function BranchRow({
 	messages?: Record<string, ActionMessage>;
 	pendingAction?: string | null;
 	runBranchAction?: (branch: AdvancePlanBranchSummary, action: BranchAction) => Promise<void>;
-}) {
+})
+{
 	const actions: BranchAction[] = ["test", "rebase", "resolve-conflicts", "fix-failure"];
 
 	return (
@@ -194,7 +206,8 @@ function BranchRow({
 					<span>Expected: {branch.expectedActions.map(actionLabel).join(", ")}</span>
 				</div>
 				{messages &&
-					actions.map((action) => {
+					actions.map((action) =>
+					{
 						const message = messages[actionKey(branch, action)];
 						if (!message) return null;
 						return (
@@ -210,7 +223,8 @@ function BranchRow({
 					})}
 			</div>
 			<div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-				{branch.expectedActions.map((action) => {
+				{branch.expectedActions.map((action) =>
+				{
 					const key = actionKey(branch, action);
 					const pending = pendingAction === key;
 					return (

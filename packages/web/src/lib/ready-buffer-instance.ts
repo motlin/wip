@@ -6,10 +6,12 @@ import type {ReadyBuffer} from "./ready-buffer.js";
  */
 let instance: ReadyBuffer | null = null;
 
-export function currentReadyBuffer(): ReadyBuffer | null {
+export function currentReadyBuffer(): ReadyBuffer | null
+{
 	return instance;
 }
 
-export function setReadyBuffer(buffer: ReadyBuffer): void {
+export function setReadyBuffer(buffer: ReadyBuffer): void
+{
 	instance = buffer;
 }

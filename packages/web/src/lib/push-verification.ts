@@ -1,6 +1,7 @@
 import type {TestStatus} from "@wip/shared";
 
-export interface PushVerificationInput {
+export interface PushVerificationInput
+{
 	testStatus: TestStatus | undefined;
 	commitsBehind: number | undefined;
 	needsRebase: boolean | undefined;
@@ -12,14 +13,19 @@ export interface PushVerificationInput {
  * Why pushing this commit would publish unverified work: behind upstream, or not green.
  * Returns null when the commit is verified. Pushing is never blocked, only warned.
  */
-export function unverifiedPushReason({testStatus, commitsBehind, needsRebase, noTests}: PushVerificationInput) {
+export function unverifiedPushReason({testStatus, commitsBehind, needsRebase, noTests}: PushVerificationInput)
+{
 	const reasons: string[] = [];
-	if (commitsBehind && commitsBehind > 0) {
+	if (commitsBehind && commitsBehind > 0)
+	{
 		reasons.push(`${commitsBehind} commit${commitsBehind > 1 ? "s" : ""} behind upstream`);
-	} else if (needsRebase) {
+	}
+	else if (needsRebase)
+	{
 		reasons.push("behind upstream");
 	}
-	if (!noTests && testStatus !== "passed") {
+	if (!noTests && testStatus !== "passed")
+	{
 		reasons.push(`test not passed (${testStatus ?? "unknown"})`);
 	}
 	return reasons.length > 0 ? reasons.join("; ") : null;

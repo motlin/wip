@@ -4,12 +4,22 @@ import {ActionLogView, RecentActionLogsLink} from "../components/action-log-view
 import {actionLogQueryOptions} from "../lib/queries.js";
 
 /** Where a failed action's "See the log" link goes: only that action's log, never live-tailing. */
-export const Route = createFileRoute("/action-log/$actionId")({
-	head: () => ({meta: [{title: "Action log"}]}),
-	component: ActionLogPage,
-});
+export const Route = createFileRoute("/action-log/$actionId")(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					title: "Action log",
+				},
+			],
+		}),
+		component: ActionLogPage,
+	},
+);
 
-function ActionLogPage() {
+function ActionLogPage()
+{
 	const {actionId} = Route.useParams();
 	const {data, isPending} = useQuery(actionLogQueryOptions(actionId));
 	return (

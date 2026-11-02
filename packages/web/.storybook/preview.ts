@@ -3,17 +3,22 @@ import {createElement, Fragment} from "react";
 import {IconSprite} from "../src/components/icons.js";
 import "./styles.css";
 
-const preview: Preview = {
+const preview: Preview =
+{
 	// Icons are <use> references into the sprite the root document renders.
 	decorators: [(Story) => createElement(Fragment, null, createElement(IconSprite), createElement(Story))],
-	parameters: {
-		controls: {
-			matchers: {
+	parameters:
+	{
+		controls:
+		{
+			matchers:
+			{
 				color: /(background|color)$/i,
 				date: /Date$/i,
 			},
 		},
-		backgrounds: {
+		backgrounds:
+		{
 			default: "light",
 			values: [
 				{
@@ -27,12 +32,15 @@ const preview: Preview = {
 			],
 		},
 	},
-	globalTypes: {
-		theme: {
+	globalTypes:
+	{
+		theme:
+		{
 			name: "Theme",
 			description: "Global theme for components",
 			defaultValue: "light",
-			toolbar: {
+			toolbar:
+			{
 				icon: "circlehollow",
 				items: ["light", "dark"],
 				title: "Theme",

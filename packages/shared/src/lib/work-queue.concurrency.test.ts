@@ -4,35 +4,64 @@ import {createWorkQueue, type CostClass, type WorkQueue} from "./work-queue.js";
 
 const PROJECT_COUNT = 60;
 const GLOBAL_CONCURRENCY = 4;
-const CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
+const CLASS_CAPS: Record<CostClass, number> =
+{
+	cheap: 3,
+	"git-write": 2,
+	build: 2,
+	ai: 1,
+};
 
 let queue: WorkQueue;
 
-afterEach(async () => {
+afterEach(async () =>
+{
 	await queue.reset();
 });
 
-async function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
+async function sleep(ms: number): Promise<void>
+{
+	return new Promise((resolve) =>
+	{
 		setTimeout(resolve, ms);
 	});
 }
 
-describe("work queue concurrency under a cold dashboard load", () => {
-	it("holds global, per-class and per-repo limits and runs ready-to-push before needs-rebase", async () => {
-		queue = createWorkQueue({globalConcurrency: GLOBAL_CONCURRENCY, classCaps: CLASS_CAPS});
+describe("work queue concurrency under a cold dashboard load", () =>
+{
+	it("holds global, per-class and per-repo limits and runs ready-to-push before needs-rebase", async () =>
+	{
+		queue = createWorkQueue(
+			{
+				globalConcurrency: GLOBAL_CONCURRENCY,
+				classCaps: CLASS_CAPS,
+			},
+		);
 
 		let running = 0;
 		let maxRunning = 0;
-		const runningByClass: Record<CostClass, number> = {cheap: 0, "git-write": 0, build: 0, ai: 0};
-		const maxByClass: Record<CostClass, number> = {cheap: 0, "git-write": 0, build: 0, ai: 0};
+		const runningByClass: Record<CostClass, number> =
+		{
+			cheap: 0,
+			"git-write": 0,
+			build: 0,
+			ai: 0,
+		};
+		const maxByClass: Record<CostClass, number> =
+		{
+			cheap: 0,
+			"git-write": 0,
+			build: 0,
+			ai: 0,
+		};
 		const runningByRepo = new Map<string, number>();
 		let repoOverlap = false;
 		const startOrder: string[] = [];
 		const finishOrder: string[] = [];
 		const completed: string[] = [];
 
-		function fakeJob(project: string, kind: string, costClass: CostClass, rank: number) {
+		function fakeJob(project: string, kind: string, costClass: CostClass, rank: number)
+		{
 			const name = `${kind}:${project}`;
 			return {
 				coalesceKey: name,
@@ -42,7 +71,8 @@ describe("work queue concurrency under a cold dashboard load", () => {
 				costClass,
 				rank,
 				priority: "background" as const,
-				run: async () => {
+				run: async () =>
+				{
 					running += 1;
 					runningByClass[costClass] += 1;
 					const onRepo = (runningByRepo.get(project) ?? 0) + 1;
@@ -64,7 +94,8 @@ describe("work queue concurrency under a cold dashboard load", () => {
 		}
 
 		const handles = [];
-		for (let index = 0; index < PROJECT_COUNT; index += 1) {
+		for (let index = 0; index < PROJECT_COUNT; index += 1)
+		{
 			const project = `project-${String(index).padStart(2, "0")}`;
 			const readyToPush = index % 2 === 0;
 			handles.push(

@@ -1,7 +1,8 @@
 import {describe, expect, it} from "vite-plus/test";
 import {LADDER_RUNGS, planLadder, type LadderProjectInfo} from "./ladder.js";
 
-const clean: LadderProjectInfo = {
+const clean: LadderProjectInfo =
+{
 	project: "p",
 	dirty: false,
 	detached: false,
@@ -12,50 +13,110 @@ const clean: LadderProjectInfo = {
 
 const names = (info: LadderProjectInfo) => planLadder(info).map((r) => r.rung);
 
-describe("LADDER_RUNGS", () => {
-	it("orders rungs cheapest first with cost class and clean-tree need", () => {
+describe("LADDER_RUNGS", () =>
+{
+	it("orders rungs cheapest first with cost class and clean-tree need", () =>
+	{
 		expect(LADDER_RUNGS).toEqual([
-			{rung: "fetch", cost: "network", needsCleanTree: false},
-			{rung: "replay", cost: "cheap", needsCleanTree: false},
-			{rung: "rebase-leftovers", cost: "expensive", needsCleanTree: true},
-			{rung: "worktree-prune", cost: "cheap", needsCleanTree: false},
-			{rung: "delete-merged-local", cost: "cheap", needsCleanTree: true},
+			{
+				rung: "fetch",
+				cost: "network",
+				needsCleanTree: false,
+			},
+			{
+				rung: "replay",
+				cost: "cheap",
+				needsCleanTree: false,
+			},
+			{
+				rung: "rebase-leftovers",
+				cost: "expensive",
+				needsCleanTree: true,
+			},
+			{
+				rung: "worktree-prune",
+				cost: "cheap",
+				needsCleanTree: false,
+			},
+			{
+				rung: "delete-merged-local",
+				cost: "cheap",
+				needsCleanTree: true,
+			},
 		]);
 	});
 });
 
-describe("planLadder", () => {
-	it("drops replay and rebase-leftovers when background rebase is off", () => {
-		expect(names({...clean, backgroundRebase: false})).toEqual(["fetch", "worktree-prune", "delete-merged-local"]);
+describe("planLadder", () =>
+{
+	it("drops replay and rebase-leftovers when background rebase is off", () =>
+	{
+		expect(
+			names(
+				{
+					...clean,
+					backgroundRebase: false,
+				},
+			),
+		).toEqual(["fetch", "worktree-prune", "delete-merged-local"]);
 	});
 
-	it("defaults background rebase to off", () => {
+	it("defaults background rebase to off", () =>
+	{
 		const {backgroundRebase: _omitted, ...withoutFlag} = clean;
 		expect(names(withoutFlag)).toEqual(["fetch", "worktree-prune", "delete-merged-local"]);
 	});
 
-	it("plans every rung for a clean online project", () => {
+	it("plans every rung for a clean online project", () =>
+	{
 		expect(names(clean)).toEqual(["fetch", "replay", "rebase-leftovers", "worktree-prune", "delete-merged-local"]);
 	});
 
-	it("skips fetch when offline", () => {
-		expect(names({...clean, offline: true})).toEqual([
-			"replay",
-			"rebase-leftovers",
-			"worktree-prune",
-			"delete-merged-local",
-		]);
+	it("skips fetch when offline", () =>
+	{
+		expect(
+			names(
+				{
+					...clean,
+					offline: true,
+				},
+			),
+		).toEqual(["replay", "rebase-leftovers", "worktree-prune", "delete-merged-local"]);
 	});
 
-	it("skips clean-tree rungs when dirty", () => {
-		expect(names({...clean, dirty: true})).toEqual(["fetch", "replay", "worktree-prune"]);
+	it("skips clean-tree rungs when dirty", () =>
+	{
+		expect(
+			names(
+				{
+					...clean,
+					dirty: true,
+				},
+			),
+		).toEqual(["fetch", "replay", "worktree-prune"]);
 	});
 
-	it("skips clean-tree rungs when detached", () => {
-		expect(names({...clean, detached: true})).toEqual(["fetch", "replay", "worktree-prune"]);
+	it("skips clean-tree rungs when detached", () =>
+	{
+		expect(
+			names(
+				{
+					...clean,
+					detached: true,
+				},
+			),
+		).toEqual(["fetch", "replay", "worktree-prune"]);
 	});
 
-	it("skips replay and clean-tree rungs while a rebase is in progress", () => {
-		expect(names({...clean, rebaseInProgress: true})).toEqual(["fetch", "worktree-prune"]);
+	it("skips replay and clean-tree rungs while a rebase is in progress", () =>
+	{
+		expect(
+			names(
+				{
+					...clean,
+					rebaseInProgress: true,
+				},
+			),
+		).toEqual(["fetch", "worktree-prune"]);
 	});
 });

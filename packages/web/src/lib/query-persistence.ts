@@ -28,22 +28,26 @@ const UNPERSISTED_KEYS: ReadonlySet<unknown> = new Set([
 	"workingTreeDiff",
 ]);
 
-export function shouldPersistQuery(query: Query): boolean {
+export function shouldPersistQuery(query: Query): boolean
+{
 	return query.state.status === "success" && !UNPERSISTED_KEYS.has(query.queryKey[0]);
 }
 
-interface SyncStorage {
+interface SyncStorage
+{
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
 	removeItem(key: string): void;
 }
 
-export interface ThrottledPersister extends Persister {
+export interface ThrottledPersister extends Persister
+{
 	/** Writes the pending client now, if any. */
 	flush: () => void;
 }
 
-function isPersistedClient(value: unknown): value is PersistedClient {
+function isPersistedClient(value: unknown): value is PersistedClient
+{
 	return (
 		typeof value === "object" &&
 		value !== null &&
@@ -66,38 +70,47 @@ export function createThrottledStoragePersister({
 	storage: SyncStorage;
 	throttleMs: number;
 	key?: string;
-}): ThrottledPersister {
+}): ThrottledPersister
+{
 	let pending: PersistedClient | undefined;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
-	function flush(): void {
-		if (timer !== undefined) {
+	function flush(): void
+	{
+		if (timer !== undefined)
+		{
 			clearTimeout(timer);
 			timer = undefined;
 		}
 		if (pending === undefined) return;
 		const client = pending;
 		pending = undefined;
-		try {
+		try
+		{
 			storage.setItem(key, JSON.stringify(client));
-		} catch {
+		}
+		catch
+		{
 			// Over quota: a stale cache would paint wrong data, so drop it.
 			storage.removeItem(key);
 		}
 	}
 
 	return {
-		persistClient(client) {
+		persistClient(client)
+		{
 			pending = client;
 			timer ??= setTimeout(flush, throttleMs);
 		},
-		restoreClient() {
+		restoreClient()
+		{
 			const raw = storage.getItem(key);
 			if (raw === null) return undefined;
 			const parsed: unknown = JSON.parse(raw);
 			return isPersistedClient(parsed) ? parsed : undefined;
 		},
-		removeClient() {
+		removeClient()
+		{
 			pending = undefined;
 			storage.removeItem(key);
 		},
@@ -120,17 +133,29 @@ export async function setupQueryPersistence({
 	storage: SyncStorage;
 	page: EventTarget;
 	buster: string;
-}): Promise<void> {
-	const persister = createThrottledStoragePersister({storage, throttleMs: PERSIST_THROTTLE_MS});
+}): Promise<void>
+{
+	const persister = createThrottledStoragePersister(
+		{
+			storage,
+			throttleMs: PERSIST_THROTTLE_MS,
+		},
+	);
 	page.addEventListener("pagehide", persister.flush);
-	page.addEventListener("visibilitychange", () => {
+	page.addEventListener("visibilitychange", () =>
+	{
 		if (document.visibilityState === "hidden") persister.flush();
 	});
-	const [, restored] = persistQueryClient({
-		queryClient,
-		persister,
-		buster,
-		dehydrateOptions: {shouldDehydrateQuery: shouldPersistQuery},
-	});
+	const [, restored] = persistQueryClient(
+		{
+			queryClient,
+			persister,
+			buster,
+			dehydrateOptions:
+			{
+				shouldDehydrateQuery: shouldPersistQuery,
+			},
+		},
+	);
 	await restored;
 }

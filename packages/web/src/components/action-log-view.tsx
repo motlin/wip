@@ -8,7 +8,8 @@ import {CATEGORY_CLASS, formatTime, LEVEL_CLASS, LEVEL_LABEL} from "../lib/log-f
  * code, stderr) or the GitHub API request that did (operation, error) where it is seen without
  * scrolling, then only the entries that action emitted.
  */
-export function ActionLogView({log}: {log: ActionLog}) {
+export function ActionLogView({log}: {log: ActionLog})
+{
 	const {failedCommand, failedRequest} = log;
 	return (
 		<>
@@ -77,7 +78,8 @@ export function ActionLogView({log}: {log: ActionLog}) {
 }
 
 /** Links to the recent failed actions, for an action whose log is unknown or gone. */
-export function RecentActionLogsLink() {
+export function RecentActionLogsLink()
+{
 	return (
 		<Link to="/action-log" className="underline">
 			recent failed actions

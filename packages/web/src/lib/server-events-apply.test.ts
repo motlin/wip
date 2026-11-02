@@ -4,7 +4,8 @@ import type {GitChildResult} from "@wip/shared";
 
 import {createServerEventApplier, type ServerEventApplier} from "./server-events-apply.js";
 import {ServerEventSchema, type TaskEvent} from "./server-events-schema.js";
-import {
+import
+{
 	getMergeStatusSnapshot,
 	getSchedulerStateSnapshot,
 	getTaskLogSnapshot,
@@ -16,7 +17,8 @@ import {clearToasts, getToasts} from "./toast-store.js";
 
 const SHA = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 
-function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult {
+function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult
+{
 	return {
 		project: "wip",
 		remote: "craig/wip",
@@ -34,11 +36,19 @@ function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult {
 	};
 }
 
-function makeChildAt(sha: string, overrides: Partial<GitChildResult> = {}): GitChildResult {
-	return makeChild({sha, shortSha: sha.slice(0, 7), ...overrides});
+function makeChildAt(sha: string, overrides: Partial<GitChildResult> = {}): GitChildResult
+{
+	return makeChild(
+		{
+			sha,
+			shortSha: sha.slice(0, 7),
+			...overrides,
+		},
+	);
 }
 
-function makeTaskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent {
+function makeTaskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent
+{
 	return {
 		id: "1",
 		taskType: "test",
@@ -54,106 +64,219 @@ function makeTaskEvent(overrides: Partial<TaskEvent> = {}): TaskEvent {
 let queryClient: QueryClient;
 let applier: ServerEventApplier;
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	queryClient = new QueryClient();
 	applier = createServerEventApplier(queryClient);
 });
 
-afterEach(() => {
+afterEach(() =>
+{
 	applier.dispose();
 	queryClient.clear();
 	resetServerEventsStore();
 	clearToasts();
 });
 
-describe("task events", () => {
-	it("stores the task and patches testStatus into the children cache", () => {
+describe("task events", () =>
+{
+	it("stores the task and patches testStatus into the children cache", () =>
+	{
 		queryClient.setQueryData(["children", "wip"], [makeChild()]);
 
-		applier.apply({channel: "task", data: makeTaskEvent({status: "passed"})});
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						status: "passed",
+					},
+				),
+			},
+		);
 
 		expect(getTaskSnapshot(SHA, "wip")?.status).toBe("passed");
 		const children = queryClient.getQueryData<GitChildResult[]>(["children", "wip"]);
 		expect(children?.[0]?.testStatus).toBe("passed");
 	});
 
-	it("appends log events without touching the children cache", () => {
+	it("appends log events without touching the children cache", () =>
+	{
 		queryClient.setQueryData(["children", "wip"], [makeChild()]);
 
-		applier.apply({channel: "task", data: makeTaskEvent({type: "log", log: "line one\n"})});
-		applier.apply({channel: "task", data: makeTaskEvent({type: "log", log: "line two\n"})});
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						type: "log",
+						log: "line one\n",
+					},
+				),
+			},
+		);
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						type: "log",
+						log: "line two\n",
+					},
+				),
+			},
+		);
 
 		expect(getTaskLogSnapshot(SHA, "wip")).toBe("line one\nline two\n");
 		const children = queryClient.getQueryData<GitChildResult[]>(["children", "wip"]);
 		expect(children?.[0]?.testStatus).toBe("unknown");
 	});
 
-	it("marks a passed push in the cache and toasts where it went", () => {
-		queryClient.setQueryData(["children", "wip"], [makeChild({pushing: true})]);
+	it("marks a passed push in the cache and toasts where it went", () =>
+	{
+		queryClient.setQueryData(
+			["children", "wip"],
+			[
+				makeChild(
+					{
+						pushing: true,
+					},
+				),
+			],
+		);
 
-		applier.apply({
-			channel: "task",
-			data: makeTaskEvent({
-				taskType: "push",
-				status: "passed",
-				message: "Pushed feature/x to upstream",
-				compareUrl: "https://github.com/craig/wip/compare/feature/x?expand=1",
-			}),
-		});
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						taskType: "push",
+						status: "passed",
+						message: "Pushed feature/x to upstream",
+						compareUrl: "https://github.com/craig/wip/compare/feature/x?expand=1",
+					},
+				),
+			},
+		);
 
 		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
 		expect(child?.pushing).toBe(false);
 		expect(child?.pushedToRemote).toBe(true);
-		expect(getToasts().map(({level, message, detail, link}) => ({level, message, detail, link}))).toStrictEqual([
+		expect(
+			getToasts().map(({level, message, detail, link}) => (
+			{
+				level,
+				message,
+				detail,
+				link,
+			})),
+		).toStrictEqual([
 			{
 				level: "success",
 				message: "Pushed feature/x to upstream",
 				detail: undefined,
-				link: {href: "https://github.com/craig/wip/compare/feature/x?expand=1", label: "View on GitHub"},
+				link:
+				{
+					href: "https://github.com/craig/wip/compare/feature/x?expand=1",
+					label: "View on GitHub",
+				},
 			},
 		]);
 	});
 
-	it("toasts an error for a failed rebase with a link to its log", () => {
-		applier.apply({
-			channel: "task",
-			data: makeTaskEvent({taskType: "rebase", status: "failed", message: "conflicts"}),
-		});
+	it("toasts an error for a failed rebase with a link to its log", () =>
+	{
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						taskType: "rebase",
+						status: "failed",
+						message: "conflicts",
+					},
+				),
+			},
+		);
 
-		expect(getToasts().map(({level, message, detail, link}) => ({level, message, detail, link}))).toStrictEqual([
+		expect(
+			getToasts().map(({level, message, detail, link}) => (
+			{
+				level,
+				message,
+				detail,
+				link,
+			})),
+		).toStrictEqual([
 			{
 				level: "error",
 				message: "Rebase failed",
 				detail: "conflicts",
-				link: {href: `/log/wip/${SHA}`, label: "See the log"},
+				link:
+				{
+					href: `/log/wip/${SHA}`,
+					label: "See the log",
+				},
 			},
 		]);
 	});
 
-	it("toasts when a Claude task finishes", () => {
-		applier.apply({channel: "task", data: makeTaskEvent({taskType: "claude", status: "passed"})});
+	it("toasts when a Claude task finishes", () =>
+	{
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						taskType: "claude",
+						status: "passed",
+					},
+				),
+			},
+		);
 
-		expect(getToasts().map(({level, message}) => ({level, message}))).toStrictEqual([
-			{level: "success", message: 'Finished "Add work queue"'},
+		expect(
+			getToasts().map(({level, message}) => (
+			{
+				level,
+				message,
+			})),
+		).toStrictEqual([
+			{
+				level: "success",
+				message: 'Finished "Add work queue"',
+			},
 		]);
 	});
 });
 
-describe("action events", () => {
-	it("toasts a queued action in plain words", () => {
-		applier.apply({
-			channel: "action",
-			data: {
-				id: "action-1",
-				project: "wip",
-				label: "createPr",
-				target: "Add work queue",
-				status: "waiting",
-				waitingFor: "rebase",
+describe("action events", () =>
+{
+	it("toasts a queued action in plain words", () =>
+	{
+		applier.apply(
+			{
+				channel: "action",
+				data:
+				{
+					id: "action-1",
+					project: "wip",
+					label: "createPr",
+					target: "Add work queue",
+					status: "waiting",
+					waitingFor: "rebase",
+				},
 			},
-		});
+		);
 
-		expect(getToasts().map(({level, message, detail}) => ({level, message, detail}))).toStrictEqual([
+		expect(
+			getToasts().map(({level, message, detail}) => (
+			{
+				level,
+				message,
+				detail,
+			})),
+		).toStrictEqual([
 			{
 				level: "info",
 				message: "Opening a pull request for Add work queue…",
@@ -163,14 +286,25 @@ describe("action events", () => {
 	});
 });
 
-describe("merge events", () => {
-	it("stores the merge status and patches the children cache", () => {
+describe("merge events", () =>
+{
+	it("stores the merge status and patches the children cache", () =>
+	{
 		queryClient.setQueryData(["children", "wip"], [makeChild()]);
 
-		applier.apply({
-			channel: "merge",
-			data: {project: "wip", sha: SHA, commitsBehind: 3, commitsAhead: 1, rebaseable: true},
-		});
+		applier.apply(
+			{
+				channel: "merge",
+				data:
+				{
+					project: "wip",
+					sha: SHA,
+					commitsBehind: 3,
+					commitsAhead: 1,
+					rebaseable: true,
+				},
+			},
+		);
 
 		expect(getMergeStatusSnapshot(SHA, "wip")?.commitsBehind).toBe(3);
 		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
@@ -180,17 +314,30 @@ describe("merge events", () => {
 	});
 });
 
-describe("batched cache writes", () => {
-	beforeEach(() => {
+describe("batched cache writes", () =>
+{
+	beforeEach(() =>
+	{
 		vi.useFakeTimers();
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.useRealTimers();
 	});
 
-	it("flushes children into the query cache after the batch delay", () => {
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
+	it("flushes children into the query cache after the batch delay", () =>
+	{
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [makeChild()],
+				},
+			},
+		);
 
 		expect(queryClient.getQueryData(["children", "wip"])).toBeUndefined();
 
@@ -201,7 +348,8 @@ describe("batched cache writes", () => {
 		expect(children?.[0]?.sha).toBe(SHA);
 	});
 
-	it("flags snoozed children on flush instead of dropping them", () => {
+	it("flags snoozed children on flush instead of dropping them", () =>
+	{
 		queryClient.setQueryData(
 			["snoozed"],
 			[
@@ -215,79 +363,210 @@ describe("batched cache writes", () => {
 			],
 		);
 
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [makeChild()],
+				},
+			},
+		);
 		vi.advanceTimersByTime(300);
 
 		expect(queryClient.getQueryData<GitChildResult[]>(["children", "wip"])).toStrictEqual([
-			{...makeChild(), onHold: true},
+			{
+				...makeChild(),
+				onHold: true,
+			},
 		]);
 	});
 
-	it("keeps a client-side pushing overlay when a children event arrives mid-push", () => {
-		queryClient.setQueryData(["children", "wip"], [makeChild({pushing: true})]);
+	it("keeps a client-side pushing overlay when a children event arrives mid-push", () =>
+	{
+		queryClient.setQueryData(
+			["children", "wip"],
+			[
+				makeChild(
+					{
+						pushing: true,
+					},
+				),
+			],
+		);
 
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [makeChild()],
+				},
+			},
+		);
 		vi.advanceTimersByTime(300);
 
 		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
 		expect(child?.pushing).toBe(true);
 	});
 
-	it("keeps a running testStatus overlay when a children event arrives mid-test", () => {
-		queryClient.setQueryData(["children", "wip"], [makeChild({testStatus: "running"})]);
+	it("keeps a running testStatus overlay when a children event arrives mid-test", () =>
+	{
+		queryClient.setQueryData(
+			["children", "wip"],
+			[
+				makeChild(
+					{
+						testStatus: "running",
+					},
+				),
+			],
+		);
 
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChild({testStatus: "unknown"})]}});
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [
+						makeChild(
+							{
+								testStatus: "unknown",
+							},
+						),
+					],
+				},
+			},
+		);
 		vi.advanceTimersByTime(300);
 
 		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
 		expect(child?.testStatus).toBe("running");
 	});
 
-	it("takes the server testStatus when no test is running locally", () => {
-		queryClient.setQueryData(["children", "wip"], [makeChild({testStatus: "unknown"})]);
+	it("takes the server testStatus when no test is running locally", () =>
+	{
+		queryClient.setQueryData(
+			["children", "wip"],
+			[
+				makeChild(
+					{
+						testStatus: "unknown",
+					},
+				),
+			],
+		);
 
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChild({testStatus: "passed"})]}});
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [
+						makeChild(
+							{
+								testStatus: "passed",
+							},
+						),
+					],
+				},
+			},
+		);
 		vi.advanceTimersByTime(300);
 
 		const child = queryClient.getQueryData<GitChildResult[]>(["children", "wip"])?.[0];
 		expect(child?.testStatus).toBe("passed");
 	});
 
-	it("flushes todos after the batch delay", () => {
-		applier.apply({
-			channel: "todos",
-			data: {
-				project: "wip",
-				todos: [{project: "wip", title: "Fix flaky test", sourceFile: ".llm/todo.md", sourceLabel: "todo"}],
+	it("flushes todos after the batch delay", () =>
+	{
+		applier.apply(
+			{
+				channel: "todos",
+				data:
+				{
+					project: "wip",
+					todos: [
+						{
+							project: "wip",
+							title: "Fix flaky test",
+							sourceFile: ".llm/todo.md",
+							sourceLabel: "todo",
+						},
+					],
+				},
 			},
-		});
+		);
 		vi.advanceTimersByTime(300);
 
 		expect(queryClient.getQueryData(["todos", "wip"])).toHaveLength(1);
 	});
 
-	it("flushes pending children before a ready buffer state, so no row names a sha the children cache lacks", () => {
+	it("flushes pending children before a ready buffer state, so no row names a sha the children cache lacks", () =>
+	{
 		const rebased = "5".repeat(40);
 		queryClient.setQueryData(["children", "wip"], [makeChild()]);
-		const state = {
+		const state =
+		{
 			slots: 2,
-			ready: [{project: "wip", id: "p1", sha: rebased}],
+			ready: [
+				{
+					project: "wip",
+					id: "p1",
+					sha: rebased,
+				},
+			],
 			inFlight: [],
 			next: [],
 			stoppedProjects: [],
 		};
 
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChildAt(rebased)]}});
-		applier.apply({channel: "ready-buffer", data: state});
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [makeChildAt(rebased)],
+				},
+			},
+		);
+		applier.apply(
+			{
+				channel: "ready-buffer",
+				data: state,
+			},
+		);
 
-		expect({
-			children: queryClient.getQueryData<GitChildResult[]>(["children", "wip"]),
-			readyToLand: queryClient.getQueryData(["readyToLand"]),
-		}).toStrictEqual({children: [makeChildAt(rebased)], readyToLand: state});
+		expect(
+			{
+				children: queryClient.getQueryData<GitChildResult[]>(["children", "wip"]),
+				readyToLand: queryClient.getQueryData(["readyToLand"]),
+			},
+		).toStrictEqual(
+			{
+				children: [makeChildAt(rebased)],
+				readyToLand: state,
+			},
+		);
 	});
 
-	it("dispose cancels a pending flush", () => {
-		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
+	it("dispose cancels a pending flush", () =>
+	{
+		applier.apply(
+			{
+				channel: "children",
+				data:
+				{
+					project: "wip",
+					children: [makeChild()],
+				},
+			},
+		);
 		applier.dispose();
 		vi.advanceTimersByTime(300);
 
@@ -295,122 +574,258 @@ describe("batched cache writes", () => {
 	});
 });
 
-describe("other channels", () => {
-	it("writes projects straight into the cache", () => {
-		applier.apply({channel: "projects", data: []});
+describe("other channels", () =>
+{
+	it("writes projects straight into the cache", () =>
+	{
+		applier.apply(
+			{
+				channel: "projects",
+				data: [],
+			},
+		);
 		expect(queryClient.getQueryData(["projects"])).toStrictEqual([]);
 	});
 
-	it("writes the ready buffer's state into the cache for the Ready to land section", () => {
-		const state = {
+	it("writes the ready buffer's state into the cache for the Ready to land section", () =>
+	{
+		const state =
+		{
 			slots: 2,
-			ready: [{project: "a", id: "p1", sha: "1".repeat(40)}],
+			ready: [
+				{
+					project: "a",
+					id: "p1",
+					sha: "1".repeat(40),
+				},
+			],
 			inFlight: [],
 			next: [],
 			stoppedProjects: ["red"],
 		};
-		applier.apply({channel: "ready-buffer", data: state});
+		applier.apply(
+			{
+				channel: "ready-buffer",
+				data: state,
+			},
+		);
 		expect(queryClient.getQueryData(["readyToLand"])).toStrictEqual(state);
 	});
 
-	it("clears a landing outcome when its row leaves the ready buffer, and keeps the rest", () => {
+	it("clears a landing outcome when its row leaves the ready buffer, and keeps the rest", () =>
+	{
 		const stays = "1".repeat(40);
 		const leaves = "2".repeat(40);
-		const failed = {
+		const failed =
+		{
 			status: "failure",
 			message: "Open PR failed",
-			link: {href: "/debug/logs", label: "See the log"},
-		};
-		const pushed = {status: "success", message: "Pushed 1 commit to origin/main"};
-		queryClient.setQueryData(["actionOutcomes"], {
-			[`land:a:${stays}`]: failed,
-			[`land:a:${leaves}`]: failed,
-			"push:a": pushed,
-		});
-		applier.apply({
-			channel: "ready-buffer",
-			data: {
-				slots: 2,
-				ready: [{project: "a", id: "p1", sha: stays}],
-				inFlight: [],
-				next: [],
-				stoppedProjects: [],
+			link:
+			{
+				href: "/debug/logs",
+				label: "See the log",
 			},
-		});
-		expect(queryClient.getQueryData(["actionOutcomes"])).toStrictEqual({
-			[`land:a:${stays}`]: failed,
-			"push:a": pushed,
-		});
+		};
+		const pushed =
+		{
+			status: "success",
+			message: "Pushed 1 commit to origin/main",
+		};
+		queryClient.setQueryData(
+			["actionOutcomes"],
+			{
+				[`land:a:${stays}`]: failed,
+				[`land:a:${leaves}`]: failed,
+				"push:a": pushed,
+			},
+		);
+		applier.apply(
+			{
+				channel: "ready-buffer",
+				data:
+				{
+					slots: 2,
+					ready: [
+						{
+							project: "a",
+							id: "p1",
+							sha: stays,
+						},
+					],
+					inFlight: [],
+					next: [],
+					stoppedProjects: [],
+				},
+			},
+		);
+		expect(queryClient.getQueryData(["actionOutcomes"])).toStrictEqual(
+			{
+				[`land:a:${stays}`]: failed,
+				"push:a": pushed,
+			},
+		);
 	});
 
-	it("keeps a landing outcome while its row only awaits checks", () => {
+	it("keeps a landing outcome while its row only awaits checks", () =>
+	{
 		const waiting = "3".repeat(40);
-		const opened = {
+		const opened =
+		{
 			status: "success",
 			message: "Opened PR #12",
-			link: {href: "https://github.com/owner/repo/pull/12", label: "View on GitHub"},
-		};
-		queryClient.setQueryData(["actionOutcomes"], {[`land:a:${waiting}`]: opened});
-		applier.apply({
-			channel: "ready-buffer",
-			data: {
-				slots: 2,
-				ready: [],
-				awaitingChecks: [{project: "a", id: "p3", sha: waiting}],
-				inFlight: [],
-				next: [],
-				stoppedProjects: [],
+			link:
+			{
+				href: "https://github.com/owner/repo/pull/12",
+				label: "View on GitHub",
 			},
-		});
-		expect(queryClient.getQueryData(["actionOutcomes"])).toStrictEqual({[`land:a:${waiting}`]: opened});
+		};
+		queryClient.setQueryData(
+			["actionOutcomes"],
+			{
+				[`land:a:${waiting}`]: opened,
+			},
+		);
+		applier.apply(
+			{
+				channel: "ready-buffer",
+				data:
+				{
+					slots: 2,
+					ready: [],
+					awaitingChecks: [
+						{
+							project: "a",
+							id: "p3",
+							sha: waiting,
+						},
+					],
+					inFlight: [],
+					next: [],
+					stoppedProjects: [],
+				},
+			},
+		);
+		expect(queryClient.getQueryData(["actionOutcomes"])).toStrictEqual(
+			{
+				[`land:a:${waiting}`]: opened,
+			},
+		);
 	});
 
-	it("writes refreshed issues and project items straight into the cache", () => {
-		const issue = {
+	it("writes refreshed issues and project items straight into the cache", () =>
+	{
+		const issue =
+		{
 			number: 3,
 			title: "Real issue",
 			url: "https://github.com/owner/repo/issues/3",
 			labels: [],
-			repository: {name: "repo", nameWithOwner: "owner/repo"},
+			repository:
+			{
+				name: "repo",
+				nameWithOwner: "owner/repo",
+			},
 		};
-		const item = {id: "PVTI_1", title: "Board item", status: "Todo", type: "DRAFT_ISSUE" as const, labels: []};
-		applier.apply({channel: "issues", data: [issue]});
-		applier.apply({channel: "projectItems", data: [item]});
-		expect({
-			issues: queryClient.getQueryData(["issues"]),
-			projectItems: queryClient.getQueryData(["projectItems"]),
-		}).toStrictEqual({
-			issues: [issue],
-			projectItems: [item],
-		});
+		const item =
+		{
+			id: "PVTI_1",
+			title: "Board item",
+			status: "Todo",
+			type: "DRAFT_ISSUE" as const,
+			labels: [],
+		};
+		applier.apply(
+			{
+				channel: "issues",
+				data: [issue],
+			},
+		);
+		applier.apply(
+			{
+				channel: "projectItems",
+				data: [item],
+			},
+		);
+		expect(
+			{
+				issues: queryClient.getQueryData(["issues"]),
+				projectItems: queryClient.getQueryData(["projectItems"]),
+			},
+		).toStrictEqual(
+			{
+				issues: [issue],
+				projectItems: [item],
+			},
+		);
 	});
 
-	it("stores refresh state", () => {
-		applier.apply({
-			channel: "refresh-state",
-			data: {
-				slots: 4,
-				running: [{id: "1", kind: "children", project: "wip", costClass: "cheap"}],
-				queued: [],
-				runningByClass: {cheap: 1, "git-write": 0, build: 0, ai: 0},
+	it("stores refresh state", () =>
+	{
+		applier.apply(
+			{
+				channel: "refresh-state",
+				data:
+				{
+					slots: 4,
+					running: [
+						{
+							id: "1",
+							kind: "children",
+							project: "wip",
+							costClass: "cheap",
+						},
+					],
+					queued: [],
+					runningByClass:
+					{
+						cheap: 1,
+						"git-write": 0,
+						build: 0,
+						ai: 0,
+					},
+				},
 			},
-		});
+		);
 		expect(getSchedulerStateSnapshot().running).toHaveLength(1);
 	});
 
-	it("toasts refresh errors", () => {
-		applier.apply({channel: "refresh-error", data: {kind: "children", project: "wip", message: "boom"}});
-		expect(getToasts().at(-1)).toMatchObject({
-			level: "error",
-			message: "Background children refresh failed for wip",
-			detail: "boom",
-		});
+	it("toasts refresh errors", () =>
+	{
+		applier.apply(
+			{
+				channel: "refresh-error",
+				data:
+				{
+					kind: "children",
+					project: "wip",
+					message: "boom",
+				},
+			},
+		);
+		expect(getToasts().at(-1)).toMatchObject(
+			{
+				level: "error",
+				message: "Background children refresh failed for wip",
+				detail: "boom",
+			},
+		);
 	});
 });
 
-describe("wire contract", () => {
-	it("parses a serialized envelope round-trip and applies it", () => {
-		const wire = JSON.stringify({channel: "task", data: makeTaskEvent({status: "passed"})});
+describe("wire contract", () =>
+{
+	it("parses a serialized envelope round-trip and applies it", () =>
+	{
+		const wire = JSON.stringify(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						status: "passed",
+					},
+				),
+			},
+		);
 
 		const event = ServerEventSchema.parse(JSON.parse(wire));
 		applier.apply(event);
@@ -418,17 +833,26 @@ describe("wire contract", () => {
 		expect(getTaskSnapshot(SHA, "wip")?.status).toBe("passed");
 	});
 
-	it("rejects an envelope with an unknown channel", () => {
-		const result = ServerEventSchema.safeParse({channel: "bogus", data: {}});
+	it("rejects an envelope with an unknown channel", () =>
+	{
+		const result = ServerEventSchema.safeParse(
+			{
+				channel: "bogus",
+				data: {},
+			},
+		);
 		expect(result.success).toBe(false);
 	});
 });
 
-describe("resyncLoadedProjects", () => {
-	it("rewrites children and todos via setQueryData in small batches and never invalidates", async () => {
+describe("resyncLoadedProjects", () =>
+{
+	it("rewrites children and todos via setQueryData in small batches and never invalidates", async () =>
+	{
 		const {resyncLoadedProjects} = await import("./server-events-apply.js");
 		const projects = ["a", "b", "c", "d", "e"];
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			queryClient.setQueryData(["children", p], []);
 			queryClient.setQueryData(["todos", p], []);
 		}
@@ -436,7 +860,8 @@ describe("resyncLoadedProjects", () => {
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 		let inFlight = 0;
 		let maxInFlight = 0;
-		const track = async <T>(value: T): Promise<T> => {
+		const track = async <T>(value: T): Promise<T> =>
+		{
 			inFlight++;
 			maxInFlight = Math.max(maxInFlight, inFlight);
 			await Promise.resolve();
@@ -447,60 +872,159 @@ describe("resyncLoadedProjects", () => {
 		await resyncLoadedProjects(
 			queryClient,
 			{
-				fetchChildren: async (project) => track([makeChild({project})]),
+				fetchChildren: async (project) =>
+					track([
+						makeChild(
+							{
+								project,
+							},
+						),
+					]),
 				fetchTodos: async () => track([]),
 			},
 			2,
 		);
 
 		expect(projects.map((p) => queryClient.getQueryData(["children", p]))).toEqual(
-			projects.map((project) => [makeChild({project})]),
+			projects.map((project) => [
+				makeChild(
+					{
+						project,
+					},
+				),
+			]),
 		);
-		expect(setSpy).toHaveBeenCalledWith(["children", "a"], [makeChild({project: "a"})]);
+		expect(setSpy).toHaveBeenCalledWith(
+			["children", "a"],
+			[
+				makeChild(
+					{
+						project: "a",
+					},
+				),
+			],
+		);
 		expect(setSpy).toHaveBeenCalledWith(["todos", "e"], []);
 		expect(invalidateSpy).not.toHaveBeenCalled();
 		expect(maxInFlight).toBeLessThanOrEqual(4);
 	});
 
-	it("clears running/pushing overlays with no active task but keeps ones with an active task", async () => {
+	it("clears running/pushing overlays with no active task but keeps ones with an active task", async () =>
+	{
 		const {resyncLoadedProjects} = await import("./server-events-apply.js");
 		const STALE = "b".repeat(40);
 		const PUSHING = "c".repeat(40);
 		queryClient.setQueryData(
 			["children", "wip"],
 			[
-				makeChildAt(SHA, {testStatus: "running"}),
-				makeChildAt(STALE, {testStatus: "running", pushing: true}),
-				makeChildAt(PUSHING, {pushing: true}),
+				makeChildAt(
+					SHA,
+					{
+						testStatus: "running",
+					},
+				),
+				makeChildAt(
+					STALE,
+					{
+						testStatus: "running",
+						pushing: true,
+					},
+				),
+				makeChildAt(
+					PUSHING,
+					{
+						pushing: true,
+					},
+				),
 			],
 		);
-		applier.apply({channel: "task", data: makeTaskEvent({taskType: "test", status: "running"})});
-		applier.apply({
-			channel: "task",
-			data: makeTaskEvent({id: "2", sha: PUSHING, taskType: "push", status: "running"}),
-		});
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						taskType: "test",
+						status: "running",
+					},
+				),
+			},
+		);
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						id: "2",
+						sha: PUSHING,
+						taskType: "push",
+						status: "running",
+					},
+				),
+			},
+		);
 
-		await resyncLoadedProjects(queryClient, {
-			fetchChildren: async () => Promise.resolve([makeChildAt(SHA), makeChildAt(STALE), makeChildAt(PUSHING)]),
-			fetchTodos: async () => Promise.resolve([]),
-		});
+		await resyncLoadedProjects(
+			queryClient,
+			{
+				fetchChildren: async () =>
+					Promise.resolve([makeChildAt(SHA), makeChildAt(STALE), makeChildAt(PUSHING)]),
+				fetchTodos: async () => Promise.resolve([]),
+			},
+		);
 
 		expect(queryClient.getQueryData(["children", "wip"])).toEqual([
-			makeChildAt(SHA, {testStatus: "running"}),
+			makeChildAt(
+				SHA,
+				{
+					testStatus: "running",
+				},
+			),
 			makeChildAt(STALE),
-			makeChildAt(PUSHING, {pushing: true}),
+			makeChildAt(
+				PUSHING,
+				{
+					pushing: true,
+				},
+			),
 		]);
 	});
 
-	it("drops stale queued/running tasks from the store but keeps finished ones", async () => {
+	it("drops stale queued/running tasks from the store but keeps finished ones", async () =>
+	{
 		const {clearActiveTasks} = await import("./server-events-store.js");
 		const DONE = "d".repeat(40);
-		applier.apply({channel: "task", data: makeTaskEvent({status: "running"})});
-		applier.apply({channel: "task", data: makeTaskEvent({id: "3", sha: DONE, status: "passed"})});
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						status: "running",
+					},
+				),
+			},
+		);
+		applier.apply(
+			{
+				channel: "task",
+				data: makeTaskEvent(
+					{
+						id: "3",
+						sha: DONE,
+						status: "passed",
+					},
+				),
+			},
+		);
 		clearActiveTasks();
 		expect([getTaskSnapshot(SHA, "wip"), getTaskSnapshot(DONE, "wip")]).toEqual([
 			undefined,
-			makeTaskEvent({id: "3", sha: DONE, status: "passed"}),
+			makeTaskEvent(
+				{
+					id: "3",
+					sha: DONE,
+					status: "passed",
+				},
+			),
 		]);
 		expect(hasActiveTasksSnapshot()).toBe(false);
 	});

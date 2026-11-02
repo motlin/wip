@@ -1,12 +1,14 @@
 import {useSuspenseQuery, useSuspenseQueries} from "@tanstack/react-query";
 import {useMemo} from "react";
-import {
+import
+{
 	projectChildrenQueryOptions,
 	projectTodosQueryOptions,
 	issuesQueryOptions,
 	projectItemsQueryOptions,
 } from "./queries";
-import type {
+import type
+{
 	ProjectInfo,
 	GitChildResult,
 	IssueResult,
@@ -18,20 +20,29 @@ import type {
 import {mapProjectStatusToCategory} from "@wip/shared/schemas.js";
 import type {ProjectChildrenResult} from "./server-fns";
 
-export interface WorkItems {
+export interface WorkItems
+{
 	gitChildren: GitChildResult[];
 	issues: IssueResult[];
 	projectItems: ProjectItemResult[];
 	todos: TodoItem[];
 }
 
-export function useWorkItems(projects: ProjectInfo[]): WorkItems & {projectCount: number} {
-	const childQueries = useSuspenseQueries({
-		queries: projects.map((p) => projectChildrenQueryOptions(p.name)),
-	});
-	const todoQueries = useSuspenseQueries({
-		queries: projects.map((p) => projectTodosQueryOptions(p.name)),
-	});
+export function useWorkItems(projects: ProjectInfo[]): WorkItems &
+{
+	projectCount: number;
+}
+{
+	const childQueries = useSuspenseQueries(
+		{
+			queries: projects.map((p) => projectChildrenQueryOptions(p.name)),
+		},
+	);
+	const todoQueries = useSuspenseQueries(
+		{
+			queries: projects.map((p) => projectTodosQueryOptions(p.name)),
+		},
+	);
 	const {data: rawIssues} = useSuspenseQuery(issuesQueryOptions());
 	const {data: rawProjectItems} = useSuspenseQuery(projectItemsQueryOptions());
 
@@ -54,16 +65,22 @@ function buildWorkItems(
 	rawIssues: GitHubIssue[],
 	rawProjectItems: GitHubProjectItem[],
 	projects: ProjectInfo[],
-): WorkItems & {projectCount: number} {
+): WorkItems &
+{
+	projectCount: number;
+}
+{
 	const gitChildren: GitChildResult[] = [];
 
 	const allSubjects = new Set<string>();
 	const allPrUrls = new Set<string>();
 	const seenShas = new Set<string>();
 
-	for (const data of childrenData) {
+	for (const data of childrenData)
+	{
 		if (!Array.isArray(data)) continue;
-		for (const child of data) {
+		for (const child of data)
+		{
 			if (seenShas.has(child.sha)) continue;
 			seenShas.add(child.sha);
 			gitChildren.push(child);
@@ -75,7 +92,8 @@ function buildWorkItems(
 	const allUrls = new Set(allPrUrls);
 
 	const issues: IssueResult[] = [];
-	for (const issue of rawIssues) {
+	for (const issue of rawIssues)
+	{
 		if (allPrUrls.has(issue.url)) continue;
 		if (allSubjects.has(issue.title.toLowerCase())) continue;
 		issues.push(issue);
@@ -84,29 +102,34 @@ function buildWorkItems(
 	}
 
 	const projectItems: ProjectItemResult[] = [];
-	for (const item of rawProjectItems) {
+	for (const item of rawProjectItems)
+	{
 		if (item.url && allUrls.has(item.url)) continue;
 		if (allSubjects.has(item.title.toLowerCase())) continue;
 		const category = mapProjectStatusToCategory(item.status);
 		if (category === "approved") continue;
 		const repoName = item.repository ?? "unknown";
 		const matchedProject = projects.find((p) => p.remote.toLowerCase() === repoName.toLowerCase());
-		projectItems.push({
-			project: matchedProject?.name ?? repoName.split("/").pop() ?? repoName,
-			repository: repoName,
-			url: item.url,
-			number: item.number,
-			title: item.title,
-			status: item.status,
-			type: item.type,
-			labels: item.labels,
-		});
+		projectItems.push(
+			{
+				project: matchedProject?.name ?? repoName.split("/").pop() ?? repoName,
+				repository: repoName,
+				url: item.url,
+				number: item.number,
+				title: item.title,
+				status: item.status,
+				type: item.type,
+				labels: item.labels,
+			},
+		);
 		allSubjects.add(item.title.toLowerCase());
 	}
 
 	const todos: TodoItem[] = [];
-	for (const todoList of todosData) {
-		for (const todo of todoList) {
+	for (const todoList of todosData)
+	{
+		for (const todo of todoList)
+		{
 			if (allSubjects.has(todo.title.toLowerCase())) continue;
 			allSubjects.add(todo.title.toLowerCase());
 			todos.push(todo);

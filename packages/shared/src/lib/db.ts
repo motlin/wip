@@ -1,5 +1,6 @@
 import DatabaseConstructor from "better-sqlite3";
-import {
+import
+{
 	and,
 	asc,
 	desc,
@@ -28,7 +29,8 @@ import type {WorkItemHistoryRow} from "./flow-history.js";
 import type {GitHubProjectItem} from "./github-projects.js";
 import * as schema from "./schema.js";
 import {log} from "../services/logger-pino.js";
-import {
+import
+{
 	advanceConfig,
 	autoFixes,
 	branchNames,
@@ -58,19 +60,28 @@ import {
 
 const APP_NAME = "wip";
 const DB_BUSY_TIMEOUT_MS = 5000;
-const WRITE_TRANSACTION_CONFIG = {behavior: "immediate"} as const;
+const WRITE_TRANSACTION_CONFIG =
+{
+	behavior: "immediate",
+} as const;
 
 /**
  * WIP_DB_PATH overrides the database file so `just dev` never shares production's wip.db;
  * otherwise the file is $XDG_DATA_HOME/wip/wip.db (default ~/.local/share/wip/wip.db).
  */
-export function resolveDbPath(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveDbPath(env: NodeJS.ProcessEnv = process.env): string
+{
 	const override = env.WIP_DB_PATH;
 	const dbPath =
 		override !== undefined && override !== ""
 			? override
 			: path.join(env.XDG_DATA_HOME ?? path.join(env.HOME ?? "", ".local", "share"), APP_NAME, "wip.db");
-	fs.mkdirSync(path.dirname(dbPath), {recursive: true});
+	fs.mkdirSync(
+		path.dirname(dbPath),
+		{
+			recursive: true,
+		},
+	);
 	return dbPath;
 }
 
@@ -81,7 +92,8 @@ let lastTimestampMs = Number.NEGATIVE_INFINITY;
  * in the same millisecond would otherwise close both rows at the same system_to and collide
  * on the (key, system_to) primary key.
  */
-function now(): string {
+function now(): string
+{
 	lastTimestampMs = Math.max(Date.now(), lastTimestampMs + 1);
 	return new Date(lastTimestampMs).toISOString().replace("T", " ").replace("Z", "");
 }
@@ -89,32 +101,52 @@ function now(): string {
 let db: BetterSQLite3Database<typeof schema> | undefined;
 let customDbPath: string | undefined;
 
-export function initDb(dbPath: string): void {
-	if (db) {
+export function initDb(dbPath: string): void
+{
+	if (db)
+	{
 		throw new Error("initDb() must be called before the first getDb() call");
 	}
 	// When TEST_DB_FILE is set, use that path instead (allows inspecting the DB after a test)
 	customDbPath = process.env.TEST_DB_FILE ?? dbPath;
 }
 
-export function resetDb(): void {
+export function resetDb(): void
+{
 	db = undefined;
 	lastTimestampMs = Number.NEGATIVE_INFINITY;
 	customDbPath = undefined;
 }
 
-const tableInfoRowSchema = z.object({name: z.string(), notnull: z.number()});
+const tableInfoRowSchema = z.object(
+	{
+		name: z.string(),
+		notnull: z.number(),
+	},
+);
 // Cached rows were serialized from already-typed values, so only the container shape is checked on read.
 const cachedChildrenSchema = z.custom<GitChildResult[]>((value) => Array.isArray(value));
 const cachedTodosSchema = z.custom<TodoItem[]>((value) => Array.isArray(value));
 const envRecordSchema = z.record(z.string(), z.string());
-const sqliteMasterRowSchema = z.object({sql: z.string()});
+const sqliteMasterRowSchema = z.object(
+	{
+		sql: z.string(),
+	},
+);
 
-function tableInfo(sqlite: DatabaseConstructor.Database, table: string): Array<z.infer<typeof tableInfoRowSchema>> {
+function tableInfo(sqlite: DatabaseConstructor.Database, table: string): Array<z.infer<typeof tableInfoRowSchema>>
+{
 	return z.array(tableInfoRowSchema).parse(sqlite.prepare(`PRAGMA table_info('${table}')`).all());
 }
 
-function checkKey(checks: Array<{name: string; url: string | null}>): string {
+function checkKey(
+	checks: Array<
+	{
+		name: string;
+		url: string | null;
+	}>,
+): string
+{
 	return (
 		checks
 			.map((c) => `${c.name}\0${c.url ?? ""}`)
@@ -125,11 +157,13 @@ function checkKey(checks: Array<{name: string; url: string | null}>): string {
 	);
 }
 
-export function getDb(): BetterSQLite3Database<typeof schema> {
+export function getDb(): BetterSQLite3Database<typeof schema>
+{
 	if (db) return db;
 
 	// A background job leaking past a test's resetDb() must not silently open the real wip.db.
-	if (customDbPath === undefined && process.env.VITEST !== undefined) {
+	if (customDbPath === undefined && process.env.VITEST !== undefined)
+	{
 		throw new Error("getDb() called under vitest without initDb(); refusing to open the default wip.db");
 	}
 	const dbPath = customDbPath ?? resolveDbPath();
@@ -141,7 +175,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	const snoozedCols = tableInfo(sqlite, "snoozed");
 	const hasOldSchema =
 		snoozedCols.some((c) => c.name === "created_at") && !snoozedCols.some((c) => c.name === "system_from");
-	if (hasOldSchema) {
+	if (hasOldSchema)
+	{
 		sqlite.exec("DROP TABLE snoozed");
 	}
 
@@ -150,7 +185,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		const createSql = sqliteMasterRowSchema
 			.optional()
 			.parse(sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='snoozed'").get());
-		if (createSql?.sql.includes("system_from)")) {
+		if (createSql?.sql.includes("system_from)"))
+		{
 			for (const table of [
 				"snoozed",
 				"branch_names",
@@ -167,7 +203,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 				"project_cache",
 				"children_cache",
 				"todos_cache",
-			]) {
+			])
+			{
 				sqlite.exec(`DROP TABLE IF EXISTS ${table}`);
 			}
 		}
@@ -192,7 +229,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	{
 		const cols = tableInfo(sqlite, "snoozed");
 		if (!cols.some((c) => c.name === "patch_id")) sqlite.exec("ALTER TABLE snoozed ADD COLUMN patch_id TEXT");
-		if (!cols.some((c) => c.name === "orphaned")) {
+		if (!cols.some((c) => c.name === "orphaned"))
+		{
 			sqlite.exec("ALTER TABLE snoozed ADD COLUMN orphaned INTEGER NOT NULL DEFAULT 0");
 		}
 	}
@@ -232,20 +270,24 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		prCols.some((c) => c.name === "cached_at") ||
 		prCols.some((c) => c.name === "behind" && c.notnull === 0) ||
 		prCols.some((c) => c.name === "failed_checks")
-	) {
+	)
+	{
 		sqlite.exec("DROP TABLE pr_status_cache");
 	}
 	// Drop report_cache unconditionally — it is dead code
 	{
 		const reportCols = tableInfo(sqlite, "report_cache");
-		if (reportCols.length > 0) {
+		if (reportCols.length > 0)
+		{
 			sqlite.exec("DROP TABLE report_cache");
 		}
 	}
 
-	for (const table of ["mise_env_cache", "gh_login_cache", "github_project_items_cache"]) {
+	for (const table of ["mise_env_cache", "gh_login_cache", "github_project_items_cache"])
+	{
 		const cols = tableInfo(sqlite, table);
-		if (cols.some((c) => c.name === "cached_at")) {
+		if (cols.some((c) => c.name === "cached_at"))
+		{
 			sqlite.exec(`DROP TABLE ${table}`);
 		}
 	}
@@ -253,7 +295,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	// Migrate github_issues_cache JSON blob to normalized tables
 	{
 		const issuesCacheCols = tableInfo(sqlite, "github_issues_cache");
-		if (issuesCacheCols.length > 0) {
+		if (issuesCacheCols.length > 0)
+		{
 			sqlite.exec("DROP TABLE github_issues_cache");
 		}
 	}
@@ -261,7 +304,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	// Migrate github_project_items_cache JSON blob to normalized tables
 	{
 		const projectItemsCacheCols = tableInfo(sqlite, "github_project_items_cache");
-		if (projectItemsCacheCols.length > 0) {
+		if (projectItemsCacheCols.length > 0)
+		{
 			sqlite.exec("DROP TABLE github_project_items_cache");
 		}
 	}
@@ -307,7 +351,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		)
 	`);
 	// Migrate: envs cached before the config fingerprint existed are stale forever; drop and recreate.
-	if (!tableInfo(sqlite, "mise_env_cache").some((c) => c.name === "config_fingerprint")) {
+	if (!tableInfo(sqlite, "mise_env_cache").some((c) => c.name === "config_fingerprint"))
+	{
 		sqlite.exec("DELETE FROM mise_env_cache");
 		sqlite.exec("ALTER TABLE mise_env_cache ADD COLUMN config_fingerprint TEXT NOT NULL DEFAULT ''");
 	}
@@ -425,10 +470,12 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	// Migrate project_cache: add rebase_in_progress column if missing
 	{
 		const pcCols = tableInfo(sqlite, "project_cache");
-		if (pcCols.length > 0 && !pcCols.some((c) => c.name === "rebase_in_progress")) {
+		if (pcCols.length > 0 && !pcCols.some((c) => c.name === "rebase_in_progress"))
+		{
 			sqlite.exec("ALTER TABLE project_cache ADD COLUMN rebase_in_progress INTEGER NOT NULL DEFAULT 0");
 		}
-		if (pcCols.length > 0 && !pcCols.some((c) => c.name === "origin_remote")) {
+		if (pcCols.length > 0 && !pcCols.some((c) => c.name === "origin_remote"))
+		{
 			sqlite.exec("ALTER TABLE project_cache ADD COLUMN origin_remote TEXT NOT NULL DEFAULT ''");
 		}
 	}
@@ -533,7 +580,8 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 			PRIMARY KEY (project, patch_id, system_to)
 		)
 	`);
-	if (!tableInfo(sqlite, "auto_fixes").some((c) => c.name === "assigned")) {
+	if (!tableInfo(sqlite, "auto_fixes").some((c) => c.name === "assigned"))
+	{
 		sqlite.exec("ALTER TABLE auto_fixes ADD COLUMN assigned INTEGER NOT NULL DEFAULT 0");
 	}
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS auto_fixes_active_idx ON auto_fixes (project, system_to)`);
@@ -555,20 +603,41 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 	`);
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS work_items_active_idx ON work_items (project, system_to)`);
 
-	db = drizzle(sqlite, {schema});
+	db = drizzle(
+		sqlite,
+		{
+			schema,
+		},
+	);
 
 	// Migrate: add pr_number column if missing on existing databases
-	try {
+	try
+	{
 		db.run(sql`ALTER TABLE pr_status_cache ADD COLUMN pr_number INTEGER`);
-	} catch (error: unknown) {
-		log.general.debug({error}, "Failed to add pr_number column to pr_status_cache");
+	}
+	catch (error: unknown)
+	{
+		log.general.debug(
+			{
+				error,
+			},
+			"Failed to add pr_number column to pr_status_cache",
+		);
 	}
 
 	// Migrate: add merge_state_status column if missing on existing databases
-	try {
+	try
+	{
 		db.run(sql`ALTER TABLE pr_status_cache ADD COLUMN merge_state_status TEXT`);
-	} catch (error: unknown) {
-		log.general.debug({error}, "Failed to add merge_state_status column to pr_status_cache");
+	}
+	catch (error: unknown)
+	{
+		log.general.debug(
+			{
+				error,
+			},
+			"Failed to add merge_state_status column to pr_status_cache",
+		);
 	}
 
 	return db;
@@ -579,33 +648,50 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
  * (system_to = FAR_FUTURE), skip the write entirely if it is unchanged,
  * otherwise close it (system_to = now) and insert the replacement row.
  */
-function temporalUpsert<TTable extends SQLiteTable & {systemTo: SQLiteColumn}>(args: {
+function temporalUpsert<
+	TTable extends SQLiteTable &
+	{
+		systemTo: SQLiteColumn;
+	},
+>(args: {
 	table: TTable;
 	keyWhere?: SQL;
 	isUnchanged: (existing: InferSelectModel<TTable>) => boolean;
 	newRow: Omit<InferInsertModel<TTable>, "systemFrom" | "systemTo">;
-}): void {
+}): void
+{
 	const d = getDb();
 	const timestamp = now();
 	const activeWhere = and(args.keyWhere, eq(args.table.systemTo, FAR_FUTURE));
 
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic row type cannot be inferred from a generic table
 		const existing = tx.select().from(args.table).where(activeWhere).get() as InferSelectModel<TTable> | undefined;
 
 		if (existing && args.isUnchanged(existing)) return;
 
-		if (existing) {
+		if (existing)
+		{
 			tx.update(args.table)
 				// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
-				.set({systemTo: timestamp} as Partial<InferInsertModel<TTable>>)
+				.set(
+					{
+						systemTo: timestamp,
+					} as Partial<InferInsertModel<TTable>>,
+				)
 				.where(activeWhere)
 				.run();
 		}
 
 		tx.insert(args.table)
 			// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
-			.values({...args.newRow, systemFrom: timestamp} as InferInsertModel<TTable>)
+			.values(
+				{
+					...args.newRow,
+					systemFrom: timestamp,
+				} as InferInsertModel<TTable>,
+			)
 			.run();
 	}, WRITE_TRANSACTION_CONFIG);
 }
@@ -619,48 +705,63 @@ export function snoozeItem(
 	subject: string,
 	until: string | null,
 	patchId: string | null = null,
-): void {
+): void
+{
 	const d = getDb();
 	const timestamp = now();
 	const sameItem = patchId ? or(eq(snoozed.sha, sha), eq(snoozed.patchId, patchId)) : eq(snoozed.sha, sha);
 
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		tx.update(snoozed)
-			.set({systemTo: timestamp})
+			.set(
+				{
+					systemTo: timestamp,
+				},
+			)
 			.where(and(sameItem, eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
 			.run();
 
 		tx.insert(snoozed)
-			.values({
-				sha,
-				project,
-				shortSha,
-				subject,
-				until,
-				// An empty diff has an empty patch-id, which identifies nothing.
-				patchId: patchId === "" ? null : patchId,
-				systemFrom: timestamp,
-				systemTo: FAR_FUTURE,
-			})
+			.values(
+				{
+					sha,
+					project,
+					shortSha,
+					subject,
+					until,
+					// An empty diff has an empty patch-id, which identifies nothing.
+					patchId: patchId === "" ? null : patchId,
+					systemFrom: timestamp,
+					systemTo: FAR_FUTURE,
+				},
+			)
 			.run();
 	}, WRITE_TRANSACTION_CONFIG);
 }
 
-export function unsnoozeItem(sha: string, project: string): void {
+export function unsnoozeItem(sha: string, project: string): void
+{
 	const d = getDb();
 	d.update(snoozed)
-		.set({systemTo: now()})
+		.set(
+			{
+				systemTo: now(),
+			},
+		)
 		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
 		.run();
 }
 
 /** Active, unexpired rows for one project. */
-export function getActiveSnoozedForProject(project: string): SnoozedItem[] {
+export function getActiveSnoozedForProject(project: string): SnoozedItem[]
+{
 	return getActiveSnoozed().filter((row) => row.project === project);
 }
 
 /** Active rows still waiting for a patch-id backfill (not yet found orphaned). */
-export function getSnoozedNeedingBackfill(project: string): SnoozedItem[] {
+export function getSnoozedNeedingBackfill(project: string): SnoozedItem[]
+{
 	return getDb()
 		.select()
 		.from(snoozed)
@@ -679,33 +780,72 @@ export function getSnoozedNeedingBackfill(project: string): SnoozedItem[] {
  * Record the backfill outcome on the active row in place: the patch-id is a derived
  * fact of the same sha, so it opens no new bitemporal version.
  */
-export function setSnoozedIdentity(sha: string, project: string, identity: {patchId: string} | {orphaned: true}): void {
+export function setSnoozedIdentity(
+	sha: string,
+	project: string,
+	identity:
+		|
+		  {
+				patchId: string;
+		  }
+		|
+		  {
+				orphaned: true;
+		  },
+): void
+{
 	getDb()
 		.update(snoozed)
-		.set("patchId" in identity ? {patchId: identity.patchId} : {orphaned: true})
+		.set(
+			"patchId" in identity
+				?
+					{
+						patchId: identity.patchId,
+					}
+				:
+					{
+						orphaned: true,
+					},
+		)
 		.where(and(eq(snoozed.sha, sha), eq(snoozed.project, project), eq(snoozed.systemTo, FAR_FUTURE)))
 		.run();
 }
 
 /** The item was seen at a new sha (same patch-id): close the old version and reopen it there. */
-export function repointSnoozed(row: SnoozedItem, next: {sha: string; shortSha: string; subject: string}): void {
+export function repointSnoozed(
+	row: SnoozedItem,
+	next:
+	{
+		sha: string;
+		shortSha: string;
+		subject: string;
+	},
+): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		tx.update(snoozed)
-			.set({systemTo: timestamp})
+			.set(
+				{
+					systemTo: timestamp,
+				},
+			)
 			.where(and(eq(snoozed.sha, row.sha), eq(snoozed.project, row.project), eq(snoozed.systemTo, FAR_FUTURE)))
 			.run();
 		tx.insert(snoozed)
-			.values({
-				...row,
-				sha: next.sha,
-				shortSha: next.shortSha,
-				subject: next.subject,
-				orphaned: false,
-				systemFrom: timestamp,
-				systemTo: FAR_FUTURE,
-			})
+			.values(
+				{
+					...row,
+					sha: next.sha,
+					shortSha: next.shortSha,
+					subject: next.subject,
+					orphaned: false,
+					systemFrom: timestamp,
+					systemTo: FAR_FUTURE,
+				},
+			)
 			.run();
 	}, WRITE_TRANSACTION_CONFIG);
 }
@@ -714,15 +854,18 @@ export function repointSnoozed(row: SnoozedItem, next: {sha: string; shortSha: s
  * A snooze `until` is an ISO string ("…T11:00:00.000Z") while `now()` is "… 11:00:00.000";
  * as text, 'T' sorts after ' ', so compare them as instants via julianday().
  */
-function untilNotPassed(until: SQLiteColumn, at: string): SQL {
+function untilNotPassed(until: SQLiteColumn, at: string): SQL
+{
 	return sql`(${until} IS NULL OR julianday(${until}) >= julianday(${at}))`;
 }
 
-function untilPassed(until: SQLiteColumn, at: string): SQL {
+function untilPassed(until: SQLiteColumn, at: string): SQL
+{
 	return sql`julianday(${until}) <= julianday(${at})`;
 }
 
-function activeTodoSnooze(project: string, itemKey: string) {
+function activeTodoSnooze(project: string, itemKey: string)
+{
 	return and(
 		eq(snoozedTodos.project, project),
 		eq(snoozedTodos.itemKey, itemKey),
@@ -731,22 +874,55 @@ function activeTodoSnooze(project: string, itemKey: string) {
 }
 
 /** Put a todo On hold (`until` null) or snooze it, replacing any earlier hold of the same todo. */
-export function snoozeTodo(project: string, itemKey: string, until: string | null): void {
+export function snoozeTodo(project: string, itemKey: string, until: string | null): void
+{
 	const timestamp = now();
-	getDb().transaction((tx) => {
-		tx.update(snoozedTodos).set({systemTo: timestamp}).where(activeTodoSnooze(project, itemKey)).run();
-		tx.insert(snoozedTodos).values({project, itemKey, until, systemFrom: timestamp, systemTo: FAR_FUTURE}).run();
+	getDb().transaction((tx) =>
+	{
+		tx.update(snoozedTodos)
+			.set(
+				{
+					systemTo: timestamp,
+				},
+			)
+			.where(activeTodoSnooze(project, itemKey))
+			.run();
+		tx.insert(snoozedTodos)
+			.values(
+				{
+					project,
+					itemKey,
+					until,
+					systemFrom: timestamp,
+					systemTo: FAR_FUTURE,
+				},
+			)
+			.run();
 	}, WRITE_TRANSACTION_CONFIG);
 }
 
-export function unsnoozeTodo(project: string, itemKey: string): void {
-	getDb().update(snoozedTodos).set({systemTo: now()}).where(activeTodoSnooze(project, itemKey)).run();
+export function unsnoozeTodo(project: string, itemKey: string): void
+{
+	getDb()
+		.update(snoozedTodos)
+		.set(
+			{
+				systemTo: now(),
+			},
+		)
+		.where(activeTodoSnooze(project, itemKey))
+		.run();
 }
 
 /** The todoItemKeys of one project's todos that are On hold or snoozed and not yet expired. */
-export function getActiveSnoozedTodoKeys(project: string): Set<string> {
+export function getActiveSnoozedTodoKeys(project: string): Set<string>
+{
 	const rows = getDb()
-		.select({itemKey: snoozedTodos.itemKey})
+		.select(
+			{
+				itemKey: snoozedTodos.itemKey,
+			},
+		)
 		.from(snoozedTodos)
 		.where(
 			and(
@@ -759,7 +935,8 @@ export function getActiveSnoozedTodoKeys(project: string): Set<string> {
 	return new Set(rows.map((row) => row.itemKey));
 }
 
-export function getActiveSnoozed(): SnoozedItem[] {
+export function getActiveSnoozed(): SnoozedItem[]
+{
 	const d = getDb();
 	const nowStr = now();
 	return d
@@ -769,40 +946,50 @@ export function getActiveSnoozed(): SnoozedItem[] {
 		.all();
 }
 
-export function getAllSnoozed(): SnoozedItem[] {
+export function getAllSnoozed(): SnoozedItem[]
+{
 	const d = getDb();
 	return d.select().from(snoozed).where(eq(snoozed.systemTo, FAR_FUTURE)).all();
 }
 
-export function getAllSnoozedForDisplay() {
+export function getAllSnoozedForDisplay()
+{
 	const d = getDb();
 	return d
-		.select({
-			sha: snoozed.sha,
-			project: snoozed.project,
-			shortSha: snoozed.shortSha,
-			subject: snoozed.subject,
-			until: snoozed.until,
-			patchId: snoozed.patchId,
-			orphaned: snoozed.orphaned,
-		})
+		.select(
+			{
+				sha: snoozed.sha,
+				project: snoozed.project,
+				shortSha: snoozed.shortSha,
+				subject: snoozed.subject,
+				until: snoozed.until,
+				patchId: snoozed.patchId,
+				orphaned: snoozed.orphaned,
+			},
+		)
 		.from(snoozed)
 		.where(eq(snoozed.systemTo, FAR_FUTURE))
 		.all();
 }
 
-export function clearExpiredSnoozes(): number {
+export function clearExpiredSnoozes(): number
+{
 	const d = getDb();
 	const timestamp = now();
 	const result = d
 		.update(snoozed)
-		.set({systemTo: timestamp})
+		.set(
+			{
+				systemTo: timestamp,
+			},
+		)
 		.where(and(untilPassed(snoozed.until, timestamp), eq(snoozed.systemTo, FAR_FUTURE)))
 		.run();
 	return result.changes;
 }
 
-export function getSnoozeHistory(sha: string, project: string): SnoozedItem[] {
+export function getSnoozeHistory(sha: string, project: string): SnoozedItem[]
+{
 	const d = getDb();
 	return d
 		.select()
@@ -816,7 +1003,8 @@ export function getSnoozeHistory(sha: string, project: string): SnoozedItem[] {
 
 export type BranchNameItem = typeof branchNames.$inferSelect;
 
-export function getBranchName(sha: string, project: string): string | undefined {
+export function getBranchName(sha: string, project: string): string | undefined
+{
 	const d = getDb();
 	const row = d
 		.select()
@@ -826,7 +1014,14 @@ export function getBranchName(sha: string, project: string): string | undefined 
 	return row?.name;
 }
 
-export function getBranchNames(keys: Array<{sha: string; project: string}>): Map<string, string> {
+export function getBranchNames(
+	keys: Array<
+	{
+		sha: string;
+		project: string;
+	}>,
+): Map<string, string>
+{
 	if (keys.length === 0) return new Map();
 	const d = getDb();
 	const shas = [...new Set(keys.map((k) => k.sha))];
@@ -837,27 +1032,41 @@ export function getBranchNames(keys: Array<{sha: string; project: string}>): Map
 		.all();
 
 	const result = new Map<string, string>();
-	for (const row of rows) {
+	for (const row of rows)
+	{
 		result.set(`${row.project}:${row.sha}`, row.name);
 	}
 	return result;
 }
 
-export function setBranchName(sha: string, project: string, name: string): void {
-	temporalUpsert({
-		table: branchNames,
-		keyWhere: and(eq(branchNames.sha, sha), eq(branchNames.project, project)),
-		isUnchanged: (existing) => existing.name === name,
-		newRow: {sha, project, name},
-	});
+export function setBranchName(sha: string, project: string, name: string): void
+{
+	temporalUpsert(
+		{
+			table: branchNames,
+			keyWhere: and(eq(branchNames.sha, sha), eq(branchNames.project, project)),
+			isUnchanged: (existing) => existing.name === name,
+			newRow:
+			{
+				sha,
+				project,
+				name,
+			},
+		},
+	);
 }
 
 // --- Cache freshness (non-temporal polling metadata) ---
 
-export function isCacheFresh(cacheKey: string, ttlMs: number): boolean {
+export function isCacheFresh(cacheKey: string, ttlMs: number): boolean
+{
 	const d = getDb();
 	const row = d
-		.select({lastRefreshed: cacheFreshness.lastRefreshed})
+		.select(
+			{
+				lastRefreshed: cacheFreshness.lastRefreshed,
+			},
+		)
 		.from(cacheFreshness)
 		.where(eq(cacheFreshness.cacheKey, cacheKey))
 		.get();
@@ -866,11 +1075,25 @@ export function isCacheFresh(cacheKey: string, ttlMs: number): boolean {
 	return row.lastRefreshed > cutoff;
 }
 
-export function markCacheFresh(cacheKey: string): void {
+export function markCacheFresh(cacheKey: string): void
+{
 	const d = getDb();
 	d.insert(cacheFreshness)
-		.values({cacheKey, lastRefreshed: now()})
-		.onConflictDoUpdate({target: cacheFreshness.cacheKey, set: {lastRefreshed: now()}})
+		.values(
+			{
+				cacheKey,
+				lastRefreshed: now(),
+			},
+		)
+		.onConflictDoUpdate(
+			{
+				target: cacheFreshness.cacheKey,
+				set:
+				{
+					lastRefreshed: now(),
+				},
+			},
+		)
 		.run();
 }
 
@@ -879,10 +1102,16 @@ export function markCacheFresh(cacheKey: string): void {
  * keyed by the remainder of the key (e.g. prefix "children:" → project name).
  * Powers the "updated Xm ago" staleness display.
  */
-export function getCacheFreshnessByPrefix(prefix: string): Map<string, string> {
+export function getCacheFreshnessByPrefix(prefix: string): Map<string, string>
+{
 	const d = getDb();
 	const rows = d
-		.select({cacheKey: cacheFreshness.cacheKey, lastRefreshed: cacheFreshness.lastRefreshed})
+		.select(
+			{
+				cacheKey: cacheFreshness.cacheKey,
+				lastRefreshed: cacheFreshness.lastRefreshed,
+			},
+		)
 		.from(cacheFreshness)
 		.where(like(cacheFreshness.cacheKey, `${prefix}%`))
 		.all();
@@ -891,28 +1120,36 @@ export function getCacheFreshnessByPrefix(prefix: string): Map<string, string> {
 
 // PR status cache functions
 
-export interface CachedPrStatus {
+export interface CachedPrStatus
+{
 	branch: string;
 	reviewStatus: ReviewStatus;
 	checkStatus: CheckStatus;
 	prUrl: string | null;
 	prNumber?: number;
-	failedChecks?: Array<{name: string; url?: string}>;
+	failedChecks?: Array<
+	{
+		name: string;
+		url?: string;
+	}>;
 	behind?: boolean;
 	mergeStateStatus?: string;
 }
 
-function queryPrStatusesWithChecks(d: BetterSQLite3Database<typeof schema>, project: string): CachedPrStatus[] | null {
+function queryPrStatusesWithChecks(d: BetterSQLite3Database<typeof schema>, project: string): CachedPrStatus[] | null
+{
 	const rows = d
-		.select({
-			branch: prStatusCache.branch,
-			reviewStatus: prStatusCache.reviewStatus,
-			checkStatus: prStatusCache.checkStatus,
-			prUrl: prStatusCache.prUrl,
-			prNumber: prStatusCache.prNumber,
-			behind: prStatusCache.behind,
-			mergeStateStatus: prStatusCache.mergeStateStatus,
-		})
+		.select(
+			{
+				branch: prStatusCache.branch,
+				reviewStatus: prStatusCache.reviewStatus,
+				checkStatus: prStatusCache.checkStatus,
+				prUrl: prStatusCache.prUrl,
+				prNumber: prStatusCache.prNumber,
+				behind: prStatusCache.behind,
+				mergeStateStatus: prStatusCache.mergeStateStatus,
+			},
+		)
 		.from(prStatusCache)
 		.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
 		.all();
@@ -920,23 +1157,39 @@ function queryPrStatusesWithChecks(d: BetterSQLite3Database<typeof schema>, proj
 	if (rows.length === 0) return null;
 
 	const checksRows = d
-		.select({
-			branch: prFailedChecks.branch,
-			name: prFailedChecks.name,
-			url: prFailedChecks.url,
-		})
+		.select(
+			{
+				branch: prFailedChecks.branch,
+				name: prFailedChecks.name,
+				url: prFailedChecks.url,
+			},
+		)
 		.from(prFailedChecks)
 		.where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
 		.all();
 
-	const checksByBranch = new Map<string, Array<{name: string; url?: string}>>();
-	for (const c of checksRows) {
+	const checksByBranch = new Map<
+		string,
+		Array<
+		{
+			name: string;
+			url?: string;
+		}>
+	>();
+	for (const c of checksRows)
+	{
 		const arr = checksByBranch.get(c.branch) ?? [];
-		arr.push({name: c.name, url: c.url ?? undefined});
+		arr.push(
+			{
+				name: c.name,
+				url: c.url ?? undefined,
+			},
+		);
 		checksByBranch.set(c.branch, arr);
 	}
 
-	return rows.map((r) => ({
+	return rows.map((r) => (
+	{
 		branch: r.branch,
 		reviewStatus: r.reviewStatus,
 		checkStatus: r.checkStatus,
@@ -948,15 +1201,18 @@ function queryPrStatusesWithChecks(d: BetterSQLite3Database<typeof schema>, proj
 	}));
 }
 
-export function getCachedPrStatuses(project: string): CachedPrStatus[] | null {
+export function getCachedPrStatuses(project: string): CachedPrStatus[] | null
+{
 	return queryPrStatusesWithChecks(getDb(), project);
 }
 
-export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void {
+export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): void
+{
 	const d = getDb();
 	const timestamp = now();
 
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		// Fetch existing active parent rows for comparison
 		const existingRows = tx
 			.select()
@@ -969,27 +1225,48 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 
 		// Fetch existing active failed-checks rows for comparison
 		const existingChecksRows = tx
-			.select({
-				branch: prFailedChecks.branch,
-				name: prFailedChecks.name,
-				url: prFailedChecks.url,
-			})
+			.select(
+				{
+					branch: prFailedChecks.branch,
+					name: prFailedChecks.name,
+					url: prFailedChecks.url,
+				},
+			)
 			.from(prFailedChecks)
 			.where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
 			.all();
 
-		const existingChecksByBranch = new Map<string, Array<{name: string; url: string | null}>>();
-		for (const c of existingChecksRows) {
+		const existingChecksByBranch = new Map<
+			string,
+			Array<
+			{
+				name: string;
+				url: string | null;
+			}>
+		>();
+		for (const c of existingChecksRows)
+		{
 			const arr = existingChecksByBranch.get(c.branch) ?? [];
-			arr.push({name: c.name, url: c.url});
+			arr.push(
+				{
+					name: c.name,
+					url: c.url,
+				},
+			);
 			existingChecksByBranch.set(c.branch, arr);
 		}
 
 		// Close parent rows and checks for branches no longer present
-		for (const existing of existingRows) {
-			if (!incomingBranches.has(existing.branch)) {
+		for (const existing of existingRows)
+		{
+			if (!incomingBranches.has(existing.branch))
+			{
 				tx.update(prStatusCache)
-					.set({systemTo: timestamp})
+					.set(
+						{
+							systemTo: timestamp,
+						},
+					)
 					.where(
 						and(
 							eq(prStatusCache.project, project),
@@ -999,7 +1276,11 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 					)
 					.run();
 				tx.update(prFailedChecks)
-					.set({systemTo: timestamp})
+					.set(
+						{
+							systemTo: timestamp,
+						},
+					)
 					.where(
 						and(
 							eq(prFailedChecks.project, project),
@@ -1011,7 +1292,8 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 			}
 		}
 
-		for (const s of statuses) {
+		for (const s of statuses)
+		{
 			const existing = existingByBranch.get(s.branch);
 			const parentChanged =
 				!existing ||
@@ -1022,11 +1304,17 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				existing.behind !== s.behind ||
 				(existing.mergeStateStatus ?? undefined) !== s.mergeStateStatus;
 
-			if (parentChanged) {
+			if (parentChanged)
+			{
 				// Close old parent row if it exists
-				if (existing) {
+				if (existing)
+				{
 					tx.update(prStatusCache)
-						.set({systemTo: timestamp})
+						.set(
+							{
+								systemTo: timestamp,
+							},
+						)
 						.where(
 							and(
 								eq(prStatusCache.project, project),
@@ -1038,28 +1326,42 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				}
 
 				tx.insert(prStatusCache)
-					.values({
-						project,
-						branch: s.branch,
-						reviewStatus: s.reviewStatus,
-						checkStatus: s.checkStatus,
-						prUrl: s.prUrl,
-						prNumber: s.prNumber ?? null,
-						behind: s.behind ?? false,
-						mergeStateStatus: s.mergeStateStatus ?? null,
-						systemFrom: timestamp,
-					})
+					.values(
+						{
+							project,
+							branch: s.branch,
+							reviewStatus: s.reviewStatus,
+							checkStatus: s.checkStatus,
+							prUrl: s.prUrl,
+							prNumber: s.prNumber ?? null,
+							behind: s.behind ?? false,
+							mergeStateStatus: s.mergeStateStatus ?? null,
+							systemFrom: timestamp,
+						},
+					)
 					.run();
 			}
 
 			// Deduplicate incoming checks by name
-			const incomingChecks: Array<{name: string; url: string | null}> = [];
-			if (s.failedChecks && s.failedChecks.length > 0) {
+			const incomingChecks: Array<
+			{
+				name: string;
+				url: string | null;
+			}> = [];
+			if (s.failedChecks && s.failedChecks.length > 0)
+			{
 				const seen = new Set<string>();
-				for (const fc of s.failedChecks) {
-					if (!seen.has(fc.name)) {
+				for (const fc of s.failedChecks)
+				{
+					if (!seen.has(fc.name))
+					{
 						seen.add(fc.name);
-						incomingChecks.push({name: fc.name, url: fc.url ?? null});
+						incomingChecks.push(
+							{
+								name: fc.name,
+								url: fc.url ?? null,
+							},
+						);
 					}
 				}
 			}
@@ -1068,11 +1370,17 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 
 			const checksChanged = checkKey(oldChecks) !== checkKey(incomingChecks);
 
-			if (checksChanged) {
+			if (checksChanged)
+			{
 				// Close old checks for this branch
-				if (oldChecks.length > 0) {
+				if (oldChecks.length > 0)
+				{
 					tx.update(prFailedChecks)
-						.set({systemTo: timestamp})
+						.set(
+							{
+								systemTo: timestamp,
+							},
+						)
 						.where(
 							and(
 								eq(prFailedChecks.project, project),
@@ -1084,10 +1392,12 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 				}
 
 				// Insert new checks
-				if (incomingChecks.length > 0) {
+				if (incomingChecks.length > 0)
+				{
 					tx.insert(prFailedChecks)
 						.values(
-							incomingChecks.map((fc) => ({
+							incomingChecks.map((fc) => (
+							{
 								project,
 								branch: s.branch,
 								systemFrom: timestamp,
@@ -1103,16 +1413,26 @@ export function cachePrStatuses(project: string, statuses: CachedPrStatus[]): vo
 	markCacheFresh(`pr-statuses:${project}`);
 }
 
-export function invalidatePrCache(project: string): void {
+export function invalidatePrCache(project: string): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		tx.update(prStatusCache)
-			.set({systemTo: timestamp})
+			.set(
+				{
+					systemTo: timestamp,
+				},
+			)
 			.where(and(eq(prStatusCache.project, project), eq(prStatusCache.systemTo, FAR_FUTURE)))
 			.run();
 		tx.update(prFailedChecks)
-			.set({systemTo: timestamp})
+			.set(
+				{
+					systemTo: timestamp,
+				},
+			)
 			.where(and(eq(prFailedChecks.project, project), eq(prFailedChecks.systemTo, FAR_FUTURE)))
 			.run();
 	}, WRITE_TRANSACTION_CONFIG);
@@ -1121,7 +1441,8 @@ export function invalidatePrCache(project: string): void {
 // --- Mise env cache ---
 
 /** The env cached for `dir`, or null when none is cached under this mise config fingerprint. */
-export function getCachedMiseEnv(dir: string, configFingerprint: string): Record<string, string> | null {
+export function getCachedMiseEnv(dir: string, configFingerprint: string): Record<string, string> | null
+{
 	const d = getDb();
 	const row = d
 		.select()
@@ -1133,35 +1454,51 @@ export function getCachedMiseEnv(dir: string, configFingerprint: string): Record
 	return parsed.success ? parsed.data : null;
 }
 
-export function cacheMiseEnv(dir: string, env: Record<string, string>, configFingerprint: string): void {
+export function cacheMiseEnv(dir: string, env: Record<string, string>, configFingerprint: string): void
+{
 	const serialized = JSON.stringify(env);
-	temporalUpsert({
-		table: miseEnvCache,
-		keyWhere: eq(miseEnvCache.dir, dir),
-		isUnchanged: (existing) => existing.env === serialized && existing.configFingerprint === configFingerprint,
-		newRow: {dir, env: serialized, configFingerprint},
-	});
+	temporalUpsert(
+		{
+			table: miseEnvCache,
+			keyWhere: eq(miseEnvCache.dir, dir),
+			isUnchanged: (existing) => existing.env === serialized && existing.configFingerprint === configFingerprint,
+			newRow:
+			{
+				dir,
+				env: serialized,
+				configFingerprint,
+			},
+		},
+	);
 }
 
 // --- GitHub login cache ---
 
-export function getCachedGhLogin(): string | null {
+export function getCachedGhLogin(): string | null
+{
 	const d = getDb();
 	const row = d.select().from(ghLoginCache).where(eq(ghLoginCache.systemTo, FAR_FUTURE)).get();
 	return row?.login ?? null;
 }
 
-export function cacheGhLogin(login: string): void {
-	temporalUpsert({
-		table: ghLoginCache,
-		isUnchanged: (existing) => existing.login === login,
-		newRow: {login},
-	});
+export function cacheGhLogin(login: string): void
+{
+	temporalUpsert(
+		{
+			table: ghLoginCache,
+			isUnchanged: (existing) => existing.login === login,
+			newRow:
+			{
+				login,
+			},
+		},
+	);
 }
 
 // --- GitHub issues cache ---
 
-export function getCachedIssues(): GitHubIssue[] | null {
+export function getCachedIssues(): GitHubIssue[] | null
+{
 	const d = getDb();
 
 	const rows = d.select().from(githubIssues).where(eq(githubIssues.systemTo, FAR_FUTURE)).all();
@@ -1174,30 +1511,47 @@ export function getCachedIssues(): GitHubIssue[] | null {
 		.where(inArray(githubIssueLabels.systemFrom, systemFroms))
 		.all();
 
-	const labelsByKey = new Map<string, Array<{name: string; color: string}>>();
-	for (const l of labelRows) {
+	const labelsByKey = new Map<
+		string,
+		Array<
+		{
+			name: string;
+			color: string;
+		}>
+	>();
+	for (const l of labelRows)
+	{
 		const key = `${l.repoNameWithOwner}:${l.issueNumber}`;
 		const arr = labelsByKey.get(key) ?? [];
-		arr.push({name: l.labelName, color: l.labelColor});
+		arr.push(
+			{
+				name: l.labelName,
+				color: l.labelColor,
+			},
+		);
 		labelsByKey.set(key, arr);
 	}
 
-	return rows.map((r) => ({
+	return rows.map((r) => (
+	{
 		number: r.number,
 		title: r.title,
 		url: r.url,
 		labels: labelsByKey.get(`${r.repoNameWithOwner}:${r.number}`) ?? [],
-		repository: {
+		repository:
+		{
 			name: r.repoName,
 			nameWithOwner: r.repoNameWithOwner,
 		},
 	}));
 }
 
-export function cacheIssues(issues: GitHubIssue[]): void {
+export function cacheIssues(issues: GitHubIssue[]): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		const existingRows = tx.select().from(githubIssues).where(eq(githubIssues.systemTo, FAR_FUTURE)).all();
 
 		const existingByKey = new Map(existingRows.map((r) => [`${r.repoNameWithOwner}:${r.number}`, r]));
@@ -1213,20 +1567,39 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 						.where(inArray(githubIssueLabels.systemFrom, existingSystemFroms))
 						.all()
 				: [];
-		const existingLabelsByKey = new Map<string, Array<{name: string; color: string}>>();
-		for (const l of existingLabelRows) {
+		const existingLabelsByKey = new Map<
+			string,
+			Array<
+			{
+				name: string;
+				color: string;
+			}>
+		>();
+		for (const l of existingLabelRows)
+		{
 			const key = `${l.repoNameWithOwner}:${l.issueNumber}`;
 			const arr = existingLabelsByKey.get(key) ?? [];
-			arr.push({name: l.labelName, color: l.labelColor});
+			arr.push(
+				{
+					name: l.labelName,
+					color: l.labelColor,
+				},
+			);
 			existingLabelsByKey.set(key, arr);
 		}
 
 		// Close rows for issues no longer present
-		for (const existing of existingRows) {
+		for (const existing of existingRows)
+		{
 			const key = `${existing.repoNameWithOwner}:${existing.number}`;
-			if (!incomingKeys.has(key)) {
+			if (!incomingKeys.has(key))
+			{
 				tx.update(githubIssues)
-					.set({systemTo: timestamp})
+					.set(
+						{
+							systemTo: timestamp,
+						},
+					)
 					.where(
 						and(
 							eq(githubIssues.number, existing.number),
@@ -1241,7 +1614,8 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 		// Track which systemFroms are still referenced after this sync
 		const activeSystemFroms = new Set<string>();
 
-		for (const issue of issues) {
+		for (const issue of issues)
+		{
 			const key = `${issue.repository.nameWithOwner}:${issue.number}`;
 			const existing = existingByKey.get(key);
 
@@ -1259,10 +1633,16 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 				existing.repoName !== issue.repository.name ||
 				!labelsMatch;
 
-			if (issueChanged) {
-				if (existing) {
+			if (issueChanged)
+			{
+				if (existing)
+				{
 					tx.update(githubIssues)
-						.set({systemTo: timestamp})
+						.set(
+							{
+								systemTo: timestamp,
+							},
+						)
 						.where(
 							and(
 								eq(githubIssues.number, existing.number),
@@ -1274,38 +1654,47 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 				}
 
 				tx.insert(githubIssues)
-					.values({
-						systemFrom: timestamp,
-						number: issue.number,
-						title: issue.title,
-						url: issue.url,
-						repoName: issue.repository.name,
-						repoNameWithOwner: issue.repository.nameWithOwner,
-					})
+					.values(
+						{
+							systemFrom: timestamp,
+							number: issue.number,
+							title: issue.title,
+							url: issue.url,
+							repoName: issue.repository.name,
+							repoNameWithOwner: issue.repository.nameWithOwner,
+						},
+					)
 					.run();
 
 				activeSystemFroms.add(timestamp);
 
-				for (const label of issue.labels) {
+				for (const label of issue.labels)
+				{
 					tx.insert(githubIssueLabels)
-						.values({
-							systemFrom: timestamp,
-							issueNumber: issue.number,
-							repoNameWithOwner: issue.repository.nameWithOwner,
-							labelName: label.name,
-							labelColor: label.color,
-						})
+						.values(
+							{
+								systemFrom: timestamp,
+								issueNumber: issue.number,
+								repoNameWithOwner: issue.repository.nameWithOwner,
+								labelName: label.name,
+								labelColor: label.color,
+							},
+						)
 						.run();
 				}
-			} else {
+			}
+			else
+			{
 				activeSystemFroms.add(existing.systemFrom);
 			}
 		}
 
 		// Delete label rows whose systemFrom is no longer referenced by any active issue
-		if (existingSystemFroms.length > 0) {
+		if (existingSystemFroms.length > 0)
+		{
 			const orphanedSystemFroms = existingSystemFroms.filter((sf) => !activeSystemFroms.has(sf));
-			if (orphanedSystemFroms.length > 0) {
+			if (orphanedSystemFroms.length > 0)
+			{
 				tx.delete(githubIssueLabels).where(inArray(githubIssueLabels.systemFrom, orphanedSystemFroms)).run();
 			}
 		}
@@ -1313,15 +1702,24 @@ export function cacheIssues(issues: GitHubIssue[]): void {
 	markCacheFresh("github-issues");
 }
 
-export function invalidateIssuesCacheDb(): void {
+export function invalidateIssuesCacheDb(): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.update(githubIssues).set({systemTo: timestamp}).where(eq(githubIssues.systemTo, FAR_FUTURE)).run();
+	d.update(githubIssues)
+		.set(
+			{
+				systemTo: timestamp,
+			},
+		)
+		.where(eq(githubIssues.systemTo, FAR_FUTURE))
+		.run();
 }
 
 // --- GitHub project items cache ---
 
-export function getCachedProjectItems(): GitHubProjectItem[] | null {
+export function getCachedProjectItems(): GitHubProjectItem[] | null
+{
 	const d = getDb();
 
 	const rows = d.select().from(githubProjectItems).where(eq(githubProjectItems.systemTo, FAR_FUTURE)).all();
@@ -1334,14 +1732,28 @@ export function getCachedProjectItems(): GitHubProjectItem[] | null {
 		.where(inArray(githubProjectItemLabels.systemFrom, systemFroms))
 		.all();
 
-	const labelsByItemId = new Map<string, Array<{name: string; color: string}>>();
-	for (const l of labelRows) {
+	const labelsByItemId = new Map<
+		string,
+		Array<
+		{
+			name: string;
+			color: string;
+		}>
+	>();
+	for (const l of labelRows)
+	{
 		const arr = labelsByItemId.get(l.itemId) ?? [];
-		arr.push({name: l.labelName, color: l.labelColor});
+		arr.push(
+			{
+				name: l.labelName,
+				color: l.labelColor,
+			},
+		);
 		labelsByItemId.set(l.itemId, arr);
 	}
 
-	return rows.map((r) => ({
+	return rows.map((r) => (
+	{
 		id: r.itemId,
 		title: r.title,
 		status: r.status,
@@ -1353,10 +1765,12 @@ export function getCachedProjectItems(): GitHubProjectItem[] | null {
 	}));
 }
 
-export function cacheProjectItems(items: GitHubProjectItem[]): void {
+export function cacheProjectItems(items: GitHubProjectItem[]): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		const existingRows = tx
 			.select()
 			.from(githubProjectItems)
@@ -1376,18 +1790,37 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 						.where(inArray(githubProjectItemLabels.systemFrom, existingSystemFroms))
 						.all()
 				: [];
-		const existingLabelsByItemId = new Map<string, Array<{name: string; color: string}>>();
-		for (const l of existingLabelRows) {
+		const existingLabelsByItemId = new Map<
+			string,
+			Array<
+			{
+				name: string;
+				color: string;
+			}>
+		>();
+		for (const l of existingLabelRows)
+		{
 			const arr = existingLabelsByItemId.get(l.itemId) ?? [];
-			arr.push({name: l.labelName, color: l.labelColor});
+			arr.push(
+				{
+					name: l.labelName,
+					color: l.labelColor,
+				},
+			);
 			existingLabelsByItemId.set(l.itemId, arr);
 		}
 
 		// Close rows for items no longer present
-		for (const existing of existingRows) {
-			if (!incomingIds.has(existing.itemId)) {
+		for (const existing of existingRows)
+		{
+			if (!incomingIds.has(existing.itemId))
+			{
 				tx.update(githubProjectItems)
-					.set({systemTo: timestamp})
+					.set(
+						{
+							systemTo: timestamp,
+						},
+					)
 					.where(
 						and(
 							eq(githubProjectItems.itemId, existing.itemId),
@@ -1401,7 +1834,8 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 		// Track which systemFroms are still referenced after this sync
 		const activeSystemFroms = new Set<string>();
 
-		for (const item of items) {
+		for (const item of items)
+		{
 			const existing = existingById.get(item.id);
 
 			const existingLabels = existingLabelsByItemId.get(item.id) ?? [];
@@ -1421,10 +1855,16 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 				(existing.repository ?? undefined) !== (item.repository ?? undefined) ||
 				!labelsMatch;
 
-			if (itemChanged) {
-				if (existing) {
+			if (itemChanged)
+			{
+				if (existing)
+				{
 					tx.update(githubProjectItems)
-						.set({systemTo: timestamp})
+						.set(
+							{
+								systemTo: timestamp,
+							},
+						)
 						.where(
 							and(
 								eq(githubProjectItems.itemId, existing.itemId),
@@ -1435,39 +1875,48 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 				}
 
 				tx.insert(githubProjectItems)
-					.values({
-						systemFrom: timestamp,
-						itemId: item.id,
-						title: item.title,
-						status: item.status,
-						type: item.type,
-						url: item.url ?? null,
-						number: item.number ?? null,
-						repository: item.repository ?? null,
-					})
+					.values(
+						{
+							systemFrom: timestamp,
+							itemId: item.id,
+							title: item.title,
+							status: item.status,
+							type: item.type,
+							url: item.url ?? null,
+							number: item.number ?? null,
+							repository: item.repository ?? null,
+						},
+					)
 					.run();
 
 				activeSystemFroms.add(timestamp);
 
-				for (const label of item.labels) {
+				for (const label of item.labels)
+				{
 					tx.insert(githubProjectItemLabels)
-						.values({
-							systemFrom: timestamp,
-							itemId: item.id,
-							labelName: label.name,
-							labelColor: label.color,
-						})
+						.values(
+							{
+								systemFrom: timestamp,
+								itemId: item.id,
+								labelName: label.name,
+								labelColor: label.color,
+							},
+						)
 						.run();
 				}
-			} else {
+			}
+			else
+			{
 				activeSystemFroms.add(existing.systemFrom);
 			}
 		}
 
 		// Delete label rows whose systemFrom is no longer referenced by any active item
-		if (existingSystemFroms.length > 0) {
+		if (existingSystemFroms.length > 0)
+		{
 			const orphanedSystemFroms = existingSystemFroms.filter((sf) => !activeSystemFroms.has(sf));
-			if (orphanedSystemFroms.length > 0) {
+			if (orphanedSystemFroms.length > 0)
+			{
 				tx.delete(githubProjectItemLabels)
 					.where(inArray(githubProjectItemLabels.systemFrom, orphanedSystemFroms))
 					.run();
@@ -1477,14 +1926,23 @@ export function cacheProjectItems(items: GitHubProjectItem[]): void {
 	markCacheFresh("github-project-items");
 }
 
-export function invalidateProjectItemsCacheDb(): void {
+export function invalidateProjectItemsCacheDb(): void
+{
 	const d = getDb();
-	d.update(githubProjectItems).set({systemTo: now()}).where(eq(githubProjectItems.systemTo, FAR_FUTURE)).run();
+	d.update(githubProjectItems)
+		.set(
+			{
+				systemTo: now(),
+			},
+		)
+		.where(eq(githubProjectItems.systemTo, FAR_FUTURE))
+		.run();
 }
 
 // --- Upstream refs ---
 
-export function getCachedUpstreamSha(project: string): string | null {
+export function getCachedUpstreamSha(project: string): string | null
+{
 	const d = getDb();
 	const row = d
 		.select()
@@ -1494,27 +1952,38 @@ export function getCachedUpstreamSha(project: string): string | null {
 	return row?.sha ?? null;
 }
 
-export function cacheUpstreamSha(project: string, ref: string, sha: string): void {
-	temporalUpsert({
-		table: upstreamRefs,
-		keyWhere: eq(upstreamRefs.project, project),
-		isUnchanged: (existing) => existing.ref === ref && existing.sha === sha,
-		newRow: {project, ref, sha},
-	});
+export function cacheUpstreamSha(project: string, ref: string, sha: string): void
+{
+	temporalUpsert(
+		{
+			table: upstreamRefs,
+			keyWhere: eq(upstreamRefs.project, project),
+			isUnchanged: (existing) => existing.ref === ref && existing.sha === sha,
+			newRow:
+			{
+				project,
+				ref,
+				sha,
+			},
+		},
+	);
 }
 
 // --- Merge status ---
 
-export function getCachedMergeStatuses(project: string, upstreamSha: string) {
+export function getCachedMergeStatuses(project: string, upstreamSha: string)
+{
 	const d = getDb();
 	return d
-		.select({
-			sha: mergeStatus.sha,
-			upstreamSha: mergeStatus.upstreamSha,
-			commitsAhead: mergeStatus.commitsAhead,
-			commitsBehind: mergeStatus.commitsBehind,
-			rebaseable: mergeStatus.rebaseable,
-		})
+		.select(
+			{
+				sha: mergeStatus.sha,
+				upstreamSha: mergeStatus.upstreamSha,
+				commitsAhead: mergeStatus.commitsAhead,
+				commitsBehind: mergeStatus.commitsBehind,
+				rebaseable: mergeStatus.rebaseable,
+			},
+		)
 		.from(mergeStatus)
 		.where(
 			and(
@@ -1533,30 +2002,47 @@ export function cacheMergeStatus(
 	commitsAhead: number,
 	commitsBehind: number,
 	rebaseable: boolean | null,
-): void {
-	temporalUpsert({
-		table: mergeStatus,
-		keyWhere: and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha)),
-		isUnchanged: (existing) =>
-			existing.upstreamSha === upstreamSha &&
-			existing.commitsAhead === commitsAhead &&
-			existing.commitsBehind === commitsBehind &&
-			existing.rebaseable === rebaseable,
-		newRow: {project, sha, upstreamSha, commitsAhead, commitsBehind, rebaseable},
-	});
+): void
+{
+	temporalUpsert(
+		{
+			table: mergeStatus,
+			keyWhere: and(eq(mergeStatus.project, project), eq(mergeStatus.sha, sha)),
+			isUnchanged: (existing) =>
+				existing.upstreamSha === upstreamSha &&
+				existing.commitsAhead === commitsAhead &&
+				existing.commitsBehind === commitsBehind &&
+				existing.rebaseable === rebaseable,
+			newRow:
+			{
+				project,
+				sha,
+				upstreamSha,
+				commitsAhead,
+				commitsBehind,
+				rebaseable,
+			},
+		},
+	);
 }
 
-export function invalidateMergeStatus(project: string): void {
+export function invalidateMergeStatus(project: string): void
+{
 	const d = getDb();
 	d.update(mergeStatus)
-		.set({systemTo: now()})
+		.set(
+			{
+				systemTo: now(),
+			},
+		)
 		.where(and(eq(mergeStatus.project, project), eq(mergeStatus.systemTo, FAR_FUTURE)))
 		.run();
 }
 
 // --- Advance per-repo concurrency override ---
 
-export function getAdvanceConfig(project: string): number | null {
+export function getAdvanceConfig(project: string): number | null
+{
 	const d = getDb();
 	const row = d
 		.select()
@@ -1566,22 +2052,39 @@ export function getAdvanceConfig(project: string): number | null {
 	return row?.concurrency ?? null;
 }
 
-export function getAllAdvanceConfig(): Array<{project: string; concurrency: number}> {
+export function getAllAdvanceConfig(): Array<
+{
+	project: string;
+	concurrency: number;
+}>
+{
 	const d = getDb();
 	return d
-		.select({project: advanceConfig.project, concurrency: advanceConfig.concurrency})
+		.select(
+			{
+				project: advanceConfig.project,
+				concurrency: advanceConfig.concurrency,
+			},
+		)
 		.from(advanceConfig)
 		.where(eq(advanceConfig.systemTo, FAR_FUTURE))
 		.all();
 }
 
-export function setAdvanceConfig(project: string, concurrency: number): void {
-	temporalUpsert({
-		table: advanceConfig,
-		keyWhere: eq(advanceConfig.project, project),
-		isUnchanged: (existing) => existing.concurrency === concurrency,
-		newRow: {project, concurrency},
-	});
+export function setAdvanceConfig(project: string, concurrency: number): void
+{
+	temporalUpsert(
+		{
+			table: advanceConfig,
+			keyWhere: eq(advanceConfig.project, project),
+			isUnchanged: (existing) => existing.concurrency === concurrency,
+			newRow:
+			{
+				project,
+				concurrency,
+			},
+		},
+	);
 }
 
 // --- Persisted task records ---
@@ -1590,11 +2093,22 @@ export type TaskRecord = typeof taskRecords.$inferSelect;
 
 const TASK_RECORD_LIMIT = 200;
 
-export function upsertTaskRecord(record: TaskRecord): void {
-	getDb().insert(taskRecords).values(record).onConflictDoUpdate({target: taskRecords.id, set: record}).run();
+export function upsertTaskRecord(record: TaskRecord): void
+{
+	getDb()
+		.insert(taskRecords)
+		.values(record)
+		.onConflictDoUpdate(
+			{
+				target: taskRecords.id,
+				set: record,
+			},
+		)
+		.run();
 }
 
-export function loadRecentTaskRecords(): TaskRecord[] {
+export function loadRecentTaskRecords(): TaskRecord[]
+{
 	return getDb()
 		.select()
 		.from(taskRecords)
@@ -1607,7 +2121,8 @@ export function loadRecentTaskRecords(): TaskRecord[] {
 
 export type CommitFactRow = typeof commitFacts.$inferSelect;
 
-export function loadCommitFacts(project: string, shas: string[]): CommitFactRow[] {
+export function loadCommitFacts(project: string, shas: string[]): CommitFactRow[]
+{
 	if (shas.length === 0) return [];
 	return getDb()
 		.select()
@@ -1616,14 +2131,16 @@ export function loadCommitFacts(project: string, shas: string[]): CommitFactRow[
 		.all();
 }
 
-export function insertCommitFacts(rows: CommitFactRow[]): void {
+export function insertCommitFacts(rows: CommitFactRow[]): void
+{
 	if (rows.length === 0) return;
 	getDb().insert(commitFacts).values(rows).onConflictDoNothing().run();
 }
 
 // --- Per-item priority overrides ---
 
-function priorityOverrideWhere(project: string, item: PriorityItemRef): SQL | undefined {
+function priorityOverrideWhere(project: string, item: PriorityItemRef): SQL | undefined
+{
 	return and(
 		eq(priorityOverrides.project, project),
 		eq(priorityOverrides.itemKind, item.kind),
@@ -1631,47 +2148,70 @@ function priorityOverrideWhere(project: string, item: PriorityItemRef): SQL | un
 	);
 }
 
-export function getPriorityOverride(project: string, item: PriorityItemRef): Priority | undefined {
+export function getPriorityOverride(project: string, item: PriorityItemRef): Priority | undefined
+{
 	return getDb()
-		.select({priority: priorityOverrides.priority})
+		.select(
+			{
+				priority: priorityOverrides.priority,
+			},
+		)
 		.from(priorityOverrides)
 		.where(and(priorityOverrideWhere(project, item), eq(priorityOverrides.systemTo, FAR_FUTURE)))
 		.get()?.priority;
 }
 
-export function getPriorityOverrides(project: string) {
+export function getPriorityOverrides(project: string)
+{
 	return getDb()
-		.select({
-			project: priorityOverrides.project,
-			itemKind: priorityOverrides.itemKind,
-			itemKey: priorityOverrides.itemKey,
-			priority: priorityOverrides.priority,
-		})
+		.select(
+			{
+				project: priorityOverrides.project,
+				itemKind: priorityOverrides.itemKind,
+				itemKey: priorityOverrides.itemKey,
+				priority: priorityOverrides.priority,
+			},
+		)
 		.from(priorityOverrides)
 		.where(and(eq(priorityOverrides.project, project), eq(priorityOverrides.systemTo, FAR_FUTURE)))
 		.all();
 }
 
-export function setPriorityOverride(project: string, item: PriorityItemRef, priority: Priority): void {
-	temporalUpsert({
-		table: priorityOverrides,
-		keyWhere: priorityOverrideWhere(project, item),
-		isUnchanged: (existing) => existing.priority === priority,
-		newRow: {project, itemKind: item.kind, itemKey: item.key, priority},
-	});
+export function setPriorityOverride(project: string, item: PriorityItemRef, priority: Priority): void
+{
+	temporalUpsert(
+		{
+			table: priorityOverrides,
+			keyWhere: priorityOverrideWhere(project, item),
+			isUnchanged: (existing) => existing.priority === priority,
+			newRow:
+			{
+				project,
+				itemKind: item.kind,
+				itemKey: item.key,
+				priority,
+			},
+		},
+	);
 }
 
-export function clearPriorityOverride(project: string, item: PriorityItemRef): void {
+export function clearPriorityOverride(project: string, item: PriorityItemRef): void
+{
 	getDb()
 		.update(priorityOverrides)
-		.set({systemTo: now()})
+		.set(
+			{
+				systemTo: now(),
+			},
+		)
 		.where(and(priorityOverrideWhere(project, item), eq(priorityOverrides.systemTo, FAR_FUTURE)))
 		.run();
 }
 
 // --- Auto-fixes awaiting review ---
 
-export interface AutoFix {
+export interface AutoFix
+{
 	branch: string;
 	fixupSha: string;
 	failure: string;
@@ -1679,59 +2219,82 @@ export interface AutoFix {
 	assigned?: true;
 }
 
-function autoFixWhere(project: string, patchId: string): SQL | undefined {
+function autoFixWhere(project: string, patchId: string): SQL | undefined
+{
 	return and(eq(autoFixes.project, project), eq(autoFixes.patchId, patchId));
 }
 
 /** Active auto-fixes in a project, keyed by the failing commit's patch-id. */
-export function getAutoFixes(project: string): Map<string, AutoFix> {
+export function getAutoFixes(project: string): Map<string, AutoFix>
+{
 	const rows = getDb()
-		.select({
-			patchId: autoFixes.patchId,
-			branch: autoFixes.branch,
-			fixupSha: autoFixes.fixupSha,
-			failure: autoFixes.failure,
-			assigned: autoFixes.assigned,
-		})
+		.select(
+			{
+				patchId: autoFixes.patchId,
+				branch: autoFixes.branch,
+				fixupSha: autoFixes.fixupSha,
+				failure: autoFixes.failure,
+				assigned: autoFixes.assigned,
+			},
+		)
 		.from(autoFixes)
 		.where(and(eq(autoFixes.project, project), eq(autoFixes.systemTo, FAR_FUTURE)))
 		.all();
 	return new Map(
-		rows.map(({patchId, assigned, ...fix}) => [patchId, assigned ? {...fix, assigned: true as const} : fix]),
+		rows.map(({patchId, assigned, ...fix}) => [
+			patchId,
+			assigned
+				?
+					{
+						...fix,
+						assigned: true as const,
+					}
+				: fix,
+		]),
 	);
 }
 
-export function setAutoFix(project: string, patchId: string, fix: AutoFix): void {
-	temporalUpsert({
-		table: autoFixes,
-		keyWhere: autoFixWhere(project, patchId),
-		isUnchanged: (existing) =>
-			existing.branch === fix.branch &&
-			existing.fixupSha === fix.fixupSha &&
-			existing.failure === fix.failure &&
-			existing.assigned === (fix.assigned === true),
-		newRow: {
-			project,
-			patchId,
-			branch: fix.branch,
-			fixupSha: fix.fixupSha,
-			failure: fix.failure,
-			assigned: fix.assigned === true,
+export function setAutoFix(project: string, patchId: string, fix: AutoFix): void
+{
+	temporalUpsert(
+		{
+			table: autoFixes,
+			keyWhere: autoFixWhere(project, patchId),
+			isUnchanged: (existing) =>
+				existing.branch === fix.branch &&
+				existing.fixupSha === fix.fixupSha &&
+				existing.failure === fix.failure &&
+				existing.assigned === (fix.assigned === true),
+			newRow:
+			{
+				project,
+				patchId,
+				branch: fix.branch,
+				fixupSha: fix.fixupSha,
+				failure: fix.failure,
+				assigned: fix.assigned === true,
+			},
 		},
-	});
+	);
 }
 
-export function clearAutoFix(project: string, patchId: string): void {
+export function clearAutoFix(project: string, patchId: string): void
+{
 	getDb()
 		.update(autoFixes)
-		.set({systemTo: now()})
+		.set(
+			{
+				systemTo: now(),
+			},
+		)
 		.where(and(autoFixWhere(project, patchId), eq(autoFixes.systemTo, FAR_FUTURE)))
 		.run();
 }
 
 // --- Work-item ledger ---
 
-const workItemColumns = {
+const workItemColumns =
+{
 	patchId: workItems.patchId,
 	sha: workItems.sha,
 	subject: workItems.subject,
@@ -1742,7 +2305,8 @@ const workItemColumns = {
 };
 
 /** The live ledger rows for a project, terminal ones included. */
-export function loadWorkItems(project: string): WorkItem[] {
+export function loadWorkItems(project: string): WorkItem[]
+{
 	return getDb()
 		.select(workItemColumns)
 		.from(workItems)
@@ -1751,14 +2315,22 @@ export function loadWorkItems(project: string): WorkItem[] {
 }
 
 /** The live ledger rows across every project, terminal ones included: the flow metrics' input. */
-export function loadAllWorkItems(): WorkItem[] {
+export function loadAllWorkItems(): WorkItem[]
+{
 	return getDb().select(workItemColumns).from(workItems).where(eq(workItems.systemTo, FAR_FUTURE)).all();
 }
 
 /** Every row ever written for one change, oldest first: its state history. */
-export function getWorkItemHistory(project: string, patchId: string) {
+export function getWorkItemHistory(project: string, patchId: string)
+{
 	return getDb()
-		.select({...workItemColumns, systemFrom: workItems.systemFrom, systemTo: workItems.systemTo})
+		.select(
+			{
+				...workItemColumns,
+				systemFrom: workItems.systemFrom,
+				systemTo: workItems.systemTo,
+			},
+		)
 		.from(workItems)
 		.where(and(eq(workItems.project, project), eq(workItems.patchId, patchId)))
 		.orderBy(asc(workItems.systemFrom))
@@ -1766,38 +2338,54 @@ export function getWorkItemHistory(project: string, patchId: string) {
 }
 
 /** Every ledger row ever written, across projects, each change's rows oldest first: the /flow page's input. */
-export function loadAllWorkItemHistory(): WorkItemHistoryRow[] {
+export function loadAllWorkItemHistory(): WorkItemHistoryRow[]
+{
 	return getDb()
-		.select({project: workItems.project, ...workItemColumns})
+		.select(
+			{
+				project: workItems.project,
+				...workItemColumns,
+			},
+		)
 		.from(workItems)
 		.orderBy(asc(workItems.project), asc(workItems.patchId), asc(workItems.systemFrom))
 		.all();
 }
 
-export function writeWorkItems(project: string, items: readonly WorkItem[]): void {
-	for (const item of items) {
-		temporalUpsert({
-			table: workItems,
-			keyWhere: and(eq(workItems.project, project), eq(workItems.patchId, item.patchId)),
-			isUnchanged: (existing) =>
-				existing.sha === item.sha &&
-				existing.subject === item.subject &&
-				existing.state === item.state &&
-				existing.firstSeen === item.firstSeen &&
-				existing.stateSince === item.stateSince &&
-				existing.landedAt === item.landedAt,
-			newRow: {project, ...item},
-		});
+export function writeWorkItems(project: string, items: readonly WorkItem[]): void
+{
+	for (const item of items)
+	{
+		temporalUpsert(
+			{
+				table: workItems,
+				keyWhere: and(eq(workItems.project, project), eq(workItems.patchId, item.patchId)),
+				isUnchanged: (existing) =>
+					existing.sha === item.sha &&
+					existing.subject === item.subject &&
+					existing.state === item.state &&
+					existing.firstSeen === item.firstSeen &&
+					existing.stateSince === item.stateSince &&
+					existing.landedAt === item.landedAt,
+				newRow:
+				{
+					project,
+					...item,
+				},
+			},
+		);
 	}
 }
 
 // --- Project cache ---
 
-export function getCachedProjectList(): ProjectInfo[] | null {
+export function getCachedProjectList(): ProjectInfo[] | null
+{
 	const d = getDb();
 	const rows = d.select().from(projectCache).where(eq(projectCache.systemTo, FAR_FUTURE)).all();
 	if (rows.length === 0) return null;
-	return rows.map((row) => ({
+	return rows.map((row) => (
+	{
 		name: row.name,
 		dir: row.dir,
 		remote: row.remote,
@@ -1813,26 +2401,35 @@ export function getCachedProjectList(): ProjectInfo[] | null {
 	}));
 }
 
-export function setCachedProjectList(projects: ProjectInfo[]): void {
+export function setCachedProjectList(projects: ProjectInfo[]): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		const existingRows = tx.select().from(projectCache).where(eq(projectCache.systemTo, FAR_FUTURE)).all();
 
 		const existingByName = new Map(existingRows.map((r) => [r.name, r]));
 		const incomingNames = new Set(projects.map((p) => p.name));
 
 		// Close rows for projects no longer present
-		for (const existing of existingRows) {
-			if (!incomingNames.has(existing.name)) {
+		for (const existing of existingRows)
+		{
+			if (!incomingNames.has(existing.name))
+			{
 				tx.update(projectCache)
-					.set({systemTo: timestamp})
+					.set(
+						{
+							systemTo: timestamp,
+						},
+					)
 					.where(and(eq(projectCache.name, existing.name), eq(projectCache.systemTo, FAR_FUTURE)))
 					.run();
 			}
 		}
 
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			const existing = existingByName.get(p.name);
 
 			const projectChanged =
@@ -1849,30 +2446,38 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
 				existing.branchCount !== p.branchCount ||
 				existing.rebaseInProgress !== p.rebaseInProgress;
 
-			if (projectChanged) {
-				if (existing) {
+			if (projectChanged)
+			{
+				if (existing)
+				{
 					tx.update(projectCache)
-						.set({systemTo: timestamp})
+						.set(
+							{
+								systemTo: timestamp,
+							},
+						)
 						.where(and(eq(projectCache.name, existing.name), eq(projectCache.systemTo, FAR_FUTURE)))
 						.run();
 				}
 
 				tx.insert(projectCache)
-					.values({
-						name: p.name,
-						dir: p.dir,
-						remote: p.remote,
-						originRemote: p.originRemote,
-						upstreamRemote: p.upstreamRemote,
-						upstreamBranch: p.upstreamBranch,
-						upstreamRef: p.upstreamRef,
-						hasTestConfigured: p.hasTestConfigured,
-						dirty: p.dirty,
-						detachedHead: p.detachedHead,
-						branchCount: p.branchCount,
-						rebaseInProgress: p.rebaseInProgress,
-						systemFrom: timestamp,
-					})
+					.values(
+						{
+							name: p.name,
+							dir: p.dir,
+							remote: p.remote,
+							originRemote: p.originRemote,
+							upstreamRemote: p.upstreamRemote,
+							upstreamBranch: p.upstreamBranch,
+							upstreamRef: p.upstreamRef,
+							hasTestConfigured: p.hasTestConfigured,
+							dirty: p.dirty,
+							detachedHead: p.detachedHead,
+							branchCount: p.branchCount,
+							rebaseInProgress: p.rebaseInProgress,
+							systemFrom: timestamp,
+						},
+					)
 					.run();
 			}
 		}
@@ -1881,7 +2486,8 @@ export function setCachedProjectList(projects: ProjectInfo[]): void {
 
 // --- Children cache ---
 
-export function getCachedChildren(project: string): GitChildResult[] | null {
+export function getCachedChildren(project: string): GitChildResult[] | null
+{
 	const d = getDb();
 	const row = d
 		.select()
@@ -1898,7 +2504,8 @@ export function getCachedChildren(project: string): GitChildResult[] | null {
  * like the ready buffer that should keep showing a repo's last known rows until the next refresh,
  * not treat an invalidated cache as a repo with no work. Null only when nothing was ever cached.
  */
-export function getLastKnownChildren(project: string): GitChildResult[] | null {
+export function getLastKnownChildren(project: string): GitChildResult[] | null
+{
 	const row = getDb()
 		.select()
 		.from(childrenCache)
@@ -1911,18 +2518,26 @@ export function getLastKnownChildren(project: string): GitChildResult[] | null {
 	return parsed.success ? parsed.data : null;
 }
 
-export function cacheChildren(project: string, children: GitChildResult[]): void {
+export function cacheChildren(project: string, children: GitChildResult[]): void
+{
 	const serialized = JSON.stringify(children);
-	temporalUpsert({
-		table: childrenCache,
-		keyWhere: eq(childrenCache.project, project),
-		isUnchanged: (existing) => existing.childrenJson === serialized,
-		newRow: {project, childrenJson: serialized},
-	});
+	temporalUpsert(
+		{
+			table: childrenCache,
+			keyWhere: eq(childrenCache.project, project),
+			isUnchanged: (existing) => existing.childrenJson === serialized,
+			newRow:
+			{
+				project,
+				childrenJson: serialized,
+			},
+		},
+	);
 	markCacheFresh(`children:${project}`);
 }
 
-function refsHash(refs: string): string {
+function refsHash(refs: string): string
+{
 	return crypto.createHash("sha256").update(refs).digest("hex");
 }
 
@@ -1930,19 +2545,38 @@ function refsHash(refs: string): string {
  * Remembers the refs (HEAD plus every ref, as the watch gate snapshots them) a children refresh read,
  * so a restarted server can tell a fresh-looking cache from one whose branches changed while it was down.
  */
-export function recordChildrenRefs(project: string, refs: string): void {
+export function recordChildrenRefs(project: string, refs: string): void
+{
 	const hash = refsHash(refs);
 	getDb()
 		.insert(childrenRefs)
-		.values({project, refsHash: hash})
-		.onConflictDoUpdate({target: childrenRefs.project, set: {refsHash: hash}})
+		.values(
+			{
+				project,
+				refsHash: hash,
+			},
+		)
+		.onConflictDoUpdate(
+			{
+				target: childrenRefs.project,
+				set:
+				{
+					refsHash: hash,
+				},
+			},
+		)
 		.run();
 }
 
 /** Whether `refs` are the refs the project's last children refresh read; false when none was recorded. */
-export function childrenRefsMatch(project: string, refs: string): boolean {
+export function childrenRefsMatch(project: string, refs: string): boolean
+{
 	const row = getDb()
-		.select({refsHash: childrenRefs.refsHash})
+		.select(
+			{
+				refsHash: childrenRefs.refsHash,
+			},
+		)
 		.from(childrenRefs)
 		.where(eq(childrenRefs.project, project))
 		.get();
@@ -1954,12 +2588,18 @@ export function childrenRefsMatch(project: string, refs: string): boolean {
  * unforced: the sweep after a restart would otherwise skip the "fresh" key for up to the TTL while
  * readers of the last known children (the ready buffer) count a landed commit as ready.
  */
-export function invalidateChildrenCache(project: string): void {
+export function invalidateChildrenCache(project: string): void
+{
 	const d = getDb();
 	const timestamp = now();
-	d.transaction((tx) => {
+	d.transaction((tx) =>
+	{
 		tx.update(childrenCache)
-			.set({systemTo: timestamp})
+			.set(
+				{
+					systemTo: timestamp,
+				},
+			)
 			.where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
 			.run();
 		tx.delete(cacheFreshness)
@@ -1970,7 +2610,8 @@ export function invalidateChildrenCache(project: string): void {
 
 // --- Todos cache ---
 
-export function getCachedTodos(project: string): TodoItem[] | null {
+export function getCachedTodos(project: string): TodoItem[] | null
+{
 	const d = getDb();
 	const row = d
 		.select()
@@ -1982,22 +2623,34 @@ export function getCachedTodos(project: string): TodoItem[] | null {
 	return parsed.success ? parsed.data : null;
 }
 
-export function cacheTodos(project: string, todos: TodoItem[]): void {
+export function cacheTodos(project: string, todos: TodoItem[]): void
+{
 	const serialized = JSON.stringify(todos);
-	temporalUpsert({
-		table: todosCache,
-		keyWhere: eq(todosCache.project, project),
-		isUnchanged: (existing) => existing.todosJson === serialized,
-		newRow: {project, todosJson: serialized},
-	});
+	temporalUpsert(
+		{
+			table: todosCache,
+			keyWhere: eq(todosCache.project, project),
+			isUnchanged: (existing) => existing.todosJson === serialized,
+			newRow:
+			{
+				project,
+				todosJson: serialized,
+			},
+		},
+	);
 	markCacheFresh(`todos:${project}`);
 }
 
-export function invalidateTodosCache(project: string): void {
+export function invalidateTodosCache(project: string): void
+{
 	const d = getDb();
 	const timestamp = now();
 	d.update(todosCache)
-		.set({systemTo: timestamp})
+		.set(
+			{
+				systemTo: timestamp,
+			},
+		)
 		.where(and(eq(todosCache.project, project), eq(todosCache.systemTo, FAR_FUTURE)))
 		.run();
 }

@@ -4,21 +4,35 @@ import {ArrowLeft, CircleDot, ExternalLink} from "../components/icons.js";
 import {LabelList} from "../components/label-list";
 import {issueByNumberQueryOptions} from "../lib/queries";
 
-export const Route = createFileRoute("/issue/$project/$number")({
-	loader: async ({context: {queryClient}, params}) =>
-		queryClient.query({...issueByNumberQueryOptions(params.project, Number(params.number)), staleTime: "static"}),
-	head: ({params}) => ({
-		meta: [{title: `Issue #${params.number}`}],
-	}),
-	component: IssueDetail,
-});
+export const Route = createFileRoute("/issue/$project/$number")(
+	{
+		loader: async ({context: {queryClient}, params}) =>
+			queryClient.query(
+				{
+					...issueByNumberQueryOptions(params.project, Number(params.number)),
+					staleTime: "static",
+				},
+			),
+		head: ({params}) => (
+		{
+			meta: [
+				{
+					title: `Issue #${params.number}`,
+				},
+			],
+		}),
+		component: IssueDetail,
+	},
+);
 
-function IssueDetail() {
+function IssueDetail()
+{
 	const {project, number} = Route.useParams();
 	const num = Number(number);
 	const {data: issue} = useSuspenseQuery(issueByNumberQueryOptions(project, num));
 
-	if (!issue) {
+	if (!issue)
+	{
 		return (
 			<div className="p-6">
 				<p className="text-sm text-text-500">

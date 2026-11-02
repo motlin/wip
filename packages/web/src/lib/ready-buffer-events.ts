@@ -8,6 +8,7 @@ import {EventEmitter} from "node:events";
 export const readyBufferEmitter = new EventEmitter();
 readyBufferEmitter.setMaxListeners(100);
 
-export interface OnHoldSignal {
+export interface OnHoldSignal
+{
 	project: string;
 }

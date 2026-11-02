@@ -5,7 +5,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {runInRepoQueue} from "../lib/repo-queue.js";
-import {
+import
+{
 	createBranchForChild,
 	discoverAllProjects,
 	getBranchName,
@@ -22,7 +23,8 @@ import {
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 
-interface TestResult {
+interface TestResult
+{
 	project: string;
 	sha: string;
 	shortSha: string;
@@ -33,16 +35,30 @@ interface TestResult {
 	message?: string;
 }
 
-interface TestJson {
+interface TestJson
+{
 	dryRun: boolean;
 	results: TestResult[];
 	skippedProjects: string[];
-	summary: {tested: number; passed: number; failed: number; fixed: number; skipped: number};
+	summary:
+	{
+		tested: number;
+		passed: number;
+		failed: number;
+		fixed: number;
+		skipped: number;
+	};
 }
 
-export default class Test extends Command {
-	static override args = {
-		project: Args.string({description: "Filter to a specific project name"}),
+export default class Test extends Command
+{
+	static override args =
+	{
+		project: Args.string(
+			{
+				description: "Filter to a specific project name",
+			},
+		),
 	};
 
 	static override description = "Run git test on all children across clean projects";
@@ -57,34 +73,49 @@ export default class Test extends Command {
 		"<%= config.bin %> test --json",
 	];
 
-	static override flags = {
-		"dry-run": Flags.boolean({
-			char: "n",
-			default: false,
-			description: "Show what would be tested without running tests",
-		}),
-		fast: Flags.boolean({
-			default: false,
-			description: "Fast mode: test per-SHA without branches or auto-fix (original behavior)",
-		}),
-		force: Flags.boolean({
-			char: "f",
-			default: false,
-			description: "Force retest even if cached results exist",
-		}),
-		"projects-dir": Flags.string({description: "Override projects directory"}),
+	static override flags =
+	{
+		"dry-run": Flags.boolean(
+			{
+				char: "n",
+				default: false,
+				description: "Show what would be tested without running tests",
+			},
+		),
+		fast: Flags.boolean(
+			{
+				default: false,
+				description: "Fast mode: test per-SHA without branches or auto-fix (original behavior)",
+			},
+		),
+		force: Flags.boolean(
+			{
+				char: "f",
+				default: false,
+				description: "Force retest even if cached results exist",
+			},
+		),
+		"projects-dir": Flags.string(
+			{
+				description: "Override projects directory",
+			},
+		),
 	};
 
-	private clearLine(): void {
-		if (process.stdout.isTTY) {
+	private clearLine(): void
+	{
+		if (process.stdout.isTTY)
+		{
 			process.stdout.write("\x1b[2K\r");
 		}
 	}
 
-	async run(): Promise<TestJson> {
+	async run(): Promise<TestJson>
+	{
 		const {args, flags} = await this.parse(Test);
 
-		if (flags.fast) {
+		if (flags.fast)
+		{
 			return this.runFast(args, flags);
 		}
 
@@ -92,9 +123,18 @@ export default class Test extends Command {
 	}
 
 	private async runBranchBased(
-		args: {project?: string},
-		flags: {"dry-run": boolean; force: boolean; "projects-dir"?: string},
-	): Promise<TestJson> {
+		args:
+		{
+			project?: string;
+		},
+		flags:
+		{
+			"dry-run": boolean;
+			force: boolean;
+			"projects-dir"?: string;
+		},
+	): Promise<TestJson>
+	{
 		const projectsDirs = getProjectsDirs(flags["projects-dir"]);
 		const projects = await discoverAllProjects(projectsDirs);
 
@@ -103,12 +143,14 @@ export default class Test extends Command {
 		let testedProjectCount = 0;
 
 		/* oxlint-disable no-await-in-loop -- projects and tests run sequentially: ordered console output and one test process at a time */
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
 
 			const dirty = await isDirty(p.dir);
-			if (dirty) {
+			if (dirty)
+			{
 				this.log(chalk.dim(`Skipping ${p.name} (dirty)`));
 				skippedProjects.push(p.name);
 				continue;
@@ -122,34 +164,51 @@ export default class Test extends Command {
 
 			// Pre-generate LLM branch names for branchless commits
 			const branchless = testable.filter((c) => !c.branch);
-			if (branchless.length > 0) {
+			if (branchless.length > 0)
+			{
 				await suggestBranchNames(
-					branchless.map((c) => ({sha: c.sha, project: p.name, subject: c.subject, dir: p.dir})),
+					branchless.map((c) => (
+					{
+						sha: c.sha,
+						project: p.name,
+						subject: c.subject,
+						dir: p.dir,
+					})),
 				);
 			}
 
-			if (flags["dry-run"]) {
-				for (const child of testable) {
+			if (flags["dry-run"])
+			{
+				for (const child of testable)
+				{
 					const branchName = child.branch ?? getBranchName(child.sha, p.name) ?? "(pending)";
 					const action = child.branch ? "test" : "create branch + test";
 					this.log(`  would ${action} ${child.shortSha} → ${branchName}`);
-					testResults.push({
-						project: p.name,
-						sha: child.sha,
-						shortSha: child.shortSha,
-						branch: branchName,
-						status: "planned",
-						exitCode: 0,
-					});
+					testResults.push(
+						{
+							project: p.name,
+							sha: child.sha,
+							shortSha: child.shortSha,
+							branch: branchName,
+							status: "planned",
+							exitCode: 0,
+						},
+					);
 				}
 				continue;
 			}
 
 			const logDir = getTestLogDir(p.name);
-			fs.mkdirSync(logDir, {recursive: true});
+			fs.mkdirSync(
+				logDir,
+				{
+					recursive: true,
+				},
+			);
 			const miseEnv = await getMiseEnv(p.dir);
 
-			for (const child of testable) {
+			for (const child of testable)
+			{
 				// Ensure branch exists
 				const branchName = await createBranchForChild(p.dir, child, p.name);
 
@@ -157,52 +216,95 @@ export default class Test extends Command {
 				process.stdout.write(chalk.dim(`  ${child.shortSha} ${branchName} `));
 
 				// Run git test on branch range
-				const result = await testBranch(p.dir, branchName, p.upstreamRef, miseEnv, {
-					force: flags.force,
-					retest: true,
-				});
+				const result = await testBranch(
+					p.dir,
+					branchName,
+					p.upstreamRef,
+					miseEnv,
+					{
+						force: flags.force,
+						retest: true,
+					},
+				);
 
 				const logPath = path.join(logDir, `${child.sha}.log`);
 				fs.writeFileSync(logPath, result.logContent + "\n");
 
-				if (result.exitCode === 0) {
+				if (result.exitCode === 0)
+				{
 					this.clearLine();
 					this.log(chalk.green(`  ${child.shortSha} ${branchName} passed`));
-					testResults.push({
-						project: p.name,
-						sha: child.sha,
-						shortSha: child.shortSha,
-						branch: branchName,
-						status: "passed",
-						exitCode: 0,
-						logPath,
-					});
-				} else if (await hasLocalModifications(p.dir)) {
+					testResults.push(
+						{
+							project: p.name,
+							sha: child.sha,
+							shortSha: child.shortSha,
+							branch: branchName,
+							status: "passed",
+							exitCode: 0,
+							logPath,
+						},
+					);
+				}
+				else if (await hasLocalModifications(p.dir))
+				{
 					// Test failed with dirty worktree — attempt auto-fix
 					this.clearLine();
 					this.log(
 						chalk.yellow(`  ${child.shortSha} ${branchName} failed with modifications, attempting fix...`),
 					);
-					const fixResult = await testFix(p.dir, branchName, p.upstreamRef, miseEnv, {
-						force: flags.force,
-					});
+					const fixResult = await testFix(
+						p.dir,
+						branchName,
+						p.upstreamRef,
+						miseEnv,
+						{
+							force: flags.force,
+						},
+					);
 
-					if (fixResult.ok) {
+					if (fixResult.ok)
+					{
 						this.log(chalk.green(`  ${child.shortSha} ${branchName} fixed ✓`));
-						testResults.push({
-							project: p.name,
-							sha: child.sha,
-							shortSha: child.shortSha,
-							branch: branchName,
-							status: "fixed",
-							exitCode: 0,
-							logPath,
-							message: fixResult.message,
-						});
-					} else {
+						testResults.push(
+							{
+								project: p.name,
+								sha: child.sha,
+								shortSha: child.shortSha,
+								branch: branchName,
+								status: "fixed",
+								exitCode: 0,
+								logPath,
+								message: fixResult.message,
+							},
+						);
+					}
+					else
+					{
 						this.log(chalk.red(`  ${child.shortSha} ${branchName} fix failed: ${fixResult.message}`));
 						this.log(chalk.dim(`  Log: ${logPath}`));
-						testResults.push({
+						testResults.push(
+							{
+								project: p.name,
+								sha: child.sha,
+								shortSha: child.shortSha,
+								branch: branchName,
+								status: "failed",
+								exitCode: result.exitCode,
+								logPath,
+								message: fixResult.message,
+							},
+						);
+					}
+				}
+				else
+				{
+					// Test failed with clean worktree — real failure
+					this.clearLine();
+					this.log(chalk.red(`  ${child.shortSha} ${branchName} failed (exit ${result.exitCode})`));
+					this.log(chalk.dim(`  Log: ${logPath}`));
+					testResults.push(
+						{
 							project: p.name,
 							sha: child.sha,
 							shortSha: child.shortSha,
@@ -210,23 +312,8 @@ export default class Test extends Command {
 							status: "failed",
 							exitCode: result.exitCode,
 							logPath,
-							message: fixResult.message,
-						});
-					}
-				} else {
-					// Test failed with clean worktree — real failure
-					this.clearLine();
-					this.log(chalk.red(`  ${child.shortSha} ${branchName} failed (exit ${result.exitCode})`));
-					this.log(chalk.dim(`  Log: ${logPath}`));
-					testResults.push({
-						project: p.name,
-						sha: child.sha,
-						shortSha: child.shortSha,
-						branch: branchName,
-						status: "failed",
-						exitCode: result.exitCode,
-						logPath,
-					});
+						},
+					);
 				}
 			}
 
@@ -234,9 +321,12 @@ export default class Test extends Command {
 				(r) => r.project === p.name && (r.status === "passed" || r.status === "fixed"),
 			).length;
 			const projectFailed = testResults.filter((r) => r.project === p.name && r.status === "failed").length;
-			if (projectFailed === 0) {
+			if (projectFailed === 0)
+			{
 				this.log(chalk.green(`  All tests passed`));
-			} else {
+			}
+			else
+			{
 				this.log(chalk.red(`  ${projectFailed} failed, ${passedOrFixed} passed`));
 			}
 
@@ -249,7 +339,8 @@ export default class Test extends Command {
 		const fixedCount = testResults.filter((r) => r.status === "fixed").length;
 
 		this.log(`\nTested ${testedProjectCount} projects, skipped ${skippedProjects.length} dirty`);
-		if (fixedCount > 0) {
+		if (fixedCount > 0)
+		{
 			this.log(chalk.green(`Auto-fixed ${fixedCount} commits`));
 		}
 
@@ -257,7 +348,8 @@ export default class Test extends Command {
 			dryRun: flags["dry-run"],
 			results: testResults,
 			skippedProjects,
-			summary: {
+			summary:
+			{
 				tested: testedProjectCount,
 				passed: passedCount,
 				failed: failedCount,
@@ -268,9 +360,18 @@ export default class Test extends Command {
 	}
 
 	private async runFast(
-		args: {project?: string},
-		flags: {"dry-run": boolean; force: boolean; "projects-dir"?: string},
-	): Promise<TestJson> {
+		args:
+		{
+			project?: string;
+		},
+		flags:
+		{
+			"dry-run": boolean;
+			force: boolean;
+			"projects-dir"?: string;
+		},
+	): Promise<TestJson>
+	{
 		const projectsDirs = getProjectsDirs(flags["projects-dir"]);
 		const projects = await discoverAllProjects(projectsDirs);
 
@@ -279,12 +380,14 @@ export default class Test extends Command {
 		let testedProjectCount = 0;
 
 		/* oxlint-disable no-await-in-loop -- projects and tests run sequentially: ordered console output and one test process at a time */
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
 
 			const dirty = await isDirty(p.dir);
-			if (dirty) {
+			if (dirty)
+			{
 				this.log(chalk.dim(`Skipping ${p.name} (dirty)`));
 				skippedProjects.push(p.name);
 				continue;
@@ -295,28 +398,38 @@ export default class Test extends Command {
 
 			this.log(chalk.bold(`\nTesting ${p.name}`) + chalk.dim(` (${shas.length} children, fast)`));
 
-			if (flags["dry-run"]) {
-				for (const sha of shas) {
+			if (flags["dry-run"])
+			{
+				for (const sha of shas)
+				{
 					this.log(`  would test ${sha.slice(0, 7)}`);
-					testResults.push({
-						project: p.name,
-						sha,
-						shortSha: sha.slice(0, 7),
-						status: "planned",
-						exitCode: 0,
-					});
+					testResults.push(
+						{
+							project: p.name,
+							sha,
+							shortSha: sha.slice(0, 7),
+							status: "planned",
+							exitCode: 0,
+						},
+					);
 				}
 				continue;
 			}
 
 			const logDir = getTestLogDir(p.name);
-			fs.mkdirSync(logDir, {recursive: true});
+			fs.mkdirSync(
+				logDir,
+				{
+					recursive: true,
+				},
+			);
 
 			const miseEnv = await getMiseEnv(p.dir);
 
 			let allPassed = true;
 
-			for (const sha of shas) {
+			for (const sha of shas)
+			{
 				const testArgs = ["test", "run"];
 				if (flags.force) testArgs.push("--force");
 				testArgs.push(sha);
@@ -326,14 +439,22 @@ export default class Test extends Command {
 
 				const testStart = performance.now();
 				const result = await runInRepoQueue(p.name, "test", "build", async () =>
-					execa("git", ["-C", p.dir, ...testArgs], {
-						reject: false,
-						env: miseEnv,
-					}),
+					execa(
+						"git",
+						["-C", p.dir, ...testArgs],
+						{
+							reject: false,
+							env: miseEnv,
+						},
+					),
 				);
 				const testDuration = Math.round(performance.now() - testStart);
 				log.subprocess.debug(
-					{cmd: "git", args: ["-C", p.dir, ...testArgs], duration: testDuration},
+					{
+						cmd: "git",
+						args: ["-C", p.dir, ...testArgs],
+						duration: testDuration,
+					},
 					`git -C ${p.dir} ${testArgs.join(" ")} (${testDuration}ms)`,
 				);
 
@@ -341,36 +462,46 @@ export default class Test extends Command {
 				const logPath = path.join(logDir, `${sha}.log`);
 				fs.writeFileSync(logPath, logContent + "\n");
 
-				if (result.exitCode === 0) {
+				if (result.exitCode === 0)
+				{
 					this.clearLine();
 					this.log(chalk.green(`  ${shortSha} passed`));
-					testResults.push({
-						project: p.name,
-						sha,
-						shortSha,
-						status: "passed",
-						exitCode: 0,
-						logPath,
-					});
-				} else {
+					testResults.push(
+						{
+							project: p.name,
+							sha,
+							shortSha,
+							status: "passed",
+							exitCode: 0,
+							logPath,
+						},
+					);
+				}
+				else
+				{
 					this.clearLine();
 					this.log(chalk.red(`  ${shortSha} failed (exit ${result.exitCode})`));
 					this.log(chalk.dim(`  Log: ${logPath}`));
-					testResults.push({
-						project: p.name,
-						sha,
-						shortSha,
-						status: "failed",
-						exitCode: result.exitCode ?? 1,
-						logPath,
-					});
+					testResults.push(
+						{
+							project: p.name,
+							sha,
+							shortSha,
+							status: "failed",
+							exitCode: result.exitCode ?? 1,
+							logPath,
+						},
+					);
 					allPassed = false;
 				}
 			}
 
-			if (allPassed) {
+			if (allPassed)
+			{
 				this.log(chalk.green(`  All tests passed`));
-			} else {
+			}
+			else
+			{
 				this.log(chalk.red(`  Some tests failed`));
 			}
 
@@ -387,7 +518,8 @@ export default class Test extends Command {
 			dryRun: flags["dry-run"],
 			results: testResults,
 			skippedProjects,
-			summary: {
+			summary:
+			{
 				tested: testedProjectCount,
 				passed: passedCount,
 				failed: failedCount,

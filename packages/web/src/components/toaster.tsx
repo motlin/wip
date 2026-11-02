@@ -2,29 +2,35 @@ import {useEffect, useState} from "react";
 import {AlertCircle, CheckCircle2, Info, X, AlertTriangle} from "./icons.js";
 import {dismissToast, getToasts, subscribeToasts, type Toast, type ToastLevel} from "../lib/toast-store";
 
-const LEVEL_STYLES: Record<ToastLevel, string> = {
+const LEVEL_STYLES: Record<ToastLevel, string> =
+{
 	info: "border-blue-500/40 bg-blue-50 text-blue-900 dark:bg-blue-950/60 dark:text-blue-100",
 	success: "border-green-500/40 bg-green-50 text-green-900 dark:bg-green-950/60 dark:text-green-100",
 	warning: "border-amber-500/40 bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
 	error: "border-red-500/40 bg-red-50 text-red-900 dark:bg-red-950/60 dark:text-red-100",
 };
 
-const LEVEL_ICON: Record<ToastLevel, typeof Info> = {
+const LEVEL_ICON: Record<ToastLevel, typeof Info> =
+{
 	info: Info,
 	success: CheckCircle2,
 	warning: AlertTriangle,
 	error: AlertCircle,
 };
 
-function isExternal(href: string): boolean {
+function isExternal(href: string): boolean
+{
 	return /^https?:\/\//.test(href);
 }
 
-export function Toaster() {
+export function Toaster()
+{
 	const [toasts, setToasts] = useState<readonly Toast[]>(() => getToasts());
 
-	useEffect(() => {
-		const unsubscribe = subscribeToasts((next) => {
+	useEffect(() =>
+	{
+		const unsubscribe = subscribeToasts((next) =>
+		{
 			setToasts(next);
 		});
 		return unsubscribe;
@@ -38,7 +44,8 @@ export function Toaster() {
 			aria-label="Notifications"
 			className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2"
 		>
-			{toasts.map((toast) => {
+			{toasts.map((toast) =>
+			{
 				const Icon = LEVEL_ICON[toast.level];
 				return (
 					<output
@@ -52,7 +59,13 @@ export function Toaster() {
 							{toast.link && (
 								<a
 									href={toast.link.href}
-									{...(isExternal(toast.link.href) ? {target: "_blank", rel: "noreferrer"} : {})}
+									{...(isExternal(toast.link.href)
+										?
+											{
+												target: "_blank",
+												rel: "noreferrer",
+											}
+										: {})}
 									className="mt-1 inline-block font-medium underline underline-offset-2 hover:opacity-80"
 								>
 									{toast.link.label}
@@ -61,7 +74,8 @@ export function Toaster() {
 						</div>
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								dismissToast(toast.id);
 							}}
 							aria-label="Dismiss notification"

@@ -3,7 +3,8 @@ import chalk from "chalk";
 
 import {discoverAllProjects, getChildCommits, getProjectsDirs} from "@wip/shared";
 
-interface ResultEntry {
+interface ResultEntry
+{
 	project: string;
 	sha: string;
 	shortSha: string;
@@ -11,14 +12,27 @@ interface ResultEntry {
 	testStatus: string;
 }
 
-interface ResultsJson {
+interface ResultsJson
+{
 	results: ResultEntry[];
-	summary: {total: number; passed: number; failed: number; unknown: number};
+	summary:
+	{
+		total: number;
+		passed: number;
+		failed: number;
+		unknown: number;
+	};
 }
 
-export default class Results extends Command {
-	static override args = {
-		project: Args.string({description: "Filter to a specific project name"}),
+export default class Results extends Command
+{
+	static override args =
+	{
+		project: Args.string(
+			{
+				description: "Filter to a specific project name",
+			},
+		),
 	};
 
 	static override description = "Show test results for children across projects";
@@ -32,21 +46,31 @@ export default class Results extends Command {
 		"<%= config.bin %> results --json",
 	];
 
-	static override flags = {
-		"projects-dir": Flags.string({description: "Override projects directory"}),
-		quiet: Flags.boolean({
-			char: "q",
-			default: false,
-			description: "Show only SHAs",
-		}),
-		status: Flags.string({
-			char: "s",
-			description: "Filter by test status",
-			options: ["passed", "failed", "unknown"],
-		}),
+	static override flags =
+	{
+		"projects-dir": Flags.string(
+			{
+				description: "Override projects directory",
+			},
+		),
+		quiet: Flags.boolean(
+			{
+				char: "q",
+				default: false,
+				description: "Show only SHAs",
+			},
+		),
+		status: Flags.string(
+			{
+				char: "s",
+				description: "Filter by test status",
+				options: ["passed", "failed", "unknown"],
+			},
+		),
 	};
 
-	async run(): Promise<ResultsJson> {
+	async run(): Promise<ResultsJson>
+	{
 		const {args, flags} = await this.parse(Results);
 		const projectsDirs = getProjectsDirs(flags["projects-dir"]);
 		const projects = await discoverAllProjects(projectsDirs);
@@ -57,7 +81,8 @@ export default class Results extends Command {
 		let unknownCount = 0;
 
 		/* oxlint-disable no-await-in-loop -- projects are processed sequentially to bound git subprocess load and keep output ordered */
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			if (args.project && p.name !== args.project) continue;
 			if (!p.hasTestConfigured) continue;
 
@@ -68,22 +93,29 @@ export default class Results extends Command {
 			const filtered = flags.status ? nonSkippable.filter((c) => c.testStatus === flags.status) : nonSkippable;
 			if (filtered.length === 0) continue;
 
-			if (!flags.quiet) {
+			if (!flags.quiet)
+			{
 				this.log(chalk.bold(`\n${p.name}`));
 			}
 
-			for (const c of filtered) {
-				allResults.push({
-					project: p.name,
-					sha: c.sha,
-					shortSha: c.shortSha,
-					subject: c.subject,
-					testStatus: c.testStatus,
-				});
+			for (const c of filtered)
+			{
+				allResults.push(
+					{
+						project: p.name,
+						sha: c.sha,
+						shortSha: c.shortSha,
+						subject: c.subject,
+						testStatus: c.testStatus,
+					},
+				);
 
-				if (flags.quiet) {
+				if (flags.quiet)
+				{
 					this.log(c.sha);
-				} else {
+				}
+				else
+				{
 					const statusLabel =
 						c.testStatus === "passed"
 							? chalk.green("good")
@@ -101,9 +133,11 @@ export default class Results extends Command {
 		}
 		/* oxlint-enable no-await-in-loop */
 
-		const output: ResultsJson = {
+		const output: ResultsJson =
+		{
 			results: allResults,
-			summary: {
+			summary:
+			{
 				total: allResults.length,
 				passed: passedCount,
 				failed: failedCount,
@@ -111,12 +145,14 @@ export default class Results extends Command {
 			},
 		};
 
-		if (allResults.length === 0) {
+		if (allResults.length === 0)
+		{
 			this.log("No test results found.");
 			return output;
 		}
 
-		if (!flags.quiet) {
+		if (!flags.quiet)
+		{
 			this.log(
 				`\n${allResults.length} results: ${chalk.green(`${passedCount} good`)}, ${chalk.red(`${failedCount} bad`)}, ${chalk.yellow(`${unknownCount} unknown`)}`,
 			);

@@ -1,4 +1,5 @@
-import {
+import
+{
 	type Category,
 	type Transition,
 	CATEGORY_ORDER,
@@ -29,12 +30,14 @@ export type Action =
 	| "setup_pr_refs";
 
 /** The detour task an "Add a test" click queues for a commit in a repo with no test configured. */
-export function addTestCommand(sha: string): string {
+export function addTestCommand(sha: string): string
+{
 	return `Add a test that covers the changes in commit ${sha}`;
 }
 
 /** The Claude prompt a todo card's primary action queues: do-one-task, aimed at the clicked todo instead of the first one. */
-export function doTodoTaskPrompt(title: string, sourceLabel: string): string {
+export function doTodoTaskPrompt(title: string, sourceLabel: string): string
+{
 	return `Follow the markdown-tasks:do-one-task skill, but implement the task titled "${title}" in ${sourceLabel} instead of the first incomplete task, and mark it complete with task_mark.py --title "${title}".`;
 }
 
@@ -42,7 +45,8 @@ export function doTodoTaskPrompt(title: string, sourceLabel: string): string {
 export type PrimaryAction = Action | "run_claude" | "do_task";
 
 // The user's next step per state; every other action moves to More. Null where the next step is waiting or none.
-const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
+const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> =
+{
 	upstream_red: "run_claude",
 	pr_refs_missing: "setup_pr_refs",
 	remote_only: "restore_branch",
@@ -74,7 +78,8 @@ const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
 	snoozed: null,
 };
 
-export function primaryAction(category: Category): PrimaryAction | null {
+export function primaryAction(category: Category): PrimaryAction | null
+{
 	return PRIMARY_ACTIONS[category];
 }
 
@@ -83,7 +88,8 @@ export const SPLIT_BRANCH_COMMAND = "/git:split-branch";
 
 // Maps state-machine transitions to UI action names.
 // Only transitions that correspond to a user-triggerable action are included.
-export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
+export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> =
+{
 	run_test: "test",
 	push: "push",
 	force_push: "force_push",
@@ -98,7 +104,8 @@ export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
 };
 
 // Derive user-triggerable actions from state machine transitions for a category.
-export function getTransitionActions(category: Category): Action[] {
+export function getTransitionActions(category: Category): Action[]
+{
 	return (
 		getTransitionsFrom(category)
 			.map((t) => TRANSITION_TO_ACTION[t.transition])
@@ -109,7 +116,8 @@ export function getTransitionActions(category: Category): Action[] {
 }
 
 // Non-state-changing actions that are added per category beyond what the state machine provides.
-export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>> = {
+export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>> =
+{
 	upstream_red: ["open_pr_link", "refresh"],
 	pr_refs_missing: ["setup_pr_refs"],
 	remote_only: ["delete_remote_branch"],
@@ -134,7 +142,8 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	no_test: ["rename", "delete_branch"],
 };
 
-function buildActions(category: Category): readonly Action[] {
+function buildActions(category: Category): readonly Action[]
+{
 	const transitionActions = getTransitionActions(category);
 	const supplementary = SUPPLEMENTARY_ACTIONS[category] ?? [];
 	return [...transitionActions, ...supplementary];
@@ -142,187 +151,276 @@ function buildActions(category: Category): readonly Action[] {
 
 export type PaletteKey = "green" | "red" | "blue" | "yellow" | "orange" | "amber" | "purple" | "dim" | "muted";
 
-interface PaletteEntry {
+interface PaletteEntry
+{
 	text: string;
 	dot: string;
 	column: string;
 }
 
-const PALETTE: Record<PaletteKey, PaletteEntry> = {
-	green: {
+const PALETTE: Record<PaletteKey, PaletteEntry> =
+{
+	green:
+	{
 		text: "text-green-700 dark:text-green-400",
 		dot: "bg-green-500",
 		column: "bg-green-column",
 	},
-	red: {
+	red:
+	{
 		text: "text-red-700 dark:text-red-400",
 		dot: "bg-red-500",
 		column: "bg-red-column",
 	},
-	blue: {
+	blue:
+	{
 		text: "text-blue-700 dark:text-blue-400",
 		dot: "bg-blue-500",
 		column: "bg-blue-column",
 	},
-	yellow: {
+	yellow:
+	{
 		text: "text-yellow-700 dark:text-yellow-400",
 		dot: "bg-yellow-500",
 		column: "bg-yellow-column",
 	},
-	orange: {
+	orange:
+	{
 		text: "text-orange-700 dark:text-orange-400",
 		dot: "bg-orange-500",
 		column: "bg-yellow-column",
 	},
-	amber: {
+	amber:
+	{
 		text: "text-amber-700 dark:text-amber-400",
 		dot: "bg-amber-500",
 		column: "bg-yellow-column",
 	},
-	purple: {
+	purple:
+	{
 		text: "text-purple-700 dark:text-purple-400",
 		dot: "bg-purple-500",
 		column: "bg-purple-column",
 	},
-	dim: {
+	dim:
+	{
 		text: "text-text-300",
 		dot: "bg-text-300",
 		column: "bg-dim-column",
 	},
-	muted: {
+	muted:
+	{
 		text: "text-text-500",
 		dot: "bg-text-500",
 		column: "bg-dim-column",
 	},
 };
 
-export interface CategoryConfig {
+export interface CategoryConfig
+{
 	label: string;
 	palette: PaletteKey;
 	actions: readonly Action[];
 	llmCommand?: string;
 }
 
-export const CATEGORIES: Record<Category, CategoryConfig> = {
-	upstream_red: {
+export const CATEGORIES: Record<Category, CategoryConfig> =
+{
+	upstream_red:
+	{
 		label: "Upstream Red",
 		palette: "red",
 		actions: buildActions("upstream_red"),
 		llmCommand: "/github:gha",
 	},
-	pr_refs_missing: {
+	pr_refs_missing:
+	{
 		label: "Set Up PR Refs",
 		palette: "amber",
 		actions: buildActions("pr_refs_missing"),
 	},
-	remote_only: {
+	remote_only:
+	{
 		label: "Remote Only",
 		palette: "orange",
 		actions: buildActions("remote_only"),
 	},
-	landed: {label: "Landed", palette: "green", actions: buildActions("landed")},
-	approved: {label: "Approved", palette: "green", actions: buildActions("approved")},
-	changes_requested: {
+	landed:
+	{
+		label: "Landed",
+		palette: "green",
+		actions: buildActions("landed"),
+	},
+	approved:
+	{
+		label: "Approved",
+		palette: "green",
+		actions: buildActions("approved"),
+	},
+	changes_requested:
+	{
 		label: "Changes Requested",
 		palette: "purple",
 		actions: buildActions("changes_requested"),
 	},
-	review_comments: {
+	review_comments:
+	{
 		label: "Review Comments",
 		palette: "blue",
 		actions: buildActions("review_comments"),
 	},
-	checks_passed: {
+	checks_passed:
+	{
 		label: "Checks Passed",
 		palette: "blue",
 		actions: buildActions("checks_passed"),
 	},
-	checks_failed: {
+	checks_failed:
+	{
 		label: "Checks Failed",
 		palette: "red",
 		actions: buildActions("checks_failed"),
 		llmCommand: "/gha",
 	},
-	checks_running: {
+	checks_running:
+	{
 		label: "Checks Running",
 		palette: "yellow",
 		actions: buildActions("checks_running"),
 	},
-	checks_unknown: {
+	checks_unknown:
+	{
 		label: "Checks Unknown",
 		palette: "dim",
 		actions: buildActions("checks_unknown"),
 	},
-	pushed_no_pr: {label: "Needs PR", palette: "blue", actions: buildActions("pushed_no_pr")},
-	ready_to_push: {
+	pushed_no_pr:
+	{
+		label: "Needs PR",
+		palette: "blue",
+		actions: buildActions("pushed_no_pr"),
+	},
+	ready_to_push:
+	{
 		label: "Ready to Push",
 		palette: "green",
 		actions: buildActions("ready_to_push"),
 	},
-	pushing: {label: "Pushing", palette: "yellow", actions: buildActions("pushing")},
-	needs_rebase: {
+	pushing:
+	{
+		label: "Pushing",
+		palette: "yellow",
+		actions: buildActions("pushing"),
+	},
+	needs_rebase:
+	{
 		label: "Needs Rebase",
 		palette: "orange",
 		actions: buildActions("needs_rebase"),
 		llmCommand: "/git:rebase-all",
 	},
-	rebase_unknown: {
+	rebase_unknown:
+	{
 		label: "Rebase Unknown",
 		palette: "amber",
 		actions: buildActions("rebase_unknown"),
 	},
-	rebase_conflicts: {
+	rebase_conflicts:
+	{
 		label: "Rebase Conflicts",
 		palette: "red",
 		actions: buildActions("rebase_conflicts"),
 		llmCommand: "/git:conflicts",
 	},
-	rebase_stuck: {
+	rebase_stuck:
+	{
 		label: "Rebase Stuck",
 		palette: "red",
 		actions: buildActions("rebase_stuck"),
 	},
-	test_failed: {
+	test_failed:
+	{
 		label: "Test Failed",
 		palette: "red",
 		actions: buildActions("test_failed"),
 		llmCommand: "/build:fix",
 	},
-	ready_to_test: {
+	ready_to_test:
+	{
 		label: "Ready to Test",
 		palette: "yellow",
 		actions: buildActions("ready_to_test"),
 		llmCommand: "/build:test-branch",
 	},
-	test_running: {label: "Test Running", palette: "yellow", actions: buildActions("test_running")},
-	detached_head: {
+	test_running:
+	{
+		label: "Test Running",
+		palette: "yellow",
+		actions: buildActions("test_running"),
+	},
+	detached_head:
+	{
 		label: "Detached HEAD",
 		palette: "yellow",
 		actions: buildActions("detached_head"),
 	},
-	local_changes: {
+	local_changes:
+	{
 		label: "Local Changes",
 		palette: "dim",
 		actions: buildActions("local_changes"),
 		llmCommand: "/git:commit",
 	},
-	no_test: {label: "No Test", palette: "dim", actions: buildActions("no_test")},
-	untriaged: {label: "Untriaged", palette: "muted", actions: buildActions("untriaged")},
-	triaged: {label: "Triaged", palette: "purple", actions: buildActions("triaged")},
-	blocked: {label: "Blocked", palette: "red", actions: buildActions("blocked")},
-	skippable: {label: "Skippable", palette: "muted", actions: buildActions("skippable")},
-	snoozed: {label: "On hold and Snoozed", palette: "muted", actions: buildActions("snoozed")},
+	no_test:
+	{
+		label: "No Test",
+		palette: "dim",
+		actions: buildActions("no_test"),
+	},
+	untriaged:
+	{
+		label: "Untriaged",
+		palette: "muted",
+		actions: buildActions("untriaged"),
+	},
+	triaged:
+	{
+		label: "Triaged",
+		palette: "purple",
+		actions: buildActions("triaged"),
+	},
+	blocked:
+	{
+		label: "Blocked",
+		palette: "red",
+		actions: buildActions("blocked"),
+	},
+	skippable:
+	{
+		label: "Skippable",
+		palette: "muted",
+		actions: buildActions("skippable"),
+	},
+	snoozed:
+	{
+		label: "On hold and Snoozed",
+		palette: "muted",
+		actions: buildActions("snoozed"),
+	},
 };
 
-export function categoryTextClass(category: Category): string {
+export function categoryTextClass(category: Category): string
+{
 	return PALETTE[CATEGORIES[category].palette].text;
 }
 
-export function categoryDotClass(category: Category): string {
+export function categoryDotClass(category: Category): string
+{
 	return PALETTE[CATEGORIES[category].palette].dot;
 }
 
-export function categoryColumnClass(category: Category): string {
+export function categoryColumnClass(category: Category): string
+{
 	return PALETTE[CATEGORIES[category].palette].column;
 }
 
@@ -350,7 +448,8 @@ const BACK_EDGES = new Set([
 	"approved->changes_requested",
 ]);
 
-function isBackEdge(t: {from: Category; to: Category; transition: string}): boolean {
+function isBackEdge(t: {from: Category; to: Category; transition: string}): boolean
+{
 	if (t.from === t.to) return true;
 	if (t.transition === "snooze" || t.transition === "unsnooze") return true;
 	return BACK_EDGES.has(`${t.from}->${t.to}`);
@@ -359,7 +458,8 @@ function isBackEdge(t: {from: Category; to: Category; transition: string}): bool
 // Tie-break by position in the canonical order: when multiple nodes have
 // in-degree 0, prefer nodes from earlier columns. This keeps failure states adjacent to
 // their success counterparts (e.g. test_failed near test_running, not after push states).
-function columnIndex(cat: Category): number {
+function columnIndex(cat: Category): number
+{
 	return CATEGORY_ORDER.indexOf(cat);
 }
 
@@ -372,28 +472,34 @@ function columnIndex(cat: Category): number {
  */
 export const BLOCKING_CATEGORIES: readonly Category[] = ["pr_refs_missing", "upstream_red"];
 
-function deriveCategoryPriority(): Category[] {
+function deriveCategoryPriority(): Category[]
+{
 	const allStates = new Set<Category>();
-	for (const t of STATE_MACHINE) {
+	for (const t of STATE_MACHINE)
+	{
 		allStates.add(t.from);
 		allStates.add(t.to);
 	}
-	for (const cat of CategorySchema.options) {
+	for (const cat of CategorySchema.options)
+	{
 		allStates.add(cat);
 	}
 
 	// Build adjacency map and in-degree counts (excluding back-edges)
 	const adjMap = new Map<Category, Category[]>();
 	const inDegree = new Map<Category, number>();
-	for (const state of allStates) {
+	for (const state of allStates)
+	{
 		adjMap.set(state, []);
 		inDegree.set(state, 0);
 	}
 
-	for (const t of STATE_MACHINE) {
+	for (const t of STATE_MACHINE)
+	{
 		if (isBackEdge(t)) continue;
 		const neighbors = adjMap.get(t.from);
-		if (neighbors && !neighbors.includes(t.to)) {
+		if (neighbors && !neighbors.includes(t.to))
+		{
 			neighbors.push(t.to);
 			inDegree.set(t.to, (inDegree.get(t.to) ?? 0) + 1);
 		}
@@ -401,20 +507,24 @@ function deriveCategoryPriority(): Category[] {
 
 	// Kahn's topological sort with tie-breaking by column position
 	const queue: Category[] = [];
-	for (const [state, degree] of inDegree) {
+	for (const [state, degree] of inDegree)
+	{
 		if (degree === 0) queue.push(state);
 	}
 	queue.sort((a, b) => columnIndex(a) - columnIndex(b));
 
 	const sorted: Category[] = [];
-	while (queue.length > 0) {
+	while (queue.length > 0)
+	{
 		const state = queue.shift();
 		if (state === undefined) break;
 		sorted.push(state);
-		for (const neighbor of adjMap.get(state) ?? []) {
+		for (const neighbor of adjMap.get(state) ?? [])
+		{
 			const newDegree = (inDegree.get(neighbor) ?? 0) - 1;
 			inDegree.set(neighbor, newDegree);
-			if (newDegree === 0) {
+			if (newDegree === 0)
+			{
 				// Insert sorted by column position to maintain tie-breaking
 				const idx = queue.findIndex((q) => columnIndex(q) > columnIndex(neighbor));
 				if (idx === -1) queue.push(neighbor);
@@ -441,10 +551,8 @@ function deriveCategoryPriority(): Category[] {
 }
 
 export const CATEGORY_PRIORITY: Category[] = deriveCategoryPriority();
-export const CATEGORY_PRIORITY_REVERSED: Category[] = CATEGORY_PRIORITY.reduceRight<Category[]>(
-	(reversed, category) => {
-		reversed.push(category);
-		return reversed;
-	},
-	[],
-);
+export const CATEGORY_PRIORITY_REVERSED: Category[] = CATEGORY_PRIORITY.reduceRight<Category[]>((reversed, category) =>
+{
+	reversed.push(category);
+	return reversed;
+}, []);

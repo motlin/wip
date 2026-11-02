@@ -21,37 +21,80 @@ export function TodoCard({
 	category?: Category;
 	/** Lean plan step 49: commits are waiting, so starting this todo is secondary-styled but enabled. */
 	finishFirst?: boolean;
-}) {
+})
+{
 	const queryClient = useQueryClient();
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [queuing, setQueuing] = useState(false);
 	const doTask = primaryAction(category ?? classifyTodo(todo)) === "do_task";
 
 	/** Writes the hold flag onto this todo in the project's todos cache. */
-	const setHold = (onHold: boolean) => {
+	const setHold = (onHold: boolean) =>
+	{
 		queryClient.setQueryData<TodoItem[]>(["todos", todo.project], (todos) =>
-			todos?.map((t) => (t.sourceFile === todo.sourceFile && t.title === todo.title ? {...t, onHold} : t)),
+			todos?.map((t) =>
+				t.sourceFile === todo.sourceFile && t.title === todo.title
+					?
+						{
+							...t,
+							onHold,
+						}
+					: t,
+			),
 		);
 	};
-	const key = {project: todo.project, sourceFile: todo.sourceFile, title: todo.title};
+	const key =
+	{
+		project: todo.project,
+		sourceFile: todo.sourceFile,
+		title: todo.title,
+	};
 
-	const handleDoTask = async () => {
-		await runPendingAction("Do task", setQueuing, async () => {
-			const status = await runTodoTask({data: key});
-			pushToast({level: "info", message: `Working on "${todo.title}"…`, detail: status.message});
+	const handleDoTask = async () =>
+	{
+		await runPendingAction("Do task", setQueuing, async () =>
+		{
+			const status = await runTodoTask(
+				{
+					data: key,
+				},
+			);
+			pushToast(
+				{
+					level: "info",
+					message: `Working on "${todo.title}"…`,
+					detail: status.message,
+				},
+			);
 		});
 	};
-	const handleSnooze = async (hours: number | null) => {
+	const handleSnooze = async (hours: number | null) =>
+	{
 		setMoreOpen(false);
-		await runPendingAction("Snooze", undefined, async () => {
-			const result = await snoozeTodoFn({data: {...key, until: snoozeUntil(hours)}});
+		await runPendingAction("Snooze", undefined, async () =>
+		{
+			const result = await snoozeTodoFn(
+				{
+					data:
+					{
+						...key,
+						until: snoozeUntil(hours),
+					},
+				},
+			);
 			if (result.ok) setHold(true);
 		});
 	};
-	const handleUnsnooze = async () => {
+	const handleUnsnooze = async () =>
+	{
 		setMoreOpen(false);
-		await runPendingAction("Unsnooze", undefined, async () => {
-			const result = await unsnoozeTodoFn({data: key});
+		await runPendingAction("Unsnooze", undefined, async () =>
+		{
+			const result = await unsnoozeTodoFn(
+				{
+					data: key,
+				},
+			);
 			if (result.ok) setHold(false);
 		});
 	};
@@ -71,7 +114,8 @@ export function TodoCard({
 						type="button"
 						data-primary="true"
 						data-variant={finishFirst ? "secondary" : "primary"}
-						onClick={() => {
+						onClick={() =>
+						{
 							void handleDoTask();
 						}}
 						disabled={queuing}
@@ -91,7 +135,8 @@ export function TodoCard({
 				<button
 					type="button"
 					aria-expanded={moreOpen}
-					onClick={() => {
+					onClick={() =>
+					{
 						setMoreOpen((open) => !open);
 					}}
 					className="rounded px-2 py-1 text-xs font-medium text-text-400 transition-colors hover:bg-bg-200 hover:text-text-300"
@@ -104,7 +149,8 @@ export function TodoCard({
 					{todo.onHold && (
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								void handleUnsnooze();
 							}}
 							className={MENU_ITEM}
@@ -116,7 +162,8 @@ export function TodoCard({
 						<button
 							key={preset.label}
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								void handleSnooze(preset.hours);
 							}}
 							className={MENU_ITEM}

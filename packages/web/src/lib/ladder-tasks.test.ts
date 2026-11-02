@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
-import {
+import
+{
 	initDb,
 	loadRecentTaskRecords,
 	resetDb,
@@ -12,11 +13,15 @@ import {getLadderResultsHandler, resetProjectCache, runLadderAllHandler, seedPro
 import {useTempConfigHome} from "./temp-registry.js";
 import {getAllTasks, reloadTasksFromDb, resetQueue} from "./task-queue.js";
 
-const noHerdr = {probe: async () => Promise.resolve(false)};
+const noHerdr =
+{
+	probe: async () => Promise.resolve(false),
+};
 
 type Runners = NonNullable<RunLadderOptions["runners"]>;
 
-function makeProject(name: string): ProjectInfo {
+function makeProject(name: string): ProjectInfo
+{
 	return {
 		name,
 		dir: `/nonexistent/${name}`,
@@ -33,23 +38,61 @@ function makeProject(name: string): ProjectInfo {
 	};
 }
 
-function fakeRunners(calls: string[], conflictIn?: string): Runners {
-	const passing = (rung: LadderResult["rungs"][number]["rung"]) => async (p: {name: string}) => {
+function fakeRunners(calls: string[], conflictIn?: string): Runners
+{
+	const passing = (rung: LadderResult["rungs"][number]["rung"]) => async (p: {name: string}) =>
+	{
 		calls.push(`${p.name}:${rung}`);
-		return Promise.resolve({project: p.name, rungs: [{rung, status: "passed" as const, detail: "ok"}]});
+		return Promise.resolve(
+			{
+				project: p.name,
+				rungs: [
+					{
+						rung,
+						status: "passed" as const,
+						detail: "ok",
+					},
+				],
+			},
+		);
 	};
 	return {
 		fetch: passing("fetch"),
-		replay: async (p) => {
+		replay: async (p) =>
+		{
 			calls.push(`${p.name}:replay`);
-			if (p.name === conflictIn) {
-				return Promise.resolve({
-					project: p.name,
-					rungs: [{rung: "replay", status: "stopped", detail: "conflict"}],
-					stop: {stop: "conflict", branches: ["feature"]},
-				});
+			if (p.name === conflictIn)
+			{
+				return Promise.resolve(
+					{
+						project: p.name,
+						rungs: [
+							{
+								rung: "replay",
+								status: "stopped",
+								detail: "conflict",
+							},
+						],
+						stop:
+						{
+							stop: "conflict",
+							branches: ["feature"],
+						},
+					},
+				);
 			}
-			return Promise.resolve({project: p.name, rungs: [{rung: "replay", status: "passed", detail: "ok"}]});
+			return Promise.resolve(
+				{
+					project: p.name,
+					rungs: [
+						{
+							rung: "replay",
+							status: "passed",
+							detail: "ok",
+						},
+					],
+				},
+			);
 		},
 		"rebase-leftovers": passing("rebase-leftovers"),
 		"worktree-prune": passing("worktree-prune"),
@@ -57,7 +100,8 @@ function fakeRunners(calls: string[], conflictIn?: string): Runners {
 	};
 }
 
-async function settled(count: number): Promise<void> {
+async function settled(count: number): Promise<void>
+{
 	await expect
 		.poll(
 			() =>
@@ -70,26 +114,45 @@ async function settled(count: number): Promise<void> {
 
 let tempConfig: ReturnType<typeof useTempConfigHome>;
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	initDb(":memory:");
 	seedProjectCache([makeProject("alpha"), makeProject("beta")]);
 	tempConfig = useTempConfigHome([
-		{name: "alpha", dir: "/nonexistent/alpha", template: "typescript", kind: "own"},
-		{name: "beta", dir: "/nonexistent/beta", template: "typescript", kind: "own"},
+		{
+			name: "alpha",
+			dir: "/nonexistent/alpha",
+			template: "typescript",
+			kind: "own",
+		},
+		{
+			name: "beta",
+			dir: "/nonexistent/beta",
+			template: "typescript",
+			kind: "own",
+		},
 	]);
 });
 
-afterEach(async () => {
+afterEach(async () =>
+{
 	await resetQueue();
 	resetProjectCache();
 	resetDb();
 	tempConfig.restore();
 });
 
-describe("runLadderAllHandler", () => {
-	it("runs only fetch, worktree-prune and delete-merged-local when ladder.backgroundRebase is unset", async () => {
+describe("runLadderAllHandler", () =>
+{
+	it("runs only fetch, worktree-prune and delete-merged-local when ladder.backgroundRebase is unset", async () =>
+	{
 		const calls: string[] = [];
-		await runLadderAllHandler({runners: fakeRunners(calls), ai: noHerdr});
+		await runLadderAllHandler(
+			{
+				runners: fakeRunners(calls),
+				ai: noHerdr,
+			},
+		);
 
 		await settled(2);
 
@@ -100,9 +163,16 @@ describe("runLadderAllHandler", () => {
 		);
 	});
 
-	it("enqueues one ladder job per registered project and persists each result", async () => {
+	it("enqueues one ladder job per registered project and persists each result", async () =>
+	{
 		const calls: string[] = [];
-		const statuses = await runLadderAllHandler({runners: fakeRunners(calls), ai: noHerdr, backgroundRebase: true});
+		const statuses = await runLadderAllHandler(
+			{
+				runners: fakeRunners(calls),
+				ai: noHerdr,
+				backgroundRebase: true,
+			},
+		);
 		expect(statuses.map((s) => s.status)).toStrictEqual(["queued", "queued"]);
 
 		await settled(2);
@@ -118,29 +188,74 @@ describe("runLadderAllHandler", () => {
 		);
 		expect(
 			loadRecentTaskRecords()
-				.map((r) => ({kind: r.kind, project: r.project, status: r.status}))
+				.map((r) => (
+				{
+					kind: r.kind,
+					project: r.project,
+					status: r.status,
+				}))
 				.toSorted((a, b) => a.project.localeCompare(b.project)),
 		).toStrictEqual([
-			{kind: "ladder", project: "alpha", status: "passed"},
-			{kind: "ladder", project: "beta", status: "passed"},
+			{
+				kind: "ladder",
+				project: "alpha",
+				status: "passed",
+			},
+			{
+				kind: "ladder",
+				project: "beta",
+				status: "passed",
+			},
 		]);
 		const results = await getLadderResultsHandler();
 		expect(
 			results
-				.map((r) => ({project: r.project, stop: r.stop, rungs: r.rungs.length}))
+				.map((r) => (
+				{
+					project: r.project,
+					stop: r.stop,
+					rungs: r.rungs.length,
+				}))
 				.toSorted((a, b) => a.project.localeCompare(b.project)),
 		).toStrictEqual([
-			{project: "alpha", stop: undefined, rungs: 5},
-			{project: "beta", stop: undefined, rungs: 5},
+			{
+				project: "alpha",
+				stop: undefined,
+				rungs: 5,
+			},
+			{
+				project: "beta",
+				stop: undefined,
+				rungs: 5,
+			},
 		]);
 	});
 
-	it("keeps a stop reason across a task-queue reload and returns the latest result per project", async () => {
-		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr, backgroundRebase: true});
+	it("keeps a stop reason across a task-queue reload and returns the latest result per project", async () =>
+	{
+		await runLadderAllHandler(
+			{
+				runners: fakeRunners([], "beta"),
+				ai: noHerdr,
+				backgroundRebase: true,
+			},
+		);
 		await settled(2);
-		await runLadderAllHandler({runners: fakeRunners([]), ai: noHerdr, backgroundRebase: true});
+		await runLadderAllHandler(
+			{
+				runners: fakeRunners([]),
+				ai: noHerdr,
+				backgroundRebase: true,
+			},
+		);
 		await settled(4);
-		await runLadderAllHandler({runners: fakeRunners([], "beta"), ai: noHerdr, backgroundRebase: true});
+		await runLadderAllHandler(
+			{
+				runners: fakeRunners([], "beta"),
+				ai: noHerdr,
+				backgroundRebase: true,
+			},
+		);
 		await settled(6);
 
 		reloadTasksFromDb();
@@ -148,11 +263,25 @@ describe("runLadderAllHandler", () => {
 		const results = await getLadderResultsHandler();
 		expect(
 			results
-				.map((r) => ({project: r.project, stop: r.stop}))
+				.map((r) => (
+				{
+					project: r.project,
+					stop: r.stop,
+				}))
 				.toSorted((a, b) => a.project.localeCompare(b.project)),
 		).toStrictEqual([
-			{project: "alpha", stop: undefined},
-			{project: "beta", stop: {stop: "conflict", branches: ["feature"]}},
+			{
+				project: "alpha",
+				stop: undefined,
+			},
+			{
+				project: "beta",
+				stop:
+				{
+					stop: "conflict",
+					branches: ["feature"],
+				},
+			},
 		]);
 		const failed = [...getAllTasks().values()].filter((t) => t.status === "failed");
 		expect(failed.map((t) => [t.taskType, t.project, t.message])).toStrictEqual([

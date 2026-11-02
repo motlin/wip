@@ -12,7 +12,8 @@ export const RED_CATEGORIES: ReadonlySet<Category> = new Set<Category>([
 ]);
 
 /** The nav strip's numbers: "WIP n (c commits + t todos) · red n · blocked n · ready n/slots". */
-export interface FlowCounts {
+export interface FlowCounts
+{
 	wip: number;
 	commits: number;
 	todos: number;
@@ -23,7 +24,8 @@ export interface FlowCounts {
 	slots: number | undefined;
 }
 
-export interface FlowCountsInput {
+export interface FlowCountsInput
+{
 	projects: readonly ProjectInfo[];
 	gitChildren: readonly GitChildResult[];
 	todos: readonly TodoItem[];
@@ -40,11 +42,13 @@ export interface FlowCountsInput {
  * land section's landable count (landableCount), so a green commit the buffer does not list as up
  * to date (behind upstream, held, or outside the buffer's repos) is never counted as ready.
  */
-export function flowCounts({projects, gitChildren, todos, readyToLand, slots}: FlowCountsInput): FlowCounts {
+export function flowCounts({projects, gitChildren, todos, readyToLand, slots}: FlowCountsInput): FlowCounts
+{
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	let commits = 0;
 	let red = 0;
-	for (const child of gitChildren) {
+	for (const child of gitChildren)
+	{
 		const project = projectMap.get(child.project);
 		if (!project || child.onHold) continue;
 		const category = classifyGitChild(child, project);
@@ -56,5 +60,13 @@ export function flowCounts({projects, gitChildren, todos, readyToLand, slots}: F
 	const active = todos.filter((t) => !t.onHold);
 	const blocked = active.filter((t) => classifyTodo(t) === "blocked").length;
 	const ready = landableCount(readyToLand, gitChildren);
-	return {wip: commits + active.length, commits, todos: active.length, red, blocked, ready, slots};
+	return {
+		wip: commits + active.length,
+		commits,
+		todos: active.length,
+		red,
+		blocked,
+		ready,
+		slots,
+	};
 }

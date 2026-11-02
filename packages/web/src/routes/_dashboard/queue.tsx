@@ -4,7 +4,8 @@ import {ClipboardList} from "../../components/icons.js";
 import {useState, useMemo, useCallback, useEffect} from "react";
 import {runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
-import {
+import
+{
 	flowMetricsQueryOptions,
 	mainPushesQueryOptions,
 	projectsQueryOptions,
@@ -13,7 +14,8 @@ import {
 } from "../../lib/queries";
 import {ReadyToLandSection} from "../../components/ready-to-land-section";
 import {QueueMain} from "../../components/queue-cards";
-import {
+import
+{
 	useActionsBlocked,
 	useLandByPushing,
 	useLandReadyItem,
@@ -36,33 +38,54 @@ import {CATEGORIES, CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED, categoryDotCl
 
 const MAX_VISIBLE_PROJECTS = 8;
 
-export const Route = createFileRoute("/_dashboard/queue")({
-	head: () => ({
-		meta: [{title: "WIP Queue"}],
-	}),
-	component: QueueLayout,
-});
+export const Route = createFileRoute("/_dashboard/queue")(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP Queue",
+				},
+			],
+		}),
+		component: QueueLayout,
+	},
+);
 
-function QueueLayout() {
+function QueueLayout()
+{
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
 	const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-	const cardsView = Boolean(useMatchRoute()({to: "/queue"}));
+	const cardsView = Boolean(
+		useMatchRoute()(
+			{
+				to: "/queue",
+			},
+		),
+	);
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
-	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
+	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() =>
+	{
 		const g = buildGrouped(workItems, projects);
 
 		// On hold and snoozed items are not WIP.
 		let total = 0;
-		for (const cat of CATEGORY_PRIORITY) {
+		for (const cat of CATEGORY_PRIORITY)
+		{
 			if (cat !== "snoozed") total += bucketCount(g[cat]);
 		}
 
 		const rtCount = g.ready_to_test.gitChildren?.length ?? 0;
 		const nrCount = g.needs_rebase.gitChildren?.filter((c) => c.branch !== undefined).length ?? 0;
 
-		return {grouped: g, totalCount: total, readyToTestCount: rtCount, needsRebaseCount: nrCount};
+		return {
+			grouped: g,
+			totalCount: total,
+			readyToTestCount: rtCount,
+			needsRebaseCount: nrCount,
+		};
 	}, [workItems, projects]);
 
 	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
@@ -71,13 +94,16 @@ function QueueLayout() {
 	const {data: mainPushes} = useQuery(mainPushesQueryOptions());
 	// Ages come from the client clock, set after mount so hydration matches the server render.
 	const [now, setNow] = useState<number | null>(null);
-	useEffect(() => {
-		const tick = () => {
+	useEffect(() =>
+	{
+		const tick = () =>
+		{
 			setNow(Date.now());
 		};
 		const first = setTimeout(tick, 0);
 		const timer = setInterval(tick, 60_000);
-		return () => {
+		return () =>
+		{
 			clearTimeout(first);
 			clearInterval(timer);
 		};
@@ -91,49 +117,62 @@ function QueueLayout() {
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
 		() =>
-			flowCounts({
-				projects,
-				gitChildren: workItems.gitChildren,
-				todos: workItems.todos,
-				readyToLand,
-				slots: readySlots,
-			}),
+			flowCounts(
+				{
+					projects,
+					gitChildren: workItems.gitChildren,
+					todos: workItems.todos,
+					readyToLand,
+					slots: readySlots,
+				},
+			),
 		[projects, workItems, readyToLand, readySlots],
 	);
 	const waiting = commitsWaiting(counts, readyToLand);
 
-	const {categoryCounts, projectCounts} = useMemo(() => {
+	const {categoryCounts, projectCounts} = useMemo(() =>
+	{
 		const catCounts: Partial<Record<Category, number>> = {};
 		const projCounts = new Map<string, number>();
 
-		for (const cat of CATEGORY_PRIORITY) {
+		for (const cat of CATEGORY_PRIORITY)
+		{
 			const items = grouped[cat];
 			const count = bucketCount(items);
 
-			if (count > 0) {
+			if (count > 0)
+			{
 				catCounts[cat] = count;
 			}
 
-			for (const child of items.gitChildren ?? []) {
+			for (const child of items.gitChildren ?? [])
+			{
 				projCounts.set(child.project, (projCounts.get(child.project) ?? 0) + 1);
 			}
-			for (const issue of items.issues ?? []) {
+			for (const issue of items.issues ?? [])
+			{
 				const issueName = issue.repository.name;
 				projCounts.set(issueName, (projCounts.get(issueName) ?? 0) + 1);
 			}
-			for (const item of items.projectItems ?? []) {
+			for (const item of items.projectItems ?? [])
+			{
 				projCounts.set(item.project, (projCounts.get(item.project) ?? 0) + 1);
 			}
-			for (const todo of items.todos ?? []) {
+			for (const todo of items.todos ?? [])
+			{
 				projCounts.set(todo.project, (projCounts.get(todo.project) ?? 0) + 1);
 			}
 		}
 
-		return {categoryCounts: catCounts, projectCounts: projCounts};
+		return {
+			categoryCounts: catCounts,
+			projectCounts: projCounts,
+		};
 	}, [grouped]);
 
 	const filterByProject = useCallback(
-		(items: ColumnItems): ColumnItems => {
+		(items: ColumnItems): ColumnItems =>
+		{
 			if (!selectedProject) return items;
 			return {
 				gitChildren: items.gitChildren?.filter((c) => c.project === selectedProject),
@@ -145,11 +184,13 @@ function QueueLayout() {
 		[selectedProject],
 	);
 
-	const handleCategoryClick = (category: Category | null) => {
+	const handleCategoryClick = (category: Category | null) =>
+	{
 		setSelectedCategory((previous) => (previous === category ? null : category));
 	};
 
-	const handleProjectClick = (project: string | null) => {
+	const handleProjectClick = (project: string | null) =>
+	{
 		setSelectedProject((previous) => (previous === project ? null : project));
 	};
 
@@ -165,7 +206,8 @@ function QueueLayout() {
 	);
 
 	const queueContextValue = useMemo<QueueContextValue>(
-		() => ({
+		() => (
+		{
 			grouped,
 			totalCount,
 			readyToTestCount,
@@ -221,7 +263,8 @@ function QueueLayout() {
 						<div className="flex flex-col gap-0.5">
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									handleCategoryClick(null);
 								}}
 								className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
@@ -236,14 +279,16 @@ function QueueLayout() {
 									{totalCount}
 								</span>
 							</button>
-							{CATEGORY_PRIORITY_REVERSED.map((cat) => {
+							{CATEGORY_PRIORITY_REVERSED.map((cat) =>
+							{
 								const count = categoryCounts[cat];
 								if (!count) return null;
 								return (
 									<button
 										key={cat}
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											handleCategoryClick(cat);
 										}}
 										className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
@@ -275,7 +320,8 @@ function QueueLayout() {
 								<button
 									key={project}
 									type="button"
-									onClick={() => {
+									onClick={() =>
+									{
 										handleProjectClick(project);
 									}}
 									className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
@@ -294,7 +340,8 @@ function QueueLayout() {
 							{hiddenProjectCount > 0 && !showAllProjects && (
 								<button
 									type="button"
-									onClick={() => {
+									onClick={() =>
+									{
 										setShowAllProjects(true);
 									}}
 									className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
@@ -305,7 +352,8 @@ function QueueLayout() {
 							{showAllProjects && hiddenProjectCount > 0 && (
 								<button
 									type="button"
-									onClick={() => {
+									onClick={() =>
+									{
 										setShowAllProjects(false);
 									}}
 									className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
@@ -334,7 +382,10 @@ function QueueLayout() {
 							<div className="mr-2 flex rounded-lg border border-border-300">
 								<Link
 									to="/queue"
-									activeOptions={{exact: true}}
+									activeOptions={
+									{
+										exact: true,
+									}}
 									className="rounded-l-lg px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
 								>
 									Cards
@@ -355,7 +406,16 @@ function QueueLayout() {
 							</Link>
 							<BulkActions
 								topUp={async () => topUpReadyBuffer()}
-								runRecipe={async (recipe) => runEscapeHatch({data: {recipe}})}
+								runRecipe={async (recipe) =>
+									runEscapeHatch(
+										{
+											data:
+											{
+												recipe,
+											},
+										},
+									)
+								}
 							/>
 						</div>
 					</div>

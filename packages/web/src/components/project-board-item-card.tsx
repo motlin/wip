@@ -3,7 +3,8 @@ import {Link} from "@tanstack/react-router";
 import type {ProjectItemResult} from "@wip/shared";
 import {LabelList} from "./label-list";
 
-export function ProjectBoardItemCard({item}: {item: ProjectItemResult}) {
+export function ProjectBoardItemCard({item}: {item: ProjectItemResult})
+{
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
 			<div className="flex items-center gap-1.5">
@@ -29,7 +30,11 @@ export function ProjectBoardItemCard({item}: {item: ProjectItemResult}) {
 			{item.number ? (
 				<Link
 					to="/board-item/$project/$number"
-					params={{project: item.project, number: String(item.number)}}
+					params={
+					{
+						project: item.project,
+						number: String(item.number),
+					}}
 					className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors"
 				>
 					{item.title}

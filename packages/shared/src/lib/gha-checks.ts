@@ -19,7 +19,8 @@ const CHECK_RUNS_QUERY = `query($owner: String!, $name: String!, $oid: GitObject
 	}
 }`;
 
-const STATUSES = {
+const STATUSES =
+{
 	QUEUED: "queued",
 	IN_PROGRESS: "in_progress",
 	COMPLETED: "completed",
@@ -32,33 +33,73 @@ const CheckRunStatusSchema = z
 	.enum(["QUEUED", "IN_PROGRESS", "COMPLETED", "WAITING", "REQUESTED", "PENDING"])
 	.transform((status) => STATUSES[status]);
 
-const CheckRunsResponseSchema = z.object({
-	data: z.object({
-		repository: z.object({
-			object: z
-				.object({
-					checkSuites: z.object({
-						nodes: z.array(
-							z.object({checkRuns: z.object({nodes: z.array(z.object({status: CheckRunStatusSchema}))})}),
-						),
-					}),
-				})
-				.nullable(),
-		}),
-	}),
-});
+const CheckRunsResponseSchema = z.object(
+	{
+		data: z.object(
+			{
+				repository: z.object(
+					{
+						object: z
+							.object(
+								{
+									checkSuites: z.object(
+										{
+											nodes: z.array(
+												z.object(
+													{
+														checkRuns: z.object(
+															{
+																nodes: z.array(
+																	z.object(
+																		{
+																			status: CheckRunStatusSchema,
+																		},
+																	),
+																),
+															},
+														),
+													},
+												),
+											),
+										},
+									),
+								},
+							)
+							.nullable(),
+					},
+				),
+			},
+		),
+	},
+);
 
-function ownerAndName(repository: string): {owner: string; name: string} {
+function ownerAndName(repository: string):
+{
+	owner: string;
+	name: string;
+}
+{
 	const [owner, name, ...rest] = repository.split("/");
 	if (!owner || !name || rest.length > 0) throw new Error(`Not an owner/name repository: "${repository}"`);
 	if (isGitHubRateLimited()) throw new Error("GitHub API rate limited; check status unknown");
-	return {owner, name};
+	return {
+		owner,
+		name,
+	};
 }
 
 /** Throws (so the gate stays held) while rate limited, on a request error, or on an unexpected response. */
-export async function githubChecksSource(push: BackgroundPush): Promise<CheckRunStatus[]> {
+export async function githubChecksSource(push: BackgroundPush): Promise<CheckRunStatus[]>
+{
 	const {owner, name} = ownerAndName(push.repository);
-	const raw = await getGitHubClient().graphql(CHECK_RUNS_QUERY, {owner, name, oid: push.sha});
+	const raw = await getGitHubClient().graphql(
+		CHECK_RUNS_QUERY,
+		{
+			owner,
+			name,
+			oid: push.sha,
+		},
+	);
 	const commit = CheckRunsResponseSchema.parse(raw).data.repository.object;
 	return commit?.checkSuites.nodes.flatMap((suite) => suite.checkRuns.nodes.map((run) => run.status)) ?? [];
 }
@@ -76,30 +117,56 @@ const BILLING_QUERY = `query($owner: String!, $name: String!, $oid: GitObjectID!
 	}
 }`;
 
-const BillingResponseSchema = z.object({
-	data: z.object({
-		repository: z.object({
-			isPrivate: z.boolean(),
-			object: z
-				.object({
-					checkSuites: z.object({
-						nodes: z.array(
-							z.object({
-								checkRuns: z.object({
-									nodes: z.array(
-										z.object({
-											annotations: z.object({nodes: z.array(z.object({message: z.string()}))}),
-										}),
+const BillingResponseSchema = z.object(
+	{
+		data: z.object(
+			{
+				repository: z.object(
+					{
+						isPrivate: z.boolean(),
+						object: z
+							.object(
+								{
+									checkSuites: z.object(
+										{
+											nodes: z.array(
+												z.object(
+													{
+														checkRuns: z.object(
+															{
+																nodes: z.array(
+																	z.object(
+																		{
+																			annotations: z.object(
+																				{
+																					nodes: z.array(
+																						z.object(
+																							{
+																								message: z.string(),
+																							},
+																						),
+																					),
+																				},
+																			),
+																		},
+																	),
+																),
+															},
+														),
+													},
+												),
+											),
+										},
 									),
-								}),
-							}),
-						),
-					}),
-				})
-				.nullable(),
-		}),
-	}),
-});
+								},
+							)
+							.nullable(),
+					},
+				),
+			},
+		),
+	},
+);
 
 /**
  * GitHub's annotation on a job it never started because the account's Actions billing is blocked
@@ -113,9 +180,17 @@ const BILLING_REFUSAL = /job was not started because .*(?:billing|spending limit
  * failure (a public repo, a real test failure, no check runs at all) is false. Throws while rate
  * limited, on a request error, or on an unexpected response.
  */
-export async function actionsBlockedByBilling(repository: string, sha: string): Promise<boolean> {
+export async function actionsBlockedByBilling(repository: string, sha: string): Promise<boolean>
+{
 	const {owner, name} = ownerAndName(repository);
-	const raw = await getGitHubClient().graphql(BILLING_QUERY, {owner, name, oid: sha});
+	const raw = await getGitHubClient().graphql(
+		BILLING_QUERY,
+		{
+			owner,
+			name,
+			oid: sha,
+		},
+	);
 	const {isPrivate, object} = BillingResponseSchema.parse(raw).data.repository;
 	if (!isPrivate || object === null) return false;
 	return object.checkSuites.nodes.some((suite) =>
@@ -136,20 +211,56 @@ const CHECK_RUN_STARTS_QUERY = `query($ids: [ID!]!) {
 	}
 }`;
 
-const CheckRunStartsResponseSchema = z.object({
-	data: z.object({
-		nodes: z.array(
-			z
-				.object({
-					id: z.string(),
-					steps: z.object({totalCount: z.number()}).nullable(),
-					checkSuite: z.object({app: z.object({slug: z.string()}).nullable()}).nullable(),
-					annotations: z.object({nodes: z.array(z.object({message: z.string()}))}).nullable(),
-				})
-				.nullable(),
+const CheckRunStartsResponseSchema = z.object(
+	{
+		data: z.object(
+			{
+				nodes: z.array(
+					z
+						.object(
+							{
+								id: z.string(),
+								steps: z
+									.object(
+										{
+											totalCount: z.number(),
+										},
+									)
+									.nullable(),
+								checkSuite: z
+									.object(
+										{
+											app: z
+												.object(
+													{
+														slug: z.string(),
+													},
+												)
+												.nullable(),
+										},
+									)
+									.nullable(),
+								annotations: z
+									.object(
+										{
+											nodes: z.array(
+												z.object(
+													{
+														message: z.string(),
+													},
+												),
+											),
+										},
+									)
+									.nullable(),
+							},
+						)
+						.nullable(),
+				),
+			},
 		),
-	}),
-});
+	},
+);
 
 /** GitHub's node lookup takes at most 100 ids per request. */
 const NODE_IDS_PER_REQUEST = 100;
@@ -160,17 +271,27 @@ const NODE_IDS_PER_REQUEST = 100;
  * result, neither pass nor fail. One request per 100 ids, none when `ids` is empty. Throws on a
  * request error or an unexpected response.
  */
-export async function notStartedCheckRuns(ids: readonly string[]): Promise<Set<string>> {
+export async function notStartedCheckRuns(ids: readonly string[]): Promise<Set<string>>
+{
 	const unique = [...new Set(ids)];
 	const chunks: string[][] = [];
-	for (let start = 0; start < unique.length; start += NODE_IDS_PER_REQUEST) {
+	for (let start = 0; start < unique.length; start += NODE_IDS_PER_REQUEST)
+	{
 		chunks.push(unique.slice(start, start + NODE_IDS_PER_REQUEST));
 	}
 	const answers = await Promise.all(
-		chunks.map(async (chunk) => getGitHubClient().graphql(CHECK_RUN_STARTS_QUERY, {ids: chunk})),
+		chunks.map(async (chunk) =>
+			getGitHubClient().graphql(
+				CHECK_RUN_STARTS_QUERY,
+				{
+					ids: chunk,
+				},
+			),
+		),
 	);
 	const notStarted = new Set<string>();
-	for (const run of answers.flatMap((raw) => CheckRunStartsResponseSchema.parse(raw).data.nodes)) {
+	for (const run of answers.flatMap((raw) => CheckRunStartsResponseSchema.parse(raw).data.nodes))
+	{
 		if (run === null) continue;
 		const neverRan = run.checkSuite?.app?.slug === "github-actions" && run.steps?.totalCount === 0;
 		const refused = run.annotations?.nodes.some((annotation) => BILLING_REFUSAL.test(annotation.message));

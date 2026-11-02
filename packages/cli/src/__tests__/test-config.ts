@@ -14,13 +14,24 @@ const CLI_ROOT = path.resolve(import.meta.dirname, "../..");
  * `@oclif/core` itself as the root and warns about its missing dev plugins. Tests never
  * look commands up by id, so the config leaves discovery out.
  */
-export async function loadTestConfig(): Promise<Config> {
+export async function loadTestConfig(): Promise<Config>
+{
 	const pjson: unknown = JSON.parse(fs.readFileSync(path.join(CLI_ROOT, "package.json"), "utf8"));
 	if (!isPjson(pjson)) throw new Error(`${CLI_ROOT}/package.json has no oclif section`);
 	const {commands: _commands, ...oclif} = pjson.oclif;
-	return await Config.load({root: CLI_ROOT, pjson: {...pjson, oclif}});
+	return await Config.load(
+		{
+			root: CLI_ROOT,
+			pjson:
+			{
+				...pjson,
+				oclif,
+			},
+		},
+	);
 }
 
-function isPjson(value: unknown): value is Interfaces.PJSON {
+function isPjson(value: unknown): value is Interfaces.PJSON
+{
 	return typeof value === "object" && value !== null && "oclif" in value;
 }

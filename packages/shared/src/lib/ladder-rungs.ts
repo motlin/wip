@@ -11,7 +11,8 @@ import {planLadder, type LadderProjectInfo, type LadderResult, type LadderRungNa
  * (spawns subprocesses); do not import from client-reachable modules.
  */
 
-export interface LadderRungProject {
+export interface LadderRungProject
+{
 	name: string;
 	/** Absolute project directory, used as the recipe's cwd. */
 	path: string;
@@ -25,46 +26,77 @@ export interface LadderRungProject {
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}(?:\\[[0-9;]*m|\\(B)`, "g");
 
-async function runRecipe(project: LadderRungProject, recipeArgs: string[]): Promise<ExecaResult> {
-	return tracedExeca("just", ["--global-justfile", ...recipeArgs], {
-		cwd: project.path,
-		// The global justfile runs `tput` at load time, which fails when TERM is unset (servers, CI).
-		env: {
-			UPSTREAM_REMOTE: project.upstreamRemote,
-			UPSTREAM_BRANCH: project.upstreamBranch,
-			TERM: process.env["TERM"] ?? "xterm-256color",
+async function runRecipe(project: LadderRungProject, recipeArgs: string[]): Promise<ExecaResult>
+{
+	return tracedExeca(
+		"just",
+		["--global-justfile", ...recipeArgs],
+		{
+			cwd: project.path,
+			// The global justfile runs `tput` at load time, which fails when TERM is unset (servers, CI).
+			env:
+			{
+				UPSTREAM_REMOTE: project.upstreamRemote,
+				UPSTREAM_BRANCH: project.upstreamBranch,
+				TERM: process.env["TERM"] ?? "xterm-256color",
+			},
+			extendEnv: true,
+			reject: false,
+			...(project.signal
+				?
+					{
+						cancelSignal: project.signal,
+					}
+				: {}),
 		},
-		extendEnv: true,
-		reject: false,
-		...(project.signal ? {cancelSignal: project.signal} : {}),
-	});
+	);
 }
 
-function errorResult(project: LadderRungProject, rung: LadderRungName, result: ExecaResult): LadderResult {
+function errorResult(project: LadderRungProject, rung: LadderRungName, result: ExecaResult): LadderResult
+{
 	const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
 	return {
 		project: project.name,
-		rungs: [{rung, status: "stopped", detail}],
-		stop: {stop: "error", branches: []},
+		rungs: [
+			{
+				rung,
+				status: "stopped",
+				detail,
+			},
+		],
+		stop:
+		{
+			stop: "error",
+			branches: [],
+		},
 	};
 }
 
-export async function runFetchRung(project: LadderRungProject): Promise<LadderResult> {
+export async function runFetchRung(project: LadderRungProject): Promise<LadderResult>
+{
 	const result = await runRecipe(project, ["fetch"]);
 	if (result.exitCode !== 0) return errorResult(project, "fetch", result);
 	return {
 		project: project.name,
-		rungs: [{rung: "fetch", status: "passed", detail: `fetched ${project.upstreamRemote}`}],
+		rungs: [
+			{
+				rung: "fetch",
+				status: "passed",
+				detail: `fetched ${project.upstreamRemote}`,
+			},
+		],
 	};
 }
 
 /** Extracts branch names listed under "Failed to replay N branch(es):". */
-function parseFailedReplayBranches(output: string): string[] {
+function parseFailedReplayBranches(output: string): string[]
+{
 	const lines = output.replace(ANSI_PATTERN, "").split("\n");
 	const start = lines.findIndex((line) => line.includes("Failed to replay") && line.includes("branch(es)"));
 	if (start === -1) return [];
 	const branches: string[] = [];
-	for (const line of lines.slice(start + 1)) {
+	for (const line of lines.slice(start + 1))
+	{
 		const match = line.match(/^\s+-\s+(\S+)\s*$/);
 		if (!match?.[1]) break;
 		branches.push(match[1]);
@@ -72,22 +104,57 @@ function parseFailedReplayBranches(output: string): string[] {
 	return branches;
 }
 
-export async function runReplayRung(project: LadderRungProject): Promise<LadderResult> {
+export async function runReplayRung(project: LadderRungProject): Promise<LadderResult>
+{
 	const result = await runRecipe(project, ["replay-all", "true"]);
 	const failed = parseFailedReplayBranches(result.stdout);
-	if (failed.length > 0) {
+	if (failed.length > 0)
+	{
 		return {
 			project: project.name,
-			rungs: [{rung: "replay", status: "stopped", detail: `failed to replay ${failed.length} branch(es)`}],
-			stop: {stop: "conflict", branches: failed},
+			rungs: [
+				{
+					rung: "replay",
+					status: "stopped",
+					detail: `failed to replay ${failed.length} branch(es)`,
+				},
+			],
+			stop:
+			{
+				stop: "conflict",
+				branches: failed,
+			},
 		};
 	}
 	if (result.exitCode !== 0) return errorResult(project, "replay", result);
-	return {project: project.name, rungs: [{rung: "replay", status: "passed", detail: "replayed"}]};
+	return {
+		project: project.name,
+		rungs: [
+			{
+				rung: "replay",
+				status: "passed",
+				detail: "replayed",
+			},
+		],
+	};
 }
 
-async function gitIn(dir: string, args: string[], signal?: AbortSignal): Promise<ExecaResult> {
-	return tracedExeca("git", ["-C", dir, ...args], signal ? {reject: false, cancelSignal: signal} : {reject: false});
+async function gitIn(dir: string, args: string[], signal?: AbortSignal): Promise<ExecaResult>
+{
+	return tracedExeca(
+		"git",
+		["-C", dir, ...args],
+		signal
+			?
+				{
+					reject: false,
+					cancelSignal: signal,
+				}
+			:
+				{
+					reject: false,
+				},
+	);
 }
 
 /**
@@ -95,7 +162,8 @@ async function gitIn(dir: string, args: string[], signal?: AbortSignal): Promise
  * in any worktree. Each runs in a throwaway detached worktree so the user's checkout
  * is never touched; conflicts are aborted and reported, never forced.
  */
-export async function runRebaseLeftoversRung(project: LadderRungProject): Promise<LadderResult> {
+export async function runRebaseLeftoversRung(project: LadderRungProject): Promise<LadderResult>
+{
 	const upstream = `${project.upstreamRemote}/${project.upstreamBranch}`;
 	const branchList = await gitIn(
 		project.path,
@@ -106,9 +174,13 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	const tips = branchList.stdout
 		.split("\n")
 		.filter(Boolean)
-		.map((line) => {
+		.map((line) =>
+		{
 			const space = line.indexOf(" ");
-			return {sha: line.slice(0, space), branch: line.slice(space + 1)};
+			return {
+				sha: line.slice(0, space),
+				branch: line.slice(space + 1),
+			};
 		});
 	const held = project.onHold ? await project.onHold(tips.map((tip) => tip.sha)) : new Set<string>();
 	const worktrees = await gitIn(project.path, ["worktree", "list", "--porcelain"], project.signal);
@@ -122,7 +194,8 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 
 	const leftovers: string[] = [];
 	/* oxlint-disable no-await-in-loop -- git subprocesses run one at a time: worktree add/remove contend on the repo lock and rebases are heavy */
-	for (const {sha, branch} of tips) {
+	for (const {sha, branch} of tips)
+	{
 		if (checkedOut.has(branch) || held.has(sha)) continue;
 		const contains = await gitIn(project.path, ["merge-base", "--is-ancestor", upstream, branch], project.signal);
 		if (contains.exitCode !== 0) leftovers.push(branch);
@@ -131,12 +204,25 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	const rebased: string[] = [];
 	const conflicts: string[] = [];
 	const base = path.join(getCacheDir(), "rebase-worktrees", project.name);
-	fs.mkdirSync(base, {recursive: true});
-	for (const branch of leftovers) {
+	fs.mkdirSync(
+		base,
+		{
+			recursive: true,
+		},
+	);
+	for (const branch of leftovers)
+	{
 		const dir = fs.mkdtempSync(path.join(base, "wt-"));
 		const added = await gitIn(project.path, ["worktree", "add", "--detach", dir, branch], project.signal);
-		if (added.exitCode !== 0) {
-			fs.rmSync(dir, {recursive: true, force: true});
+		if (added.exitCode !== 0)
+		{
+			fs.rmSync(
+				dir,
+				{
+					recursive: true,
+					force: true,
+				},
+			);
 			conflicts.push(branch);
 			continue;
 		}
@@ -145,9 +231,12 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 			["rebase", "--rebase-merges", "--update-refs", upstream, branch],
 			project.signal,
 		);
-		if (rebase.exitCode === 0) {
+		if (rebase.exitCode === 0)
+		{
 			rebased.push(branch);
-		} else {
+		}
+		else
+		{
 			await gitIn(dir, ["rebase", "--abort"]);
 			conflicts.push(branch);
 		}
@@ -158,7 +247,8 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 	/* oxlint-enable no-await-in-loop */
 	await gitIn(project.path, ["worktree", "prune"], project.signal);
 
-	if (conflicts.length > 0) {
+	if (conflicts.length > 0)
+	{
 		return {
 			project: project.name,
 			rungs: [
@@ -168,20 +258,40 @@ export async function runRebaseLeftoversRung(project: LadderRungProject): Promis
 					detail: `${conflicts.length} branch(es) could not be rebased`,
 				},
 			],
-			stop: {stop: "conflict", branches: conflicts},
+			stop:
+			{
+				stop: "conflict",
+				branches: conflicts,
+			},
 		};
 	}
 	return {
 		project: project.name,
-		rungs: [{rung: "rebase-leftovers", status: "passed", detail: `rebased ${rebased.length} branch(es)`}],
+		rungs: [
+			{
+				rung: "rebase-leftovers",
+				status: "passed",
+				detail: `rebased ${rebased.length} branch(es)`,
+			},
+		],
 		rebased,
 	};
 }
 
-export async function runPruneRung(project: LadderRungProject): Promise<LadderResult> {
+export async function runPruneRung(project: LadderRungProject): Promise<LadderResult>
+{
 	const result = await runRecipe(project, ["worktree-prune"]);
 	if (result.exitCode !== 0) return errorResult(project, "worktree-prune", result);
-	return {project: project.name, rungs: [{rung: "worktree-prune", status: "passed", detail: "pruned worktrees"}]};
+	return {
+		project: project.name,
+		rungs: [
+			{
+				rung: "worktree-prune",
+				status: "passed",
+				detail: "pruned worktrees",
+			},
+		],
+	};
 }
 
 /**
@@ -193,7 +303,8 @@ export async function runPruneRung(project: LadderRungProject): Promise<LadderRe
  * (force), does not skip the upstream-named branch (main) when it is not checked out, and runs a
  * network `fetch` first.
  */
-export async function runDeleteMergedLocalRung(project: LadderRungProject): Promise<LadderResult> {
+export async function runDeleteMergedLocalRung(project: LadderRungProject): Promise<LadderResult>
+{
 	const upstream = `remotes/${project.upstreamRemote}/${project.upstreamBranch}`;
 	const merged = await gitIn(
 		project.path,
@@ -212,7 +323,8 @@ export async function runDeleteMergedLocalRung(project: LadderRungProject): Prom
 
 	let deleted = 0;
 	/* oxlint-disable no-await-in-loop -- branch deletions take the repo ref lock; run one at a time */
-	for (const branch of merged.stdout.split("\n").filter(Boolean)) {
+	for (const branch of merged.stdout.split("\n").filter(Boolean))
+	{
 		if (checkedOut.has(branch) || branch === project.upstreamBranch) continue;
 		const result = await gitIn(project.path, ["branch", "-d", branch], project.signal);
 		if (result.exitCode === 0) deleted++;
@@ -220,13 +332,20 @@ export async function runDeleteMergedLocalRung(project: LadderRungProject): Prom
 	/* oxlint-enable no-await-in-loop */
 	return {
 		project: project.name,
-		rungs: [{rung: "delete-merged-local", status: "passed", detail: `deleted ${deleted} branch(es)`}],
+		rungs: [
+			{
+				rung: "delete-merged-local",
+				status: "passed",
+				detail: `deleted ${deleted} branch(es)`,
+			},
+		],
 	};
 }
 
 export type LadderRunner = (project: LadderRungProject) => Promise<LadderResult>;
 
-const DEFAULT_LADDER_RUNNERS: Record<LadderRungName, LadderRunner> = {
+const DEFAULT_LADDER_RUNNERS: Record<LadderRungName, LadderRunner> =
+{
 	fetch: runFetchRung,
 	replay: runReplayRung,
 	"rebase-leftovers": runRebaseLeftoversRung,
@@ -234,7 +353,8 @@ const DEFAULT_LADDER_RUNNERS: Record<LadderRungName, LadderRunner> = {
 	"delete-merged-local": runDeleteMergedLocalRung,
 };
 
-export interface RunLadderOptions {
+export interface RunLadderOptions
+{
 	/** Return the plan as skipped rungs without running anything. */
 	dryRun?: boolean;
 	/** Checked between rungs and passed to subprocesses. */
@@ -246,23 +366,33 @@ export interface RunLadderOptions {
 export type LadderRunProject = LadderRungProject & Omit<LadderProjectInfo, "project">;
 
 /** Runs the planned rungs in order, stopping at the first stopped rung. */
-export async function runLadder(project: LadderRunProject, options: RunLadderOptions = {}): Promise<LadderResult> {
+export async function runLadder(project: LadderRunProject, options: RunLadderOptions = {}): Promise<LadderResult>
+{
 	const runners = options.runners ?? DEFAULT_LADDER_RUNNERS;
-	const plan = planLadder({
-		project: project.name,
-		dirty: project.dirty,
-		detached: project.detached,
-		rebaseInProgress: project.rebaseInProgress,
-		offline: project.offline,
-		backgroundRebase: project.backgroundRebase,
-	});
-	if (options.dryRun) {
+	const plan = planLadder(
+		{
+			project: project.name,
+			dirty: project.dirty,
+			detached: project.detached,
+			rebaseInProgress: project.rebaseInProgress,
+			offline: project.offline,
+			backgroundRebase: project.backgroundRebase,
+		},
+	);
+	if (options.dryRun)
+	{
 		return {
 			project: project.name,
-			rungs: plan.map((r) => ({rung: r.rung, status: "skipped", detail: "dry run"})),
+			rungs: plan.map((r) => (
+			{
+				rung: r.rung,
+				status: "skipped",
+				detail: "dry run",
+			})),
 		};
 	}
-	const rungProject: LadderRungProject = {
+	const rungProject: LadderRungProject =
+	{
 		name: project.name,
 		path: project.path,
 		upstreamRemote: project.upstreamRemote,
@@ -270,20 +400,38 @@ export async function runLadder(project: LadderRunProject, options: RunLadderOpt
 		signal: options.signal,
 		onHold: project.onHold ?? (async (shas) => heldShas(project.path, project.name, shas)),
 	};
-	const result: LadderResult = {project: project.name, rungs: []};
+	const result: LadderResult =
+	{
+		project: project.name,
+		rungs: [],
+	};
 	/* oxlint-disable no-await-in-loop -- rungs are ordered and must run one at a time */
-	for (const {rung} of plan) {
-		if (options.signal?.aborted) {
-			result.rungs.push({rung, status: "stopped", detail: "aborted"});
-			result.stop = {stop: "error", branches: []};
+	for (const {rung} of plan)
+	{
+		if (options.signal?.aborted)
+		{
+			result.rungs.push(
+				{
+					rung,
+					status: "stopped",
+					detail: "aborted",
+				},
+			);
+			result.stop =
+			{
+				stop: "error",
+				branches: [],
+			};
 			return result;
 		}
 		const rungResult = await runners[rung](rungProject);
 		result.rungs.push(...rungResult.rungs);
-		if (rungResult.rebased && rungResult.rebased.length > 0) {
+		if (rungResult.rebased && rungResult.rebased.length > 0)
+		{
 			result.rebased = [...(result.rebased ?? []), ...rungResult.rebased];
 		}
-		if (rungResult.stop) {
+		if (rungResult.stop)
+		{
 			result.stop = rungResult.stop;
 			return result;
 		}

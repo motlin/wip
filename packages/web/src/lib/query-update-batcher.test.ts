@@ -2,16 +2,20 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
 import {createQueryUpdateBatcher} from "./query-update-batcher";
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	vi.useFakeTimers();
 });
 
-afterEach(() => {
+afterEach(() =>
+{
 	vi.useRealTimers();
 });
 
-describe("createQueryUpdateBatcher", () => {
-	it("flushes buffered updates once after the delay", () => {
+describe("createQueryUpdateBatcher", () =>
+{
+	it("flushes buffered updates once after the delay", () =>
+	{
 		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
@@ -30,7 +34,8 @@ describe("createQueryUpdateBatcher", () => {
 		);
 	});
 
-	it("keeps only the latest update per key within a window", () => {
+	it("keeps only the latest update per key within a window", () =>
+	{
 		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
@@ -41,7 +46,8 @@ describe("createQueryUpdateBatcher", () => {
 		expect(flush).toHaveBeenCalledWith(new Map([["alpha", 2]]));
 	});
 
-	it("starts a new window after flushing", () => {
+	it("starts a new window after flushing", () =>
+	{
 		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
@@ -54,7 +60,8 @@ describe("createQueryUpdateBatcher", () => {
 		expect(flush).toHaveBeenLastCalledWith(new Map([["alpha", 2]]));
 	});
 
-	it("flush applies buffered updates at once and leaves nothing for the timer", () => {
+	it("flush applies buffered updates at once and leaves nothing for the timer", () =>
+	{
 		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 
@@ -66,7 +73,8 @@ describe("createQueryUpdateBatcher", () => {
 		expect(flush.mock.calls).toStrictEqual([[new Map([["alpha", 1]])]]);
 	});
 
-	it("cancel drops buffered updates and stops the timer", () => {
+	it("cancel drops buffered updates and stops the timer", () =>
+	{
 		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);
 

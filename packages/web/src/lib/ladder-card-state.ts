@@ -1,12 +1,18 @@
 import type {LadderResult, LadderStop} from "@wip/shared";
 
-export interface LadderBranchState {
+export interface LadderBranchState
+{
 	stop?: LadderStop;
 	aiStatus?: LadderResult["aiStatus"];
 	aiSignature?: string;
 	needsAiCommand?: string;
 	paneId?: string;
-	testFix?: {status: "running" | "green" | "red" | "stuck"; attempts: number; signature?: string};
+	testFix?:
+	{
+		status: "running" | "green" | "red" | "stuck";
+		attempts: number;
+		signature?: string;
+	};
 }
 
 /**
@@ -17,24 +23,57 @@ export function ladderStateForBranch(
 	results: readonly LadderResult[],
 	project: string,
 	branch: string,
-): LadderBranchState | undefined {
+): LadderBranchState | undefined
+{
 	const result = results.find((r) => r.project === project);
 	if (!result) return undefined;
 	const testFix = result.testFix?.find((entry) => entry.branch === branch);
 	const stop = result.stop?.branches.includes(branch) ? result.stop.stop : undefined;
 	if (!stop && !testFix) return undefined;
 	return {
-		...(stop ? {stop} : {}),
-		...(stop && result.aiStatus ? {aiStatus: result.aiStatus} : {}),
-		...(stop && result.aiSignature ? {aiSignature: result.aiSignature} : {}),
-		...(stop && result.needsAi ? {needsAiCommand: result.needsAi.command} : {}),
-		...(stop && result.herdr ? {paneId: result.herdr.paneId} : {}),
+		...(stop
+			?
+				{
+					stop,
+				}
+			: {}),
+		...(stop && result.aiStatus
+			?
+				{
+					aiStatus: result.aiStatus,
+				}
+			: {}),
+		...(stop && result.aiSignature
+			?
+				{
+					aiSignature: result.aiSignature,
+				}
+			: {}),
+		...(stop && result.needsAi
+			?
+				{
+					needsAiCommand: result.needsAi.command,
+				}
+			: {}),
+		...(stop && result.herdr
+			?
+				{
+					paneId: result.herdr.paneId,
+				}
+			: {}),
 		...(testFix
-			? {
-					testFix: {
+			?
+				{
+					testFix:
+					{
 						status: testFix.status,
 						attempts: testFix.attempts,
-						...(testFix.signature ? {signature: testFix.signature} : {}),
+						...(testFix.signature
+							?
+								{
+									signature: testFix.signature,
+								}
+							: {}),
 					},
 				}
 			: {}),

@@ -1,6 +1,7 @@
 import type {ReactElement, ReactNode} from "react";
 import {rankGitChildren} from "@wip/shared/candidate-rank.js";
-import {
+import
+{
 	isGitChildPullRequest,
 	isGitChildBranch,
 	isGitChildPrRefsMissing,
@@ -24,11 +25,14 @@ import {BLOCKING_CATEGORIES} from "../lib/category-actions.js";
 import type {Category} from "@wip/shared";
 import type {ColumnItems} from "./kanban-column.js";
 
-function gitChildCard(child: GitChildResult, category: Category): ReactElement {
-	if (isGitChildUpstreamCi(child)) {
+function gitChildCard(child: GitChildResult, category: Category): ReactElement
+{
+	if (isGitChildUpstreamCi(child))
+	{
 		return <UpstreamCiCard key={`${child.remote}-${child.sha}`} item={child} category={category} />;
 	}
-	if (isGitChildPrRefsMissing(child)) {
+	if (isGitChildPrRefsMissing(child))
+	{
 		return <PrRefsMissingCard key={`pr-refs-${child.project}`} item={child} category={category} />;
 	}
 	if (isGitChildRemoteOnly(child)) return <RemoteOnlyCard key={child.sha} commit={child} category={category} />;
@@ -37,7 +41,8 @@ function gitChildCard(child: GitChildResult, category: Category): ReactElement {
 	return <CommitCard key={child.sha} commit={child} category={category} />;
 }
 
-function sectionCards(items: ColumnItems, category: Category, finishFirst: boolean): ReactNode[] {
+function sectionCards(items: ColumnItems, category: Category, finishFirst: boolean): ReactNode[]
+{
 	return [
 		...rankGitChildren(items.gitChildren ?? []).map((child) => gitChildCard(child, category)),
 		...(items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} category={category} />) ?? []),
@@ -60,11 +65,16 @@ function sectionCards(items: ColumnItems, category: Category, finishFirst: boole
  * (Set Up PR Refs, Upstream Red), which /queue shows above Ready to land; the default renders
  * the rest.
  */
-export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
+export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"})
+{
 	const {grouped, visibleCategories, filterByProject, commitsWaiting} = useQueueContext();
 	const sections = visibleCategories
 		.filter((category) => BLOCKING_CATEGORIES.includes(category) === (part === "blocking"))
-		.map((category) => ({category, items: filterByProject(grouped[category])}))
+		.map((category) => (
+		{
+			category,
+			items: filterByProject(grouped[category]),
+		}))
 		.filter(({items}) => bucketCount(items) > 0);
 	if (part === "blocking" && sections.length === 0) return null;
 	const showsTodos = sections.some(({items}) => (items.todos?.length ?? 0) > 0);
@@ -101,7 +111,8 @@ export function QueueMain({
 	cardsView: boolean;
 	readyToLand: ReactNode;
 	children: ReactNode;
-}) {
+})
+{
 	return (
 		<>
 			{cardsView ? <QueueCards part="blocking" /> : <QueueTable part="blocking" />}

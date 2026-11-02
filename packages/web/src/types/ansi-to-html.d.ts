@@ -1,5 +1,7 @@
-declare module "ansi-to-html" {
-	interface Options {
+declare module "ansi-to-html"
+{
+	interface Options
+	{
 		/** The default foreground color used when reset color codes are encountered. */
 		fg?: string;
 		/** The default background color used when reset color codes are encountered. */
@@ -14,7 +16,8 @@ declare module "ansi-to-html" {
 		colors?: string[] | Record<number, string>;
 	}
 
-	class AnsiToHtml {
+	class AnsiToHtml
+	{
 		constructor(options?: Options);
 		toHtml(input: string): string;
 	}

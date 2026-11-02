@@ -9,7 +9,8 @@ import type {AdvanceOutcome} from "./ready-buffer.js";
  * request per branch wins) and retried by `flush`, unless the caller asked for no deferral.
  */
 
-export interface PushRequest {
+export interface PushRequest
+{
 	project: string;
 	dir: string;
 	/** `owner/name` whose checks the gate watches after the push. */
@@ -18,29 +19,57 @@ export interface PushRequest {
 	sha: string;
 }
 
-export type GitRun = (args: readonly string[]) => Promise<{exitCode: number; stdout: string; stderr: string}>;
+export type GitRun = (args: readonly string[]) => Promise<
+{
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}>;
 
-export interface PushGate {
+export interface PushGate
+{
 	/** Whether a push to `repository` (`owner/name`) may go now. */
 	check(repository: string): Promise<PushGateDecision>;
 	recordPush(push: BackgroundPush): void;
 }
 
-export interface BackgroundPusherDeps {
+export interface BackgroundPusherDeps
+{
 	gate: PushGate;
 	git: GitRun;
 	now?: () => number;
 }
 
 export type PushOutcome =
-	| {status: "pushed"}
-	| {status: "up_to_date"}
-	| {status: "held"; reason: string}
-	| {status: "failed"; stderr: string};
+	|
+	  {
+			status: "pushed";
+	  }
+	|
+	  {
+			status: "up_to_date";
+	  }
+	|
+	  {
+			status: "held";
+			reason: string;
+	  }
+	|
+	  {
+			status: "failed";
+			stderr: string;
+	  };
 
-export interface BackgroundPusher {
+export interface BackgroundPusher
+{
 	/** Force-push `sha` to origin's `branch` with lease through the gate; `defer` keeps a held push for `flush`. */
-	push(request: PushRequest, options: {defer: boolean}): Promise<PushOutcome>;
+	push(
+		request: PushRequest,
+		options:
+		{
+			defer: boolean;
+		},
+	): Promise<PushOutcome>;
 	/** Forget a deferred push of the branch. */
 	cancel(project: string, branch: string): void;
 	/** Retry deferred pushes in order; one the gate still holds stays deferred. */
@@ -50,19 +79,22 @@ export interface BackgroundPusher {
 
 const keyOf = (project: string, branch: string): string => `${project}\0${branch}`;
 
-export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPusher {
+export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPusher
+{
 	const now = deps.now ?? Date.now;
 	const deferred = new Map<string, PushRequest>();
 	/** Per deferred push, the origin sha when it was first held: the sha its eventual push may replace. */
 	const leases = new Map<string, string>();
 	let chain: Promise<unknown> = Promise.resolve();
 
-	function forget(key: string): void {
+	function forget(key: string): void
+	{
 		deferred.delete(key);
 		leases.delete(key);
 	}
 
-	async function pushOne(request: PushRequest, defer: boolean): Promise<PushOutcome> {
+	async function pushOne(request: PushRequest, defer: boolean): Promise<PushOutcome>
+	{
 		const key = keyOf(request.project, request.branch);
 		const remote = await deps.git([
 			"-C",
@@ -76,18 +108,26 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 		// A held push replaces only what origin held when it was held: a push since (Open PR's
 		// rebased tip) fails the lease instead of being overwritten by this older sha.
 		const lease = (deferred.get(key)?.sha === request.sha ? leases.get(key) : undefined) ?? remoteSha;
-		if (remoteSha === request.sha) {
+		if (remoteSha === request.sha)
+		{
 			forget(key);
-			return {status: "up_to_date"};
+			return {
+				status: "up_to_date",
+			};
 		}
 		const decision = await deps.gate.check(request.repository);
-		if (!decision.open) {
-			if (defer) {
+		if (!decision.open)
+		{
+			if (defer)
+			{
 				deferred.delete(key);
 				deferred.set(key, request);
 				leases.set(key, lease);
 			}
-			return {status: "held", reason: decision.reason};
+			return {
+				status: "held",
+				reason: decision.reason,
+			};
 		}
 		forget(key);
 		// Push the tested sha, not the branch tip: a held push can flush after the user moved the branch.
@@ -101,13 +141,26 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			"origin",
 			`${request.sha}:${ref}`,
 		]);
-		if (push.exitCode !== 0) return {status: "failed", stderr: push.stderr};
-		deps.gate.recordPush({repository: request.repository, sha: request.sha, pushedAt: now()});
-		return {status: "pushed"};
+		if (push.exitCode !== 0)
+			return {
+				status: "failed",
+				stderr: push.stderr,
+			};
+		deps.gate.recordPush(
+			{
+				repository: request.repository,
+				sha: request.sha,
+				pushedAt: now(),
+			},
+		);
+		return {
+			status: "pushed",
+		};
 	}
 
 	/** Runs `task` after every earlier push or flush settled. */
-	async function serialized<T>(task: () => Promise<T>): Promise<T> {
+	async function serialized<T>(task: () => Promise<T>): Promise<T>
+	{
 		const run = chain.then(task, task);
 		chain = run.catch(() => undefined);
 		return run;
@@ -115,14 +168,17 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 
 	return {
 		push: async (request, {defer}) => serialized(async () => pushOne(request, defer)),
-		cancel: (project, branch) => {
+		cancel: (project, branch) =>
+		{
 			forget(keyOf(project, branch));
 		},
 		flush: async () =>
-			serialized(async () => {
+			serialized(async () =>
+			{
 				// A snapshot: pushOne deletes and re-adds entries while this loop runs.
 				const queue = [...deferred.values()];
-				for (const request of queue) {
+				for (const request of queue)
+				{
 					// Sequential on purpose: each push must see the gate after the previous one
 					// eslint-disable-next-line no-await-in-loop
 					await pushOne(request, true);
@@ -132,7 +188,8 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 	};
 }
 
-export interface PublishInput {
+export interface PublishInput
+{
 	/** The repo is explicitly set to land by pull request (see pushesInBackground). */
 	backgroundPush: boolean | undefined;
 	outcome: AdvanceOutcome;
@@ -152,9 +209,16 @@ export interface PublishInput {
 export async function publishAfterAdvance(
 	{backgroundPush, outcome, request, autoFixed}: PublishInput,
 	pusher: BackgroundPusher,
-): Promise<PushOutcome | null> {
+): Promise<PushOutcome | null>
+{
 	if (backgroundPush !== true) return null;
-	if (outcome === "ready" && autoFixed !== true) return pusher.push(request, {defer: true});
+	if (outcome === "ready" && autoFixed !== true)
+		return pusher.push(
+			request,
+			{
+				defer: true,
+			},
+		);
 	if (outcome !== "checks_pending") pusher.cancel(request.project, request.branch);
 	return null;
 }

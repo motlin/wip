@@ -16,7 +16,8 @@ const TIP_CONCURRENCY = 4;
  * is advanced once and divergent tips fan out afterward.
  */
 
-export interface AdvanceUnit {
+export interface AdvanceUnit
+{
 	id: string;
 	project: string;
 	branch: string;
@@ -30,19 +31,32 @@ export interface AdvanceUnit {
 	worktreeRequired: boolean;
 }
 
-export interface AdvancePlan {
+export interface AdvancePlan
+{
 	project: string;
 	upstreamRef: string;
 	units: AdvanceUnit[];
-	baseline: {sha: string; needsTest: boolean};
+	baseline:
+	{
+		sha: string;
+		needsTest: boolean;
+	};
 }
 
-async function git(dir: string, args: string[]): Promise<string> {
-	const result = await tracedExeca("git", ["-C", dir, ...args], {reject: false});
+async function git(dir: string, args: string[]): Promise<string>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, ...args],
+		{
+			reject: false,
+		},
+	);
 	return result.exitCode === 0 ? result.stdout.trim() : "";
 }
 
-export async function planProject(opts: {project: string; dir: string; upstreamRef: string}): Promise<AdvancePlan> {
+export async function planProject(opts: {project: string; dir: string; upstreamRef: string}): Promise<AdvancePlan>
+{
 	const {project, dir, upstreamRef} = opts;
 
 	const baselineSha = await git(dir, ["rev-parse", upstreamRef]);
@@ -56,15 +70,31 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0);
 
-	const tipCandidates = await mapWithConcurrency(tipNames, TIP_CONCURRENCY, async (branch) => {
+	const tipCandidates = await mapWithConcurrency(tipNames, TIP_CONCURRENCY, async (branch) =>
+	{
 		const chainOutput = await git(dir, ["rev-list", `${upstreamRef}..${branch}`]);
-		return {branch, chain: chainOutput.split("\n").filter((sha) => sha.length > 0)};
+		return {
+			branch,
+			chain: chainOutput.split("\n").filter((sha) => sha.length > 0),
+		};
 	});
-	const tips: Array<{branch: string; tipSha: string; chain: string[]}> = [];
-	for (const {branch, chain} of tipCandidates) {
+	const tips: Array<
+	{
+		branch: string;
+		tipSha: string;
+		chain: string[];
+	}> = [];
+	for (const {branch, chain} of tipCandidates)
+	{
 		const [tipSha] = chain;
 		if (tipSha === undefined) continue; // upstream branch itself / fully merged
-		tips.push({branch, tipSha, chain});
+		tips.push(
+			{
+				branch,
+				tipSha,
+				chain,
+			},
+		);
 	}
 
 	// Shortest chains first so the most-shared prefix lands on the simplest branch;
@@ -79,20 +109,23 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 
 	const owner = new Map<string, string>();
 	const units: AdvanceUnit[] = [];
-	for (const tip of tips) {
+	for (const tip of tips)
+	{
 		const ownedNew = tip.chain.filter((sha) => !owner.has(sha));
 		const dependsOn = [...new Set(tip.chain.flatMap((sha) => owner.get(sha) ?? []))];
 		for (const sha of ownedNew) owner.set(sha, tip.branch);
-		units.push({
-			id: tip.branch,
-			project,
-			branch: tip.branch,
-			tipSha: tip.tipSha,
-			patchId: facts.get(tip.tipSha)?.patchId ?? "",
-			chain: ownedNew,
-			dependsOn,
-			worktreeRequired: tip.branch !== currentBranch,
-		});
+		units.push(
+			{
+				id: tip.branch,
+				project,
+				branch: tip.branch,
+				tipSha: tip.tipSha,
+				patchId: facts.get(tip.tipSha)?.patchId ?? "",
+				chain: ownedNew,
+				dependsOn,
+				worktreeRequired: tip.branch !== currentBranch,
+			},
+		);
 	}
 
 	const baselineGreen = (await getGitTestStatuses(dir, [baselineSha])).get(baselineSha) === "passed";
@@ -101,6 +134,10 @@ export async function planProject(opts: {project: string; dir: string; upstreamR
 		project,
 		upstreamRef,
 		units,
-		baseline: {sha: baselineSha, needsTest: !baselineGreen},
+		baseline:
+		{
+			sha: baselineSha,
+			needsTest: !baselineGreen,
+		},
 	};
 }

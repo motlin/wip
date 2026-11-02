@@ -6,6 +6,16 @@ import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
 import {runDeleteMergedLocalRung, runPruneRung, runRebaseLeftoversRung, runReplayRung} from "./ladder-rungs.js";
 
+// The rungs run recipes from the user's global justfile, which CI machines do not have.
+const hasGlobalJustfile = (() => {
+	try {
+		execFileSync("just", ["--global-justfile", "--summary"], {stdio: "ignore"});
+		return true;
+	} catch {
+		return false;
+	}
+})();
+
 function git(dir: string, ...args: string[]): string {
 	return execFileSync("git", ["-C", dir, ...args], {encoding: "utf-8"}).trim();
 }
@@ -16,7 +26,7 @@ function commit(dir: string, file: string, content: string, message: string): vo
 	git(dir, "commit", "-q", "-m", message);
 }
 
-describe("runReplayRung with real repos", () => {
+describe.skipIf(!hasGlobalJustfile)("runReplayRung with real repos", () => {
 	let root: string;
 	let clone: string;
 
@@ -68,7 +78,7 @@ describe("runReplayRung with real repos", () => {
 	});
 });
 
-describe("runRebaseLeftoversRung with real repos", () => {
+describe.skipIf(!hasGlobalJustfile)("runRebaseLeftoversRung with real repos", () => {
 	let root: string;
 	let clone: string;
 	let cacheDir: string;
@@ -178,7 +188,7 @@ describe("runRebaseLeftoversRung with real repos", () => {
 	});
 });
 
-describe("runPruneRung and runDeleteMergedLocalRung with real repos", () => {
+describe.skipIf(!hasGlobalJustfile)("runPruneRung and runDeleteMergedLocalRung with real repos", () => {
 	let root: string;
 	let clone: string;
 

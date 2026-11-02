@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # Fail when a language runtime this repository's tooling needs is not pinned in its mise config.
 # An unpinned runtime falls through to whatever global copy is on PATH, like Homebrew's python3 or node.
 # This is not limited to the repository's own language: pre-commit runs on Python, and Prettier,
-# markdownlint, and vite-plus run on Node, so a Java or Rust repository needs those pinned too.
+# markdownlint, vite-plus, and oxfmt-next-line run on Node, so a Java or Rust repository needs those pinned too.
 
 cd "$(git rev-parse --show-toplevel)"
 

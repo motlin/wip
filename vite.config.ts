@@ -12,6 +12,8 @@ export default defineConfig({
 		bracketSpacing: false,
 		trailingComma: "all",
 		arrowParens: "always",
+		// `vp config` (pnpm prepare) rewrites the Vite+ block in AGENTS.md hard-wrapped, which proseWrap "never" rejects.
+		ignorePatterns: ["AGENTS.md"],
 		overrides: [
 			{
 				files: [".yamllint.yaml", "**/*.yaml", "**/*.yml"],

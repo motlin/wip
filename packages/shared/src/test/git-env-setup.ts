@@ -15,6 +15,8 @@ const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-home-"));
 process.env.XDG_CONFIG_HOME = path.join(testHome, "config");
 process.env.XDG_DATA_HOME = path.join(testHome, "data");
 delete process.env.WIP_DB_PATH;
+// Logging is opt-in; an ambient WIP_SUBPROCESS_LOGGING would add `logs` to action results. Tests that need it set it themselves.
+delete process.env.WIP_SUBPROCESS_LOGGING;
 
 afterAll(() => {
 	fs.rmSync(testHome, {recursive: true, force: true});

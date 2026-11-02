@@ -2367,7 +2367,6 @@ describe("createPrHandler", () => {
 			message: "Opened PR #100",
 			prNumber: 100,
 			prUrl: "https://example.com/alice/example-repo/pull/100",
-			logs: expect.any(Array),
 		});
 	});
 });

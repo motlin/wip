@@ -133,7 +133,7 @@ import type {ActionEvent} from "./server-events-schema.js";
 import {workQueue} from "./shared-work-queue.js";
 import {runEscapeHatch, topUpReadyBuffer} from "./bulk-actions.js";
 import {currentReadyBuffer} from "./ready-buffer-instance.js";
-import {openPrRefusal, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import {openPrRefusal, stoppedLineRefusal, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {EscapeHatchRecipe} from "./escape-hatch.js";
 import {parseDiffFiles, type FileDiff} from "./diff-parser.js";
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
@@ -968,7 +968,10 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 			return runQueuedAction(data.project, action, async (step) => {
 				const env = await getMiseEnv(p.dir);
 
-				const refused = openPrRefusal(data.branch, p.upstreamBranch);
+				// A stale client may still offer Open PR on a repo whose own upstream went red.
+				const refused =
+					stoppedLineRefusal(data.project, currentReadyBuffer()?.state().stoppedProjects ?? []) ??
+					openPrRefusal(data.branch, p.upstreamBranch);
 				if (refused !== null) return {ok: false, message: refused};
 
 				// Read before any fetch: fetches refresh the tracking ref, which would let the lease

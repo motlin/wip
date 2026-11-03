@@ -146,6 +146,15 @@ export function readyRowView(
 }
 
 /**
+ * Why nothing lands in `project` while its own upstream is red (it is in `stoppedProjects`), or null
+ * when it may land. A red upstream stops that repo's line: its next action is fixing upstream, and
+ * no commit lands on top, even one green on the red tip (a local test can't see a red CI check).
+ */
+export function stoppedLineRefusal(project: string, stoppedProjects: readonly string[]): string | null {
+	return stoppedProjects.includes(project) ? `${project}'s upstream is red: fix it before landing` : null;
+}
+
+/**
  * Why Open PR can't open a PR from `branch`, or null when it can: it pushes the branch to origin
  * first, and never pushes the base branch or a main branch, nor opens a PR from the base into itself.
  */

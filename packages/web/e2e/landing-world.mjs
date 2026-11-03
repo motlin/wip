@@ -172,7 +172,7 @@ export function createWorld() {
 	const gadgets = repo("gadgets");
 	const ffSha = gadgets.branch("ff-feature", "ff.txt", "Add the fast-forward feature");
 
-	// Red upstream: only the commit that removes RED may land.
+	// Red upstream: its line stops, so nothing lands, not even the commit that removes RED.
 	const broken = repo("broken", {red: true});
 	const fixSha = (() => {
 		git(broken.clone, "checkout", "--quiet", "-b", "fix-red", "upstream/main");

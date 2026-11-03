@@ -7,6 +7,7 @@ import {
 	prChecksPending,
 	readyRowView,
 	stableRowOrder,
+	stoppedLineRefusal,
 	type ReadyToLandItem,
 	type ReadyToLandState,
 } from "@wip/shared/ready-to-land.js";
@@ -73,20 +74,6 @@ function commitLookup(
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
 	const bySha = new Map(commits.map((c) => [c.sha, c]));
 	return (item) => byKey.get(`${item.project}:${item.sha}`) ?? bySha.get(item.sha);
-}
-
-/**
- * A stopped project (own upstream red) lands nothing but the fix: a commit that sits on the red
- * upstream tip and tests green, so landing it makes upstream green. Null when the row may land.
- */
-function stoppedLineReason(
-	project: string,
-	stopped: ReadonlySet<string>,
-	commit: GitChildResult | undefined,
-): string | null {
-	if (!stopped.has(project)) return null;
-	const fixesUpstream = commit?.testStatus === "passed" && commit.commitsBehind === 0 && commit.needsRebase !== true;
-	return fixesUpstream ? null : `${project}'s upstream is red: only the commit that makes it green can land`;
 }
 
 function sizeText(commit: GitChildResult | undefined): string | null {
@@ -596,11 +583,14 @@ function NotPushed({rest}: {rest: readonly MainPushCommit[]}) {
  */
 function PushRow({
 	push,
+	blockedReason,
 	onPush,
 	outcome,
 	onDismissOutcome,
 }: {
 	push: MainPush;
+	/** Why this repo may not push (its upstream is red): shown instead of the button. */
+	blockedReason: string | null;
 	onPush: (push: MainPush, sha: string) => void;
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
@@ -667,7 +657,8 @@ function PushRow({
 						outcome={outcome}
 						onDismissOutcome={onDismissOutcome}
 					>
-						{last !== undefined && (
+						{blockedReason !== null && <span className="text-text-300">{blockedReason}</span>}
+						{blockedReason === null && last !== undefined && (
 							<button
 								type="button"
 								disabled={outcome?.status === "running"}
@@ -916,7 +907,7 @@ export function ReadyToLandSection({
 							item={item}
 							commit={commit}
 							projectInfo={projectInfo}
-							blockedReason={stoppedLineReason(item.project, stopped, commit)}
+							blockedReason={stoppedLineRefusal(item.project, state.stoppedProjects)}
 							stoppedLine={stopped.has(item.project)}
 							noTests={projectInfo?.hasTestConfigured === false}
 							age={now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now)}
@@ -935,6 +926,7 @@ export function ReadyToLandSection({
 							<PushRow
 								key={`push:${push.project}`}
 								push={push}
+								blockedReason={stoppedLineRefusal(push.project, state.stoppedProjects)}
 								onPush={onPush}
 								outcome={outcomes[pushOutcomeKey(push.project)]}
 								onDismissOutcome={dismiss(pushOutcomeKey(push.project))}
@@ -986,7 +978,7 @@ export function ReadyLandPanel({
 			item={item}
 			commit={commit}
 			projectInfo={projectInfo}
-			blockedReason={stoppedLineReason(item.project, new Set(state.stoppedProjects), commit)}
+			blockedReason={stoppedLineRefusal(item.project, state.stoppedProjects)}
 			onLand={onLand}
 			outcome={outcome}
 			onDismissOutcome={onDismissOutcome}

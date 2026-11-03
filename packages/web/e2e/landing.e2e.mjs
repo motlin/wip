@@ -254,9 +254,15 @@ async function run() {
 		await readyRow(page, "Add the ready feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the behind feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the fast-forward feature").getByRole("button", {name: "Fast-forward main"}).waitFor();
-		await readyRow(page, "Fix broken's tests").getByRole("button", {name: "Open PR"}).waitFor();
 		await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).waitFor();
-		await page.getByTestId("upstream-red-marker").first().waitFor();
+		const redRow = readyRow(page, "Fix broken's tests");
+		await redRow.getByTestId("upstream-red-marker").waitFor();
+		await redRow.getByText("broken's upstream is red: fix it before landing").waitFor();
+		assert.deepEqual(
+			await redRow.getByRole("button").allInnerTexts(),
+			[],
+			"a red upstream stops its repo's line: no Open PR, even for a commit green on the red tip",
+		);
 		assert.equal(
 			await readyRow(page, "Add a feature on red upstream").count(),
 			0,

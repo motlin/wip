@@ -92,6 +92,9 @@ const state: ReadyToLandState = {
 	stoppedProjects: ["red"],
 };
 
+/** The same rows with every upstream green, so the red project's rows land too. */
+const green: ReadyToLandState = {...state, stoppedProjects: []};
+
 const now = Date.parse("2026-10-28T12:00:00Z");
 
 describe("ReadyToLandSection", () => {
@@ -117,12 +120,12 @@ describe("ReadyToLandSection", () => {
 		}).toStrictEqual({
 			heading: "Ready to land6 ready (target 3) · 1 readying",
 			rows: [
-				"Fix redredin wip 3dupstream redconsider splittingPR #7ReviewMerge PR #7",
+				"Fix redredin wip 3dupstream redconsider splittingPR #7Reviewred's upstream is red: fix it before landing",
 				"Add parsera+10 −2 · 1 filein wip 1dReviewFast-forward main",
 				"Use parsera+3 −0 · 2 filesReviewFast-forward main",
 				"No tests hereplainno testsReviewOpen PR",
 				"Detachedplainno testsReview",
-				"Unrelatedredupstream redPR #8Reviewred's upstream is red: only the commit that makes it green can land",
+				"Unrelatedredupstream redPR #8Reviewred's upstream is red: fix it before landing",
 			],
 		});
 	});
@@ -153,7 +156,7 @@ describe("ReadyToLandSection", () => {
 		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
 		render(
 			<ReadyToLandSection
-				state={state}
+				state={green}
 				commits={commits}
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
@@ -165,7 +168,7 @@ describe("ReadyToLandSection", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Merge PR #7"}));
 		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
 
-		expect(onLand.mock.calls).toStrictEqual([[state.ready[1], commits[2]]]);
+		expect(onLand.mock.calls).toStrictEqual([[green.ready[1], commits[2]]]);
 	});
 
 	it("offers Open PR for a ready commit in a pull-request repo that has no PR yet", () => {
@@ -350,7 +353,7 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
-	it("offers no landing action in a stopped project, only the reason, except for the commit that fixes the red upstream", () => {
+	it("offers no landing action in a stopped project, only the reason, even for a commit green on the red tip", () => {
 		render(
 			<ReadyToLandSection
 				state={state}
@@ -362,15 +365,13 @@ describe("ReadyToLandSection", () => {
 			/>,
 		);
 
-		const blocked = screen.getAllByTestId("ready-to-land-row")[5];
-		if (blocked === undefined) throw new Error("no blocked row");
-
-		expect({
-			blocked: within(blocked)
+		const rows = screen.getAllByTestId("ready-to-land-row");
+		const buttons = (index: number) =>
+			within(rows[index]!)
 				.queryAllByRole("button")
-				.map((button) => button.textContent),
-			fix: screen.getByRole("button", {name: "Merge PR #7"}).hasAttribute("disabled"),
-		}).toStrictEqual({blocked: [], fix: false});
+				.map((button) => button.textContent);
+
+		expect({greenOnRedTip: buttons(0), behind: buttons(5)}).toStrictEqual({greenOnRedTip: [], behind: []});
 	});
 
 	it("names a row's commit by its subject when the commit was listed under another project sharing the repo", () => {
@@ -393,9 +394,7 @@ describe("ReadyToLandSection", () => {
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
 			buttons: screen.queryAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
-			rows: [
-				"Shared changelogsupstream redReviewlogs's upstream is red: only the commit that makes it green can land",
-			],
+			rows: ["Shared changelogsupstream redReviewlogs's upstream is red: fix it before landing"],
 			buttons: [],
 		});
 	});
@@ -446,7 +445,7 @@ describe("ReadyToLandSection", () => {
 		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
 		render(
 			<ReadyToLandSection
-				state={state}
+				state={green}
 				commits={commits}
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
@@ -604,6 +603,33 @@ describe("ReadyToLandSection push main", () => {
 				'"Wire parser" (k300000). Pushes k300000:refs/heads/main, never forced.ConfirmCancel',
 			pushedBeforeConfirm: [],
 			pushed: [[kalshi, sha("k3")]],
+		});
+	});
+
+	it("offers no Push main in a stopped project, only the reason", () => {
+		render(
+			<ReadyToLandSection
+				state={{...empty, stoppedProjects: ["kalshi"]}}
+				commits={commits}
+				projects={[project("kalshi")]}
+				now={now}
+				onLand={() => undefined}
+				mainPushes={[kalshi]}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect({
+			rows: screen.getAllByTestId("push-row").map((row) => row.textContent),
+			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
+		}).toStrictEqual({
+			rows: [
+				"kalshi: 3 of 5 unpushed commits on main are green · testing k400000" +
+					"kalshi's upstream is red: fix it before landing" +
+					'Not pushed: 2 commits (1 unknown, 1 red), first "Polish parser" (k400000) unknown' +
+					'Show all 2"Polish parser" (k400000) unknown"Break parser" (k500000) red',
+			],
+			buttons: 0,
 		});
 	});
 

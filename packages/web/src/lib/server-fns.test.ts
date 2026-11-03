@@ -65,14 +65,22 @@ vi.mock("./server-fns.js", async (importOriginal) => ({
 	getProjects: async () => (await import("./server-fns.impl.js")).getProjectsHandler(),
 }));
 
-const readyBufferOverride = vi.hoisted(() => ({running: false}));
+const readyBufferOverride = vi.hoisted(() => ({running: false, stoppedProjects: [] as string[]}));
 vi.mock("./ready-buffer-instance.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("./ready-buffer-instance.js")>();
 	return {
 		...actual,
 		currentReadyBuffer: () =>
 			readyBufferOverride.running
-				? ({} as ReturnType<typeof actual.currentReadyBuffer>)
+				? ({
+						state: () => ({
+							slots: 0,
+							ready: [],
+							inFlight: [],
+							next: [],
+							stoppedProjects: readyBufferOverride.stoppedProjects,
+						}),
+					} as unknown as ReturnType<typeof actual.currentReadyBuffer>)
 				: actual.currentReadyBuffer(),
 	};
 });
@@ -2308,6 +2316,40 @@ describe("pushChildHandler", () => {
 });
 
 describe("createPrHandler", () => {
+	afterEach(() => {
+		readyBufferOverride.running = false;
+		readyBufferOverride.stoppedProjects = [];
+	});
+
+	it("refuses while the project's own upstream is red, and pushes nothing", async () => {
+		const dir = await createTestGitRepo();
+		const remoteDir = await createBareRemote();
+		await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+		await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
+		await execa("git", ["-C", dir, "checkout", "-b", "feature/on-red"]);
+		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature on red upstream"]);
+
+		seedProjectCache([makeProject({name: "create-pr-red", dir, remote: "alice/example-repo"})]);
+		readyBufferOverride.running = true;
+		readyBufferOverride.stoppedProjects = ["create-pr-red"];
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({
+			project: "create-pr-red",
+			branch: "feature/on-red",
+			title: "Feature on red upstream",
+		});
+		const pushed = await execa("git", ["-C", remoteDir, "rev-parse", "--verify", "refs/heads/feature/on-red"], {
+			reject: false,
+		});
+
+		expect({ok: result.ok, message: result.message, pushed: pushed.exitCode}).toStrictEqual({
+			ok: false,
+			message: "create-pr-red's upstream is red: fix it before landing",
+			pushed: 128,
+		});
+	});
+
 	it("refuses to rebase a behind branch checked out in a worktree, and pushes nothing", async () => {
 		const dir = await createTestGitRepo();
 		const remoteDir = await createBareRemote();

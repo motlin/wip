@@ -73,13 +73,14 @@ export interface BufferCandidate {
 	 */
 	replayedSha?: string;
 	/**
-	 * Ready, but its PR checks are still running: parked (never pulled), not counted toward the
-	 * ready target, and listed as awaiting checks until the checks report.
+	 * Green and not behind, but its PR checks are still running. Once ready (known or advanced):
+	 * parked (never pulled), not counted toward the ready target, and listed as awaiting checks
+	 * until the checks report. An unready one is still advanced.
 	 */
 	checksPending?: boolean;
 	/**
-	 * Ready by its local test, but its PR checks failed: parked (never pulled), not counted toward the
-	 * ready target, and listed as checks failed until they pass.
+	 * Green by its local test and not behind, but its PR checks failed. Once ready: parked (never
+	 * pulled), not counted toward the ready target, and listed as checks failed until they pass.
 	 */
 	checksFailed?: boolean;
 }
@@ -289,7 +290,9 @@ export function bufferRepoFromChildren(
 				if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
 				if (override !== undefined) candidate.override = override;
 				if (child.autoFixed !== undefined) candidate.autoFixed = true;
-				if (candidate.state === "ready" && context.landing === "pull-request") {
+				// Green and not behind, merge status known or not: the buffer may already hold an unmeasured
+				// commit ready from its own advance (Open PR rebases to a new sha the refresh hasn't measured).
+				if (green && candidate.behind !== true && context.landing === "pull-request") {
 					if (prChecksFailed(child)) candidate.checksFailed = true;
 					else if (prChecksPending(child)) candidate.checksPending = true;
 				}
@@ -523,8 +526,8 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				onHold:
 					c.onHold ||
 					c.autoFixed === true ||
-					c.checksPending === true ||
-					c.checksFailed === true ||
+					// Checks only park a ready item; an unready one is still advanced to learn whether it is.
+					(ready && (c.checksPending === true || c.checksFailed === true)) ||
 					parked ||
 					blocked,
 				...(c.override === undefined ? {} : {override: c.override}),
@@ -664,6 +667,12 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		const checkedOut = new Set(repo.checkedOutBranches);
 		for (const candidate of repo.candidates) {
 			if (!buffered.includes(candidate.id) || candidate.onHold || candidate.autoFixed) continue;
+			// Its PR's checks are running or failed on a sha not behind the moved upstream (Open PR just
+			// rebased it there): it stays parked as it was, not re-advanced out of its waiting row.
+			if (candidate.checksPending === true || candidate.checksFailed === true) {
+				done.set(candidate.id, "ready");
+				continue;
+			}
 			if (candidate.branch !== undefined && checkedOut.has(candidate.branch)) continue;
 			enqueue(repo, candidate);
 		}

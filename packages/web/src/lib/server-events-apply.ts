@@ -146,6 +146,9 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				return;
 			}
 			case "ready-buffer": {
+				// The children refresh that a state names new shas from arrives first: apply it now, so a
+				// row never renders against a children cache that lacks its sha (no subject, no PR).
+				childrenBatcher.flush();
 				queryClient.setQueryData(["readyToLand"], event.data);
 				// A row that left the buffer takes its action outcome with it.
 				queryClient.setQueryData<ActionOutcomes>(ACTION_OUTCOMES_KEY, (old) =>

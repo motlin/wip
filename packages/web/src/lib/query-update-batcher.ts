@@ -6,6 +6,8 @@
  */
 export interface QueryUpdateBatcher<T> {
 	add(key: string, value: T): void;
+	/** Applies the pending updates now instead of after the delay. */
+	flush(): void;
 	cancel(): void;
 }
 
@@ -16,17 +18,22 @@ export function createQueryUpdateBatcher<T>(
 	let pending = new Map<string, T>();
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
+	function flushNow(): void {
+		if (timer !== null) clearTimeout(timer);
+		timer = null;
+		if (pending.size === 0) return;
+		const updates = pending;
+		pending = new Map();
+		flush(updates);
+	}
+
 	return {
 		add(key: string, value: T): void {
 			pending.set(key, value);
 			if (timer !== null) return;
-			timer = setTimeout(() => {
-				timer = null;
-				const updates = pending;
-				pending = new Map();
-				flush(updates);
-			}, delayMs);
+			timer = setTimeout(flushNow, delayMs);
 		},
+		flush: flushNow,
 		cancel(): void {
 			if (timer !== null) clearTimeout(timer);
 			timer = null;

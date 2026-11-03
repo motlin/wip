@@ -354,6 +354,35 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("keeps a buffered PR still on upstream whose checks run waiting when upstream moves, re-advancing only the rest", async () => {
+		let opened = false;
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					// Open PR rebased c1 onto the moved upstream and opened its PR: not behind, checks running.
+					candidates: candidates(
+						2,
+						opened ? {c1: {branch: "b1", checksPending: true}} : {c1: {branch: "b1"}},
+					),
+				}),
+			],
+		});
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		opened = true;
+		await h.buffer.upstreamMoved("a");
+		await h.buffer.idle();
+		const {ready, awaitingChecks} = h.buffer.state();
+
+		expect({advanced: h.advanced, ready, awaitingChecks}).toStrictEqual({
+			advanced: ["a:c1", "a:c2", "a:c2"],
+			ready: [{project: "a", id: "c2", sha: paddedSha("c2"), landing: "pull-request"}],
+			awaitingChecks: [{project: "a", id: "c1", sha: paddedSha("c1"), branch: "b1", landing: "pull-request"}],
+		});
+	});
+
 	it("stops counting an advanced item ready once a fresh snapshot shows that same sha behind upstream, and re-advances it", async () => {
 		const replayed = "e".repeat(40);
 		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
@@ -856,6 +885,62 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("counts an advanced item whose refreshed snapshot opened a PR with running checks as awaiting checks, not ready", async () => {
+		let opened = false;
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					// After Open PR rebased it: a new sha, merge status not yet known, its PR's checks running.
+					candidates: opened
+						? [
+								{
+									id: "c1",
+									sha: "5".repeat(40),
+									state: "unready",
+									onHold: false,
+									branch: "b1",
+									checksPending: true,
+								},
+							]
+						: candidates(1, {c1: {branch: "b1"}}),
+				}),
+			],
+			target: 1,
+		});
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		opened = true;
+		await h.buffer.pull();
+		await h.buffer.idle();
+		const {ready, awaitingChecks, inFlight} = h.buffer.state();
+
+		expect({advanced: h.advanced, ready, awaitingChecks, inFlight}).toStrictEqual({
+			advanced: ["a:c1"],
+			ready: [],
+			awaitingChecks: [{project: "a", id: "c1", sha: "5".repeat(40), branch: "b1", landing: "pull-request"}],
+			inFlight: [],
+		});
+	});
+
+	it("still advances a not-yet-ready PR commit whose checks are running, to learn whether it is ready", async () => {
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					candidates: candidates(1, {c1: {branch: "b1", checksPending: true}}),
+				}),
+			],
+			target: 1,
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect(h.advanced).toStrictEqual(["a:c1"]);
+	});
+
 	it("counts a ready PR whose checks failed as checks failed, not ready, and pulls the next one", async () => {
 		const h = harness({
 			repos: () => [
@@ -1163,6 +1248,29 @@ describe("bufferRepoFromChildren with PR checks still running", () => {
 			pullRequest: ["a", "b"],
 			fastForward: [],
 		});
+	});
+});
+
+describe("bufferRepoFromChildren with PR checks on a commit of unknown merge status", () => {
+	it("flags a green, not-behind PR commit whose merge status is not yet known, but not a red one", () => {
+		const children = [
+			makeChild({sha: sha("a"), branch: "a", testStatus: "passed", prNumber: 1, checkStatus: "running"}),
+			makeChild({sha: sha("b"), branch: "b", testStatus: "passed", prNumber: 2, checkStatus: "failed"}),
+			makeChild({sha: sha("c"), branch: "c", testStatus: "failed", prNumber: 3, checkStatus: "running"}),
+		];
+		const flags = bufferRepoFromChildren(project("motlin/wip"), children, {
+			identity: null,
+			checkedOutBranches: [],
+			onHold: () => false,
+			override: () => undefined,
+			landing: "pull-request",
+		}).candidates.map((c) => [c.branch, c.state, c.checksPending === true, c.checksFailed === true]);
+
+		expect(flags).toStrictEqual([
+			["a", "unready", true, false],
+			["b", "unready", false, true],
+			["c", "unready", false, false],
+		]);
 	});
 });
 

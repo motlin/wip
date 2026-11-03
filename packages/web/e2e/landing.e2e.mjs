@@ -141,16 +141,28 @@ async function missingRow(page, rows) {
 	return undefined;
 }
 
+/** The rows labelled only by a short sha: the client found no commit for them, so no subject. */
+async function subjectlessRows(page) {
+	return (await rowBoxes(page)).map(({row}) => row).filter((row) => /: [0-9a-f]{7}$/.test(row));
+}
+
 /**
- * Samples the page for ROWS_STAY_MS and fails the moment any of the rows is missing: an action on one
- * row must not drop the others, in its own repo or any other, while the cache catches up.
+ * Samples the page for ROWS_STAY_MS and fails the moment any of the rows is missing or any row has
+ * lost its subject: an action on one row must not drop the others, in its own repo or any other,
+ * while the cache catches up.
  */
 async function assertRowsStay(page, rows, what) {
 	const deadline = Date.now() + ROWS_STAY_MS;
 	while (Date.now() < deadline) {
 		// eslint-disable-next-line no-await-in-loop -- samples the page until the deadline
 		const missing = await missingRow(page, rows);
-		assert.equal(missing, undefined, `${what}: ${missing} left the page`);
+		if (missing !== undefined) {
+			// eslint-disable-next-line no-await-in-loop -- reads the rows once, on failure
+			const shown = (await rowBoxes(page)).map(({row}) => row);
+			assert.fail(`${what}: ${missing} left the page; the rows were ${JSON.stringify(shown)}`);
+		}
+		// eslint-disable-next-line no-await-in-loop -- samples the page until the deadline
+		assert.deepEqual(await subjectlessRows(page), [], `${what}: rows without a subject`);
 		// eslint-disable-next-line no-await-in-loop -- samples the page until the deadline
 		await page.waitForTimeout(250);
 	}
@@ -321,10 +333,12 @@ async function run() {
 			.filter({hasText: "Add the behind feature"})
 			.filter({hasText: "PR #3 · waiting for checks"})
 			.waitFor();
-		// widgets' own rows legitimately change once upstream moves past them; the other repos' must not.
+		// widgets' other rows legitimately change once upstream moves past them; the opened row and the
+		// other repos' rows must not.
 		await assertRowsStay(
 			page,
 			[
+				["waiting-row", "Add the behind feature"],
 				["ready-to-land-row", "Add the fast-forward feature"],
 				["ready-to-land-row", "Fix broken's tests"],
 			],

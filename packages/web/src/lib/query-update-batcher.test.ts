@@ -54,6 +54,18 @@ describe("createQueryUpdateBatcher", () => {
 		expect(flush).toHaveBeenLastCalledWith(new Map([["alpha", 2]]));
 	});
 
+	it("flush applies buffered updates at once and leaves nothing for the timer", () => {
+		const flush = vi.fn<() => void>();
+		const batcher = createQueryUpdateBatcher<number>(flush, 300);
+
+		batcher.flush();
+		batcher.add("alpha", 1);
+		batcher.flush();
+		vi.advanceTimersByTime(300);
+
+		expect(flush.mock.calls).toStrictEqual([[new Map([["alpha", 1]])]]);
+	});
+
 	it("cancel drops buffered updates and stops the timer", () => {
 		const flush = vi.fn<() => void>();
 		const batcher = createQueryUpdateBatcher<number>(flush, 300);

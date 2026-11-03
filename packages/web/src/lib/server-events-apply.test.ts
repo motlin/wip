@@ -266,6 +266,26 @@ describe("batched cache writes", () => {
 		expect(queryClient.getQueryData(["todos", "wip"])).toHaveLength(1);
 	});
 
+	it("flushes pending children before a ready buffer state, so no row names a sha the children cache lacks", () => {
+		const rebased = "5".repeat(40);
+		queryClient.setQueryData(["children", "wip"], [makeChild()]);
+		const state = {
+			slots: 2,
+			ready: [{project: "wip", id: "p1", sha: rebased}],
+			inFlight: [],
+			next: [],
+			stoppedProjects: [],
+		};
+
+		applier.apply({channel: "children", data: {project: "wip", children: [makeChildAt(rebased)]}});
+		applier.apply({channel: "ready-buffer", data: state});
+
+		expect({
+			children: queryClient.getQueryData<GitChildResult[]>(["children", "wip"]),
+			readyToLand: queryClient.getQueryData(["readyToLand"]),
+		}).toStrictEqual({children: [makeChildAt(rebased)], readyToLand: state});
+	});
+
 	it("dispose cancels a pending flush", () => {
 		applier.apply({channel: "children", data: {project: "wip", children: [makeChild()]}});
 		applier.dispose();

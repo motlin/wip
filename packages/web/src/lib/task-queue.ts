@@ -372,15 +372,19 @@ export function testTaskArgs(task: Pick<Task, "sha" | "retest">): string[] {
 async function runTestTask(task: Task, signal: AbortSignal): Promise<void> {
 	const miseEnv = await getMiseEnv(task.projectDir);
 
-	const result = await withTestWorktree(task.projectDir, task.sha, async (worktree) =>
-		runProcess({
-			task,
-			cmd: "git",
-			args: ["-C", worktree, ...testTaskArgs(task)],
-			logDir: getTestLogDir(task.project),
-			signal,
-			env: miseEnv,
-		}),
+	const result = await withTestWorktree(
+		task.projectDir,
+		task.sha,
+		async (worktree) =>
+			runProcess({
+				task,
+				cmd: "git",
+				args: ["-C", worktree, ...testTaskArgs(task)],
+				logDir: getTestLogDir(task.project),
+				signal,
+				env: miseEnv,
+			}),
+		signal,
 	);
 	if (!result) return;
 

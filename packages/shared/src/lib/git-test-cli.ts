@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {tracedExeca} from "../services/traced-execa.js";
+import {getCacheDir} from "./config.js";
+import {acquireFileLock} from "./repo-lock.js";
 
 /**
  * git-test is the only test-result store, and its CLI is the only API. wip never
@@ -64,6 +66,11 @@ export function backgroundCommand(
 	};
 }
 
+/** The cross-process lock file for a test worktree, shared by every wip process (CLI and server). */
+export function testWorktreeLockFile(worktree: string): string {
+	return path.join(getCacheDir(), "locks", `test-worktree_${worktree.replaceAll(/[^\w.-]/g, "_")}.lock`);
+}
+
 // One git-test run at a time per test worktree, since each one checks commits out in it.
 const worktreeLocks = new Map<string, Promise<unknown>>();
 // Callers queue on a worktree's lock in call order, though each worktree lookup is a subprocess
@@ -73,24 +80,39 @@ let lockQueue: Promise<unknown> = Promise.resolve();
 /**
  * Run `fn` in the repo's test worktree, created detached on demand the way git-test.just does
  * (`git worktree add --detach`) and never removed, so background tests never check commits out
- * in the user's checkout. Concurrent calls for the same worktree run one at a time, in call order.
+ * in the user's checkout. Concurrent calls for the same worktree run one at a time, in call order,
+ * and a lock file excludes runs from other wip processes (the CLI and the server). Aborting
+ * `signal` stops waiting for that lock.
  */
-export async function withTestWorktree<T>(dir: string, sha: string, fn: (worktree: string) => Promise<T>): Promise<T> {
+export async function withTestWorktree<T>(
+	dir: string,
+	sha: string,
+	fn: (worktree: string) => Promise<T>,
+	signal?: AbortSignal,
+): Promise<T> {
 	const lookup = testWorktreePath(dir);
 	const queued = lockQueue.then(async () => lookup);
 	lockQueue = queued.catch(() => undefined);
 	const worktree = await queued;
 	const previous = worktreeLocks.get(worktree) ?? Promise.resolve();
 	const run = previous.then(async () => {
-		if (!fs.existsSync(worktree)) {
-			const added = await tracedExeca("git", ["-C", dir, "worktree", "add", "--detach", worktree, sha], {
-				reject: false,
-			});
-			if (added.exitCode !== 0) {
-				throw new Error(`git worktree add ${worktree} failed: ${added.stderr.trim()}`);
+		const release = await acquireFileLock(testWorktreeLockFile(worktree), {
+			...(signal === undefined ? {} : {signal}),
+			abortMessage: `Aborted waiting for test worktree lock ${worktree}`,
+		});
+		try {
+			if (!fs.existsSync(worktree)) {
+				const added = await tracedExeca("git", ["-C", dir, "worktree", "add", "--detach", worktree, sha], {
+					reject: false,
+				});
+				if (added.exitCode !== 0) {
+					throw new Error(`git worktree add ${worktree} failed: ${added.stderr.trim()}`);
+				}
 			}
+			return await fn(worktree);
+		} finally {
+			release();
 		}
-		return fn(worktree);
 	});
 	const settled: Promise<void> = run
 		.then(
@@ -117,15 +139,20 @@ export async function gitTestRun(dir: string, sha: string, opts: GitTestRunOptio
 	if (opts.retest) testArgs.push("--retest");
 	testArgs.push(sha);
 
-	const result = await withTestWorktree(dir, sha, async (worktree) => {
-		const args = ["-C", worktree, ...testArgs];
-		const tree = opts.signal === undefined ? undefined : {killTreeOn: opts.signal};
-		if (opts.background) {
-			const bg = backgroundCommand("git", args, opts.background.workers);
-			return tracedExeca(bg.cmd, bg.args, {reject: false, env: {...opts.env, ...bg.env}}, tree);
-		}
-		return tracedExeca("git", args, opts.env ? {reject: false, env: opts.env} : {reject: false}, tree);
-	});
+	const result = await withTestWorktree(
+		dir,
+		sha,
+		async (worktree) => {
+			const args = ["-C", worktree, ...testArgs];
+			const tree = opts.signal === undefined ? undefined : {killTreeOn: opts.signal};
+			if (opts.background) {
+				const bg = backgroundCommand("git", args, opts.background.workers);
+				return tracedExeca(bg.cmd, bg.args, {reject: false, env: {...opts.env, ...bg.env}}, tree);
+			}
+			return tracedExeca("git", args, opts.env ? {reject: false, env: opts.env} : {reject: false}, tree);
+		},
+		opts.signal,
+	);
 
 	fs.mkdirSync(opts.logDir, {recursive: true});
 	const logPath = path.join(opts.logDir, `${sha}.log`);

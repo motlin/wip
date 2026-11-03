@@ -1,6 +1,8 @@
 import {queryOptions} from "@tanstack/react-query";
 import {
+	getActionLog,
 	getActionStatus,
+	getRecentActionLogs,
 	getActionsBillingBlock,
 	getProjects,
 	getProjectChildren,
@@ -162,6 +164,21 @@ export const actionStatusQueryOptions = (id: string) =>
 			const status = query.state.data?.status;
 			return status === "done" || status === "busy" ? false : 1000;
 		},
+	});
+
+/** A failed action's own log; it is kept once the action finishes and never changes. */
+export const actionLogQueryOptions = (id: string) =>
+	queryOptions({
+		queryKey: ["actionLog", id],
+		queryFn: async () => getActionLog({data: {id}}),
+		staleTime: Infinity,
+	});
+
+/** The kept failed actions' logs, newest first, read once when the page opens. */
+export const recentActionLogsQueryOptions = () =>
+	queryOptions({
+		queryKey: ["recentActionLogs"],
+		queryFn: async () => getRecentActionLogs(),
 	});
 
 export const issueByNumberQueryOptions = (project: string, number: number) =>

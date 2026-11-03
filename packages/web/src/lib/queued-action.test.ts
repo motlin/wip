@@ -174,9 +174,11 @@ describe("captureActionLogs", () => {
 		await tick();
 		entry("other job");
 		release();
-		const {result, logs} = await pending;
-		expect(result).toBe("ran");
-		expect(logs.map((e) => e.msg)).toStrictEqual(["own"]);
+		const {settled, logs} = await pending;
+		expect({settled, logs: logs.map((e) => e.msg)}).toStrictEqual({
+			settled: {status: "fulfilled", value: "ran"},
+			logs: ["own"],
+		});
 	});
 
 	it("captures logs from actions that never queue", async () => {

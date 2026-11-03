@@ -58,7 +58,7 @@ import {
 	type PrimaryAction,
 } from "../lib/category-actions.js";
 import {pushToast, toastLogs} from "../lib/toast-store.js";
-import {actionResultToast} from "../lib/action-messages.js";
+import {actionLogLink, actionResultToast} from "../lib/action-messages.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import {unverifiedPushReason} from "../lib/push-verification.js";
 import {AutoFixReview} from "./auto-fix-review.js";
@@ -111,7 +111,7 @@ function showActionError(action: string, error: unknown): void {
 		level: "error",
 		message: action,
 		detail: error instanceof Error ? error.message : String(error),
-		link: {href: "/debug/logs", label: "See the log"},
+		link: actionLogLink(undefined),
 	});
 }
 

@@ -3,6 +3,7 @@ import {createFileRoute} from "@tanstack/react-router";
 import {useQuery} from "@tanstack/react-query";
 import {z} from "zod";
 import {actionName, actionProgressText} from "../lib/action-messages.js";
+import {actionLogHref} from "../lib/action-log-schema.js";
 import {actionStatusQueryOptions} from "../lib/queries.js";
 import {redirectTo} from "../lib/redirect.js";
 
@@ -56,7 +57,7 @@ function OpeningAction() {
 						{actionName(event?.label ?? "createPr")} failed
 					</h1>
 					<p className="mt-2 whitespace-pre-wrap text-sm text-text-200">{failure}</p>
-					<a className="mt-4 inline-block text-sm underline" href="/debug/logs">
+					<a className="mt-4 inline-block text-sm underline" href={actionLogHref(actionId)}>
 						See the log
 					</a>
 				</>

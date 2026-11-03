@@ -64,7 +64,11 @@ describe("landByPushingHandler", () => {
 	it("refuses a project the registry doesn't list, and writes nothing", async () => {
 		const result = await landByPushingHandler({project: "stray"});
 		expect({result, projects: loadInventory().projects}).toStrictEqual({
-			result: {ok: false, message: "stray isn't in the registry; add it on the Registry page first"},
+			result: {
+				ok: false,
+				message: "stray isn't in the registry; add it on the Registry page first",
+				actionId: expect.any(String),
+			},
 			projects: [other, secret],
 		});
 	});
@@ -81,6 +85,7 @@ describe("landByPushingHandler with an invalid registry entry", () => {
 			result: {
 				ok: false,
 				message: `The registry at ${getInventoryPath()} has 1 invalid entry; fix it before changing secret's landing`,
+				actionId: expect.any(String),
 			},
 			raw,
 		});

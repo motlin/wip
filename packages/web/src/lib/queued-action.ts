@@ -1,6 +1,11 @@
 import {emitAction, type ActionEvent} from "./action-events.js";
 import {repoResource} from "./repo-resource.js";
 import {subscribeLogs, unsubscribeLogs, type CostClass, type LogEntry} from "@wip/shared";
+import {
+	subscribeSubprocessFailures,
+	unsubscribeSubprocessFailures,
+	type SubprocessFailure,
+} from "@wip/shared/services/traced-execa.js";
 import * as asyncHooks from "node:async_hooks";
 import {workQueue} from "./shared-work-queue.js";
 
@@ -39,24 +44,34 @@ interface LogGate {
 const logGate = new asyncHooks.AsyncLocalStorage<LogGate>();
 
 /**
- * Capture subprocess/general logs emitted while `fn` runs. A queued action
- * (runQueuedAction) pauses capture while it waits for the repo, so logs from
- * other jobs running meanwhile are not attached to this action's result.
+ * Capture subprocess/general logs and failing subprocesses emitted while `fn` runs, whether it
+ * resolves or throws. A queued action (runQueuedAction) pauses capture while it waits for the repo,
+ * so logs from other jobs running meanwhile are not attached to this action's result.
  */
-export async function captureActionLogs<T>(fn: () => Promise<T>): Promise<{result: T; logs: LogEntry[]}> {
+export async function captureActionLogs<T>(
+	fn: () => Promise<T>,
+): Promise<{settled: PromiseSettledResult<T>; logs: LogEntry[]; failures: SubprocessFailure[]}> {
 	const gate: LogGate = {active: true};
 	const logs: LogEntry[] = [];
+	const failures: SubprocessFailure[] = [];
 	const listener = (entry: LogEntry): void => {
 		if (!gate.active) return;
 		if (entry.category !== "subprocess" && entry.category !== "general") return;
 		logs.push(entry);
 	};
+	const failureListener = (failure: SubprocessFailure): void => {
+		if (gate.active) failures.push(failure);
+	};
 	subscribeLogs(listener);
+	subscribeSubprocessFailures(failureListener);
 	try {
-		const result = await logGate.run(gate, fn);
-		return {result, logs};
+		const value = await logGate.run(gate, fn);
+		return {settled: {status: "fulfilled", value}, logs, failures};
+	} catch (reason) {
+		return {settled: {status: "rejected", reason}, logs, failures};
 	} finally {
 		unsubscribeLogs(listener);
+		unsubscribeSubprocessFailures(failureListener);
 	}
 }
 

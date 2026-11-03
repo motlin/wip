@@ -1,5 +1,6 @@
 import {createServerFn} from "@tanstack/react-start";
 import type {ActionEvent} from "./server-events-schema.js";
+import type {ActionLog} from "./action-log-schema.js";
 import {z} from "zod";
 import {
 	ApplyFixesInputSchema,
@@ -79,6 +80,14 @@ export const getProjectChildren = createServerFn({method: "GET"})
 export const getActionStatus = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({id: z.string()}).parse(input))
 	.handler(async ({data}): Promise<ActionEvent | null> => (await serverFns()).getActionStatusHandler(data.id));
+
+export const getActionLog = createServerFn({method: "GET"})
+	.validator((input: unknown) => z.object({id: z.string()}).parse(input))
+	.handler(async ({data}): Promise<ActionLog | null> => (await serverFns()).getActionLogHandler(data.id));
+
+export const getRecentActionLogs = createServerFn({method: "GET"}).handler(async (): Promise<ActionLog[]> =>
+	(await serverFns()).getRecentActionLogsHandler(),
+);
 
 export const getProjectTodos = createServerFn({method: "GET"})
 	.validator((input: unknown) => z.object({project: z.string()}).parse(input))

@@ -31,9 +31,13 @@ const LANDING_ACTION_LABELS = {
 	"fast-forward": "landFastForward",
 } as const;
 
-/** A server function that threw (network, server error) fails like a refused action. */
-function failedResult(error: unknown): ActionResult {
-	return {ok: false, message: error instanceof Error ? error.message : String(error)};
+/** A server function that threw (network, server error) fails like a refused action, linking the log kept under `actionId`. */
+function failedResult(error: unknown, actionId: string | undefined): ActionResult {
+	return {
+		ok: false,
+		message: error instanceof Error ? error.message : String(error),
+		...(actionId === undefined ? {} : {actionId}),
+	};
 }
 
 /**
@@ -46,9 +50,10 @@ async function runWithOutcome(
 	label: string,
 	name: string,
 	run: () => Promise<ActionResult>,
+	actionId?: string,
 ): Promise<ActionResult> {
 	setActionOutcome(queryClient, key, runningOutcome(label));
-	const result = await run().catch(failedResult);
+	const result = await run().catch((error: unknown) => failedResult(error, actionId));
 	setActionOutcome(queryClient, key, actionResultOutcome(name, result));
 	pushToast(actionResultToast(name, result));
 	return result;
@@ -91,6 +96,7 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 				LANDING_ACTION_LABELS[action.kind],
 				LANDING_ACTION_NAMES[action.kind],
 				landing,
+				actionId,
 			).then((result) => {
 				const {prNumber, prUrl} = result;
 				if (tab !== null) {

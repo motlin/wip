@@ -100,7 +100,7 @@ describe("the tab Open PR opens", () => {
 			redirects: navigation.redirectTo.mock.calls,
 		}).toStrictEqual({
 			text: "Open PR failedrepo busy: advance-commit is running on alpha; try again shortlySee the log",
-			log: "/debug/logs",
+			log: "/action-log/tab-1",
 			redirects: [],
 		});
 	});

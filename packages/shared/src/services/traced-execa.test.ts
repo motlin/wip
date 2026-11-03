@@ -7,7 +7,12 @@ import * as url from "node:url";
 import {describe, it, expect} from "vite-plus/test";
 
 import {SUBPROCESS_LIMIT} from "./subprocess-gate.js";
-import {tracedExeca} from "./traced-execa.js";
+import {
+	subscribeSubprocessFailures,
+	tracedExeca,
+	unsubscribeSubprocessFailures,
+	type SubprocessFailure,
+} from "./traced-execa.js";
 
 describe("tracedExeca global subprocess cap", () => {
 	it("never runs more than SUBPROCESS_LIMIT children at once, however many callers fire together", async () => {
@@ -178,4 +183,26 @@ describe("tracedExeca detached process groups on server shutdown", () => {
 		},
 		20_000,
 	);
+});
+
+describe("tracedExeca failure listeners", () => {
+	it("reports each failing subprocess's command, exit code and stderr, whether or not it rejects", async () => {
+		const failures: SubprocessFailure[] = [];
+		const listener = (failure: SubprocessFailure): void => {
+			failures.push(failure);
+		};
+		subscribeSubprocessFailures(listener);
+		try {
+			await tracedExeca("sh", ["-c", "exit 0"], {reject: false});
+			await tracedExeca("sh", ["-c", "echo boom >&2; exit 3"], {reject: false});
+			await tracedExeca("sh", ["-c", "echo bang >&2; exit 4"]).catch(() => undefined);
+		} finally {
+			unsubscribeSubprocessFailures(listener);
+		}
+		await tracedExeca("sh", ["-c", "exit 5"], {reject: false});
+		expect(failures).toStrictEqual([
+			{command: "sh -c 'echo boom >&2; exit 3'", exitCode: 3, stderr: "boom"},
+			{command: "sh -c 'echo bang >&2; exit 4'", exitCode: 4, stderr: "bang"},
+		]);
+	});
 });

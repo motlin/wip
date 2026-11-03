@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 
-import {actionEventToast, actionResultToast, taskEventToast} from "./action-messages.js";
+import {actionEventToast, actionResultOutcome, actionResultToast, taskEventToast} from "./action-messages.js";
 
 describe("actionEventToast", () => {
 	it("says in plain words what is waiting and for what, never the internal action name", () => {
@@ -124,17 +124,27 @@ describe("actionResultToast", () => {
 		});
 	});
 
-	it("reports a failure with the first line of the reason and a link to the log", () => {
+	it("reports a failure with the first line of the reason and a link to that action's own log", () => {
 		expect(
 			actionResultToast("Open PR", {
 				ok: false,
 				message: "Failed to fetch upstream/main: fatal: could not read\nmore detail\n",
+				actionId: "a-1",
 			}),
 		).toStrictEqual({
 			level: "error",
 			message: "Open PR failed",
 			detail: "Failed to fetch upstream/main: fatal: could not read",
-			link: {href: "/debug/logs", label: "See the log"},
+			link: {href: "/action-log/a-1", label: "See the log"},
+		});
+	});
+
+	it("links a failure the server never logged to the recent failed actions", () => {
+		expect(actionResultOutcome("Push main", {ok: false, message: "Failed to fetch"})).toStrictEqual({
+			status: "failure",
+			message: "Push main failed",
+			detail: "Failed to fetch",
+			link: {href: "/action-log", label: "See the log"},
 		});
 	});
 });

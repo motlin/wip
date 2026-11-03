@@ -12,6 +12,35 @@ export interface ExecaResult {
 	command: string;
 }
 
+/** A subprocess that exited non-zero (or never started), as a failed action's log shows it. */
+export interface SubprocessFailure {
+	command: string;
+	exitCode: number;
+	stderr: string;
+}
+
+type SubprocessFailureListener = (failure: SubprocessFailure) => void;
+const failureListeners = new Set<SubprocessFailureListener>();
+
+/** Hears every failing subprocess, whether or not logging is on, so an action keeps the command that failed it. */
+export function subscribeSubprocessFailures(listener: SubprocessFailureListener): void {
+	failureListeners.add(listener);
+}
+
+export function unsubscribeSubprocessFailures(listener: SubprocessFailureListener): void {
+	failureListeners.delete(listener);
+}
+
+function reportFailure(failure: SubprocessFailure): void {
+	for (const listener of failureListeners) {
+		try {
+			listener(failure);
+		} catch {
+			// a failing listener must not break the subprocess call
+		}
+	}
+}
+
 export interface TreeKillOptions {
 	/**
 	 * Aborting it kills the subprocess and everything it started: the child runs as its own process
@@ -118,13 +147,17 @@ async function runTraced(
 				"subprocess.exit_code": result.exitCode,
 				"subprocess.duration_ms": duration,
 			});
-			return {
+			const finished = {
 				stdout: String(result.stdout ?? ""),
 				stderr: String(result.stderr ?? ""),
 				exitCode: result.exitCode ?? 1,
 				failed: result.failed,
 				command: result.command,
 			};
+			if (finished.exitCode !== 0) {
+				reportFailure({command: result.escapedCommand, exitCode: finished.exitCode, stderr: finished.stderr});
+			}
+			return finished;
 		} catch (error) {
 			const duration = Math.round(performance.now() - start);
 			const exitCode = error instanceof ExecaError ? error.exitCode : undefined;
@@ -134,6 +167,12 @@ async function runTraced(
 				"subprocess.duration_ms": duration,
 			});
 			span.setStatus({code: SpanStatusCode.ERROR, message});
+			const stderr: unknown = error instanceof ExecaError ? error.stderr : undefined;
+			reportFailure({
+				command: error instanceof ExecaError ? error.escapedCommand : [command, ...args].join(" "),
+				exitCode: exitCode ?? -1,
+				stderr: typeof stderr === "string" ? stderr : message,
+			});
 			throw error;
 		} finally {
 			span.end();

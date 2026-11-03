@@ -125,7 +125,9 @@ import {considerSplitting} from "@wip/shared/candidate-rank.js";
 import {doTodoTaskPrompt} from "./category-actions.js";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
-import {captureActionLogs, runQueuedAction, type ActionStep} from "./queued-action.js";
+import {runQueuedAction, type ActionStep} from "./queued-action.js";
+import {actionLog, loggedAction, recentActionLogs} from "./action-log.js";
+import type {ActionLog} from "./action-log-schema.js";
 import {repoResource, testWorktreeResource} from "./repo-resource.js";
 import type {ActionEvent} from "./server-events-schema.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -156,17 +158,11 @@ async function traced<T>(name: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Wraps an action handler so that any subprocess/general logs emitted during
- * the call are attached to the returned ActionResult. The client uses these
- * entries to show toasts to the user.
+ * Wraps an action handler so that any subprocess/general logs emitted during the call are attached
+ * to the returned ActionResult (the client toasts them), and a failure keeps its own log under `id`.
  */
-async function tracedAction(name: string, fn: () => Promise<ActionResult>): Promise<ActionResult> {
-	const {result, logs} = await captureActionLogs(async () => traced(name, fn));
-	if (logs.length === 0) return result;
-	return {
-		...result,
-		logs: logs.map((e) => ({time: e.time, level: e.level, category: e.category, msg: e.msg})),
-	};
+async function tracedAction(name: string, fn: () => Promise<ActionResult>, id?: string): Promise<ActionResult> {
+	return loggedAction(name, async () => traced(name, fn), id);
 }
 
 export type {ActionResult, SnoozedChild, GitChildResult};
@@ -927,128 +923,147 @@ export async function getActionStatusHandler(id: string): Promise<ActionEvent | 
 	return latestActionEvent(id);
 }
 
+/** A failed action's own log, for its "See the log" page; null when none is kept. */
+export function getActionLogHandler(id: string): ActionLog | null {
+	return actionLog(id);
+}
+
+/** The kept failed actions' logs, newest first, for a "See the log" link whose action id is unknown. */
+export function getRecentActionLogsHandler(): ActionLog[] {
+	return recentActionLogs();
+}
+
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
-	return tracedAction("createPr", async () => {
-		const p = await resolveProject(data.project);
-		const action = {
-			label: "createPr",
-			target: data.title,
-			...(data.actionId === undefined ? {} : {id: data.actionId}),
-		};
-		return runQueuedAction(data.project, action, async (step) => {
-			const env = await getMiseEnv(p.dir);
+	return tracedAction(
+		"createPr",
+		async () => {
+			const p = await resolveProject(data.project);
+			const action = {
+				label: "createPr",
+				target: data.title,
+				...(data.actionId === undefined ? {} : {id: data.actionId}),
+			};
+			return runQueuedAction(data.project, action, async (step) => {
+				const env = await getMiseEnv(p.dir);
 
-			const refused = openPrRefusal(data.branch, p.upstreamBranch);
-			if (refused !== null) return {ok: false, message: refused};
+				const refused = openPrRefusal(data.branch, p.upstreamBranch);
+				if (refused !== null) return {ok: false, message: refused};
 
-			const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
-				reject: false,
-				env,
-			});
-			if (fetch.exitCode !== 0) {
-				if (fetch.stderr.includes("couldn't find remote ref")) {
-					return {
-						ok: false,
-						message: `Can't open a PR: the base branch ${p.upstreamBranch} doesn't exist on ${p.upstreamRemote}`,
-					};
-				}
-				return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
-			}
-
-			const branch = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${data.branch}^{commit}`], {
-				reject: false,
-				env,
-			});
-			if (branch.exitCode !== 0) {
-				return {ok: false, message: `Could not resolve branch ${data.branch}: ${branch.stderr}`};
-			}
-
-			const upstream = await tracedExeca(
-				"git",
-				["-C", p.dir, "rev-parse", "--verify", `${p.upstreamRef}^{commit}`],
-				{
+				const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
 					reject: false,
 					env,
-				},
-			);
-			if (upstream.exitCode !== 0) {
-				return {ok: false, message: `Could not resolve upstream ${p.upstreamRef}: ${upstream.stderr}`};
-			}
-
-			const containsUpstream = await tracedExeca(
-				"git",
-				["-C", p.dir, "merge-base", "--is-ancestor", p.upstreamRef, data.branch],
-				{reject: false, env},
-			);
-			if (containsUpstream.exitCode !== 0) {
-				const caughtUp = await catchUpPrBranch(
-					p,
-					data.branch,
-					branch.stdout.trim(),
-					upstream.stdout.trim(),
-					env,
-					step,
-				);
-				if (caughtUp !== null) return {ok: false, message: caughtUp};
-			}
-
-			step(`Pushing ${data.branch}…`);
-			const pushed = await pushPrBranch(p.dir, data.branch, env);
-			if (pushed !== null) return {ok: false, message: pushed};
-
-			let headRefName = data.branch;
-			if (p.upstreamRemote !== "origin") {
-				const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
-					reject: false,
 				});
-				if (originUrl.exitCode === 0) {
-					const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
-					if (match) {
-						headRefName = `${match[1]}:${data.branch}`;
+				if (fetch.exitCode !== 0) {
+					if (fetch.stderr.includes("couldn't find remote ref")) {
+						return {
+							ok: false,
+							message: `Can't open a PR: the base branch ${p.upstreamBranch} doesn't exist on ${p.upstreamRemote}`,
+						};
+					}
+					return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
+				}
+
+				const branch = await tracedExeca(
+					"git",
+					["-C", p.dir, "rev-parse", "--verify", `${data.branch}^{commit}`],
+					{
+						reject: false,
+						env,
+					},
+				);
+				if (branch.exitCode !== 0) {
+					return {ok: false, message: `Could not resolve branch ${data.branch}: ${branch.stderr}`};
+				}
+
+				const upstream = await tracedExeca(
+					"git",
+					["-C", p.dir, "rev-parse", "--verify", `${p.upstreamRef}^{commit}`],
+					{
+						reject: false,
+						env,
+					},
+				);
+				if (upstream.exitCode !== 0) {
+					return {ok: false, message: `Could not resolve upstream ${p.upstreamRef}: ${upstream.stderr}`};
+				}
+
+				const containsUpstream = await tracedExeca(
+					"git",
+					["-C", p.dir, "merge-base", "--is-ancestor", p.upstreamRef, data.branch],
+					{reject: false, env},
+				);
+				if (containsUpstream.exitCode !== 0) {
+					const caughtUp = await catchUpPrBranch(
+						p,
+						data.branch,
+						branch.stdout.trim(),
+						upstream.stdout.trim(),
+						env,
+						step,
+					);
+					if (caughtUp !== null) return {ok: false, message: caughtUp};
+				}
+
+				step(`Pushing ${data.branch}…`);
+				const pushed = await pushPrBranch(p.dir, data.branch, env);
+				if (pushed !== null) return {ok: false, message: pushed};
+
+				let headRefName = data.branch;
+				if (p.upstreamRemote !== "origin") {
+					const originUrl = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", "origin"], {
+						reject: false,
+					});
+					if (originUrl.exitCode === 0) {
+						const match = originUrl.stdout.match(/[/:]([^/]+)\/[^/]+?(?:\.git)?$/);
+						if (match) {
+							headRefName = `${match[1]}:${data.branch}`;
+						}
 					}
 				}
-			}
 
-			const repo = prRepository(p);
-			const [owner, name] = repo.split("/");
-			if (!owner || !name) {
-				return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
-			}
+				const repo = prRepository(p);
+				const [owner, name] = repo.split("/");
+				if (!owner || !name) {
+					return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
+				}
 
-			step("Opening the pull request…");
-			const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
-			// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
-			const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(repo));
-			const result = await createPullRequest({
-				owner,
-				name,
-				baseRefName: p.upstreamBranch,
-				headRefName,
-				title: data.title,
-				body: data.body ?? "",
-				draft: data.autoMerge === true ? false : data.draft !== false,
+				step("Opening the pull request…");
+				const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
+				// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
+				const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(repo));
+				const result = await createPullRequest({
+					owner,
+					name,
+					baseRefName: p.upstreamBranch,
+					headRefName,
+					title: data.title,
+					body: data.body ?? "",
+					draft: data.autoMerge === true ? false : data.draft !== false,
+				});
+
+				if (result.ok) {
+					invalidatePrCache(data.project);
+					invalidateChildrenCache(data.project);
+					const prNumber = Number(/\/pull\/(\d+)/.exec(result.prUrl)?.[1]);
+					if (Number.isNaN(prNumber))
+						return {ok: true, message: `Opened ${result.prUrl}`, prUrl: result.prUrl};
+					const opened = {ok: true, prNumber, prUrl: result.prUrl};
+					if (!autoMerge) return {...opened, message: `Opened PR #${prNumber}`};
+					const enabled = await enableAutoMerge(p, prNumber, env);
+					return enabled === null
+						? {
+								...opened,
+								message: `Opened PR #${prNumber}; it will merge itself when its checks pass`,
+								autoMerge: true,
+							}
+						: {...opened, message: `Opened PR #${prNumber}, but couldn't turn on auto-merge: ${enabled}`};
+				}
+
+				return {ok: false, message: result.message};
 			});
-
-			if (result.ok) {
-				invalidatePrCache(data.project);
-				invalidateChildrenCache(data.project);
-				const prNumber = Number(/\/pull\/(\d+)/.exec(result.prUrl)?.[1]);
-				if (Number.isNaN(prNumber)) return {ok: true, message: `Opened ${result.prUrl}`, prUrl: result.prUrl};
-				const opened = {ok: true, prNumber, prUrl: result.prUrl};
-				if (!autoMerge) return {...opened, message: `Opened PR #${prNumber}`};
-				const enabled = await enableAutoMerge(p, prNumber, env);
-				return enabled === null
-					? {
-							...opened,
-							message: `Opened PR #${prNumber}; it will merge itself when its checks pass`,
-							autoMerge: true,
-						}
-					: {...opened, message: `Opened PR #${prNumber}, but couldn't turn on auto-merge: ${enabled}`};
-			}
-
-			return {ok: false, message: result.message};
-		});
-	});
+		},
+		data.actionId,
+	);
 }
 
 export interface TestJobStatus {

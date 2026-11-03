@@ -2,6 +2,7 @@ import type {ActionResult} from "@wip/shared/schemas.js";
 import type {ActionEvent, TaskEvent} from "./server-events-schema.js";
 import type {ActionOutcome} from "./action-outcomes.js";
 import type {ToastInput, ToastLink} from "./toast-store.js";
+import {actionLogHref} from "./action-log-schema.js";
 
 /**
  * Plain-language toasts for user actions: what is happening, what happened and
@@ -43,7 +44,10 @@ const JOB_NAMES: Record<string, string> = {
 };
 
 const GITHUB_LINK_LABEL = "View on GitHub";
-const ACTION_LOG_LINK: ToastLink = {href: "/debug/logs", label: "See the log"};
+/** A failed action's "See the log" link: its own log page, or the recent failures when the server never named it. */
+export function actionLogLink(actionId: string | undefined): ToastLink {
+	return {href: actionLogHref(actionId), label: "See the log"};
+}
 const TASKS_LINK: ToastLink = {href: "/tasks", label: "See tasks"};
 
 function describeAction(label: string): string {
@@ -123,7 +127,7 @@ export function actionResultToast(action: string, result: ActionResult): ToastIn
 			level: "error",
 			message: `${action} failed`,
 			detail: shortReason(result.message),
-			link: ACTION_LOG_LINK,
+			link: actionLogLink(result.actionId),
 		};
 	}
 	const href = result.prUrl ?? result.compareUrl;
@@ -143,7 +147,12 @@ export function runningOutcome(label: string): ActionOutcome {
 export function actionResultOutcome(action: string, result: ActionResult): ActionOutcome {
 	const {message, detail, link} = actionResultToast(action, result);
 	if (result.ok) return {status: "success", message, ...(link === undefined ? {} : {link})};
-	return {status: "failure", message, ...(detail === undefined ? {} : {detail}), link: link ?? ACTION_LOG_LINK};
+	return {
+		status: "failure",
+		message,
+		...(detail === undefined ? {} : {detail}),
+		link: link ?? actionLogLink(result.actionId),
+	};
 }
 
 /** The completion toast for a background task (push, rebase, Claude task); null otherwise. */

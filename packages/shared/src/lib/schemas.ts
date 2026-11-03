@@ -473,6 +473,8 @@ export const ActionResultSchema = z.object({
 	// Set by Open PR and Merge PR when they turned on auto-merge: the PR merges itself when checks pass
 	autoMerge: z.literal(true).optional(),
 	logs: z.array(ActionLogEntrySchema).optional(),
+	// Set on a failure: the id of the action's own log, which its "See the log" link opens
+	actionId: z.string().optional(),
 	// Set by Abort rebase: the branch whose rebase was backed out, whose next action is "Rebase again"
 	rebaseAgainBranch: z.string().optional(),
 });

@@ -776,10 +776,8 @@ export function enqueueTask(
 	retest?: boolean,
 ): Task {
 	ensureLoaded();
-	const existing = findTask(sha, project, taskType);
-	if (existing && (existing.status === "queued" || existing.status === "running")) {
-		return existing;
-	}
+	const existing = findActiveTask(sha, project, taskType);
+	if (existing) return existing;
 
 	return registerTask({
 		id: String(nextId++),
@@ -815,10 +813,8 @@ export interface EnqueueTodoTaskOptions {
 export function enqueueTodoTask(opts: EnqueueTodoTaskOptions): Task {
 	ensureLoaded();
 	const todoKey = todoItemKey(opts);
-	const existing = findTask(opts.sha, opts.project, "claude", todoKey);
-	if (existing && (existing.status === "queued" || existing.status === "running")) {
-		return existing;
-	}
+	const existing = findActiveTask(opts.sha, opts.project, "claude", todoKey);
+	if (existing) return existing;
 
 	const ahead = Array.from(tasks.values()).findLast(
 		(t) =>
@@ -856,10 +852,8 @@ export interface EnqueuePushOptions {
 
 export function enqueuePush(opts: EnqueuePushOptions): Task {
 	ensureLoaded();
-	const existing = findTask(opts.sha, opts.project, "push");
-	if (existing && (existing.status === "queued" || existing.status === "running")) {
-		return existing;
-	}
+	const existing = findActiveTask(opts.sha, opts.project, "push");
+	if (existing) return existing;
 
 	return registerTask({
 		id: String(nextId++),
@@ -893,10 +887,8 @@ export interface EnqueueRebaseOptions {
 
 export function enqueueRebase(opts: EnqueueRebaseOptions): Task {
 	ensureLoaded();
-	const existing = findTask(opts.sha, opts.project, "rebase");
-	if (existing && (existing.status === "queued" || existing.status === "running")) {
-		return existing;
-	}
+	const existing = findActiveTask(opts.sha, opts.project, "rebase");
+	if (existing) return existing;
 
 	return registerTask({
 		id: String(nextId++),
@@ -925,10 +917,8 @@ export interface EnqueueLadderOptions extends LadderTaskProject {
 
 export function enqueueLadder(opts: EnqueueLadderOptions): Task {
 	ensureLoaded();
-	const existing = findTask("", opts.project, "ladder");
-	if (existing && (existing.status === "queued" || existing.status === "running")) {
-		return existing;
-	}
+	const existing = findActiveTask("", opts.project, "ladder");
+	if (existing) return existing;
 
 	return registerTask({
 		id: String(nextId++),
@@ -965,10 +955,12 @@ export function getLatestLadderResults(): LadderResult[] {
 	return [...latest.values()].flatMap((t) => (t.ladderResult ? [t.ladderResult] : []));
 }
 
-function findTask(sha: string, project: string, taskType?: TaskType, todoKey?: string): Task | undefined {
+/** The queued or running task for this work; an older finished task for the same commit never shadows it. */
+function findActiveTask(sha: string, project: string, taskType: TaskType, todoKey?: string): Task | undefined {
 	for (const task of tasks.values()) {
-		if (task.sha === sha && task.project === project && task.todoKey === todoKey) {
-			if (taskType === undefined || task.taskType === taskType) return task;
+		if (task.status !== "queued" && task.status !== "running") continue;
+		if (task.sha === sha && task.project === project && task.todoKey === todoKey && task.taskType === taskType) {
+			return task;
 		}
 	}
 	return undefined;

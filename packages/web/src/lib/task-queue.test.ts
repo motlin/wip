@@ -303,6 +303,44 @@ describe("push tasks hold the repo resource", () => {
 	});
 });
 
+describe("deduping against an older finished task", () => {
+	it("returns the active task, not a ghost that coalesces onto its job, when a finished task for the same commit exists", async () => {
+		await resetScheduler();
+		await resetQueue();
+		shared.rebaseBranchOntoUpstream.mockResolvedValueOnce({ok: true, message: "rebased ok"});
+		const finished = enqueueRebase(rebaseOptions("alpha"));
+		await vi.waitFor(() => {
+			expect(finished.status).toBe("passed");
+		});
+
+		let releaseRebase!: () => void;
+		shared.rebaseBranchOntoUpstream.mockImplementation(
+			async () =>
+				new Promise((resolve) => {
+					releaseRebase = () => {
+						resolve({ok: true, message: "rebased again"});
+					};
+				}),
+		);
+		const running = enqueueRebase(rebaseOptions("alpha"));
+		await vi.waitFor(() => {
+			expect(running.status).toBe("running");
+		});
+		const again = enqueueRebase(rebaseOptions("alpha"));
+
+		releaseRebase();
+		await vi.waitFor(() => {
+			expect(running.status).toBe("passed");
+		});
+		expect({
+			againIsRunning: again === running,
+			active: [...getAllTasks().values()].filter((t) => t.status === "queued" || t.status === "running"),
+		}).toStrictEqual({againIsRunning: true, active: []});
+		await resetScheduler();
+		await resetQueue();
+	});
+});
+
 function todoOptions(title: string) {
 	return {
 		project: "alpha",

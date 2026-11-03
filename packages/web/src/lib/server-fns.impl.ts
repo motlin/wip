@@ -859,31 +859,52 @@ export async function pushChildHandler(data: PushChildInput): Promise<TestJobSta
 	});
 }
 
+/** The sha `remote`'s tracking ref holds for `branch`, or "" when this clone knows no copy there. */
+async function trackedRemoteSha(
+	dir: string,
+	remote: string,
+	branch: string,
+	env?: Record<string, string>,
+): Promise<string> {
+	const tracked = await tracedExeca(
+		"git",
+		["-C", dir, "rev-parse", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`],
+		{reject: false, ...(env ? {env} : {})},
+	);
+	return tracked.exitCode === 0 ? tracked.stdout.trim() : "";
+}
+
 /**
- * Pushes the PR's branch to origin so GitHub can see it: a plain push when origin lacks it or holds an
- * ancestor, a force-with-lease against origin's exact tip when the branch was rewritten locally (it is
- * the user's own PR branch and Open PR is user-initiated). Never pushes to any other remote. Returns
- * the failure, or null once origin holds the local tip.
+ * Pushes the PR's branch tip to origin so GitHub can see it: a plain push when origin lacks it or holds
+ * an ancestor, else a force-with-lease pinned to `leaseSha`, origin's sha this clone knew before the
+ * flow fetched anything ("" = must not exist), so commits another machine pushed are never overwritten.
+ * Never pushes to any other remote. Returns the failure, or null once origin holds the local tip.
  */
-async function pushPrBranch(dir: string, branch: string, env: Record<string, string>): Promise<string | null> {
+async function pushPrBranch(
+	dir: string,
+	branch: string,
+	leaseSha: string,
+	env: Record<string, string>,
+): Promise<string | null> {
 	const ref = `refs/heads/${branch}`;
 	const local = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", `${ref}^{commit}`], {
 		reject: false,
 		env,
 	});
 	if (local.exitCode !== 0) return `Could not resolve branch ${branch}: ${local.stderr}`;
+	const localSha = local.stdout.trim();
 	const remote = await tracedExeca("git", ["-C", dir, "ls-remote", "origin", ref], {reject: false, env});
 	if (remote.exitCode !== 0) return `Could not read ${branch} on origin: ${remote.stderr}`;
 	const remoteSha = remote.stdout.split(/\s/)[0] ?? "";
-	if (remoteSha === local.stdout.trim()) return null;
-	const args = ["-C", dir, "push", "origin", `${ref}:${ref}`];
+	if (remoteSha === localSha) return null;
+	const args = ["-C", dir, "push", "origin", `${localSha}:${ref}`];
 	if (remoteSha !== "") {
 		await tracedExeca("git", ["-C", dir, "fetch", "origin", ref], {reject: false, env});
-		const ancestor = await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", remoteSha, ref], {
+		const ancestor = await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", remoteSha, localSha], {
 			reject: false,
 			env,
 		});
-		if (ancestor.exitCode !== 0) args.push(`--force-with-lease=${ref}:${remoteSha}`);
+		if (ancestor.exitCode !== 0) args.push(`--force-with-lease=${ref}:${leaseSha}`);
 	}
 	const push = await tracedExeca("git", args, {reject: false, env});
 	return push.exitCode === 0 ? null : `Failed to push ${branch} to origin: ${push.stderr}`;
@@ -949,6 +970,10 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				const refused = openPrRefusal(data.branch, p.upstreamBranch);
 				if (refused !== null) return {ok: false, message: refused};
 
+				// Read before any fetch: fetches refresh the tracking ref, which would let the lease
+				// overwrite commits another machine pushed.
+				const leaseSha = await trackedRemoteSha(p.dir, "origin", data.branch, env);
+
 				const fetch = await tracedExeca("git", ["-C", p.dir, "fetch", p.upstreamRemote, p.upstreamBranch], {
 					reject: false,
 					env,
@@ -1005,7 +1030,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				}
 
 				step(`Pushing ${data.branch}…`);
-				const pushed = await pushPrBranch(p.dir, data.branch, env);
+				const pushed = await pushPrBranch(p.dir, data.branch, leaseSha, env);
 				if (pushed !== null) return {ok: false, message: pushed};
 
 				let headRefName = data.branch;
@@ -1418,15 +1443,22 @@ export async function forcePushHandler(data: ForcePushInput): Promise<ActionResu
 	return tracedAction("forcePush", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, {label: "forcePush", target: data.branch}, async () => {
+			const ref = `refs/heads/${data.branch}`;
+			const leaseSha = await trackedRemoteSha(p.dir, p.upstreamRemote, data.branch);
+			const local = await tracedExeca("git", ["-C", p.dir, "rev-parse", "--verify", `${ref}^{commit}`], {
+				reject: false,
+			});
+			if (local.exitCode !== 0)
+				return {ok: false, message: `Could not resolve branch ${data.branch}: ${local.stderr}`};
 			const result = await tracedExeca(
 				"git",
 				[
 					"-C",
 					p.dir,
 					"push",
-					"--force-with-lease",
+					`--force-with-lease=${ref}:${leaseSha}`,
 					p.upstreamRemote,
-					`${data.branch}:refs/heads/${data.branch}`,
+					`${local.stdout.trim()}:${ref}`,
 				],
 				{reject: false},
 			);

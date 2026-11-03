@@ -2650,6 +2650,41 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 		}).toStrictEqual({ok: true, remoteTip: await gitOut(dir, "rev-parse", "fix-rewritten"), calls: 1});
 	});
 
+	it("refuses to overwrite commits another machine pushed to the branch since this clone last fetched it", async () => {
+		const {dir, remoteDir} = await repoWithFeatureBranch("fix-shared");
+		await execa("git", ["-C", dir, "push", "-u", "origin", "fix-shared"]);
+		await execa("git", ["-C", dir, "commit", "--amend", "--allow-empty", "-m", "Feature work, reworded"]);
+		const other = await mkdtemp(join(tmpdir(), "wip-other-clone-"));
+		tmpDirs.push(other);
+		await execa("git", ["clone", "-q", "-b", "fix-shared", remoteDir, other]);
+		await execa("git", [
+			"-C",
+			other,
+			"-c",
+			"user.name=Other",
+			"-c",
+			"user.email=other@example.com",
+			"commit",
+			"--allow-empty",
+			"-m",
+			"Other machine's work",
+		]);
+		await execa("git", ["-C", other, "push", "-q", "origin", "fix-shared"]);
+		const otherTip = await gitOut(other, "rev-parse", "HEAD");
+		seedProjectCache([makeProject({name: "pr-shared", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-shared", branch: "fix-shared", title: "Fix"});
+
+		expect({
+			ok: result.ok,
+			stale: result.message.includes("stale info"),
+			remoteTip: await gitOut(remoteDir, "rev-parse", "refs/heads/fix-shared"),
+			calls: github.calls.length,
+		}).toStrictEqual({ok: false, stale: true, remoteTip: otherTip, calls: 0});
+	});
+
 	it("opens the PR in origin's repo when origin is the upstream remote, even for a fork", async () => {
 		const {dir} = await repoWithFeatureBranch("fix-fork");
 		await execa("git", ["-C", dir, "push", "origin", "main:refs/heads/avalon.cool"]);
@@ -3177,6 +3212,66 @@ describe("queued git actions", () => {
 		);
 		expect(whileHeld).toEqual([]);
 		expect(afterRelease.map((c) => [c.command, c.args.includes("push")])).toContainEqual(["git", true]);
+	});
+
+	it("forcePushHandler pushes the branch's sha with a lease pinned to the remote sha it read first", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "lease-force-push", dir})]);
+		const pushes: string[][] = [];
+		fakeExeca.handler = (command, args) => {
+			const ref = args.at(-1);
+			let stdout = command === "mise" ? "{}" : "";
+			if (args.includes("rev-parse") && ref === "refs/remotes/origin/feature") stdout = "a".repeat(40);
+			if (args.includes("rev-parse") && ref === "refs/heads/feature^{commit}") stdout = "b".repeat(40);
+			if (args.includes("push")) pushes.push(args);
+			return {stdout, stderr: "", exitCode: 0, failed: false, command: [command, ...args].join(" ")};
+		};
+		const {forcePushHandler} = await import("./server-fns.impl.js");
+
+		const result = await forcePushHandler({project: "lease-force-push", branch: "feature"});
+
+		expect({result, pushes}).toStrictEqual({
+			result: {ok: true, message: "Force-pushed to feature"},
+			pushes: [
+				[
+					"-C",
+					dir,
+					"push",
+					`--force-with-lease=refs/heads/feature:${"a".repeat(40)}`,
+					"origin",
+					`${"b".repeat(40)}:refs/heads/feature`,
+				],
+			],
+		});
+	});
+
+	it("forcePushHandler leases on absence when the remote has no copy of the branch", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([makeProject({name: "lease-absent-push", dir})]);
+		const pushes: string[][] = [];
+		fakeExeca.handler = (command, args) => {
+			const ref = args.at(-1);
+			let stdout = command === "mise" ? "{}" : "";
+			let exitCode = 0;
+			if (args.includes("rev-parse") && ref === "refs/remotes/origin/feature") exitCode = 1;
+			if (args.includes("rev-parse") && ref === "refs/heads/feature^{commit}") stdout = "b".repeat(40);
+			if (args.includes("push")) pushes.push(args);
+			return {stdout, stderr: "", exitCode, failed: exitCode !== 0, command: [command, ...args].join(" ")};
+		};
+		const {forcePushHandler} = await import("./server-fns.impl.js");
+
+		await forcePushHandler({project: "lease-absent-push", branch: "feature"});
+
+		expect(pushes).toStrictEqual([
+			[
+				"-C",
+				dir,
+				"push",
+				"--force-with-lease=refs/heads/feature:",
+				"origin",
+				`${"b".repeat(40)}:refs/heads/feature`,
+			],
+		]);
 	});
 
 	it("mergePrHandler waits for a running job on the same project", async () => {

@@ -481,10 +481,11 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		if (jobs.has(candidate.id)) return;
 		const settled = named(repo, candidate)
 			.then(async (ready) => advanceItem(repo, ready, {conflicts: false, fix: false}))
-			.then(async () => {
+			// A rejected advance frees the slot too, or the item could never be enqueued again.
+			.finally(() => {
 				jobs.delete(candidate.id);
-				return requestPull();
 			})
+			.then(async () => requestPull())
 			.catch((error: unknown) => {
 				warn(error, `${repo.name}:${candidate.id}`);
 			});

@@ -1010,6 +1010,53 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("frees an item whose advance rejects, so a later refill enqueues it again", async () => {
+		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
+		queues.push(queue);
+		const warned = deferred();
+		const attempts: string[] = [];
+		const advanced: string[] = [];
+		const warnings: Array<{message: string; context: string}> = [];
+		const buffer = createReadyBuffer({
+			queue: {
+				enqueue: (job: EnqueueOptions) => {
+					if (job.kind !== "advance-commit") return queue.enqueue(job);
+					attempts.push(job.coalesceKey);
+					if (attempts.length === 1) throw new Error("enqueue failed");
+					return queue.enqueue(job);
+				},
+			},
+			snapshot: async () => Promise.resolve([repo("a", {candidates: candidates(1)})]),
+			target: () => 1,
+			capacity: () => 1,
+			advance: async (_r, candidate) => {
+				advanced.push(candidate.id);
+				return Promise.resolve("ready");
+			},
+			resolveConflicts: async () => Promise.resolve(null),
+			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(null),
+			warn: (error, context) => {
+				warnings.push({message: error instanceof Error ? error.message : String(error), context});
+				warned.resolve();
+			},
+		});
+
+		// idle() would spin forever on an entry the failure leaks, so wait on the warning and a tick.
+		await buffer.pull();
+		await warned.promise;
+		await buffer.pull();
+		await new Promise<void>((resolve) => {
+			setTimeout(resolve, 10);
+		});
+
+		expect({attempts, advanced, warnings}).toStrictEqual({
+			attempts: ["ready:a:c1", "ready:a:c1"],
+			advanced: ["c1"],
+			warnings: [{message: "enqueue failed", context: "a:c1"}],
+		});
+	});
+
 	it("pulls nothing for a project with local changes", async () => {
 		const h = harness({repos: () => [repo("dirty", {localChanges: true}), repo("clean")], gated: true});
 

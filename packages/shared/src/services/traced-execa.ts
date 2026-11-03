@@ -30,25 +30,58 @@ export async function tracedExeca(
 	return withSubprocessSlot(async () => runTraced(command, args, options, tree?.killTreeOn));
 }
 
-/** Starts the subprocess, as a process group leader whose group dies with `killTreeOn` when given. */
+function killGroup(pid: number): void {
+	try {
+		process.kill(-pid, "SIGTERM");
+	} catch {
+		// The group already exited.
+	}
+}
+
+/**
+ * Detached groups still running. A detached child leads its own session, so a Ctrl-C or a process
+ * manager stopping the server never reaches it and execa's cleanup skips it; the server kills them itself.
+ */
+const liveGroups = new Set<number>();
+const SHUTDOWN_SIGNALS = {SIGINT: 2, SIGTERM: 15} as const;
+let shutdownHooksInstalled = false;
+
+function killLiveGroups(): void {
+	for (const pid of liveGroups) killGroup(pid);
+	liveGroups.clear();
+}
+
+// Listening for a signal disables Node's default exit on it. The handler is prepended so it runs
+// before any other listener (telemetry's flush), and exits only when no other listener remains to do so.
+function installShutdownHooks(): void {
+	if (shutdownHooksInstalled) return;
+	shutdownHooksInstalled = true;
+	process.once("exit", killLiveGroups);
+	for (const [signal, number] of Object.entries(SHUTDOWN_SIGNALS)) {
+		process.prependOnceListener(signal, () => {
+			killLiveGroups();
+			if (process.listenerCount(signal) === 0) process.exit(128 + number);
+		});
+	}
+}
+
+/** Starts the subprocess, as a process group leader whose group dies with `killTreeOn` or server shutdown. */
 async function runSubprocess(command: string, args: string[], options: Options | undefined, killTreeOn?: AbortSignal) {
 	if (killTreeOn === undefined) return execa(command, args, options);
+	installShutdownHooks();
 	const subprocess = execa(command, args, {...options, detached: true});
+	const {pid} = subprocess;
 	const killTree = (): void => {
-		const {pid} = subprocess;
-		if (pid === undefined) return;
-		try {
-			process.kill(-pid, "SIGTERM");
-		} catch {
-			// The group already exited.
-		}
+		if (pid !== undefined) killGroup(pid);
 	};
+	if (pid !== undefined) liveGroups.add(pid);
 	if (killTreeOn.aborted) killTree();
 	killTreeOn.addEventListener("abort", killTree, {once: true});
 	try {
 		return await subprocess;
 	} finally {
 		killTreeOn.removeEventListener("abort", killTree);
+		if (pid !== undefined) liveGroups.delete(pid);
 	}
 }
 

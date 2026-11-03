@@ -1,6 +1,8 @@
+import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as url from "node:url";
 
 import {describe, it, expect} from "vite-plus/test";
 
@@ -107,4 +109,73 @@ describe("tracedExeca killTreeOn", () => {
 			grandchildAlive,
 		}).toStrictEqual({failed: true, quick: true, grandchildAlive: false});
 	});
+});
+
+// Runs tracedExeca with an un-aborted killTreeOn in a separate Node process (native type stripping,
+// with .js specifiers resolved to their .ts sources), so the test can signal that process like a
+// process manager stopping the server.
+const SERVER_SCRIPT = `
+import {registerHooks} from "node:module";
+import * as fs from "node:fs";
+registerHooks({
+	resolve(specifier, context, next) {
+		try {
+			return next(specifier, context);
+		} catch (error) {
+			if (specifier.startsWith(".") && specifier.endsWith(".js")) return next(specifier.slice(0, -3) + ".ts", context);
+			throw error;
+		}
+	},
+});
+const [modulePath, pidFile] = process.argv.slice(2);
+const {tracedExeca} = await import(modulePath);
+void tracedExeca("sh", ["-c", \`sleep 30 & echo $! > "\${pidFile}"; wait\`], {reject: false}, {killTreeOn: new AbortController().signal});
+setInterval(() => {}, 1000);
+`;
+
+describe("tracedExeca detached process groups on server shutdown", () => {
+	it.each(["SIGTERM", "SIGINT"] as const)(
+		"kills a running group when the server gets %s, and the server still exits",
+		async (signal) => {
+			const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-orphan-group-"));
+			const pidFile = path.join(dir, "grandchild.pid");
+			const scriptFile = path.join(dir, "server.mjs");
+			fs.writeFileSync(scriptFile, SERVER_SCRIPT);
+			const modulePath = url.fileURLToPath(new URL("traced-execa.ts", import.meta.url));
+			const server = childProcess.spawn(process.execPath, [scriptFile, modulePath, pidFile], {
+				stdio: "ignore",
+			});
+			const exited = new Promise<number | null>((resolve) => {
+				server.on("exit", (code) => {
+					resolve(code);
+				});
+			});
+			while (!fs.existsSync(pidFile) || fs.readFileSync(pidFile, "utf8").trim() === "") {
+				// eslint-disable-next-line no-await-in-loop
+				await new Promise((resolve) => {
+					setTimeout(resolve, 20);
+				});
+			}
+			const grandchild = Number(fs.readFileSync(pidFile, "utf8").trim());
+			server.kill(signal);
+			const exitCode = await exited;
+			await new Promise((resolve) => {
+				setTimeout(resolve, 200);
+			});
+			let grandchildAlive = true;
+			try {
+				process.kill(grandchild, 0);
+			} catch {
+				grandchildAlive = false;
+			}
+			if (grandchildAlive) process.kill(grandchild, "SIGKILL");
+			fs.rmSync(dir, {recursive: true, force: true});
+
+			expect({exitCode, grandchildAlive}).toStrictEqual({
+				exitCode: 128 + {SIGTERM: 15, SIGINT: 2}[signal],
+				grandchildAlive: false,
+			});
+		},
+		20_000,
+	);
 });

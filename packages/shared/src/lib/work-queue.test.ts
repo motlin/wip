@@ -1027,6 +1027,60 @@ describe("preemption", () => {
 		expect(events).toStrictEqual(["bg-start-1", "bg-end-1-aborted", "fg", "bg-start-2", "bg-end-2-done"]);
 	});
 
+	it.each([
+		{name: "a buffer job", buffer: true},
+		{name: "a non-buffer job", buffer: false},
+	])("preempts $name holding a foreground job's resource while the probe is hot", async ({buffer}) => {
+		const probe = {loadPerCore: () => 0.5, freeMemRatio: () => 0.05};
+		const q = makeQueue({globalConcurrency: 4, probe, loadThreshold: 2, memFloor: 0.1});
+		const events: string[] = [];
+		let backgroundRuns = 0;
+		const unstick = deferred();
+		const background = q.enqueue({
+			coalesceKey: "bg",
+			resources: ["repo:x"],
+			kind: "advance-commit",
+			project: "x",
+			priority: "background",
+			costClass: "build",
+			buffer,
+			preemptible: true,
+			run: async (signal) => {
+				backgroundRuns += 1;
+				const run = backgroundRuns;
+				events.push(`bg-start-${run}`);
+				if (run === 1) {
+					await new Promise<void>((resolve) => {
+						signal.addEventListener("abort", () => {
+							resolve();
+						});
+						void unstick.promise.then(resolve);
+					});
+				}
+				events.push(`bg-end-${run}-${signal.aborted ? "aborted" : "done"}`);
+			},
+		});
+		await settle();
+		const foreground = q.enqueue({
+			coalesceKey: "fg",
+			resources: ["repo:x"],
+			kind: "rebase",
+			project: "x",
+			priority: "foreground",
+			costClass: "git-write",
+			run: async () => {
+				events.push("fg");
+				await Promise.resolve();
+			},
+		});
+		await Promise.race([foreground.settled, waitForCoalesce()]);
+		unstick.resolve();
+		await foreground.settled;
+		await background.settled;
+
+		expect(events).toStrictEqual(["bg-start-1", "bg-end-1-aborted", "fg", "bg-start-2", "bg-end-2-done"]);
+	});
+
 	it("never aborts a running job that is not preemptible; the foreground job waits for it", async () => {
 		const q = makeQueue({globalConcurrency: 4});
 		const events: string[] = [];

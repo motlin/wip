@@ -1,5 +1,6 @@
 import type {GitHubActionsGate} from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
+import {openPrRefusal} from "@wip/shared/ready-to-land.js";
 import {
 	bufferRepoFromChildren,
 	createReadyBuffer,
@@ -51,13 +52,16 @@ async function checkedOut(dir: string): Promise<string[]> {
 
 async function snapshot(): Promise<BufferRepo[]> {
 	const {
+		draftPrVerification,
 		getGitHubIdentity,
 		getLastKnownChildren,
 		getPriorityOverride,
 		isOnHold,
 		landingMode,
 		loadInventory,
+		prRepository,
 		pushesInBackground,
+		readDraftPrRepoFacts,
 		trustsPatchIdGreen,
 	} = await import("@wip/shared");
 	const {getProjects} = await import("./server-fns.js");
@@ -72,6 +76,14 @@ async function snapshot(): Promise<BufferRepo[]> {
 		const record = registry.get(p.dir);
 		const priority = record?.priority;
 		const needsBranches = children.some((c) => c.kind !== "upstream_ci" && c.branch !== undefined);
+		// Only a repo that opted in (and lands by pull request explicitly) asks GitHub about its PR target.
+		const facts =
+			record?.verify === "draft-pr" && pushesInBackground(record)
+				? // Sequential on purpose: cached per repo, asked only for opted-in repos
+					// eslint-disable-next-line no-await-in-loop
+					await readDraftPrRepoFacts(p.dir, p.upstreamRef, prRepository(p))
+				: null;
+		const verification = draftPrVerification(record, facts);
 		repos.push(
 			bufferRepoFromChildren(p, children, {
 				identity,
@@ -84,6 +96,8 @@ async function snapshot(): Promise<BufferRepo[]> {
 				trustPatchIdGreen: record !== undefined && trustsPatchIdGreen(record),
 				...(record === undefined ? {} : {landing: landingMode(record)}),
 				backgroundPush: pushesInBackground(record),
+				verifyByDraftPr: verification?.active === true,
+				...(verification?.active === false ? {verifyNotice: verification.reason} : {}),
 			}),
 		);
 	}
@@ -142,7 +156,8 @@ export async function advance(
 	// upstream is own; the next children refresh reports it as upstream red. A foreign red baseline
 	// whose log names its failing tests becomes the bar instead (step 35): no new failures.
 	let baselineFailures: ReadonlySet<string> | undefined;
-	if (p.hasTestConfigured) {
+	// Draft-PR verification never tests locally, the baseline included: upstream's own checks report it.
+	if (p.hasTestConfigured && repo.verifyByDraftPr !== true) {
 		const baseline = (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [upstream])).get(upstream);
 		const red =
 			baseline === "bad" ||
@@ -187,6 +202,7 @@ export async function advance(
 	const outcome = await testStep(
 		{
 			trustPatchIdGreen: repo.trustPatchIdGreen === true,
+			verifyByDraftPr: repo.verifyByDraftPr === true,
 			hasTestConfigured: p.hasTestConfigured,
 			preReplaySha: candidate.sha,
 			sha,
@@ -200,7 +216,7 @@ export async function advance(
 			publish: async (s) => {
 				const request = pushRequest(s);
 				if (request === null || !(await publishForChecks(p, request, candidate.sha))) return false;
-				markLocalTestSkipped(p.name, s);
+				markLocalTestSkipped(p.name, s, repo.verifyByDraftPr === true ? "draft-pr" : "green-before-replay");
 				return true;
 			},
 			failedTests,
@@ -250,17 +266,27 @@ function backgroundPusher(): BackgroundPusher {
 }
 
 /**
- * The fast path's publish: force-push the replayed branch with lease to origin (where PR heads
- * live) through the gate, without deferring a held push (the advance then runs the local test),
- * and open a draft PR when the commit had none; an existing PR updates with the push.
+ * The fast path's and draft-PR verification's publish: force-push the branch with lease to origin
+ * (where PR heads live; never main) through the gate, without deferring a held push (the fast path
+ * then runs the local test; draft-PR verification retries later), and open a draft PR in the
+ * project's PR target (prRepository) when the commit had none; an existing PR, one per branch,
+ * updates with the push across rebases.
  */
 async function publishForChecks(
-	p: {name: string; dir: string; remote: string; originRemote: string; upstreamBranch: string},
+	p: {
+		name: string;
+		dir: string;
+		remote: string;
+		originRemote: string;
+		upstreamRemote: string;
+		upstreamBranch: string;
+	},
 	request: PushRequest,
 	preReplaySha: string,
 ): Promise<boolean> {
-	const {createPullRequest, getCachedChildren, invalidatePrCache} = await import("@wip/shared");
+	const {createPullRequest, getCachedChildren, invalidatePrCache, prRepository} = await import("@wip/shared");
 	const {branch} = request;
+	if (openPrRefusal(branch, p.upstreamBranch) !== null) return false;
 	const push = await backgroundPusher().push(request, {defer: false});
 	if (push.status === "held" || push.status === "failed") {
 		log.general.warn({project: p.name, branch, push}, "Ready-buffer fast-path push not done");
@@ -269,18 +295,21 @@ async function publishForChecks(
 	invalidatePrCache(p.name);
 	const child = getCachedChildren(p.name)?.find((c) => c.sha === preReplaySha);
 	if (child?.prNumber !== undefined) return true;
-	const [owner, name] = p.remote.split("/");
+	const target = prRepository(p);
+	const [owner, name] = target.split("/");
 	const [originOwner] = p.originRemote.split("/");
 	if (!owner || !name) return false;
 	const created = await createPullRequest({
 		owner,
 		name,
 		baseRefName: p.upstreamBranch,
-		headRefName: p.originRemote !== p.remote && originOwner ? `${originOwner}:${branch}` : branch,
+		headRefName: p.originRemote !== target && originOwner ? `${originOwner}:${branch}` : branch,
 		title: child?.subject ?? branch,
 		body: "",
 		draft: true,
 	});
+	// The branch's PR exists but the children cache hadn't seen it yet: the push already updated it.
+	if (!created.ok && /already exists/i.test(created.message)) return true;
 	if (!created.ok)
 		log.general.warn({project: p.name, branch, message: created.message}, "Ready-buffer fast-path PR failed");
 	return created.ok;

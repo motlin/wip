@@ -100,6 +100,14 @@ export interface BufferRepo {
 	landing?: LandingMode;
 	/** The registry explicitly sets pull-request landing: a ready item is force-pushed in the background. */
 	backgroundPush?: boolean;
+	/**
+	 * Draft-PR verification is in effect (see draftPrVerification): the advance publishes each commit as
+	 * a draft PR instead of running git test, its checks decide, and draft PRs awaiting checks count
+	 * toward the ready target so only that many are in flight.
+	 */
+	verifyByDraftPr?: boolean;
+	/** The registry asks for draft-PR verification but it isn't in effect: why (the repo tests locally). */
+	verifyNotice?: string;
 	/** In rank order (shortest remaining job first). */
 	candidates: BufferCandidate[];
 }
@@ -109,7 +117,9 @@ export interface BufferRepo {
  * `stuck` means an agent could not resolve its replay conflict or fix its test, `auto_fixed`
  * means a green fixup commit sits on top, awaiting the user's review, and `checks_pending` means
  * the patch-id fast path skipped the local test and pushed: the item stays parked, and the children
- * refresh counts it ready once its PR checks pass.
+ * refresh counts it ready once its PR checks pass. `verify_held` means draft-PR verification couldn't
+ * publish (the GitHub Actions gate held the push, or the PR failed to open): the item parks for
+ * VERIFY_HELD_RETRY_MS, then is pulled again, never tested locally.
  */
 export type AdvanceOutcome =
 	| "ready"
@@ -118,11 +128,17 @@ export type AdvanceOutcome =
 	| "skipped"
 	| "stuck"
 	| "auto_fixed"
-	| "checks_pending";
+	| "checks_pending"
+	| "verify_held";
+
+/** How long an item whose draft-PR publish was held waits before the buffer pulls it again. */
+export const VERIFY_HELD_RETRY_MS = 60_000;
 
 export interface TestStepInput {
 	/** The repo's patch-id fast path applies (setting on, pull-request repo). */
 	trustPatchIdGreen: boolean;
+	/** Draft-PR verification is in effect: publish as a draft PR instead of testing locally. */
+	verifyByDraftPr?: boolean;
 	hasTestConfigured: boolean;
 	/** The candidate's sha before the replay. */
 	preReplaySha: string;
@@ -141,7 +157,7 @@ export interface TestStepDeps {
 	results: (sha: string) => Promise<GitTestStatus>;
 	/** `git test run`; its exit code. */
 	run: (sha: string) => Promise<number>;
-	/** Force-push the replayed commit and open or update its PR; false when that failed. */
+	/** Force-push the replayed commit and open or update its (draft) PR; false when that failed. */
 	publish: (sha: string) => Promise<boolean>;
 	/** The failing tests the sha's run log names; null when it names none. */
 	failedTests: (sha: string) => Promise<ReadonlySet<string> | null>;
@@ -154,12 +170,19 @@ export interface TestStepDeps {
  * A failed publish falls back to running the test. On a foreign red upstream (plan step 35) a
  * failing run is still ready when every test it fails also fails on the baseline. An item whose AI
  * fixup awaits review never takes the fast path, which would push the unreviewed fixup.
+ *
+ * Draft-PR verification never runs the local test: it publishes the commit (replayed or already on
+ * upstream) as a draft PR and waits for its checks; an unpublished one is held for a retry. An
+ * unreviewed AI fixup is still tested locally, since it is never pushed.
  */
 export async function testStep(
 	input: TestStepInput,
 	deps: TestStepDeps,
-): Promise<"ready" | "test_failed" | "checks_pending"> {
+): Promise<"ready" | "test_failed" | "checks_pending" | "verify_held"> {
 	if (!input.hasTestConfigured) return "ready";
+	if (input.verifyByDraftPr === true && input.autoFixed !== true) {
+		return (await deps.publish(input.sha)) ? "checks_pending" : "verify_held";
+	}
 	if (
 		input.trustPatchIdGreen &&
 		input.autoFixed !== true &&
@@ -201,6 +224,8 @@ export interface ReadyBufferDeps {
 	firstSeen?: (project: string, id: string) => string | undefined;
 	/** Whether the machine runs on battery; while it does, a pull starts no background work. */
 	onBattery?: () => boolean;
+	/** The clock that times a held draft-PR publish's retry; Date.now by default. */
+	now?: () => number;
 	/**
 	 * Reports a buffer item's chain failing, including the refill pull its finish requests, which
 	 * nothing awaits; `context` is `project:id`. Defaults to console.error.
@@ -238,6 +263,10 @@ export interface BufferRepoContext {
 	landing?: LandingMode;
 	/** The registry explicitly sets pull-request landing (see pushesInBackground). */
 	backgroundPush?: boolean;
+	/** Draft-PR verification is in effect for the repo. */
+	verifyByDraftPr?: boolean;
+	/** Why the draft-PR verification the registry asks for isn't in effect. */
+	verifyNotice?: string;
 }
 
 /**
@@ -265,18 +294,26 @@ export function bufferRepoFromChildren(
 		...(context.trustPatchIdGreen === true ? {trustPatchIdGreen: true} : {}),
 		...(context.landing === undefined ? {} : {landing: context.landing}),
 		...(context.backgroundPush === true ? {backgroundPush: true} : {}),
+		...(context.verifyByDraftPr === true ? {verifyByDraftPr: true} : {}),
+		...(context.verifyNotice === undefined ? {} : {verifyNotice: context.verifyNotice}),
 		candidates: onePerPatchId(
 			work.map((child) => {
 				const override = child.patchId === undefined ? undefined : context.override(child.patchId);
-				const green = isGreen({
-					parentSha: "",
-					testStatus: child.testStatus,
-					hasTestConfigured: project.hasTestConfigured,
-					onHold: false,
-					...(child.localTestSkipped === true
-						? {localTestSkipped: true, checkStatus: child.checkStatus}
-						: {}),
-				});
+				// A draft PR the buffer published for verification: its checks stand in for the local test, so
+				// it shows as awaiting or failed checks below instead of dropping out until they pass.
+				const verifiedByPr =
+					context.verifyByDraftPr === true && child.localTestSkipped === true && child.prNumber !== undefined;
+				const green =
+					verifiedByPr ||
+					isGreen({
+						parentSha: "",
+						testStatus: child.testStatus,
+						hasTestConfigured: project.hasTestConfigured,
+						onHold: false,
+						...(child.localTestSkipped === true
+							? {localTestSkipped: true, checkStatus: child.checkStatus}
+							: {}),
+					});
 				const candidate: BufferCandidate = {
 					id: child.patchId ?? child.sha,
 					sha: child.sha,
@@ -342,6 +379,9 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	const inFlight = new Map<string, Map<string, Promise<void>>>();
 	/** project → item id → the sha its last advance left it at (the replayed tip, or the candidate itself). */
 	const advancedShas = new Map<string, Map<string, string>>();
+	const now = deps.now ?? Date.now;
+	/** project → item id → when its draft-PR publish was held; it is pulled again VERIFY_HELD_RETRY_MS later. */
+	const heldAt = new Map<string, Map<string, number>>();
 	/** Repos whose own upstream is red as of the last pull; their queued jobs stop on start. */
 	const stopped = new Set<string>();
 	/** The last pull's snapshot and the candidates it would pull next, for state(). */
@@ -421,6 +461,10 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				});
 				done.set(candidate.id, outcome);
 				advancedShasOf(repo.name).set(candidate.id, current.replayedSha ?? current.sha);
+				const held = heldAt.get(repo.name) ?? new Map<string, number>();
+				heldAt.set(repo.name, held);
+				if (outcome === "verify_held") held.set(candidate.id, now());
+				else held.delete(candidate.id);
 			},
 		});
 		await handle.settled;
@@ -514,6 +558,13 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		for (const id of done.keys()) if (!present.has(id)) done.delete(id);
 		const shas = advancedShasOf(repo.name);
 		for (const id of shas.keys()) if (!present.has(id)) shas.delete(id);
+		// A held draft-PR publish stays parked until its retry delay passes, then is pullable again.
+		for (const [id, at] of heldAt.get(repo.name) ?? []) {
+			if (!present.has(id) || now() - at >= VERIFY_HELD_RETRY_MS) {
+				heldAt.get(repo.name)?.delete(id);
+				if (done.get(id) === "verify_held") done.delete(id);
+			}
+		}
 		forgetStaleReady(repo);
 		const checkedOut = new Set(repo.checkedOutBranches);
 		return repo.candidates.map((c) => {
@@ -537,6 +588,22 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		});
 	}
 
+	/**
+	 * A repo verified by draft PRs: how many of its draft PRs await checks. They count toward the ready
+	 * target, so only the target's worth are in flight on GitHub Actions at once.
+	 */
+	function awaitingDraftPrs(repo: BufferRepo): number {
+		if (repo.verifyByDraftPr !== true) return 0;
+		const done = resultsOf(repo.name);
+		const jobs = inFlightOf(repo.name);
+		return repo.candidates.filter(
+			(c) =>
+				!jobs.has(c.id) &&
+				c.checksFailed !== true &&
+				(c.checksPending === true || (done.get(c.id) === "checks_pending" && c.state !== "ready")),
+		).length;
+	}
+
 	async function runPull(): Promise<void> {
 		const repos = await deps.snapshot();
 		stopped.clear();
@@ -553,7 +620,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		const pulls = deps.onBattery?.()
 			? []
 			: planReadyPulls(queueRepos, items, {
-					target: deps.target(),
+					target: deps.target() - active.reduce((sum, r) => sum + awaitingDraftPrs(r), 0),
 					capacity: deps.capacity(),
 					inFlight: [...inFlight.values()].reduce((sum, jobs) => sum + jobs.size, 0),
 				});
@@ -613,6 +680,9 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				}
 			}
 		}
+		const verifyNotices = lastRepos.flatMap((r) =>
+			r.verifyNotice === undefined ? [] : [{project: r.name, reason: r.verifyNotice}],
+		);
 		// The ledger is read only for the items shown.
 		const items = (entries: Entry[]) => entries.map(([repo, c]) => stateItem(repo, c));
 		return {
@@ -626,6 +696,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			),
 			stoppedProjects: lastRepos.filter((r) => stopped.has(r.name)).map((r) => r.name),
 			...(deps.onBattery?.() ? {pausedOnBattery: true as const} : {}),
+			...(verifyNotices.length === 0 ? {} : {verifyNotices}),
 		};
 	}
 

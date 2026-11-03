@@ -370,6 +370,7 @@ export {
 	pushGateDecision,
 } from "./lib/gha-gate.js";
 export {actionsBlockedByBilling, githubChecksSource} from "./lib/gha-checks.js";
+export {readDraftPrRepoFacts, resetDraftPrRepoFactsCache} from "./lib/draft-pr-facts.js";
 export {getAutoMergeAllowed, prRepository, resetAutoMergeAllowedCache} from "./lib/github-auto-merge.js";
 export {
 	DEFAULT_PRIORITY,
@@ -487,6 +488,9 @@ export {
 	type InventoryDiff,
 	type InventoryError,
 	diffInventories,
+	type DraftPrRepoFacts,
+	type DraftPrVerification,
+	draftPrVerification,
 	getInventoryPath,
 	inventoryExists,
 	type LandingMode,

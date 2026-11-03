@@ -8,6 +8,7 @@ import {
 	createReadyBuffer,
 	readyBufferEnabled,
 	testStep,
+	VERIFY_HELD_RETRY_MS,
 	type AdvanceOutcome,
 	type BufferCandidate,
 	type BufferRepo,
@@ -108,6 +109,8 @@ function harness(options: {
 	firstSeen?: (project: string, id: string) => string | undefined;
 	/** Whether the machine runs on battery; AC unless a test says otherwise. */
 	onBattery?: () => boolean;
+	/** The buffer's clock; real time unless a test says otherwise. */
+	now?: () => number;
 }): Harness {
 	const queue = createWorkQueue({
 		globalConcurrency: 4,
@@ -174,6 +177,7 @@ function harness(options: {
 		},
 		...(options.firstSeen === undefined ? {} : {firstSeen: options.firstSeen}),
 		...(options.onBattery === undefined ? {} : {onBattery: options.onBattery}),
+		...(options.now === undefined ? {} : {now: options.now}),
 	});
 	return {
 		buffer,
@@ -964,6 +968,76 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("counts draft PRs awaiting checks toward the ready target in a repo verified by draft PRs, so only that many are in flight", async () => {
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					verifyByDraftPr: true,
+					candidates: candidates(4, {c1: {state: "ready", branch: "b1", checksPending: true}}),
+				}),
+			],
+			target: 2,
+			outcome: () => "checks_pending",
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({advanced: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			advanced: ["a:c2"],
+			outcomes: {c2: "checks_pending"},
+		});
+	});
+
+	it("retries an item whose draft PR push the gate held once the retry delay passes, not on the refill right after", async () => {
+		let now = 1_000_000;
+		let held = true;
+		const h = harness({
+			repos: () => [repo("a", {landing: "pull-request", verifyByDraftPr: true, candidates: candidates(1)})],
+			target: 1,
+			now: () => now,
+			outcome: () => (held ? "verify_held" : "checks_pending"),
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		await h.buffer.pull();
+		await h.buffer.idle();
+		const beforeDelay = [...h.advanced];
+		held = false;
+		now += VERIFY_HELD_RETRY_MS;
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({beforeDelay, after: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			beforeDelay: ["a:c1"],
+			after: ["a:c1", "a:c1"],
+			outcomes: {c1: "checks_pending"},
+		});
+	});
+
+	it("lists why draft-PR verification is not in effect for a repo that asked for it", async () => {
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					candidates: [],
+					verifyNotice: "alice/a is private (GitHub Actions minutes cost money); testing locally",
+				}),
+				repo("b", {candidates: []}),
+			],
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect(h.buffer.state().verifyNotices).toStrictEqual([
+			{project: "a", reason: "alice/a is private (GitHub Actions minutes cost money); testing locally"},
+		]);
+	});
+
 	it("reports a failed refill after a finishing job instead of leaving an unhandled rejection", async () => {
 		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
 		queues.push(queue);
@@ -1374,6 +1448,134 @@ describe("bufferRepoFromChildren with the patch-id fast path", () => {
 			[sha("b"), "ready"],
 			[sha("c"), "unready"],
 		]);
+	});
+});
+
+/** A buffer repo's draft-PR flag and each candidate's sha, state and checks flags. */
+function draftView(buffered: BufferRepo) {
+	return {
+		verifyByDraftPr: buffered.verifyByDraftPr,
+		candidates: buffered.candidates.map((c) => [c.sha, c.state, c.checksPending ?? false, c.checksFailed ?? false]),
+	};
+}
+
+describe("bufferRepoFromChildren with draft-PR verification", () => {
+	const children = [
+		makeChild({
+			sha: sha("a"),
+			commitsBehind: 0,
+			localTestSkipped: true,
+			prNumber: 1,
+			checkStatus: "pending",
+			testStatus: "unknown",
+		}),
+		makeChild({
+			sha: sha("b"),
+			commitsBehind: 0,
+			localTestSkipped: true,
+			prNumber: 2,
+			checkStatus: "failed",
+			testStatus: "unknown",
+		}),
+		makeChild({
+			sha: sha("c"),
+			commitsBehind: 0,
+			localTestSkipped: true,
+			prNumber: 3,
+			checkStatus: "passed",
+			testStatus: "unknown",
+		}),
+	];
+	const context = {
+		identity: null,
+		checkedOutBranches: [],
+		onHold: () => false,
+		override: () => undefined,
+		landing: "pull-request" as const,
+		backgroundPush: true,
+	};
+
+	it("lists a draft PR's commit as awaiting or failed checks, its checks standing in for the local test", () => {
+		expect(
+			draftView(bufferRepoFromChildren(project("motlin/wip"), children, {...context, verifyByDraftPr: true})),
+		).toStrictEqual({
+			verifyByDraftPr: true,
+			candidates: [
+				[sha("a"), "ready", true, false],
+				[sha("b"), "ready", false, true],
+				[sha("c"), "ready", false, false],
+			],
+		});
+	});
+
+	it("leaves the patch-id fast path's skipped commits unready until their checks pass when the repo isn't verified by draft PRs", () => {
+		expect(draftView(bufferRepoFromChildren(project("motlin/wip"), children, context))).toStrictEqual({
+			verifyByDraftPr: undefined,
+			candidates: [
+				[sha("a"), "unready", false, false],
+				[sha("b"), "unready", false, false],
+				[sha("c"), "ready", false, false],
+			],
+		});
+	});
+
+	it("carries why verification is not in effect", () => {
+		expect(
+			bufferRepoFromChildren(project("motlin/wip"), [], {...context, verifyNotice: "why not"}).verifyNotice,
+		).toBe("why not");
+	});
+});
+
+describe("testStep (draft-PR verification)", () => {
+	const POST = "2".repeat(40);
+
+	async function step(options: {published: boolean; autoFixed?: boolean; replayed?: boolean}) {
+		const calls: string[] = [];
+		const outcome = await testStep(
+			{
+				trustPatchIdGreen: false,
+				verifyByDraftPr: true,
+				replayed: options.replayed ?? true,
+				hasTestConfigured: true,
+				preReplaySha: "1".repeat(40),
+				sha: POST,
+				...(options.autoFixed === undefined ? {} : {autoFixed: options.autoFixed}),
+			},
+			{
+				results: async (s) => {
+					calls.push(`results ${s.slice(0, 1)}`);
+					return Promise.resolve("unknown");
+				},
+				run: async (s) => {
+					calls.push(`run ${s.slice(0, 1)}`);
+					return Promise.resolve(0);
+				},
+				publish: async (s) => {
+					calls.push(`publish ${s.slice(0, 1)}`);
+					return Promise.resolve(options.published);
+				},
+				failedTests: async () => Promise.resolve(null),
+			},
+		);
+		return {outcome, calls};
+	}
+
+	it("never runs the local test: it publishes the commit as a draft PR and waits for its checks, replayed or not", async () => {
+		expect({
+			replayed: await step({published: true}),
+			onUpstream: await step({published: true, replayed: false}),
+		}).toStrictEqual({
+			replayed: {outcome: "checks_pending", calls: ["publish 2"]},
+			onUpstream: {outcome: "checks_pending", calls: ["publish 2"]},
+		});
+	});
+
+	it("holds the item for a retry when the publish didn't happen, still without a local test", async () => {
+		expect(await step({published: false})).toStrictEqual({outcome: "verify_held", calls: ["publish 2"]});
+	});
+
+	it("tests an unreviewed AI fixup locally instead of publishing it", async () => {
+		expect(await step({published: true, autoFixed: true})).toStrictEqual({outcome: "ready", calls: ["run 2"]});
 	});
 });
 

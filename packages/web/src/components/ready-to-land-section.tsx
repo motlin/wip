@@ -24,11 +24,13 @@ const CANCEL_CLASS = "rounded-md border border-border-300 px-2.5 py-1 font-mediu
  * PR the user clicks to open is user-initiated); fast-forward local main otherwise (never a push:
  * pushing main is the separate Push step). Null only when a
  * pull-request repo's commit has no branch to open a PR from. `autoMerge` marks a step that turns on
- * auto-merge (the repo allows it): Open PR, and Merge PR while the checks still run.
+ * auto-merge (the repo allows it): Open PR, and Merge PR while the checks still run. A commit whose PR is
+ * still a draft (draft-PR verification opened it) offers Open PR too, which marks that draft ready
+ * (`draftPrNumber`) instead of opening another.
  */
 export type LandingAction =
 	| {kind: "merge-pr"; label: string; prNumber: number; autoMerge: boolean}
-	| {kind: "open-pr"; label: string; branch: string; autoMerge: boolean}
+	| {kind: "open-pr"; label: string; branch: string; autoMerge: boolean; draftPrNumber?: number}
 	| {kind: "fast-forward"; label: string};
 
 export function landingAction(
@@ -38,6 +40,16 @@ export function landingAction(
 ): LandingAction | null {
 	if (item.landing !== "pull-request") return {kind: "fast-forward", label: `Fast-forward ${upstreamBranch}`};
 	const autoMergeAllowed = commit?.autoMergeAllowed === true;
+	const draftBranch = item.branch ?? commit?.branch;
+	if (commit?.prNumber !== undefined && commit.mergeStateStatus === "DRAFT" && draftBranch !== undefined) {
+		return {
+			kind: "open-pr",
+			label: "Open PR",
+			branch: draftBranch,
+			autoMerge: autoMergeAllowed,
+			draftPrNumber: commit.prNumber,
+		};
+	}
 	if (commit?.prNumber !== undefined) {
 		return {
 			kind: "merge-pr",
@@ -115,6 +127,14 @@ function LandingPrompt({
 				)}{" "}
 				for {what} in {item.project}.
 				{action.autoMerge && " Its checks are still running: it will merge itself when they pass."}
+			</>
+		);
+	}
+	if (action.kind === "open-pr" && action.draftPrNumber !== undefined) {
+		return (
+			<>
+				Mark draft PR #{action.draftPrNumber} for {what} ready for review in {item.project}.
+				{action.autoMerge && " It will merge itself when its checks pass."}
 			</>
 		);
 	}
@@ -833,7 +853,15 @@ export function ReadyToLandSection({
 		},
 	);
 	const paused = state.pausedOnBattery === true;
-	if (rows.length === 0 && state.inFlight.length === 0 && pushes.length === 0 && leftPushes.length === 0 && !paused) {
+	const verifyNotices = state.verifyNotices ?? [];
+	if (
+		rows.length === 0 &&
+		state.inFlight.length === 0 &&
+		pushes.length === 0 &&
+		leftPushes.length === 0 &&
+		!paused &&
+		verifyNotices.length === 0
+	) {
 		return null;
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
@@ -853,6 +881,15 @@ export function ReadyToLandSection({
 					Paused on battery: background tests resume when the Mac is plugged in.
 				</p>
 			)}
+			{verifyNotices.map((notice) => (
+				<p
+					key={notice.project}
+					data-testid="ready-to-land-verify-notice"
+					className="mb-2 text-xs text-text-300"
+				>
+					{notice.project}: {notice.reason}
+				</p>
+			))}
 			<ul className="flex flex-col gap-2">
 				{rows.map(({item, commit, view}) => {
 					const outcomeKey = landOutcomeKey(item.project, item.sha);

@@ -623,6 +623,18 @@ describe("local test skipped marker", () => {
 			unmarked: null,
 		});
 	});
+
+	it("says a draft-PR verified commit is tested by its PR checks instead", () => {
+		renderBranch(
+			branchItem({testStatus: "unknown", localTestSkipped: true, verifiedByDraftPr: true}),
+			"checks_running",
+			[project(true)],
+		);
+
+		expect(screen.getAllByTestId("local-test-skipped-marker").map((el) => el.textContent)).toStrictEqual([
+			"tested by draft PR checks",
+		]);
+	});
 });
 
 function primaryButtons() {

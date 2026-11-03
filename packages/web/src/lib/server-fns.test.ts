@@ -3153,7 +3153,7 @@ describe("abortRebaseHandler", () => {
 });
 
 /** Ready to land's Open PR in a repo that does or doesn't allow auto-merge: the gh calls, drafts and result. */
-async function openPr(name: string, autoMergeAllowed: boolean) {
+async function openPr(name: string, autoMergeAllowed: boolean, draftPrNumber?: number) {
 	const dir = await createTestGitRepo();
 	seedProjectCache([makeProject({name, dir, remote: "alice/example-repo", originRemote: "alice/example-repo"})]);
 	const gh: string[][] = [];
@@ -3185,7 +3185,13 @@ async function openPr(name: string, autoMergeAllowed: boolean) {
 		},
 	});
 	const {createPrHandler} = await import("./server-fns.impl.js");
-	const result = await createPrHandler({project: name, branch: "ship-it", title: "Ship it", autoMerge: true});
+	const result = await createPrHandler({
+		project: name,
+		branch: "ship-it",
+		title: "Ship it",
+		autoMerge: true,
+		...(draftPrNumber === undefined ? {} : {draftPrNumber}),
+	});
 	return {
 		gh,
 		drafts,
@@ -3402,6 +3408,30 @@ describe("queued git actions", () => {
 					autoMerge: true,
 					prNumber: 7,
 				},
+			});
+		});
+
+		it("marks the buffer's draft PR ready instead of opening another, then turns on auto-merge", async () => {
+			expect(await openPr("draft-pr-auto", true, 9)).toStrictEqual({
+				gh: [
+					["pr", "ready", "9", "-R", "alice/example-repo"],
+					["pr", "merge", "9", "--squash", "--delete-branch", "--auto", "-R", "alice/example-repo"],
+				],
+				drafts: [],
+				result: {
+					ok: true,
+					message: "Marked draft PR #9 ready; it will merge itself when its checks pass",
+					autoMerge: true,
+					prNumber: 9,
+				},
+			});
+		});
+
+		it("marks the buffer's draft PR ready and leaves auto-merge off where the repo doesn't allow it", async () => {
+			expect(await openPr("draft-pr-manual", false, 9)).toStrictEqual({
+				gh: [["pr", "ready", "9", "-R", "alice/example-repo"]],
+				drafts: [],
+				result: {ok: true, message: "Marked draft PR #9 ready", autoMerge: undefined, prNumber: 9},
 			});
 		});
 

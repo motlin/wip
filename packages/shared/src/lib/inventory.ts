@@ -26,6 +26,11 @@ export const ProjectRecordSchema = z.object({
 	landing: z.enum(["pull-request", "fast-forward"]).optional(),
 	/** Ready-buffer patch-id fast path (lean plan 4.2): off unless set, and only in pull-request repos. */
 	trustPatchIdGreen: z.boolean().optional(),
+	/**
+	 * How the ready buffer verifies a commit: unset or "local" runs git test here; "draft-pr" pushes it
+	 * as a draft PR and follows its GitHub Actions checks instead (see draftPrVerification).
+	 */
+	verify: z.enum(["local", "draft-pr"]).optional(),
 });
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
 
@@ -47,6 +52,57 @@ export function pushesInBackground(record: Pick<ProjectRecord, "landing"> | unde
  */
 export function trustsPatchIdGreen(record: Pick<ProjectRecord, "landing" | "trustPatchIdGreen">): boolean {
 	return record.trustPatchIdGreen === true && pushesInBackground(record);
+}
+
+/** What draft-PR verification needs to know about a repo's PR target, as read from GitHub and its workflows. */
+export interface DraftPrRepoFacts {
+	/** `owner/name` of the repo the PRs open in (see prRepository). */
+	repository: string;
+	isPrivate: boolean;
+	/** A workflow on the upstream branch runs on pull_request, so a draft PR gets checks. */
+	hasPullRequestWorkflows: boolean;
+}
+
+export type DraftPrVerification = {active: true} | {active: false; reason: string};
+
+/**
+ * Whether the ready buffer verifies this repo's commits with draft PRs on GitHub Actions instead of a
+ * local git test; null when the registry doesn't ask for it. Opt-in per repo only: it pushes and opens
+ * PRs in the background, so it also needs the explicit pull-request landing pushesInBackground needs,
+ * and only a public PR target with pull_request workflows qualifies (a private repo's Actions minutes
+ * cost money). `facts` is null while unknown. An ineligible repo keeps its local test and says why.
+ */
+export function draftPrVerification(
+	record: Pick<ProjectRecord, "landing" | "verify"> | undefined,
+	facts: DraftPrRepoFacts | null,
+): DraftPrVerification | null {
+	if (record?.verify !== "draft-pr") return null;
+	const testingLocally = "testing locally";
+	if (!pushesInBackground(record)) {
+		return {
+			active: false,
+			reason: `verify: "draft-pr" needs landing: "pull-request" in the registry; ${testingLocally}`,
+		};
+	}
+	if (facts === null) {
+		return {
+			active: false,
+			reason: `Can't tell yet whether the PR repo is public with pull_request checks; ${testingLocally}`,
+		};
+	}
+	if (facts.isPrivate) {
+		return {
+			active: false,
+			reason: `${facts.repository} is private (GitHub Actions minutes cost money); ${testingLocally}`,
+		};
+	}
+	if (!facts.hasPullRequestWorkflows) {
+		return {
+			active: false,
+			reason: `${facts.repository} has no GitHub Actions workflow that runs on pull_request; ${testingLocally}`,
+		};
+	}
+	return {active: true};
 }
 
 export interface InventoryError {

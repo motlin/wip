@@ -87,6 +87,10 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 									// Opened ready for review; the server turns on auto-merge only where the repo allows it.
 									autoMerge: true,
 									...(actionId === undefined ? {} : {actionId}),
+									// The buffer's draft PR for this branch: marked ready, not opened again.
+									...(action.draftPrNumber === undefined
+										? {}
+										: {draftPrNumber: action.draftPrNumber}),
 								},
 							})
 						: landFastForward({data: {project: item.project, sha: item.sha}});

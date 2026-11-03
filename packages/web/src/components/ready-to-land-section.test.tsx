@@ -267,6 +267,70 @@ describe("ReadyToLandSection", () => {
 		);
 	});
 
+	it("says why a repo's draft-PR verification is not in effect, even when the buffer holds nothing", () => {
+		render(
+			<ReadyToLandSection
+				state={{
+					...state,
+					ready: [],
+					inFlight: [],
+					verifyNotices: [{project: "secret", reason: "alice/secret is private; testing locally"}],
+				}}
+				commits={[]}
+				projects={[]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect(screen.getAllByTestId("ready-to-land-verify-notice").map((el) => el.textContent)).toStrictEqual([
+			"secret: alice/secret is private; testing locally",
+		]);
+	});
+
+	it("offers Open PR on a ready commit whose PR is the buffer's draft, marking that draft ready instead of opening another", () => {
+		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
+		const draft = makeChild({
+			project: "pub",
+			sha: sha("d1"),
+			subject: "Verified",
+			branch: "verified",
+			prNumber: 9,
+			prUrl: "https://github.com/motlin/pub/pull/9",
+			mergeStateStatus: "DRAFT",
+			commitsBehind: 0,
+			checkStatus: "passed",
+			autoMergeAllowed: true,
+		});
+		const item: ReadyToLandItem = {
+			project: "pub",
+			id: "pd1",
+			sha: sha("d1"),
+			branch: "verified",
+			landing: "pull-request",
+		};
+		render(
+			<ReadyToLandSection
+				state={{...state, ready: [item], inFlight: [], stoppedProjects: []}}
+				commits={[draft]}
+				projects={[project("pub")]}
+				now={now}
+				onLand={onLand}
+				onPush={() => undefined}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		const prompt = screen.getByTestId("land-confirm").textContent;
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+
+		expect({prompt, landed: onLand.mock.calls}).toStrictEqual({
+			prompt: 'Mark draft PR #9 for "Verified" (d100000) ready for review in pub. It will merge itself when its checks pass.ConfirmCancel',
+			landed: [[item, draft]],
+		});
+	});
+
 	it("holds a fixed-height Loading placeholder until the buffer state has loaded", () => {
 		render(
 			<ReadyToLandSection

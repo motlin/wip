@@ -398,6 +398,8 @@ export const GitChildResultSchema = z.object({
 	firstSeen: z.string().optional(),
 	/** The ready buffer's patch-id fast path skipped the local test (green before replay); ready once PR checks pass. */
 	localTestSkipped: z.boolean().optional(),
+	/** With localTestSkipped: draft-PR verification skipped it, so its draft PR's checks decide instead. */
+	verifiedByDraftPr: z.boolean().optional(),
 	/** Local `<upstreamBranch>` already contains it but the upstream branch does not: fast-forwarded, waiting for a push. */
 	onLocalMain: z.boolean().optional(),
 	/** The PR has auto-merge on: GitHub merges it itself once its checks pass. */
@@ -563,6 +565,8 @@ export const CreatePrInputSchema = z.object({
 	autoMerge: z.boolean().optional(),
 	/** The client's id for this action, so the tab it opened can follow its progress and result. */
 	actionId: z.string().min(1).max(100).optional(),
+	/** The branch already has this draft PR (draft-PR verification opened it): mark it ready instead of opening one. */
+	draftPrNumber: z.number().int().positive().optional(),
 });
 export type CreatePrInput = z.infer<typeof CreatePrInputSchema>;
 

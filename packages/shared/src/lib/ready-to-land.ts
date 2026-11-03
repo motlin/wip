@@ -51,6 +51,8 @@ export const ReadyToLandStateSchema = z.object({
 	stoppedProjects: z.array(z.string()),
 	/** Set while the machine runs on battery: the buffer starts no background work until AC power returns. */
 	pausedOnBattery: z.literal(true).optional(),
+	/** Repos whose registry asks for draft-PR verification that isn't in effect, and why; they test locally. */
+	verifyNotices: z.array(z.object({project: z.string(), reason: z.string()})).optional(),
 });
 export type ReadyToLandState = z.infer<typeof ReadyToLandStateSchema>;
 

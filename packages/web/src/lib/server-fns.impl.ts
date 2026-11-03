@@ -140,7 +140,7 @@ import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {getTracer} from "@wip/shared/services/telemetry.js";
 import type {LadderAiOptions} from "./task-queue.js";
 import {focusHerdrPane} from "./herdr/focus.js";
-import {isLocalTestSkipped} from "./local-test-skipped.js";
+import {isLocalTestSkipped, localTestSkipReason} from "./local-test-skipped.js";
 import type {HerdrResult} from "./herdr/client.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -440,6 +440,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					considerSplitting: facts && considerSplitting(facts, splitThresholdLines) ? true : undefined,
 					autoFixed: facts ? autoFixes.get(facts.patchId) : undefined,
 					localTestSkipped: isLocalTestSkipped(p.name, child.sha) || undefined,
+					verifiedByDraftPr: localTestSkipReason(p.name, child.sha) === "draft-pr" || undefined,
 					onLocalMain: onLocalMain.has(child.sha) || undefined,
 					autoMerge: (child.branch !== undefined && prStatuses.autoMerge.has(child.branch)) || undefined,
 					autoMergeAllowed: prStatuses.autoMergeAllowed || undefined,
@@ -1052,10 +1053,15 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 					return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
 				}
 
-				step("Opening the pull request…");
 				const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
 				// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
 				const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(repo));
+				if (data.draftPrNumber !== undefined) {
+					step("Marking the draft pull request ready…");
+					return markDraftReady(p, data.draftPrNumber, autoMerge, env);
+				}
+
+				step("Opening the pull request…");
 				const result = await createPullRequest({
 					owner,
 					name,
@@ -1472,6 +1478,39 @@ export async function forcePushHandler(data: ForcePushInput): Promise<ActionResu
 			return {ok: false, message: `Failed to force-push: ${result.stderr}`};
 		});
 	});
+}
+
+/**
+ * Open PR on a commit draft-PR verification already opened a draft for: mark that draft ready for
+ * review (one PR per branch, never a second) and turn on auto-merge where the repo allows it.
+ */
+async function markDraftReady(
+	p: ProjectInfo,
+	prNumber: number,
+	autoMerge: boolean,
+	env: Record<string, string>,
+): Promise<ActionResult> {
+	const {execa} = await import("execa");
+	const repo = prRepository(p);
+	const ready = await execa("gh", ["pr", "ready", String(prNumber), "-R", repo], {reject: false, cwd: p.dir, env});
+	if (ready.exitCode !== 0) {
+		return {
+			ok: false,
+			message: `Couldn't mark draft PR #${prNumber} ready: ${ready.stderr.trim() || `gh exited ${ready.exitCode}`}`,
+		};
+	}
+	invalidatePrCache(p.name);
+	invalidateChildrenCache(p.name);
+	const opened = {ok: true, prNumber, prUrl: `https://github.com/${repo}/pull/${prNumber}`};
+	if (!autoMerge) return {...opened, message: `Marked draft PR #${prNumber} ready`};
+	const refused = await enableAutoMerge(p, prNumber, env);
+	return refused === null
+		? {
+				...opened,
+				message: `Marked draft PR #${prNumber} ready; it will merge itself when its checks pass`,
+				autoMerge: true,
+			}
+		: {...opened, message: `Marked draft PR #${prNumber} ready, but couldn't turn on auto-merge: ${refused}`};
 }
 
 /** Turns on auto-merge (squash, delete the branch) for a PR; null on success, else gh's reason. */

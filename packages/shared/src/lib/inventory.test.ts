@@ -6,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 
 import {
 	diffInventories,
+	draftPrVerification,
 	inventoryExists,
 	landingMode,
 	loadInventory,
@@ -13,6 +14,7 @@ import {
 	saveInventory,
 	selectTrackedProjects,
 	trustsPatchIdGreen,
+	ProjectRecordSchema,
 	type ProjectRecord,
 } from "./inventory.js";
 
@@ -154,5 +156,63 @@ describe("landingMode and trustsPatchIdGreen", () => {
 			fastForward: false,
 			unregistered: false,
 		});
+	});
+});
+
+describe("draftPrVerification", () => {
+	const draft = record({kind: "fork", landing: "pull-request", verify: "draft-pr"});
+	const publicWithPrChecks = {repository: "alice/repo", isPrivate: false, hasPullRequestWorkflows: true};
+
+	it("is off unless the repo sets verify: draft-pr, whatever the repo is", () => {
+		expect({
+			unset: draftPrVerification(record({kind: "fork", landing: "pull-request"}), publicWithPrChecks),
+			local: draftPrVerification(
+				record({kind: "fork", landing: "pull-request", verify: "local"}),
+				publicWithPrChecks,
+			),
+			unregistered: draftPrVerification(undefined, publicWithPrChecks),
+		}).toStrictEqual({unset: null, local: null, unregistered: null});
+	});
+
+	it("is in effect for a public PR target with pull_request workflows in a repo explicitly landing by pull request", () => {
+		expect(draftPrVerification(draft, publicWithPrChecks)).toStrictEqual({active: true});
+	});
+
+	it("says why it is not in effect, and keeps local tests, when the repo is ineligible", () => {
+		expect({
+			unsetLanding: draftPrVerification(record({kind: "fork", verify: "draft-pr"}), publicWithPrChecks),
+			fastForward: draftPrVerification(
+				record({kind: "fork", landing: "fast-forward", verify: "draft-pr"}),
+				publicWithPrChecks,
+			),
+			unknown: draftPrVerification(draft, null),
+			private: draftPrVerification(draft, {...publicWithPrChecks, isPrivate: true}),
+			noWorkflows: draftPrVerification(draft, {...publicWithPrChecks, hasPullRequestWorkflows: false}),
+		}).toStrictEqual({
+			unsetLanding: {
+				active: false,
+				reason: 'verify: "draft-pr" needs landing: "pull-request" in the registry; testing locally',
+			},
+			fastForward: {
+				active: false,
+				reason: 'verify: "draft-pr" needs landing: "pull-request" in the registry; testing locally',
+			},
+			unknown: {
+				active: false,
+				reason: "Can't tell yet whether the PR repo is public with pull_request checks; testing locally",
+			},
+			private: {
+				active: false,
+				reason: "alice/repo is private (GitHub Actions minutes cost money); testing locally",
+			},
+			noWorkflows: {
+				active: false,
+				reason: "alice/repo has no GitHub Actions workflow that runs on pull_request; testing locally",
+			},
+		});
+	});
+
+	it("reads the setting from the registry file", () => {
+		expect(ProjectRecordSchema.parse({...draft, verify: "draft-pr"}).verify).toBe("draft-pr");
 	});
 });

@@ -1392,14 +1392,20 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 					</button>
 				)}
 
-				{/* Patch-id fast path: the local build was skipped after a clean replay; PR checks decide readiness */}
+				{/* Patch-id fast path or draft-PR verification: no local build; PR checks decide readiness */}
 				{at("marker") && item.localTestSkipped && (
 					<span
 						data-testid="local-test-skipped-marker"
 						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
-						title="The commit was green before a clean replay; it counts as ready once its PR checks pass"
+						title={
+							item.verifiedByDraftPr === true
+								? "This repo verifies commits with draft PRs on GitHub Actions; it counts as ready once its PR checks pass"
+								: "The commit was green before a clean replay; it counts as ready once its PR checks pass"
+						}
 					>
-						local test skipped (green before replay)
+						{item.verifiedByDraftPr === true
+							? "tested by draft PR checks"
+							: "local test skipped (green before replay)"}
 					</span>
 				)}
 

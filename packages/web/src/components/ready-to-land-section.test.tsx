@@ -974,6 +974,18 @@ describe("ReadyToLandSection row order", () => {
 			shuffled: rowOrder({...checksBase, checksFailed: [middle], awaitingChecks: [newest, oldest]}),
 		}).toStrictEqual({byList: expected, reversed: expected, shuffled: expected});
 	});
+
+	it("puts the user's priority first and keeps rows put across server updates within a priority", () => {
+		const high = {...newest, priority: "high" as const};
+		const low = {...oldest, priority: "low" as const};
+		const expected = ["checks-failed-row:Newest", "waiting-row:Middle", "ready-to-land-row:Oldest"];
+
+		expect({
+			byList: rowOrder({...checksBase, ready: [low], awaitingChecks: [middle], checksFailed: [high]}),
+			reversed: rowOrder({...checksBase, ready: [low, middle, high]}),
+			shuffled: rowOrder({...checksBase, checksFailed: [middle], awaitingChecks: [low, high]}),
+		}).toStrictEqual({byList: expected, reversed: expected, shuffled: expected});
+	});
 });
 
 describe("ReadyLandPanel", () => {

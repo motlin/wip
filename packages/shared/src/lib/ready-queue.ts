@@ -1,4 +1,4 @@
-import {effectivePriority, type Priority} from "./priority.js";
+import {effectivePriority, PRIORITY_RANK, type Priority} from "./priority.js";
 
 /** A registry repo; an unset priority reads as medium. Client-safe: no node builtins. */
 export interface ReadyQueueRepo {
@@ -27,8 +27,6 @@ export interface ReadyPullLimits {
 	inFlight: number;
 }
 
-const TIER_RANK: Record<Priority, number> = {high: 0, medium: 1, low: 2};
-
 /**
  * Plan decision 27: one queue of pullable candidates across every repo, ordered by effective
  * priority (item override > repo > medium), then remaining job, then input order (each repo's
@@ -42,7 +40,7 @@ export function orderReadyQueue(repos: readonly ReadyQueueRepo[], items: readonl
 			.map((it, index) => ({
 				it,
 				index,
-				tier: TIER_RANK[effectivePriority({repo: repoPriority.get(it.repo), override: it.override})],
+				tier: PRIORITY_RANK[effectivePriority({repo: repoPriority.get(it.repo), override: it.override})],
 			}))
 			// eslint-disable-next-line unicorn/no-array-sort -- sorts the fresh array produced by map
 			.sort((a, b) => a.tier - b.tier || (a.it.job ?? 0) - (b.it.job ?? 0) || a.index - b.index)

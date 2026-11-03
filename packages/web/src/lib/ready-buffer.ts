@@ -10,6 +10,7 @@ import type {
 import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {withinBaseline} from "@wip/shared/baseline-failures.js";
 import {isGreen} from "@wip/shared/readiness.js";
+import {DEFAULT_PRIORITY, effectivePriority} from "@wip/shared/priority.js";
 import {orderReadyQueue, planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
 import {
 	landingOrder,
@@ -567,6 +568,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 
 	function stateItem(repo: BufferRepo, candidate: BufferCandidate): ReadyToLandItem {
 		const firstSeen = deps.firstSeen?.(repo.name, candidate.id);
+		const priority = effectivePriority({repo: repo.priority, override: candidate.override});
 		return {
 			project: repo.name,
 			id: candidate.id,
@@ -576,6 +578,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			...(candidate.parentSha === undefined ? {} : {parentSha: candidate.parentSha}),
 			...(repo.landing === undefined ? {} : {landing: repo.landing}),
 			...(firstSeen === undefined ? {} : {firstSeen}),
+			...(priority === DEFAULT_PRIORITY ? {} : {priority}),
 		};
 	}
 

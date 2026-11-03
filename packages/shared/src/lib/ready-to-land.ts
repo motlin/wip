@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {DEFAULT_PRIORITY, PRIORITY_RANK, PrioritySchema} from "./priority.js";
 import type {GitChildResult} from "./schemas.js";
 
 /**
@@ -19,6 +20,11 @@ export const ReadyToLandItemSchema = z.object({
 	landing: z.enum(["pull-request", "fast-forward"]).optional(),
 	/** First seen by patch-id, from the work-item ledger (DB format, UTC). */
 	firstSeen: z.string().optional(),
+	/**
+	 * Effective priority (item override > repo > medium), the one the ready queue orders by; unset
+	 * reads as medium.
+	 */
+	priority: PrioritySchema.optional(),
 });
 export type ReadyToLandItem = z.infer<typeof ReadyToLandItemSchema>;
 
@@ -75,17 +81,21 @@ const NOT_SEEN = "\uffff";
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+const tierOf = (item: ReadyToLandItem): number => PRIORITY_RANK[item.priority ?? DEFAULT_PRIORITY];
+
 /**
  * The Ready to land section's row order, the same whatever order the server lists items in and
- * whichever list (ready, awaiting checks, checks failed) each sits in: oldest first seen first, then
- * project, then patch-id, with stack prefixes pulled before the commits stacked on them. A row that
- * changes state keeps its place, so server updates never reflow the section.
+ * whichever list (ready, awaiting checks, checks failed) each sits in: effective priority first
+ * ("priority is ordering", as in orderReadyQueue), then oldest first seen, then project, then
+ * patch-id, with stack prefixes pulled before the commits stacked on them. A row that changes state
+ * keeps its place, so rows move only when the user changes a priority.
  */
 export function stableRowOrder<T extends ReadyToLandItem>(items: readonly T[]): T[] {
 	// tsconfig targets es2022, so Array#toSorted is not in the lib typings.
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh copy, never the caller's array
 	const sorted = [...items].sort(
 		(a, b) =>
+			tierOf(a) - tierOf(b) ||
 			compareText(a.firstSeen ?? NOT_SEEN, b.firstSeen ?? NOT_SEEN) ||
 			compareText(a.project, b.project) ||
 			compareText(a.id, b.id) ||

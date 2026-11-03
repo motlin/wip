@@ -547,6 +547,29 @@ describe("createReadyBuffer", () => {
 		]);
 	});
 
+	it("carries each item's effective priority (override over repo) into the state, leaving medium unset", async () => {
+		const repos = [
+			repo("hi", {
+				priority: "high",
+				candidates: candidates(2, {c1: {state: "ready"}, c2: {state: "ready", override: "low"}}),
+			}),
+			repo("mid", {
+				priority: "medium",
+				candidates: candidates(2, {c1: {state: "ready"}, c2: {state: "ready", override: "high"}}),
+			}),
+		];
+		const h = harness({repos: () => repos, gated: true});
+
+		await h.buffer.pull();
+
+		expect(h.buffer.state().ready).toStrictEqual([
+			{project: "hi", id: "c1", sha: paddedSha("c1"), priority: "high"},
+			{project: "hi", id: "c2", sha: paddedSha("c2"), priority: "low"},
+			{project: "mid", id: "c1", sha: paddedSha("c1")},
+			{project: "mid", id: "c2", sha: paddedSha("c2"), priority: "high"},
+		]);
+	});
+
 	it("carries a ready item's other branch names into the state", async () => {
 		const [named] = candidates(1, {c1: {state: "ready", branch: "one", otherBranches: ["two"]}});
 		const h = harness({repos: () => [repo("a", {candidates: [named!]})], gated: true});

@@ -76,6 +76,28 @@ describe("stableRowOrder", () => {
 
 		expect(stableRowOrder([other, parent, child])).toStrictEqual([parent, child, other]);
 	});
+
+	it("puts a higher priority first, so a newer high-priority item sorts above an older normal one", () => {
+		const olderMedium = seen(item("a", "c1"), "2026-01-01 00:00:00");
+		const newerHigh = {...seen(item("b", "d1"), "2026-01-03 00:00:00"), priority: "high" as const};
+		const olderLow = {...seen(item("a", "c0"), "2025-12-01 00:00:00"), priority: "low" as const};
+		const newerMedium = {...seen(item("c", "e1"), "2026-01-02 00:00:00"), priority: "medium" as const};
+
+		expect(stableRowOrder([olderLow, olderMedium, newerMedium, newerHigh])).toStrictEqual([
+			newerHigh,
+			olderMedium,
+			newerMedium,
+			olderLow,
+		]);
+	});
+
+	it("keeps a stacked commit after its parent even when the commit has the higher priority", () => {
+		const parent = {...seen(item("a", "c1"), "2026-01-01 00:00:00"), priority: "low" as const};
+		const child = {...seen(item("a", "c2", "c1"), "2026-01-02 00:00:00"), priority: "high" as const};
+		const other = seen(item("b", "d1"), "2026-01-01 00:00:00");
+
+		expect(stableRowOrder([other, child, parent])).toStrictEqual([parent, child, other]);
+	});
 });
 
 describe("ReadyToLandStateSchema", () => {

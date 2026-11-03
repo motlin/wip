@@ -8,6 +8,9 @@ export type Priority = z.infer<typeof PrioritySchema>;
 
 export const DEFAULT_PRIORITY: Priority = "medium";
 
+/** Sort rank of each priority: high first. */
+export const PRIORITY_RANK: Record<Priority, number> = {high: 0, medium: 1, low: 2};
+
 /** What an override is attached to: a commit by patch-id (so it survives rebases) or a todo by todoItemKey. */
 export type PriorityItemRef = {kind: "commit" | "todo"; key: string};
 

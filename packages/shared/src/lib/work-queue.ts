@@ -318,6 +318,11 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 
 	function pump(): void {
 		sortQueued();
+		// Before any gate, so a hot probe, the buffer-only rule, or a full slot count never keeps a
+		// user action waiting behind preemptible background work.
+		for (const job of queued) {
+			if (job.resources.some((resource) => resourceFull(resource))) preemptFor(job);
+		}
 		let slots = globalConcurrency - running.size;
 		if (slots <= 0) return;
 
@@ -345,7 +350,6 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 				continue;
 			}
 			if (job.resources.some((resource) => resourceFull(resource))) {
-				preemptFor(job);
 				index += 1;
 				continue;
 			}

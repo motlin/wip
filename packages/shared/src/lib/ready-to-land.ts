@@ -70,6 +70,30 @@ export function landingOrder<T extends ReadyToLandItem>(items: readonly T[]): T[
 	return result;
 }
 
+/** Rows not yet in the work-item ledger sort after every row that is. */
+const NOT_SEEN = "\uffff";
+
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The Ready to land section's row order, the same whatever order the server lists items in and
+ * whichever list (ready, awaiting checks, checks failed) each sits in: oldest first seen first, then
+ * project, then patch-id, with stack prefixes pulled before the commits stacked on them. A row that
+ * changes state keeps its place, so server updates never reflow the section.
+ */
+export function stableRowOrder<T extends ReadyToLandItem>(items: readonly T[]): T[] {
+	// tsconfig targets es2022, so Array#toSorted is not in the lib typings.
+	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh copy, never the caller's array
+	const sorted = [...items].sort(
+		(a, b) =>
+			compareText(a.firstSeen ?? NOT_SEEN, b.firstSeen ?? NOT_SEEN) ||
+			compareText(a.project, b.project) ||
+			compareText(a.id, b.id) ||
+			compareText(a.sha, b.sha),
+	);
+	return landingOrder(sorted);
+}
+
 type PrChecks = Pick<GitChildResult, "prNumber" | "checkStatus" | "mergeStateStatus">;
 
 /** A PR whose checks failed: it never lands until they pass again. */

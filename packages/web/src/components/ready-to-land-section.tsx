@@ -2,11 +2,11 @@ import {useEffect, useRef, useState, type ReactNode} from "react";
 import {Link} from "@tanstack/react-router";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {
-	landingOrder,
 	openPrRefusal,
 	prChecksFailed,
 	prChecksPending,
 	readyRowView,
+	stableRowOrder,
 	type ReadyToLandItem,
 	type ReadyToLandState,
 } from "@wip/shared/ready-to-land.js";
@@ -778,8 +778,8 @@ export interface ReadyToLandSectionProps {
 }
 
 /**
- * Lean plan step 42: the ready buffer's ready commits, pinned first on /queue, in landing order
- * (stack prefixes first), each a card with size, age ("in wip Nd" from first seen), markers, a
+ * Lean plan step 42: the ready buffer's ready commits, pinned first on /queue, in a stable order
+ * (oldest first seen first, stack prefixes before what is stacked on them), each a card with size, age ("in wip Nd" from first seen), markers, a
  * Review link to its diff and the landing action, which lands only after a confirm naming what lands.
  * Projects whose local main is ahead of its remote get a compact Push main group below the commits.
  */
@@ -824,8 +824,9 @@ export function ReadyToLandSection({
 	if (state === null) return null;
 	const commitOf = commitLookup(commits);
 	// A PR whose checks failed never lands, and one whose checks still run shows as waiting unless
-	// Merge PR can turn on auto-merge; see readyRowView.
-	const rows = landingOrder([...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])]).map(
+	// Merge PR can turn on auto-merge; see readyRowView. Rows keep one stable order across server
+	// updates and state changes (see stableRowOrder): no reflow.
+	const rows = stableRowOrder([...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])]).map(
 		(item) => {
 			const commit = commitOf(item);
 			return {item, commit, view: readyRowView(item, commit)};

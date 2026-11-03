@@ -99,7 +99,7 @@ describe("ReadyToLandSection", () => {
 		cleanup();
 	});
 
-	it("renders ready commits in landing order with size, age, markers and the landing action", () => {
+	it("renders ready commits oldest first seen first, stack prefixes first, with size, age, markers and the landing action", () => {
 		render(
 			<ReadyToLandSection
 				state={state}
@@ -117,9 +117,9 @@ describe("ReadyToLandSection", () => {
 		}).toStrictEqual({
 			heading: "Ready to land6 ready (target 3) · 1 readying",
 			rows: [
+				"Fix redredin wip 3dupstream redconsider splittingPR #7ReviewMerge PR #7",
 				"Add parsera+10 −2 · 1 filein wip 1dReviewFast-forward main",
 				"Use parsera+3 −0 · 2 filesReviewFast-forward main",
-				"Fix redredin wip 3dupstream redconsider splittingPR #7ReviewMerge PR #7",
 				"No tests hereplainno testsReviewOpen PR",
 				"Detachedplainno testsReview",
 				"Unrelatedredupstream redPR #8Reviewred's upstream is red: only the commit that makes it green can land",
@@ -350,17 +350,17 @@ describe("ReadyToLandSection", () => {
 
 		expect(screen.getAllByTestId("ready-to-land-row").map(links)).toStrictEqual([
 			[
+				["Fix red", `/item/red/${sha("r1")}`],
+				["PR #7", "https://github.com/motlin/red/pull/7"],
+				["Review", `/diff/red/${sha("r1")}`],
+			],
+			[
 				["Add parser", `/item/a/${sha("a1")}`],
 				["Review", `/diff/a/${sha("a1")}`],
 			],
 			[
 				["Use parser", `/item/a/${sha("a2")}`],
 				["Review", `/diff/a/${sha("a2")}`],
-			],
-			[
-				["Fix red", `/item/red/${sha("r1")}`],
-				["PR #7", "https://github.com/motlin/red/pull/7"],
-				["Review", `/diff/red/${sha("r1")}`],
 			],
 			[
 				["No tests here", `/item/plain/${sha("p1")}`],
@@ -773,17 +773,13 @@ describe("ReadyToLandSection while PR checks run", () => {
 			buttons: screen.getAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
 			heading: "Ready to land2 ready (target 3) · 0 readying",
-			rows: ["GreenprPR #5ReviewMerge PR #5", "AllowedprPR #4ReviewMerge PR #4"],
+			rows: ["AllowedprPR #4ReviewMerge PR #4", "GreenprPR #5ReviewMerge PR #5"],
 			waiting: [
-				"Waiting · pr · PR #2 · waiting for checks",
 				"Merging · pr · PR #1 · waiting for checks, merges itself when they pass",
 				"Not reported · pr · PR #3 · waiting for checks",
+				"Waiting · pr · PR #2 · waiting for checks",
 			],
 			links: [
-				[
-					["Waiting", `/item/pr/${sha("w1")}`],
-					["PR #2", prUrl(2)],
-				],
 				[
 					["Merging", `/item/pr/${sha("m1")}`],
 					["PR #1", prUrl(1)],
@@ -792,9 +788,13 @@ describe("ReadyToLandSection while PR checks run", () => {
 					["Not reported", `/item/pr/${sha("n1")}`],
 					["PR #3", prUrl(3)],
 				],
+				[
+					["Waiting", `/item/pr/${sha("w1")}`],
+					["PR #2", prUrl(2)],
+				],
 			],
 			targets: ["_blank", "_blank", "_blank"],
-			buttons: ["Merge PR #5", "Merge PR #4"],
+			buttons: ["Merge PR #4", "Merge PR #5"],
 		});
 	});
 
@@ -900,6 +900,79 @@ describe("ReadyToLandSection while PR checks run", () => {
 		expect(screen.getByTestId("land-confirm").textContent).toBe(
 			'Open a PR for "Open me" (o100000) from branch open-me in pr. It will merge itself when its checks pass.ConfirmCancel',
 		);
+	});
+});
+
+const checksBase: ReadyToLandState = {slots: 3, ready: [], inFlight: [], next: [], stoppedProjects: []};
+
+describe("ReadyToLandSection row order", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	const orderCommits = [
+		makeChild({
+			project: "b",
+			sha: sha("b1"),
+			subject: "Oldest",
+			prNumber: 1,
+			prUrl: prUrl(1),
+			checkStatus: "passed",
+		}),
+		makeChild({
+			project: "a",
+			sha: sha("a1"),
+			subject: "Middle",
+			prNumber: 2,
+			prUrl: prUrl(2),
+			checkStatus: "running",
+		}),
+		makeChild({
+			project: "a",
+			sha: sha("a2"),
+			subject: "Newest",
+			prNumber: 3,
+			prUrl: prUrl(3),
+			checkStatus: "failed",
+		}),
+	];
+	const seenItem = (projectName: string, id: string, firstSeen: string): ReadyToLandItem => ({
+		project: projectName,
+		id,
+		sha: sha(id),
+		landing: "pull-request",
+		firstSeen,
+	});
+	const oldest = seenItem("b", "b1", "2026-10-20 12:00:00");
+	const middle = seenItem("a", "a1", "2026-10-21 12:00:00");
+	const newest = seenItem("a", "a2", "2026-10-22 12:00:00");
+
+	function rowOrder(rowState: ReadyToLandState): (string | null)[] {
+		const {unmount} = render(
+			<ReadyToLandSection
+				state={rowState}
+				commits={orderCommits}
+				projects={[project("a"), project("b")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+		const order = screen
+			.getAllByRole("listitem")
+			.map((row) => `${row.dataset.testid}:${within(row).getAllByRole("link")[0]?.textContent}`);
+		unmount();
+		return order;
+	}
+
+	it("keeps every row in the same place whatever order and lists the server sends them in", () => {
+		const expected = ["ready-to-land-row:Oldest", "waiting-row:Middle", "checks-failed-row:Newest"];
+
+		expect({
+			byList: rowOrder({...checksBase, ready: [oldest], awaitingChecks: [middle], checksFailed: [newest]}),
+			reversed: rowOrder({...checksBase, ready: [newest, middle, oldest]}),
+			shuffled: rowOrder({...checksBase, checksFailed: [middle], awaitingChecks: [newest, oldest]}),
+		}).toStrictEqual({byList: expected, reversed: expected, shuffled: expected});
 	});
 });
 

@@ -67,39 +67,61 @@ async function waitForServer(url, server) {
 	throw new Error(`wip server did not answer at ${url}`);
 }
 
-/** The row's box in page coordinates (Playwright scrolling a button into view is not a layout shift). */
-async function rowBox(row) {
-	return row.evaluate((element) => {
-		const box = element.getBoundingClientRect();
-		return {x: box.x + window.scrollX, y: box.y + window.scrollY, width: box.width, height: box.height};
-	});
+const ROW_SELECTOR = ["ready-to-land-row", "waiting-row", "checks-failed-row"]
+	.map((id) => `[data-testid="${id}"]`)
+	.join(", ");
+
+/**
+ * Every Ready to land row as its kind and subject with its box in page coordinates (Playwright
+ * scrolling a button into view is not a layout shift), in page order.
+ */
+async function rowBoxes(page) {
+	return page.locator(ROW_SELECTOR).evaluateAll((rows) =>
+		rows.map((element) => {
+			const box = element.getBoundingClientRect();
+			return {
+				row: `${element.dataset.testid}: ${element.querySelector('a[href^="/item/"]')?.textContent ?? "?"}`,
+				box: {x: box.x + window.scrollX, y: box.y + window.scrollY, width: box.width, height: box.height},
+			};
+		}),
+	);
 }
 
 /**
- * The row's box once it has not moved for a second, so a measurement around a click sees only what
+ * Every row's box once none has moved for a second, so a measurement around a click sees only what
  * the click does, not the previous action's rows still settling.
  */
-async function stableRowBox(row) {
-	let previous = await rowBox(row);
+async function stableRowBoxes(page) {
+	let previous = await rowBoxes(page);
 	const deadline = Date.now() + WAIT_MS;
 	while (Date.now() < deadline) {
 		// eslint-disable-next-line no-await-in-loop -- samples the layout until it settles
-		await row.page().waitForTimeout(1000);
+		await page.waitForTimeout(1000);
 		// eslint-disable-next-line no-await-in-loop -- samples the layout until it settles
-		const current = await rowBox(row);
+		const current = await rowBoxes(page);
 		if (JSON.stringify(current) === JSON.stringify(previous)) return current;
 		previous = current;
 	}
-	throw new Error("the row never stopped moving");
+	throw new Error("the Ready to land rows never stopped moving");
 }
 
 /**
- * The confirm and the outcome are overlays: opening them must not move or resize the row. A row
- * that already left Ready to land (its action finished) has nothing left to shift.
+ * The confirm and the outcome are overlays, and server updates never reorder rows: no Ready to land
+ * row may move or resize. Rows keep their order; once the clicked row's own action changes it (it
+ * leaves, or becomes a waiting row), only the rows above it must keep their boxes.
  */
-async function assertNoLayoutShift(row, before, what) {
-	if ((await row.count()) === 0) return;
-	assert.deepEqual(await rowBox(row), before, `${what}: the row moved or resized`);
+async function assertNoLayoutShift(page, before, what) {
+	const after = await rowBoxes(page);
+	const afterRows = new Set(after.map(({row}) => row));
+	const beforeRows = new Set(before.map(({row}) => row));
+	assert.deepEqual(
+		after.map(({row}) => row).filter((row) => beforeRows.has(row)),
+		before.map(({row}) => row).filter((row) => afterRows.has(row)),
+		`${what}: the rows reordered`,
+	);
+	const firstChange = before.findIndex(({row}, i) => after[i]?.row !== row);
+	const unchanged = firstChange === -1 ? before.length : firstChange;
+	assert.deepEqual(after.slice(0, unchanged), before.slice(0, unchanged), `${what}: a row moved or resized`);
 }
 
 function readyRow(page, subject) {
@@ -136,21 +158,21 @@ async function assertRowsStay(page, rows, what) {
 
 /**
  * Clicks Open PR on the row and confirms. Returns the tab the confirm opened, once it reaches the PR
- * the fake GitHub opened, after checking the confirm and the running outcome never moved the row and
+ * the fake GitHub opened, after checking the confirm and the running outcome never moved a row and
  * the `stay` rows never left the page while it ran.
  */
 async function openPr(page, subject, expectedPrUrl, stay = []) {
 	const row = readyRow(page, subject);
-	const before = await stableRowBox(row);
+	const before = await stableRowBoxes(page);
 	await row.getByRole("button", {name: "Open PR"}).click();
 	await page.getByTestId("land-confirm").waitFor();
-	await assertNoLayoutShift(row, before, `${subject}: opening the confirm`);
+	await assertNoLayoutShift(page, before, `${subject}: opening the confirm`);
 	const popupPromise = page.context().waitForEvent("page");
 	await page.getByTestId("land-confirm").getByRole("button", {name: "Confirm"}).click();
 	const tab = await popupPromise;
 	const firstUrl = tab.url();
 	await page.getByRole("dialog", {name: "Action result"}).waitFor();
-	await assertNoLayoutShift(row, before, `${subject}: running Open PR`);
+	await assertNoLayoutShift(page, before, `${subject}: running Open PR`);
 	// The tab's own poll and the opener both send it to the PR, so a navigation can abort another: poll the URL.
 	const deadline = Date.now() + WAIT_MS;
 	while (tab.url() !== expectedPrUrl) {
@@ -312,10 +334,10 @@ async function run() {
 		step("Fast-forward main");
 		const upstreamBefore = world.git(gadgets.upstreamBare, "rev-parse", "refs/heads/main");
 		const ffRow = readyRow(page, "Add the fast-forward feature");
-		const ffBefore = await stableRowBox(ffRow);
+		const ffBefore = await stableRowBoxes(page);
 		await ffRow.getByRole("button", {name: "Fast-forward main"}).click();
 		await page.getByTestId("land-confirm").getByRole("button", {name: "Confirm"}).click();
-		await assertNoLayoutShift(ffRow, ffBefore, "Fast-forward main");
+		await assertNoLayoutShift(page, ffBefore, "Fast-forward main");
 		await page.getByTestId("action-outcome").filter({hasText: "Moved local main to"}).waitFor();
 		assert.equal(world.git(gadgets.clone, "rev-parse", "refs/heads/main"), world.shas.ffSha);
 		assert.equal(world.git(gadgets.upstreamBare, "rev-parse", "refs/heads/main"), upstreamBefore, "nothing pushed");

@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vite-plus/test";
 import {
 	landingOrder,
+	stableRowOrder,
 	prChecksPending,
 	prChecksFailed,
 	readyRowView,
@@ -14,6 +15,8 @@ const item = (project: string, id: string, parentSha?: string): ReadyToLandItem 
 	sha: id.padEnd(40, "0"),
 	...(parentSha === undefined ? {} : {parentSha: parentSha.padEnd(40, "0")}),
 });
+
+const seen = (readyItem: ReadyToLandItem, firstSeen: string): ReadyToLandItem => ({...readyItem, firstSeen});
 
 describe("landingOrder", () => {
 	it("pulls a stack prefix forward to just before the commit stacked on it, and keeps the rest in input order", () => {
@@ -37,6 +40,41 @@ describe("landingOrder", () => {
 		const items = [item("b", "c2", "c1"), item("a", "c1")];
 
 		expect(landingOrder(items)).toStrictEqual(items);
+	});
+});
+
+describe("stableRowOrder", () => {
+	it("orders rows by first seen, then project, then patch-id, whatever order the server sent them in", () => {
+		const a = seen(item("b", "d1"), "2026-01-02 00:00:00");
+		const b = seen(item("a", "c9"), "2026-01-01 00:00:00");
+		const c = seen(item("a", "c1"), "2026-01-02 00:00:00");
+		const d = item("a", "c0");
+		const expected = [b, c, a, d];
+
+		expect({
+			forward: stableRowOrder([a, b, c, d]),
+			reversed: stableRowOrder([d, c, b, a]),
+		}).toStrictEqual({forward: expected, reversed: expected});
+	});
+
+	it("keeps a row's place when it moves between the ready, waiting and checks-failed lists", () => {
+		const one = seen(item("a", "c1"), "2026-01-01 00:00:00");
+		const two = seen(item("b", "d1"), "2026-01-02 00:00:00");
+		const three = seen(item("a", "c3"), "2026-01-03 00:00:00");
+
+		expect({
+			allReady: stableRowOrder([one, two, three]),
+			twoWaiting: stableRowOrder([one, three, two]),
+			oneFailed: stableRowOrder([two, three, one]),
+		}).toStrictEqual({allReady: [one, two, three], twoWaiting: [one, two, three], oneFailed: [one, two, three]});
+	});
+
+	it("still lands a stack prefix before the commit stacked on it", () => {
+		const child = seen(item("a", "c2", "c1"), "2026-01-01 00:00:00");
+		const parent = seen(item("a", "c1"), "2026-01-02 00:00:00");
+		const other = seen(item("b", "d1"), "2026-01-01 12:00:00");
+
+		expect(stableRowOrder([other, parent, child])).toStrictEqual([parent, child, other]);
 	});
 });
 

@@ -159,16 +159,14 @@ export function createWorld() {
 		return {name, clone, seed, upstreamBare, forkBare, branch, landUpstream};
 	};
 
-	// Pull-request repo: one ready commit and one with a PR waiting for checks.
+	// Pull-request repo: one ready commit, one that goes behind upstream after the first Open PR, and
+	// one with a PR waiting for checks. Both Open PRs run here, so the second one only works if the
+	// first left this repo's rows on the page.
 	const widgets = repo("widgets");
 	const readySha = widgets.branch("ready-feature", "ready.txt", "Add the ready feature");
+	const behindSha = widgets.branch("behind-feature", "behind.txt", "Add the behind feature");
 	const waitingSha = widgets.branch("waiting-feature", "waiting.txt", "Add the waiting feature");
 	git(widgets.clone, "push", "--quiet", "origin", "waiting-feature");
-
-	// Pull-request repo whose ready commit goes behind upstream. Its own repo: Open PR invalidates its
-	// repo's children, and until they are cached again the ready buffer drops that repo's rows.
-	const sprockets = repo("sprockets");
-	const behindSha = sprockets.branch("behind-feature", "behind.txt", "Add the behind feature");
 
 	// Fast-forward repo: a ready commit that lands by moving local main, then Push main.
 	const gadgets = repo("gadgets");
@@ -196,7 +194,7 @@ export function createWorld() {
 	);
 	fs.writeFileSync(
 		path.join(wipConfig, "projects.json5"),
-		`${JSON.stringify([record(broken, "pull-request"), record(gadgets, "fast-forward"), record(sprockets, "pull-request"), record(widgets, "pull-request")], null, "\t")}\n`,
+		`${JSON.stringify([record(broken, "pull-request"), record(gadgets, "fast-forward"), record(widgets, "pull-request")], null, "\t")}\n`,
 	);
 
 	return {
@@ -204,10 +202,10 @@ export function createWorld() {
 		env,
 		ghLog,
 		git,
-		repos: {widgets, sprockets, gadgets, broken},
+		repos: {widgets, gadgets, broken},
 		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
-		fakeRepos: [widgets, sprockets, gadgets, broken].flatMap((r) => [
+		fakeRepos: [widgets, gadgets, broken].flatMap((r) => [
 			{owner: "acme", name: r.name, bareDir: r.upstreamBare},
 			{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `acme/${r.name}`},
 		]),

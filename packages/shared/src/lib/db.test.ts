@@ -43,6 +43,7 @@ import {
 	getCachedProjectItems,
 	cacheChildren,
 	getCachedChildren,
+	getLastKnownChildren,
 	invalidateChildrenCache,
 	cacheTodos,
 	getCachedTodos,
@@ -733,6 +734,31 @@ describe("Children cache", () => {
 		invalidateChildrenCache("test-project");
 		expect(getCachedChildren("test-project")).toBeNull();
 		expect(getCachedChildren("test-project")).toBeNull();
+	});
+
+	it("getLastKnownChildren keeps the last cached children through an invalidation", () => {
+		expect(getLastKnownChildren("test-project")).toBeNull();
+		cacheChildren("test-project", sampleChildren);
+		expect(getLastKnownChildren("test-project")).toEqual(sampleChildren);
+		invalidateChildrenCache("test-project");
+		expect(getCachedChildren("test-project")).toBeNull();
+		expect(getLastKnownChildren("test-project")).toEqual(sampleChildren);
+		expect(getLastKnownChildren("other-project")).toBeNull();
+	});
+
+	it("getLastKnownChildren returns the newest children once recached", async () => {
+		cacheChildren("test-project", sampleChildren);
+		await new Promise((r) => {
+			setTimeout(r, 2);
+		});
+		invalidateChildrenCache("test-project");
+		const updated = [{...sampleChildren[0]!, sha: "def456"}];
+		cacheChildren("test-project", updated);
+		await new Promise((r) => {
+			setTimeout(r, 2);
+		});
+		invalidateChildrenCache("test-project");
+		expect(getLastKnownChildren("test-project")).toEqual(updated);
 	});
 
 	it("overwrites previous cache entry after invalidation", async () => {

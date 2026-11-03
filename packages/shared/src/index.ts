@@ -105,6 +105,7 @@ export {
 	getCachedProjectList,
 	setCachedProjectList,
 	getCachedChildren,
+	getLastKnownChildren,
 	cacheChildren,
 	invalidateChildrenCache,
 	getCachedTodos,

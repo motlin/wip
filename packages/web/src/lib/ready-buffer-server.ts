@@ -51,8 +51,8 @@ async function checkedOut(dir: string): Promise<string[]> {
 
 async function snapshot(): Promise<BufferRepo[]> {
 	const {
-		getCachedChildren,
 		getGitHubIdentity,
+		getLastKnownChildren,
 		getPriorityOverride,
 		isOnHold,
 		landingMode,
@@ -65,7 +65,9 @@ async function snapshot(): Promise<BufferRepo[]> {
 	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r]));
 	const repos: BufferRepo[] = [];
 	for (const p of await getProjects()) {
-		const children = getCachedChildren(p.name);
+		// Last known, not just current: an action like Open PR invalidates the cache, and until the
+		// refresh lands the repo still has its rows rather than none.
+		const children = getLastKnownChildren(p.name);
 		if (!children) continue;
 		const record = registry.get(p.dir);
 		const priority = record?.priority;

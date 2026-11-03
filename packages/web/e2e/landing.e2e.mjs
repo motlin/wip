@@ -4,8 +4,8 @@
  *
  * It builds a throwaway world (landing-world.mjs), starts a fake GitHub (fake-github.mjs) and the
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
- * /queue: Open PR on a ready row, Open PR on a row upstream moved past, Fast-forward main, and Push
- * main, asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
+ * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Fast-forward
+ * main, and Push main, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
@@ -27,6 +27,8 @@ import {createWorld} from "./landing-world.mjs";
 const webDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const WAIT_MS = 180_000;
 const keep = process.env.WIP_E2E_KEEP === "true";
+/** How long rows must stay after an Open PR: past the children refresh that follows it. */
+const ROWS_STAY_MS = 60_000;
 
 function step(message) {
 	console.log(`\n▸ ${message}`);
@@ -104,11 +106,40 @@ function readyRow(page, subject) {
 	return page.getByTestId("ready-to-land-row").filter({hasText: subject});
 }
 
+/** The first of the rows ([testId or testIds, subject]) missing from the page, or undefined. */
+async function missingRow(page, rows) {
+	for (const [testIds, subject] of rows) {
+		const selector = [testIds]
+			.flat()
+			.map((id) => `[data-testid="${id}"]`)
+			.join(", ");
+		// eslint-disable-next-line no-await-in-loop -- checks every row in one sample
+		if ((await page.locator(selector).filter({hasText: subject}).count()) === 0) return `${testIds} "${subject}"`;
+	}
+	return undefined;
+}
+
+/**
+ * Samples the page for ROWS_STAY_MS and fails the moment any of the rows is missing: an action on one
+ * row must not drop the others, in its own repo or any other, while the cache catches up.
+ */
+async function assertRowsStay(page, rows, what) {
+	const deadline = Date.now() + ROWS_STAY_MS;
+	while (Date.now() < deadline) {
+		// eslint-disable-next-line no-await-in-loop -- samples the page until the deadline
+		const missing = await missingRow(page, rows);
+		assert.equal(missing, undefined, `${what}: ${missing} left the page`);
+		// eslint-disable-next-line no-await-in-loop -- samples the page until the deadline
+		await page.waitForTimeout(250);
+	}
+}
+
 /**
  * Clicks Open PR on the row and confirms. Returns the tab the confirm opened, once it reaches the PR
- * the fake GitHub opened, after checking the confirm and the running outcome never moved the row.
+ * the fake GitHub opened, after checking the confirm and the running outcome never moved the row and
+ * the `stay` rows never left the page while it ran.
  */
-async function openPr(page, subject, expectedPrUrl) {
+async function openPr(page, subject, expectedPrUrl, stay = []) {
 	const row = readyRow(page, subject);
 	const before = await stableRowBox(row);
 	await row.getByRole("button", {name: "Open PR"}).click();
@@ -124,6 +155,9 @@ async function openPr(page, subject, expectedPrUrl) {
 	const deadline = Date.now() + WAIT_MS;
 	while (tab.url() !== expectedPrUrl) {
 		assert.ok(Date.now() < deadline, `${subject}: the tab stayed at ${tab.url()}, never reaching ${expectedPrUrl}`);
+		// eslint-disable-next-line no-await-in-loop -- samples the page while Open PR runs
+		const missing = await missingRow(page, stay);
+		assert.equal(missing, undefined, `${subject}: ${missing} left the page while Open PR ran`);
 		// eslint-disable-next-line no-await-in-loop -- polls the tab's URL
 		await tab.waitForTimeout(100);
 	}
@@ -135,7 +169,7 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, sprockets, gadgets, broken} = world.repos;
+	const {widgets, gadgets, broken} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -212,6 +246,17 @@ async function run() {
 			.filter({hasText: "Add the ready feature"})
 			.filter({hasText: "PR #2 · waiting for checks"})
 			.waitFor();
+		await assertRowsStay(
+			page,
+			[
+				["waiting-row", "Add the ready feature"],
+				["ready-to-land-row", "Add the behind feature"],
+				["waiting-row", "Add the waiting feature"],
+				["ready-to-land-row", "Add the fast-forward feature"],
+				["ready-to-land-row", "Fix broken's tests"],
+			],
+			"after Open PR on widgets",
+		);
 		assert.equal(world.git(widgets.forkBare, "rev-parse", "refs/heads/ready-feature"), world.shas.readySha);
 		assert.deepEqual(
 			gh.prs.find((pr) => pr.repository === "acme/widgets" && pr.number === 2),
@@ -228,16 +273,40 @@ async function run() {
 		);
 
 		step("Open PR on a row whose upstream moved on (rebased and retested before pushing)");
-		const movedUpstream = sprockets.landUpstream("upstream.txt", "Land someone else's change");
-		await openPr(page, "Add the behind feature", `${gh.url}/acme/sprockets/pull/1`);
-		const pushedBehind = world.git(sprockets.forkBare, "rev-parse", "refs/heads/behind-feature");
+		// The first Open PR's outcome sits above the behind row; dismiss it so the second click is measured alone.
+		const firstOutcome = page.getByTestId("action-outcome").filter({hasText: "Opened PR #2"});
+		await firstOutcome.getByRole("button", {name: "Dismiss"}).click();
+		await firstOutcome.waitFor({state: "detached"});
+		const movedUpstream = widgets.landUpstream("upstream.txt", "Land someone else's change");
+		// Open PR invalidates widgets' children before its retest; the repo keeps its rows meanwhile.
+		const behind = await openPr(page, "Add the behind feature", `${gh.url}/acme/widgets/pull/3`, [
+			[["ready-to-land-row", "waiting-row"], "Add the behind feature"],
+			["ready-to-land-row", "Add the fast-forward feature"],
+			["ready-to-land-row", "Fix broken's tests"],
+		]);
+		await behind.tab.close();
+		const pushedBehind = world.git(widgets.forkBare, "rev-parse", "refs/heads/behind-feature");
 		assert.notEqual(pushedBehind, world.shas.behindSha, "the behind branch was rebased before pushing");
-		assert.equal(world.git(sprockets.forkBare, "rev-parse", `${pushedBehind}^`), movedUpstream);
-		assert.equal(world.git(sprockets.clone, "rev-parse", "refs/heads/behind-feature"), pushedBehind);
-		assert.match(world.git(sprockets.clone, "test", "results", pushedBehind), /^good /, "retested green");
+		assert.equal(world.git(widgets.forkBare, "rev-parse", `${pushedBehind}^`), movedUpstream);
+		assert.equal(world.git(widgets.clone, "rev-parse", "refs/heads/behind-feature"), pushedBehind);
+		assert.match(world.git(widgets.clone, "test", "results", pushedBehind), /^good /, "retested green");
 		assert.equal(
-			gh.prs.find((pr) => pr.repository === "acme/sprockets" && pr.number === 1)?.headRefName,
+			gh.prs.find((pr) => pr.repository === "acme/widgets" && pr.number === 3)?.headRefName,
 			"behind-feature",
+		);
+		await page
+			.getByTestId("waiting-row")
+			.filter({hasText: "Add the behind feature"})
+			.filter({hasText: "PR #3 · waiting for checks"})
+			.waitFor();
+		// widgets' own rows legitimately change once upstream moves past them; the other repos' must not.
+		await assertRowsStay(
+			page,
+			[
+				["ready-to-land-row", "Add the fast-forward feature"],
+				["ready-to-land-row", "Fix broken's tests"],
+			],
+			"after the second Open PR on widgets",
 		);
 
 		step("Fast-forward main");
@@ -263,7 +332,7 @@ async function run() {
 			world.ghCalls().filter((args) => args[0] !== "auth"),
 			[
 				["pr", "merge", "2", "--squash", "--delete-branch", "--auto", "-R", "acme/widgets"],
-				["pr", "merge", "1", "--squash", "--delete-branch", "--auto", "-R", "acme/sprockets"],
+				["pr", "merge", "3", "--squash", "--delete-branch", "--auto", "-R", "acme/widgets"],
 			],
 		);
 		assert.equal(

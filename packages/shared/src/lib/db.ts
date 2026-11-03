@@ -1877,6 +1877,24 @@ export function getCachedChildren(project: string): GitChildResult[] | null {
 	return parsed.success ? parsed.data : null;
 }
 
+/**
+ * The newest children ever cached for a project, even after an invalidation closed them: for readers
+ * like the ready buffer that should keep showing a repo's last known rows until the next refresh,
+ * not treat an invalidated cache as a repo with no work. Null only when nothing was ever cached.
+ */
+export function getLastKnownChildren(project: string): GitChildResult[] | null {
+	const row = getDb()
+		.select()
+		.from(childrenCache)
+		.where(eq(childrenCache.project, project))
+		.orderBy(desc(childrenCache.systemFrom), desc(sql`rowid`))
+		.limit(1)
+		.get();
+	if (!row) return null;
+	const parsed = cachedChildrenSchema.safeParse(JSON.parse(row.childrenJson));
+	return parsed.success ? parsed.data : null;
+}
+
 export function cacheChildren(project: string, children: GitChildResult[]): void {
 	const serialized = JSON.stringify(children);
 	temporalUpsert({

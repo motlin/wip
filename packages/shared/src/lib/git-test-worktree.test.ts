@@ -23,7 +23,7 @@ vi.mock("../services/traced-execa.js", async (importOriginal) => {
 	};
 });
 
-import {gitTestRun} from "./git-test-cli.js";
+import {gitTestRun, testWorktreeLockFile, withTestWorktree} from "./git-test-cli.js";
 
 function git(dir: string, command: string): string {
 	return execSync(`git ${command}`, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
@@ -154,6 +154,82 @@ describe("gitTestRun never touches the user's checkout", () => {
 		}).toStrictEqual({
 			exitCodes: [0, 0],
 			ran: [base, tip],
+		});
+	});
+});
+
+describe("withTestWorktree excludes other processes", () => {
+	let dir: string;
+	let worktree: string;
+	let scratch: string;
+
+	beforeEach(() => {
+		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-worktree-lock-")));
+		worktree = `${dir}-test-worktree`;
+		scratch = fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-worktree-lock-scratch-"));
+		vi.stubEnv("XDG_CACHE_HOME", path.join(scratch, "cache"));
+		git(dir, "init -b main");
+		git(dir, "config user.email test@test.com");
+		git(dir, "config user.name Test");
+		fs.writeFileSync(path.join(dir, "file.txt"), "base\n");
+		git(dir, "add file.txt");
+		git(dir, "commit -m base");
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		if (fs.existsSync(worktree)) fs.rmSync(worktree, {recursive: true, force: true});
+		fs.rmSync(dir, {recursive: true, force: true});
+		fs.rmSync(scratch, {recursive: true, force: true});
+	});
+
+	it("waits while another live process holds the worktree's lock file, then runs and releases it", async () => {
+		const lockFile = testWorktreeLockFile(worktree);
+		fs.mkdirSync(path.dirname(lockFile), {recursive: true});
+		// Another wip process (the CLI, or the server) mid-run in the same worktree.
+		fs.writeFileSync(lockFile, String(process.ppid));
+		const events: string[] = [];
+		const head = git(dir, "rev-parse HEAD");
+
+		const run = withTestWorktree(dir, head, async (wt) => {
+			events.push(`ran in ${wt}, lock owner ${fs.readFileSync(lockFile, "utf8")}`);
+			return Promise.resolve("done");
+		});
+		await new Promise((resolve) => {
+			setTimeout(resolve, 400);
+		});
+		events.push("other process releases");
+		fs.rmSync(lockFile);
+
+		expect({result: await run, events, lockHeld: fs.existsSync(lockFile)}).toStrictEqual({
+			result: "done",
+			events: ["other process releases", `ran in ${worktree}, lock owner ${process.pid}`],
+			lockHeld: false,
+		});
+	});
+
+	it("stops waiting for the lock when the signal aborts", async () => {
+		const lockFile = testWorktreeLockFile(worktree);
+		fs.mkdirSync(path.dirname(lockFile), {recursive: true});
+		fs.writeFileSync(lockFile, String(process.ppid));
+		const controller = new AbortController();
+		let ran = false;
+
+		const run = withTestWorktree(
+			dir,
+			git(dir, "rev-parse HEAD"),
+			async () => {
+				ran = true;
+				return Promise.resolve();
+			},
+			controller.signal,
+		);
+		controller.abort();
+
+		await expect(run).rejects.toThrow(`Aborted waiting for test worktree lock ${worktree}`);
+		expect({ran, owner: fs.readFileSync(lockFile, "utf8")}).toStrictEqual({
+			ran: false,
+			owner: String(process.ppid),
 		});
 	});
 });

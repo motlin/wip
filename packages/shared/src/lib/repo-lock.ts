@@ -112,22 +112,42 @@ export function createRepoResourceLock(options: RepoResourceLockOptions = {}): R
 
 	return async (resource, signal) => {
 		if (!resource.startsWith(REPO_RESOURCE_PREFIX)) return () => {};
-		fs.mkdirSync(lockDir, {recursive: true});
 		const name = resource.slice(REPO_RESOURCE_PREFIX.length).replaceAll(/[^\w.-]/g, "_");
-		const file = path.join(lockDir, `repo_${name}.lock`);
+		return acquireFileLock(path.join(lockDir, `repo_${name}.lock`), {
+			signal,
+			pollMs,
+			abortMessage: `Aborted waiting for ${resource} lock`,
+		});
+	};
+}
 
-		/* oxlint-disable no-await-in-loop -- polling for the lock is inherently sequential */
-		while (!tryCreate(file)) {
-			if (signal.aborted) throw new Error(`Aborted waiting for ${resource} lock`);
-			reclaimIfStale(file);
-			if (tryCreate(file)) break;
-			await sleep(pollMs);
-		}
-		/* oxlint-enable no-await-in-loop */
+export interface FileLockOptions {
+	signal?: AbortSignal;
+	pollMs?: number;
+	/** The error thrown when `signal` aborts while waiting. */
+	abortMessage?: string;
+}
 
-		return () => {
-			if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
-		};
+/**
+ * Blocking cross-process lock on `file`: polls until this process creates it exclusively (holding
+ * its pid), reclaiming a dead owner's lock, and resolves to the release function. Throws once
+ * `signal` aborts while waiting.
+ */
+export async function acquireFileLock(file: string, options: FileLockOptions = {}): Promise<() => void> {
+	const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
+	fs.mkdirSync(path.dirname(file), {recursive: true});
+
+	/* oxlint-disable no-await-in-loop -- polling for the lock is inherently sequential */
+	while (!tryCreate(file)) {
+		if (options.signal?.aborted) throw new Error(options.abortMessage ?? `Aborted waiting for lock ${file}`);
+		reclaimIfStale(file);
+		if (tryCreate(file)) break;
+		await sleep(pollMs);
+	}
+	/* oxlint-enable no-await-in-loop */
+
+	return () => {
+		if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
 	};
 }
 

@@ -94,7 +94,7 @@ function preempted(signal: AbortSignal): boolean {
 }
 
 /** Steps 1-3 of 4.6 for one candidate. Never checks out, adds no worktrees or branches. */
-async function advance(
+export async function advance(
 	repo: BufferRepo,
 	candidate: BufferCandidate,
 	signal: AbortSignal,
@@ -107,6 +107,7 @@ async function advance(
 		DEFAULT_GIT_TEST,
 		getAutoFixes,
 		getBackgroundTestWorkers,
+		getMiseEnv,
 		getTestLogDir,
 		gitTestResults,
 		gitTestRun,
@@ -124,6 +125,8 @@ async function advance(
 	const logDir = getTestLogDir(p.name);
 	// Background work: low priority and capped test workers, unlike a user-initiated test.
 	const background = {workers: getBackgroundTestWorkers()};
+	// The project's mise tools and [env], as every user-initiated test run gets them.
+	const env = await getMiseEnv(p.dir);
 
 	const failedTests = async (s: string): Promise<ReadonlySet<string> | null> => {
 		try {
@@ -141,14 +144,15 @@ async function advance(
 		const baseline = (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [upstream])).get(upstream);
 		const red =
 			baseline === "bad" ||
-			(baseline !== "good" && (await gitTestRun(p.dir, upstream, {logDir, background, signal})).exitCode !== 0);
+			(baseline !== "good" &&
+				(await gitTestRun(p.dir, upstream, {logDir, background, env, signal})).exitCode !== 0);
 		// A preempted run was killed, not failed; the job reruns after the user's action.
 		if (signal.aborted) return "skipped";
 		if (red) {
 			if (repo.ownership === "own") return "skipped";
 			// A cached bad with no log left: rerun once so the log names the failures.
 			if (!fs.existsSync(path.join(logDir, `${upstream}.log`))) {
-				await gitTestRun(p.dir, upstream, {logDir, retest: true, background, signal});
+				await gitTestRun(p.dir, upstream, {logDir, retest: true, background, env, signal});
 			}
 			const failures = await failedTests(upstream);
 			if (failures === null) return "skipped";
@@ -190,7 +194,7 @@ async function advance(
 		},
 		{
 			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
-			run: async (s) => (await gitTestRun(p.dir, s, {logDir, background, signal})).exitCode,
+			run: async (s) => (await gitTestRun(p.dir, s, {logDir, background, env, signal})).exitCode,
 			publish: async (s) => {
 				const request = pushRequest(s);
 				if (request === null || !(await publishForChecks(p, request, candidate.sha))) return false;

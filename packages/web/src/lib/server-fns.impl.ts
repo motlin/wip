@@ -1519,6 +1519,7 @@ function scheduleMainPushTest(p: ProjectInfo, sha: string): void {
 			await gitTestRun(p.dir, sha, {
 				logDir: getTestLogDir(p.name),
 				background: {workers: getBackgroundTestWorkers()},
+				env: await getMiseEnv(p.dir),
 				signal,
 			});
 		},

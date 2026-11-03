@@ -12,6 +12,7 @@ import {
 	resetGitHubClient,
 	createTestClient,
 	cacheUpstreamSha,
+	cacheMiseEnv,
 	cacheMergeStatus,
 	cacheIssues,
 	cacheProjectItems,
@@ -57,6 +58,12 @@ vi.mock("@wip/shared", async (importOriginal) => {
 		getProjectsDirs: (flagValue?: string) => projectsDirsOverride.dirs ?? actual.getProjectsDirs(flagValue),
 	};
 });
+
+// The ready buffer reads projects through the server function; outside a request it needs the handler.
+vi.mock("./server-fns.js", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./server-fns.js")>()),
+	getProjects: async () => (await import("./server-fns.impl.js")).getProjectsHandler(),
+}));
 
 const readyBufferOverride = vi.hoisted(() => ({running: false}));
 vi.mock("./ready-buffer-instance.js", async (importOriginal) => {
@@ -3800,6 +3807,43 @@ describe("getMainPushesHandler", () => {
 		}
 	});
 
+	it("runs the background pre-test with the project's mise env", async () => {
+		const {dir, shas} = await mainAheadGreenGreenUnknown();
+		tmpDirs.push(`${dir}-test-worktree`);
+		// A test command that only passes when the project's mise [env] reaches it.
+		await gitOut(dir, "config", "test.default.command", 'test "$WIP_MISE_PROBE" = from-mise');
+		cacheMiseEnv(dir, {WIP_MISE_PROBE: "from-mise"});
+		seedProjectCache([makeProject({name: "mise-push", dir})]);
+		const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
+		tmpDirs.push(cache);
+		vi.stubEnv("XDG_CACHE_HOME", cache);
+		readyBufferOverride.running = true;
+		workQueue.setProbe({loadPerCore: () => 0, freeMemRatio: () => 1});
+		workQueue.setOnBattery(false);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+		try {
+			const {getMainPushesHandler} = await import("./server-fns.impl.js");
+			const first = await getMainPushesHandler({});
+			const tested = first[0]?.testing;
+			const jobs = enqueueSpy.mock.calls.flatMap(([job], index) => {
+				const handle = enqueueSpy.mock.results[index]?.value as ReturnType<typeof workQueue.enqueue>;
+				return job.kind === "main-push-test" ? [handle] : [];
+			});
+			expect(jobs).toHaveLength(1);
+			await jobs[0]?.settled;
+
+			const after = await getMainPushesHandler({});
+			expect({
+				tested: shas.includes(tested ?? ""),
+				status: after[0]?.commits.find((c) => c.sha === tested)?.status,
+			}).toStrictEqual({tested: true, status: "good"});
+		} finally {
+			enqueueSpy.mockRestore();
+			workQueue.setProbe(null);
+			readyBufferOverride.running = false;
+		}
+	});
+
 	it("flags a diverged local main and omits projects whose main is not ahead", async () => {
 		const {dir} = await repoWithRemote();
 		await commitNewFile(dir, "upstream.txt");
@@ -3826,6 +3870,37 @@ describe("getMainPushesHandler", () => {
 		const {getMainPushesHandler} = await import("./server-fns.impl.js");
 
 		expect(await getMainPushesHandler({})).toStrictEqual([]);
+	});
+});
+
+describe("ready buffer advance", () => {
+	it("tests the baseline and the candidate with the project's mise env", async () => {
+		const {dir} = await repoWithRemote();
+		const sha = await commitNewFile(dir, "ready.txt");
+		tmpDirs.push(`${dir}-test-worktree`);
+		await gitOut(dir, "config", "test.default.command", 'test "$WIP_MISE_PROBE" = from-mise');
+		cacheMiseEnv(dir, {WIP_MISE_PROBE: "from-mise"});
+		seedProjectCache([makeProject({name: "mise-buffer", dir})]);
+		const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
+		tmpDirs.push(cache);
+		vi.stubEnv("XDG_CACHE_HOME", cache);
+
+		const {advance} = await import("./ready-buffer-server.js");
+		const outcome = await advance(
+			{
+				name: "mise-buffer",
+				upstreamRed: false,
+				ownership: "own",
+				localChanges: false,
+				checkedOutBranches: [],
+				candidates: [],
+			},
+			{id: sha, sha, state: "unready", onHold: false},
+			new AbortController().signal,
+			() => {},
+		);
+
+		expect(outcome).toBe("ready");
 	});
 });
 

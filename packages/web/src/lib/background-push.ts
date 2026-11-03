@@ -38,7 +38,7 @@ export type PushOutcome =
 	| {status: "failed"; stderr: string};
 
 export interface BackgroundPusher {
-	/** Force-push `branch` to origin with lease through the gate; `defer` keeps a held push for `flush`. */
+	/** Force-push `sha` to origin's `branch` with lease through the gate; `defer` keeps a held push for `flush`. */
 	push(request: PushRequest, options: {defer: boolean}): Promise<PushOutcome>;
 	/** Forget a deferred push of the branch. */
 	cancel(project: string, branch: string): void;
@@ -64,7 +64,8 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			"--quiet",
 			`refs/remotes/origin/${request.branch}`,
 		]);
-		if (remote.exitCode === 0 && remote.stdout.trim() === request.sha) {
+		const remoteSha = remote.exitCode === 0 ? remote.stdout.trim() : "";
+		if (remoteSha === request.sha) {
 			deferred.delete(key);
 			return {status: "up_to_date"};
 		}
@@ -77,13 +78,16 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			return {status: "held", reason: decision.reason};
 		}
 		deferred.delete(key);
+		// Push the tested sha, not the branch tip: a held push can flush after the user moved the branch.
+		// The explicit lease (empty = absent) is the origin sha this push replaces.
+		const ref = `refs/heads/${request.branch}`;
 		const push = await deps.git([
 			"-C",
 			request.dir,
 			"push",
-			"--force-with-lease",
+			`--force-with-lease=${ref}:${remoteSha}`,
 			"origin",
-			`${request.branch}:${request.branch}`,
+			`${request.sha}:${ref}`,
 		]);
 		if (push.exitCode !== 0) return {status: "failed", stderr: push.stderr};
 		deps.gate.recordPush({repository: request.repository, sha: request.sha, pushedAt: now()});

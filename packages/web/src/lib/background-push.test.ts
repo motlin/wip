@@ -36,7 +36,14 @@ function fakes(options: {remoteSha?: string; gate?: PushGateDecision[]; pushExit
 }
 
 const REV_PARSE = ["-C", "/p/wip", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/feature"];
-const PUSH = ["-C", "/p/wip", "push", "--force-with-lease", "origin", "feature:feature"];
+const PUSH = [
+	"-C",
+	"/p/wip",
+	"push",
+	`--force-with-lease=refs/heads/feature:${OLD}`,
+	"origin",
+	`${SHA}:refs/heads/feature`,
+];
 
 describe("publishAfterAdvance", () => {
 	it("force-pushes a ready pull-request-repo candidate once with lease and records it on the gate", async () => {
@@ -97,6 +104,29 @@ describe("publishAfterAdvance", () => {
 			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
 			pending: [],
 		});
+	});
+
+	it("pushes the deferred ready sha, not whatever the branch points at when the gate opens", async () => {
+		const {pusher, commands, recorded} = fakes({
+			remoteSha: OLD,
+			gate: [{open: false, reason: "held"}, {open: true}],
+		});
+		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
+		// The user commits on the branch while the push is held; the untested tip must not be pushed.
+		await pusher.flush();
+		expect({pushes: commands.filter((args) => args.includes("push")), recorded}).toStrictEqual({
+			pushes: [PUSH],
+			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
+		});
+	});
+
+	it("leases on the branch being absent from origin when origin has no such branch", async () => {
+		const {pusher, commands} = fakes();
+		await pusher.push(request, {defer: true});
+		expect(commands).toStrictEqual([
+			REV_PARSE,
+			["-C", "/p/wip", "push", "--force-with-lease=refs/heads/feature:", "origin", `${SHA}:refs/heads/feature`],
+		]);
 	});
 
 	it("drops a deferred push when the branch's next advance is not ready", async () => {

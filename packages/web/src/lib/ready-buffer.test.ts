@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, it} from "vite-plus/test";
 import {createWorkQueue, type EnqueueOptions, type WorkQueue} from "@wip/shared";
 
+import {repoResource} from "./repo-resource.js";
 import {makeChild} from "./test-factories.js";
 import {
 	bufferRepoFromChildren,
@@ -198,6 +199,15 @@ async function fillFiveRepos(capacity: number): Promise<{advanced: string[]; max
 }
 
 const paddedSha = (id: string): string => id.padEnd(40, "0");
+
+/** A promise and the function that resolves it. */
+function deferred(): {promise: Promise<void>; resolve: () => void} {
+	let resolve!: () => void;
+	const promise = new Promise<void>((r) => {
+		resolve = r;
+	});
+	return {promise, resolve};
+}
 
 const fresh = (enqueued: Enqueued[]): string[] => enqueued.filter((e) => !e.coalesced).map((e) => e.coalesceKey);
 
@@ -510,6 +520,56 @@ describe("createReadyBuffer", () => {
 			],
 			resolved: ["a:c1"],
 			advanced: ["a:c1", "a:c1"],
+			outcomes: {c1: "ready"},
+		});
+	});
+
+	it("reruns a preempted advance from the tip its first run replayed the branch to, not the pre-replay sha", async () => {
+		const replayedSha = "e".repeat(40);
+		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
+		queues.push(queue);
+		const runs: Array<{sha: string; replayedSha: string | undefined}> = [];
+		const firstReplayed = deferred();
+		const buffer = createReadyBuffer({
+			queue,
+			snapshot: async () => Promise.resolve([repo("a", {candidates: candidates(1, {c1: {branch: "b"}})})]),
+			target: () => 1,
+			capacity: () => 1,
+			advance: async (_r, candidate, signal, onReplayed) => {
+				runs.push({sha: candidate.sha, replayedSha: candidate.replayedSha});
+				if (runs.length > 1) return candidate.replayedSha === undefined ? "rebase_conflicts" : "ready";
+				onReplayed(replayedSha);
+				firstReplayed.resolve();
+				await new Promise<void>((resolve) => {
+					signal.addEventListener("abort", () => {
+						resolve();
+					});
+				});
+				return "skipped";
+			},
+			resolveConflicts: async () => Promise.resolve(null),
+			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(null),
+		});
+
+		await buffer.pull();
+		await firstReplayed.promise;
+		await queue.enqueue({
+			coalesceKey: "user-push",
+			kind: "push",
+			project: "a",
+			costClass: "git-write",
+			priority: "foreground",
+			resources: [repoResource("a")],
+			run: async () => Promise.resolve(),
+		}).settled;
+		await buffer.idle();
+
+		expect({runs, outcomes: buffer.outcomes("a")}).toStrictEqual({
+			runs: [
+				{sha: paddedSha("c1"), replayedSha: undefined},
+				{sha: paddedSha("c1"), replayedSha},
+			],
 			outcomes: {c1: "ready"},
 		});
 	});

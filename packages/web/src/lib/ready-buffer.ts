@@ -62,6 +62,11 @@ export interface BufferCandidate {
 	/** An AI fixup awaits the user's review: never pulled or re-advanced. */
 	autoFixed?: boolean;
 	/**
+	 * The tip an earlier, preempted run of this advance already replayed the branch to; the rerun
+	 * starts from it, since the branch no longer points at `sha`.
+	 */
+	replayedSha?: string;
+	/**
 	 * Ready, but its PR checks are still running: parked (never pulled), not counted toward the
 	 * ready target, and listed as awaiting checks until the checks report.
 	 */
@@ -169,7 +174,13 @@ export interface ReadyBufferDeps {
 	target: () => number;
 	/** How many buffer jobs may be in flight at once (readyBuffer.capacity). */
 	capacity: () => number;
-	advance: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<AdvanceOutcome>;
+	/** Runs one advance; it reports each replay through `onReplayed` so a preempted rerun starts there. */
+	advance: (
+		repo: BufferRepo,
+		candidate: BufferCandidate,
+		signal: AbortSignal,
+		onReplayed: (sha: string) => void,
+	) => Promise<AdvanceOutcome>;
 	/** Resolves the candidate's replay conflict without user attention; the new tip sha, or null when stuck. */
 	resolveConflicts: (repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal) => Promise<string | null>;
 	/** Fixes the candidate's failing test as a separate fixup commit on top; the fixup sha, or null when stuck. */
@@ -360,6 +371,8 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		tried: {conflicts: boolean; fix: boolean},
 	): Promise<void> {
 		const done = resultsOf(repo.name);
+		// A preempted job reruns this closure; it starts from the branch's replayed tip.
+		let current = candidate;
 		const handle = deps.queue.enqueue({
 			coalesceKey: `ready:${repo.name}:${candidate.id}`,
 			kind: "advance-commit",
@@ -376,7 +389,12 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			preemptible: true,
 			run: async (signal) => {
 				if (stopped.has(repo.name)) return;
-				done.set(candidate.id, await deps.advance(repo, candidate, signal));
+				done.set(
+					candidate.id,
+					await deps.advance(repo, current, signal, (sha) => {
+						current = {...current, replayedSha: sha};
+					}),
+				);
 			},
 		});
 		await handle.settled;

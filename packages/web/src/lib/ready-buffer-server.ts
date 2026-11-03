@@ -94,7 +94,12 @@ function preempted(signal: AbortSignal): boolean {
 }
 
 /** Steps 1-3 of 4.6 for one candidate. Never checks out, adds no worktrees or branches. */
-async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal): Promise<AdvanceOutcome> {
+async function advance(
+	repo: BufferRepo,
+	candidate: BufferCandidate,
+	signal: AbortSignal,
+	onReplayed: (sha: string) => void,
+): Promise<AdvanceOutcome> {
 	const fs = await import("node:fs");
 	const path = await import("node:path");
 	const {
@@ -152,17 +157,19 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	}
 	if (signal.aborted) return "skipped";
 
-	// 2. Replay onto upstream unless it already sits on it.
-	let sha = candidate.sha;
+	// 2. Replay onto upstream unless it already sits on it. A rerun after a preemption starts from
+	// the tip its earlier run replayed the branch to, which the branch now points at.
+	let sha = candidate.replayedSha ?? candidate.sha;
 	const onUpstream =
 		(await tracedExeca("git", ["-C", p.dir, "merge-base", "--is-ancestor", upstream, sha], {reject: false}))
 			.exitCode === 0;
 	if (!onUpstream) {
 		if (candidate.branch === undefined) return "skipped";
 		if ((await checkedOutBranches(p.dir)).has(candidate.branch)) return "skipped";
-		const replayed = await replayBranchOnto(p.dir, candidate.branch, candidate.sha, upstream);
+		const replayed = await replayBranchOnto(p.dir, candidate.branch, sha, upstream);
 		if (replayed === null) return "rebase_conflicts";
 		sha = replayed;
+		onReplayed(sha);
 	}
 
 	// 3. The exit code of `git test run` decides, unless the patch-id fast path publishes instead.
@@ -177,7 +184,7 @@ async function advance(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 			hasTestConfigured: p.hasTestConfigured,
 			preReplaySha: candidate.sha,
 			sha,
-			replayed: !onUpstream,
+			replayed: sha !== candidate.sha,
 			...(baselineFailures === undefined ? {} : {baselineFailures}),
 			autoFixed,
 		},
@@ -412,8 +419,8 @@ export async function startReadyBuffer(
 		// Read per pull so a config change takes effect without a restart.
 		target: () => getReadyBufferSize(),
 		capacity: () => getReadyBufferCapacity(),
-		advance: async (repo, candidate, signal) => {
-			const outcome = await advance(repo, candidate, signal);
+		advance: async (repo, candidate, signal, onReplayed) => {
+			const outcome = await advance(repo, candidate, signal, onReplayed);
 			log.general.info({project: repo.name, sha: candidate.sha, outcome}, "Ready-buffer advance");
 			// The replay and test changed what the cards show.
 			enqueueProjectRefresh(repo.name, {force: true});

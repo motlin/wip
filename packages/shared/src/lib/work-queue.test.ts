@@ -1081,6 +1081,143 @@ describe("preemption", () => {
 		expect(events).toStrictEqual(["bg-start-1", "bg-end-1-aborted", "fg", "bg-start-2", "bg-end-2-done"]);
 	});
 
+	it("keeps a preempted job parked while its preemptor waits on a class cap, so it is not restarted and preempted again", async () => {
+		const q = makeQueue({globalConcurrency: 4});
+		const events: string[] = [];
+		let backgroundRuns = 0;
+		const background = q.enqueue({
+			coalesceKey: "bg",
+			resources: ["repo:x"],
+			kind: "advance-commit",
+			project: "x",
+			priority: "background",
+			costClass: "build",
+			preemptible: true,
+			run: async (signal) => {
+				backgroundRuns += 1;
+				const run = backgroundRuns;
+				events.push(`bg-start-${run}`);
+				if (run === 1) {
+					await new Promise<void>((resolve) => {
+						signal.addEventListener("abort", () => {
+							resolve();
+						});
+					});
+				}
+				events.push(`bg-end-${run}-${signal.aborted ? "aborted" : "done"}`);
+			},
+		});
+		await settle();
+		const writesGate = deferred();
+		const writes = ["a", "b"].map((repo) =>
+			q.enqueue({
+				coalesceKey: `write-${repo}`,
+				resources: [`repo:${repo}`],
+				kind: "merge-status",
+				project: repo,
+				priority: "background",
+				costClass: "git-write",
+				run: async () => {
+					events.push(`write-${repo}`);
+					await writesGate.promise;
+				},
+			}),
+		);
+		await settle();
+		const foreground = q.enqueue({
+			coalesceKey: "fg",
+			resources: ["repo:x"],
+			kind: "rebase",
+			project: "x",
+			priority: "foreground",
+			costClass: "git-write",
+			run: async () => {
+				events.push("fg");
+				await Promise.resolve();
+			},
+		});
+		await settle();
+		await settle();
+		const whileBlocked = [...events];
+		writesGate.resolve();
+		await Promise.all(writes.map(async (write) => write.settled));
+		await foreground.settled;
+		await background.settled;
+
+		expect({whileBlocked, events}).toStrictEqual({
+			whileBlocked: ["bg-start-1", "write-a", "write-b", "bg-end-1-aborted"],
+			events: ["bg-start-1", "write-a", "write-b", "bg-end-1-aborted", "fg", "bg-start-2", "bg-end-2-done"],
+		});
+	});
+
+	it("restarts a parked preempted job once its waiting preemptor is cancelled", async () => {
+		const q = makeQueue({globalConcurrency: 4});
+		const events: string[] = [];
+		let backgroundRuns = 0;
+		const background = q.enqueue({
+			coalesceKey: "bg",
+			resources: ["repo:x"],
+			kind: "advance-commit",
+			project: "x",
+			priority: "background",
+			costClass: "build",
+			preemptible: true,
+			run: async (signal) => {
+				backgroundRuns += 1;
+				const run = backgroundRuns;
+				events.push(`bg-start-${run}`);
+				if (run === 1) {
+					await new Promise<void>((resolve) => {
+						signal.addEventListener("abort", () => {
+							resolve();
+						});
+					});
+				}
+				events.push(`bg-end-${run}-${signal.aborted ? "aborted" : "done"}`);
+			},
+		});
+		await settle();
+		const writesGate = deferred();
+		const writes = ["a", "b"].map((repo) =>
+			q.enqueue({
+				coalesceKey: `write-${repo}`,
+				resources: [`repo:${repo}`],
+				kind: "merge-status",
+				project: repo,
+				priority: "background",
+				costClass: "git-write",
+				run: async () => {
+					events.push(`write-${repo}`);
+					await writesGate.promise;
+				},
+			}),
+		);
+		await settle();
+		const foreground = q.enqueue({
+			coalesceKey: "fg",
+			resources: ["repo:x"],
+			kind: "rebase",
+			project: "x",
+			priority: "foreground",
+			costClass: "git-write",
+			run: async () => {
+				events.push("fg");
+				await Promise.resolve();
+			},
+		});
+		await settle();
+		const cancelled = foreground.cancel();
+		await background.settled;
+		const afterCancel = [...events];
+		writesGate.resolve();
+		await Promise.all(writes.map(async (write) => write.settled));
+
+		expect({cancelled, afterCancel}).toStrictEqual({
+			cancelled: true,
+			afterCancel: ["bg-start-1", "write-a", "write-b", "bg-end-1-aborted", "bg-start-2", "bg-end-2-done"],
+		});
+	});
+
 	it("never aborts a running job that is not preemptible; the foreground job waits for it", async () => {
 		const q = makeQueue({globalConcurrency: 4});
 		const events: string[] = [];

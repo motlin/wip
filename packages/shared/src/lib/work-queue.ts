@@ -164,6 +164,14 @@ interface Job {
 	preemptible: boolean;
 	/** Aborted by a foreground job; requeued, not settled, when its run returns. */
 	preempted: boolean;
+	/** The foreground job that preempted this one; set while preempted, so requeue can park behind it. */
+	preemptedBy: Job | null;
+	/**
+	 * A requeued preempted job stays out of the scan while this preemptor is still queued, so a preemptor
+	 * blocked by something else (a class cap, the buffer-only rule) never sees its victim restart, only to
+	 * be preempted again on the next pump.
+	 */
+	parkedFor: Job | null;
 	/** Cancelled through cancel(); a cancelled job is never requeued. */
 	cancelled: boolean;
 	run: (signal: AbortSignal) => Promise<void>;
@@ -300,6 +308,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		for (const holder of holders) {
 			if (holder.preempted) continue;
 			holder.preempted = true;
+			holder.preemptedBy = job;
 			log.general.info(
 				{kind: holder.kind, project: holder.project, by: job.kind},
 				"Preempting background job for a user action",
@@ -311,6 +320,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	/** A preempted job whose run returned goes back in the queue under its original handle. */
 	function requeue(job: Job): void {
 		job.preempted = false;
+		job.parkedFor = job.preemptedBy;
+		job.preemptedBy = null;
 		job.controller = new AbortController();
 		job.enqueuedAt = now();
 		queued.push(job);
@@ -348,6 +359,13 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			if ((bufferOnly && !job.buffer) || (onBattery && job.pauseOnBattery)) {
 				index += 1;
 				continue;
+			}
+			if (job.parkedFor !== null) {
+				if (queued.includes(job.parkedFor)) {
+					index += 1;
+					continue;
+				}
+				job.parkedFor = null;
 			}
 			if (job.resources.some((resource) => resourceFull(resource))) {
 				index += 1;
@@ -452,6 +470,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			pauseOnBattery: enqueueOptions.pauseOnBattery ?? false,
 			preemptible: enqueueOptions.preemptible ?? false,
 			preempted: false,
+			preemptedBy: null,
+			parkedFor: null,
 			cancelled: false,
 			run: enqueueOptions.run,
 			controller: new AbortController(),
@@ -479,6 +499,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			remove(job);
 			job.settle();
 			emitState();
+			pump();
 			return true;
 		}
 

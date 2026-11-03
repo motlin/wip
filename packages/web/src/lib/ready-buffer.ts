@@ -55,6 +55,11 @@ export interface BufferCandidate {
 	/** First parent; another candidate's sha when this one is stacked on it. */
 	parentSha?: string;
 	state: "unready" | "ready";
+	/**
+	 * The last children refresh found this sha behind upstream (behind count or needs rebase): an
+	 * earlier "ready" outcome for this same sha is stale, so the item is readied again.
+	 */
+	behind?: boolean;
 	onHold: boolean;
 	override?: Priority;
 	/** Remaining job (candidate rank); orders candidates of the same priority across repos. */
@@ -278,6 +283,7 @@ export function bufferRepoFromChildren(
 					onHold: context.onHold(child),
 					job: gitChildJob(child),
 				};
+				if ((child.commitsBehind ?? 0) > 0 || child.needsRebase === true) candidate.behind = true;
 				if (child.branch !== undefined) candidate.branch = child.branch;
 				if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
 				if (override !== undefined) candidate.override = override;
@@ -330,6 +336,8 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	const results = new Map<string, Map<string, AdvanceOutcome>>();
 	/** project → item id → settle promise of its in-flight job. */
 	const inFlight = new Map<string, Map<string, Promise<void>>>();
+	/** project → item id → the sha its last advance left it at (the replayed tip, or the candidate itself). */
+	const advancedShas = new Map<string, Map<string, string>>();
 	/** Repos whose own upstream is red as of the last pull; their queued jobs stop on start. */
 	const stopped = new Set<string>();
 	/** The last pull's snapshot and the candidates it would pull next, for state(). */
@@ -340,6 +348,11 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	const resultsOf = (project: string): Map<string, AdvanceOutcome> => {
 		const map = results.get(project) ?? new Map<string, AdvanceOutcome>();
 		results.set(project, map);
+		return map;
+	};
+	const advancedShasOf = (project: string): Map<string, string> => {
+		const map = advancedShas.get(project) ?? new Map<string, string>();
+		advancedShas.set(project, map);
 		return map;
 	};
 	const inFlightOf = (project: string): Map<string, Promise<void>> => {
@@ -399,12 +412,11 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			preemptible: true,
 			run: async (signal) => {
 				if (stopped.has(repo.name)) return;
-				done.set(
-					candidate.id,
-					await deps.advance(repo, current, signal, (sha) => {
-						current = {...current, replayedSha: sha};
-					}),
-				);
+				const outcome = await deps.advance(repo, current, signal, (sha) => {
+					current = {...current, replayedSha: sha};
+				});
+				done.set(candidate.id, outcome);
+				advancedShasOf(repo.name).set(candidate.id, current.replayedSha ?? current.sha);
 			},
 		});
 		await handle.settled;
@@ -475,6 +487,19 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		jobs.set(candidate.id, settled);
 	}
 
+	/**
+	 * A "ready" outcome no longer holds once the snapshot shows the very sha the advance left the
+	 * item at behind upstream: upstream moved during or after the advance. A behind pre-replay sha
+	 * is only a children cache that hasn't caught up with the replay, so that outcome stands.
+	 */
+	function forgetStaleReady(repo: BufferRepo): void {
+		const done = resultsOf(repo.name);
+		const shas = advancedShasOf(repo.name);
+		for (const c of repo.candidates) {
+			if (c.behind === true && done.get(c.id) === "ready" && shas.get(c.id) === c.sha) done.delete(c.id);
+		}
+	}
+
 	/** The repo's candidates as global queue items; parked and checked-out work is not pullable. */
 	function queueItems(repo: BufferRepo): ReadyQueueItem[] {
 		const done = resultsOf(repo.name);
@@ -482,6 +507,9 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		const present = new Set(repo.candidates.map((c) => c.id));
 		// Forget items that left the snapshot (landed or abandoned).
 		for (const id of done.keys()) if (!present.has(id)) done.delete(id);
+		const shas = advancedShasOf(repo.name);
+		for (const id of shas.keys()) if (!present.has(id)) shas.delete(id);
+		forgetStaleReady(repo);
 		const checkedOut = new Set(repo.checkedOutBranches);
 		return repo.candidates.map((c) => {
 			const ready = c.state === "ready" || done.get(c.id) === "ready";

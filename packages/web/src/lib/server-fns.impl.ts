@@ -125,7 +125,7 @@ import {considerSplitting} from "@wip/shared/candidate-rank.js";
 import {doTodoTaskPrompt} from "./category-actions.js";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {enqueueRefresh, refreshFailureSince, refreshOutcomeMark, trackRefreshOutcome} from "./refresh-scheduler.js";
-import {captureActionLogs, runQueuedAction} from "./queued-action.js";
+import {captureActionLogs, runQueuedAction, type ActionStep} from "./queued-action.js";
 import {repoResource, testWorktreeResource} from "./repo-resource.js";
 import type {ActionEvent} from "./server-events-schema.js";
 import {workQueue} from "./shared-work-queue.js";
@@ -893,6 +893,34 @@ async function pushPrBranch(dir: string, branch: string, env: Record<string, str
 	return push.exitCode === 0 ? null : `Failed to push ${branch} to origin: ${push.stderr}`;
 }
 
+/**
+ * Brings a PR branch that is behind its upstream up to date before Open PR pushes it: replays it onto
+ * the upstream tip in place (no checkout, so never a branch checked out in a worktree; a conflict
+ * stops with the reason), then runs git-test on the new tip in the test worktree, never the user's
+ * working copy. Returns the reason it stopped, or null once the branch sits on upstream and is green.
+ */
+async function catchUpPrBranch(
+	p: ProjectInfo,
+	branch: string,
+	branchSha: string,
+	upstreamSha: string,
+	env: Record<string, string>,
+	step: ActionStep,
+): Promise<string | null> {
+	const {replayBranchOnto} = await import("@wip/shared");
+	if ((await checkedOutBranches(p.dir)).has(branch)) {
+		return `${branch} is behind ${p.upstreamRef} and checked out in a worktree; rebase it there before opening a PR`;
+	}
+	step(`Rebasing ${branch} onto ${p.upstreamRef}…`);
+	const replayed = await replayBranchOnto(p.dir, branch, branchSha, upstreamSha);
+	if (replayed === null) return `${branch} conflicts with ${p.upstreamRef}; resolve the rebase before opening a PR`;
+	invalidateChildrenCache(p.name);
+	if (!p.hasTestConfigured) return null;
+	step(`Testing ${branch}…`);
+	const run = await gitTestRun(p.dir, replayed, {logDir: getTestLogDir(p.name), env});
+	return run.exitCode === 0 ? null : `${branch} failed its test after rebasing onto ${p.upstreamRef}; not pushed`;
+}
+
 /** The latest progress or result of a user action, for the tab Open PR opened; null when unknown. */
 export async function getActionStatusHandler(id: string): Promise<ActionEvent | null> {
 	const {latestActionEvent} = await import("./action-events.js");
@@ -953,7 +981,15 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				{reject: false, env},
 			);
 			if (containsUpstream.exitCode !== 0) {
-				return {ok: false, message: `${data.branch} is behind ${p.upstreamRef}; rebase before creating a PR`};
+				const caughtUp = await catchUpPrBranch(
+					p,
+					data.branch,
+					branch.stdout.trim(),
+					upstream.stdout.trim(),
+					env,
+					step,
+				);
+				if (caughtUp !== null) return {ok: false, message: caughtUp};
 			}
 
 			step(`Pushing ${data.branch}…`);

@@ -2308,14 +2308,13 @@ describe("pushChildHandler", () => {
 });
 
 describe("createPrHandler", () => {
-	it("refuses to create a PR for a branch behind upstream", async () => {
+	it("refuses to rebase a behind branch checked out in a worktree, and pushes nothing", async () => {
 		const dir = await createTestGitRepo();
 		const remoteDir = await createBareRemote();
 		await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
 		await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
 		await execa("git", ["-C", dir, "checkout", "-b", "feature/create-pr"]);
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
-		await execa("git", ["-C", dir, "push", "-u", "origin", "feature/create-pr"]);
 		await execa("git", ["-C", dir, "checkout", "main"]);
 		await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Upstream work"]);
 		await execa("git", ["-C", dir, "push", "origin", "main"]);
@@ -2330,10 +2329,16 @@ describe("createPrHandler", () => {
 			title: "Feature work",
 			draft: true,
 		});
+		const pushed = await execa("git", ["-C", remoteDir, "rev-parse", "--verify", "refs/heads/feature/create-pr"], {
+			reject: false,
+		});
 
-		expect(result.ok).toBe(false);
-		expect(result.message).toContain("feature/create-pr is behind origin/main");
-		expect(result.message).toContain("rebase before creating a PR");
+		expect({ok: result.ok, message: result.message, pushed: pushed.exitCode}).toStrictEqual({
+			ok: false,
+			message:
+				"feature/create-pr is behind origin/main and checked out in a worktree; rebase it there before opening a PR",
+			pushed: 128,
+		});
 	});
 
 	it("creates a PR when the branch contains upstream", async () => {
@@ -2405,6 +2410,37 @@ async function repoWithFeatureBranch(branch: string): Promise<{dir: string; remo
 	await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
 	await execa("git", ["-C", dir, "checkout", "-b", branch]);
 	await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
+	return {dir, remoteDir};
+}
+
+/**
+ * A repo whose `branch` (not checked out) is one commit behind origin/main: it adds feature.txt, and
+ * upstream added upstream.txt, or changed feature.txt too when `conflict` is set. Test logs and the
+ * test worktree go to temp dirs.
+ */
+async function behindFeatureBranch(
+	branch: string,
+	{conflict}: {conflict: boolean},
+): Promise<{dir: string; remoteDir: string}> {
+	const dir = await createTestGitRepo();
+	const remoteDir = await createBareRemote();
+	tmpDirs.push(`${dir}-test-worktree`);
+	const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
+	tmpDirs.push(cache);
+	vi.stubEnv("XDG_CACHE_HOME", cache);
+	await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+	await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
+	await execa("git", ["-C", dir, "checkout", "-b", branch]);
+	await commitNewFile(dir, "feature.txt");
+	await execa("git", ["-C", dir, "checkout", "main"]);
+	if (conflict) {
+		await writeTestFile(join(dir, "feature.txt"), "upstream\n");
+		await gitOut(dir, "add", "feature.txt");
+		await gitOut(dir, "commit", "-m", "Upstream feature.txt");
+	} else {
+		await commitNewFile(dir, "upstream.txt");
+	}
+	await execa("git", ["-C", dir, "push", "origin", "main"]);
 	return {dir, remoteDir};
 }
 
@@ -2481,6 +2517,119 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 				{status: "done"},
 			],
 			result: {ok: true, message: "Opened PR #9", url: "https://github.com/alice/repo/pull/9"},
+		});
+	});
+
+	it("rebases a behind branch onto upstream in place, tests it in the test worktree, then pushes and opens the PR", async () => {
+		const {dir, remoteDir} = await behindFeatureBranch("fix-behind", {conflict: false});
+		await execa("git", [
+			"-C",
+			dir,
+			"config",
+			"test.default.command",
+			"test -f upstream.txt && test -f feature.txt",
+		]);
+		seedProjectCache([makeProject({name: "pr-behind", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+		const {actionEmitter} = await import("./action-events.js");
+		const steps: string[] = [];
+		const listener = (event: {id: string; step?: string}): void => {
+			if (event.id === "tab-behind" && event.step !== undefined) steps.push(event.step);
+		};
+		actionEmitter.on("action", listener);
+		const head = await gitOut(dir, "rev-parse", "HEAD");
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({
+			project: "pr-behind",
+			branch: "fix-behind",
+			title: "Fix",
+			actionId: "tab-behind",
+		});
+		actionEmitter.off("action", listener);
+		const tip = await gitOut(dir, "rev-parse", "fix-behind");
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			steps,
+			onUpstream: (
+				await execa("git", ["-C", dir, "merge-base", "--is-ancestor", "origin/main", "fix-behind"], {
+					reject: false,
+				})
+			).exitCode,
+			tested: (await gitOut(dir, "test", "results", "--test", "default", "--no-color", tip)).split(/\s/)[0],
+			remoteTip: await gitOut(remoteDir, "rev-parse", "refs/heads/fix-behind"),
+			head: await gitOut(dir, "rev-parse", "HEAD"),
+			status: await gitOut(dir, "status", "--porcelain"),
+			calls: github.calls.length,
+		}).toStrictEqual({
+			ok: true,
+			message: "Opened PR #9",
+			steps: [
+				"Rebasing fix-behind onto origin/main…",
+				"Testing fix-behind…",
+				"Pushing fix-behind…",
+				"Opening the pull request…",
+			],
+			onUpstream: 0,
+			tested: "good",
+			remoteTip: tip,
+			head,
+			status: "",
+			calls: 1,
+		});
+	});
+
+	it("stops with the reason when a behind branch conflicts with upstream, leaving it alone and pushing nothing", async () => {
+		const {dir, remoteDir} = await behindFeatureBranch("fix-conflict", {conflict: true});
+		const before = await gitOut(dir, "rev-parse", "fix-conflict");
+		seedProjectCache([makeProject({name: "pr-conflict", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-conflict", branch: "fix-conflict", title: "Fix"});
+		const pushed = await execa("git", ["-C", remoteDir, "rev-parse", "--verify", "refs/heads/fix-conflict"], {
+			reject: false,
+		});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			tip: await gitOut(dir, "rev-parse", "fix-conflict"),
+			pushed: pushed.exitCode,
+			calls: github.calls.length,
+		}).toStrictEqual({
+			ok: false,
+			message: "fix-conflict conflicts with origin/main; resolve the rebase before opening a PR",
+			tip: before,
+			pushed: 128,
+			calls: 0,
+		});
+	});
+
+	it("does not push or open a PR when the rebased branch fails its test", async () => {
+		const {dir, remoteDir} = await behindFeatureBranch("fix-red", {conflict: false});
+		await execa("git", ["-C", dir, "config", "test.default.command", "false"]);
+		seedProjectCache([makeProject({name: "pr-red", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-red", branch: "fix-red", title: "Fix"});
+		const pushed = await execa("git", ["-C", remoteDir, "rev-parse", "--verify", "refs/heads/fix-red"], {
+			reject: false,
+		});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			pushed: pushed.exitCode,
+			calls: github.calls.length,
+		}).toStrictEqual({
+			ok: false,
+			message: "fix-red failed its test after rebasing onto origin/main; not pushed",
+			pushed: 128,
+			calls: 0,
 		});
 	});
 

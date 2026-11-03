@@ -354,6 +354,85 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("stops counting an advanced item ready once a fresh snapshot shows that same sha behind upstream, and re-advances it", async () => {
+		const replayed = "e".repeat(40);
+		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
+		queues.push(queue);
+		let behind = false;
+		const runs: string[] = [];
+		const secondRun = deferred();
+		const buffer = createReadyBuffer({
+			queue,
+			snapshot: async () =>
+				Promise.resolve([
+					repo("a", {candidates: candidates(1, {c1: {branch: "b", ...(behind ? {behind} : {})}})}),
+				]),
+			target: () => 1,
+			capacity: () => 1,
+			advance: async (_r, candidate, _signal, onReplayed) => {
+				runs.push(candidate.sha);
+				if (runs.length === 1) return "ready";
+				await secondRun.promise;
+				onReplayed(replayed);
+				return "ready";
+			},
+			resolveConflicts: async () => Promise.resolve(null),
+			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(null),
+		});
+		await buffer.pull();
+		await buffer.idle();
+		const before = buffer.state().ready.map((item) => item.id);
+
+		// Upstream moved under the item it advanced (no upstreamMoved reached the buffer in time).
+		behind = true;
+		await buffer.pull();
+		const state = buffer.state();
+		const during = {ready: state.ready.map((item) => item.id), inFlight: state.inFlight.map((item) => item.id)};
+		secondRun.resolve();
+		await buffer.idle();
+
+		expect({before, during, runs, after: buffer.state().ready.map((item) => item.id)}).toStrictEqual({
+			before: ["c1"],
+			during: {ready: [], inFlight: ["c1"]},
+			runs: [paddedSha("c1"), paddedSha("c1")],
+			after: ["c1"],
+		});
+	});
+
+	it("keeps an item ready while the snapshot still shows its pre-replay sha behind, until the refresh catches up", async () => {
+		const replayed = "e".repeat(40);
+		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
+		queues.push(queue);
+		const runs: string[] = [];
+		const buffer = createReadyBuffer({
+			queue,
+			// A stale children cache: the branch already points at the replayed sha.
+			snapshot: async () =>
+				Promise.resolve([repo("a", {candidates: candidates(1, {c1: {branch: "b", behind: true}})})]),
+			target: () => 1,
+			capacity: () => 1,
+			advance: async (_r, candidate, _signal, onReplayed) => {
+				runs.push(candidate.sha);
+				onReplayed(replayed);
+				return Promise.resolve("ready");
+			},
+			resolveConflicts: async () => Promise.resolve(null),
+			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(null),
+		});
+
+		await buffer.pull();
+		await buffer.idle();
+		await buffer.pull();
+		await buffer.idle();
+
+		expect({runs, ready: buffer.state().ready.map((item) => item.id)}).toStrictEqual({
+			runs: [paddedSha("c1")],
+			ready: ["c1"],
+		});
+	});
+
 	it("coalesces a duplicate with a job already queued for the same item", async () => {
 		const h = harness({repos: () => [repo("a")], gated: true});
 		h.queue.enqueue({
@@ -873,8 +952,8 @@ describe("bufferRepoFromChildren", () => {
 			checkedOutBranches: ["main"],
 			candidates: [
 				{id: "pb", sha: sha("b"), branch: "ready", state: "ready", onHold: false, job: 0},
-				{id: sha("c"), sha: sha("c"), state: "unready", onHold: false, job: 1},
-				{id: "pd", sha: sha("d"), branch: "held", state: "unready", onHold: true, job: 1},
+				{id: sha("c"), sha: sha("c"), state: "unready", onHold: false, job: 1, behind: true},
+				{id: "pd", sha: sha("d"), branch: "held", state: "unready", onHold: true, job: 1, behind: true},
 				{
 					id: "pa",
 					sha: sha("a"),
@@ -883,6 +962,7 @@ describe("bufferRepoFromChildren", () => {
 					onHold: false,
 					job: 1 + Math.log2(501),
 					override: "low",
+					behind: true,
 				},
 			],
 		});

@@ -65,9 +65,16 @@ function installShutdownHooks(): void {
 	}
 }
 
-/** Starts the subprocess, as a process group leader whose group dies with `killTreeOn` or server shutdown. */
-async function runSubprocess(command: string, args: string[], options: Options | undefined, killTreeOn?: AbortSignal) {
-	if (killTreeOn === undefined) return execa(command, args, options);
+/**
+ * Starts the subprocess as a process group leader whose whole group dies with `killTreeOn` or server
+ * shutdown. Hands back the subprocess unawaited, so callers can stream its output.
+ */
+export function execaTree<O extends Options>(
+	command: string,
+	args: string[],
+	options: O,
+	killTreeOn: AbortSignal,
+): {subprocess: ReturnType<typeof execa<O & {detached: true}>>} {
 	installShutdownHooks();
 	const subprocess = execa(command, args, {...options, detached: true});
 	const {pid} = subprocess;
@@ -77,12 +84,17 @@ async function runSubprocess(command: string, args: string[], options: Options |
 	if (pid !== undefined) liveGroups.add(pid);
 	if (killTreeOn.aborted) killTree();
 	killTreeOn.addEventListener("abort", killTree, {once: true});
-	try {
-		return await subprocess;
-	} finally {
+	const release = (): void => {
 		killTreeOn.removeEventListener("abort", killTree);
 		if (pid !== undefined) liveGroups.delete(pid);
-	}
+	};
+	void subprocess.then(release, release);
+	return {subprocess};
+}
+
+async function runSubprocess(command: string, args: string[], options: Options | undefined, killTreeOn?: AbortSignal) {
+	if (killTreeOn === undefined) return execa(command, args, options);
+	return execaTree(command, args, options ?? {}, killTreeOn).subprocess;
 }
 
 async function runTraced(

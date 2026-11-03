@@ -1,4 +1,3 @@
-import {execa} from "execa";
 import {
 	getCacheDir,
 	getMiseEnv,
@@ -25,7 +24,7 @@ import {
 } from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {withSubprocessSlot} from "@wip/shared/services/subprocess-gate.js";
-import {tracedExeca} from "@wip/shared/services/traced-execa.js";
+import {execaTree, tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {EventEmitter} from "node:events";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -302,7 +301,7 @@ async function runTask(task: Task, signal: AbortSignal): Promise<void> {
 	}
 }
 
-interface RunProcessOptions {
+export interface RunProcessOptions {
 	task: Task;
 	cmd: string;
 	args: string[];
@@ -312,7 +311,7 @@ interface RunProcessOptions {
 	cwd?: string;
 }
 
-async function runProcess({
+export async function runProcess({
 	task,
 	cmd,
 	args,
@@ -328,14 +327,19 @@ async function runProcess({
 	const gated = await withSubprocessSlot(async () => {
 		if (signal.aborted) return undefined;
 		const start = performance.now();
-		const childProcess = execa(cmd, args, {
-			reject: false,
-			env: {...env, FORCE_COLOR: "1", CLICOLOR_FORCE: "1"},
-			cwd,
-			buffer: true,
-		});
-		const onAbort = () => childProcess.kill("SIGTERM");
-		signal.addEventListener("abort", onAbort, {once: true});
+		// Its own process group, killed whole on abort: a `git test run` starts sh, just and test
+		// workers that would otherwise keep testing in the worktree after the lock is released.
+		const {subprocess: childProcess} = execaTree(
+			cmd,
+			args,
+			{
+				reject: false,
+				env: {...env, FORCE_COLOR: "1", CLICOLOR_FORCE: "1"},
+				cwd,
+				buffer: true,
+			},
+			signal,
+		);
 
 		childProcess.stdout.on("data", (chunk: Buffer) => {
 			emitLog(task, chunk.toString());
@@ -345,7 +349,6 @@ async function runProcess({
 		});
 
 		const finished = await childProcess;
-		signal.removeEventListener("abort", onAbort);
 		return {result: finished, start};
 	});
 	if (!gated) return undefined;

@@ -210,6 +210,48 @@ describe("rebaseBranchOntoUpstream", {timeout: GIT_SUBPROCESS_TIMEOUT}, () => {
 		]);
 	});
 
+	it("refuses to force-push over remote commits that the whole-remote fetch just pulled into the tracking ref", async () => {
+		({dir, remoteDir} = createRepoWithBareRemote());
+		commitFile(dir, "file.txt", "hello", "initial");
+		git(dir, "push", "origin", "main");
+		git(dir, "checkout", "-b", "feature");
+		commitFile(dir, "feature.txt", "feature", "feature commit");
+		git(dir, "push", "origin", "feature");
+		git(dir, "checkout", "main");
+
+		// Another machine moves main and adds a commit to feature on the shared remote.
+		const otherDir = mkdtempSync(join(tmpdir(), "wip-workflows-other-"));
+		try {
+			execFileSync("git", ["clone", "--branch", "main", remoteDir, otherDir], {stdio: "ignore"});
+			git(otherDir, "config", "user.email", "other@test.com");
+			git(otherDir, "config", "user.name", "Other");
+			commitFile(otherDir, "main-update.txt", "updated", "main moves forward");
+			git(otherDir, "push", "origin", "main");
+			git(otherDir, "checkout", "feature");
+			commitFile(otherDir, "other.txt", "other", "commit from another machine");
+			git(otherDir, "push", "origin", "feature");
+		} finally {
+			rmSync(otherDir, {recursive: true, force: true});
+		}
+		const remoteFeature = execFileSync("git", ["rev-parse", "feature"], {cwd: remoteDir, encoding: "utf-8"}).trim();
+
+		const result = await rebaseBranchOntoUpstream(dir, {
+			branch: "feature",
+			project: "workflows-lease",
+			upstreamRef: "origin/main",
+			upstreamRemote: "origin",
+			rebaseMerges: true,
+			restoreBranch: "main",
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error("expected failure");
+		expect(result.stage).toBe("push");
+		expect(execFileSync("git", ["rev-parse", "feature"], {cwd: remoteDir, encoding: "utf-8"}).trim()).toBe(
+			remoteFeature,
+		);
+	});
+
 	it("fails at checkout for a nonexistent branch", async () => {
 		({dir, remoteDir} = createRepoWithBareRemote());
 		commitFile(dir, "file.txt", "hello", "initial");

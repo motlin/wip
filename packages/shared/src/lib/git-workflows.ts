@@ -183,6 +183,23 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 
 	if (signal?.aborted) return cancelledRebase();
 
+	const pushRemote =
+		options.pushRemote ??
+		((await tracedExeca("git", ["-C", dir, "config", `branch.${branch}.remote`], {reject: false})).stdout.trim() ||
+			"origin");
+	// Pin the lease to the remote sha we knew before fetching. A bare
+	// --force-with-lease compares against the tracking ref, which the fetch below
+	// refreshes when pushRemote is the upstream remote, so it would silently
+	// overwrite commits another machine pushed to this branch.
+	const leaseSha = (
+		await tracedExeca(
+			"git",
+			["-C", dir, "rev-parse", "--verify", "--quiet", `refs/remotes/${pushRemote}/${branch}`],
+			{reject: false, env},
+		)
+	).stdout.trim();
+	const leaseArg = leaseSha ? `--force-with-lease=refs/heads/${branch}:${leaseSha}` : "--force-with-lease";
+
 	if (upstreamRemote) {
 		await run(fetchBranch ? ["fetch", upstreamRemote, fetchBranch] : ["fetch", upstreamRemote], signal);
 	}
@@ -234,11 +251,7 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 		return cancelledRebase();
 	}
 
-	const pushRemote =
-		options.pushRemote ??
-		((await tracedExeca("git", ["-C", dir, "config", `branch.${branch}.remote`], {reject: false})).stdout.trim() ||
-			"origin");
-	const push = await run(["push", pushRemote, `${branch}:${branch}`, "--force-with-lease"], signal);
+	const push = await run(["push", pushRemote, `${branch}:${branch}`, leaseArg], signal);
 	if (signal?.aborted) {
 		await restore();
 		return cancelledRebase(true);

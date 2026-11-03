@@ -418,6 +418,9 @@ export async function startReadyBuffer(
 	const power = await startPowerWatch(() => currentReadyBuffer());
 	const started = createReadyBuffer({
 		onBattery: () => power.onBattery(),
+		warn: (error, item) => {
+			log.general.error({error, item}, "Ready-buffer item failed");
+		},
 		queue: workQueue,
 		snapshot,
 		// Read per pull so a config change takes effect without a restart.

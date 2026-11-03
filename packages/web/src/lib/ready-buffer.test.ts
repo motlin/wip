@@ -777,6 +777,52 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("reports a failed refill after a finishing job instead of leaving an unhandled rejection", async () => {
+		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
+		queues.push(queue);
+		const snapshotFailed = deferred();
+		const warnings: Array<{message: string; context: string}> = [];
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown): void => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", onUnhandled);
+		let snapshots = 0;
+		const buffer = createReadyBuffer({
+			queue,
+			snapshot: async () => {
+				snapshots += 1;
+				if (snapshots === 1) return Promise.resolve([repo("a", {candidates: candidates(1)})]);
+				snapshotFailed.resolve();
+				throw new Error("discovery failed");
+			},
+			target: () => 1,
+			capacity: () => 1,
+			advance: async () => Promise.resolve("ready"),
+			resolveConflicts: async () => Promise.resolve(null),
+			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(null),
+			warn: (error, context) => {
+				warnings.push({message: error instanceof Error ? error.message : String(error), context});
+			},
+		});
+
+		try {
+			await buffer.pull();
+			await snapshotFailed.promise;
+			await new Promise<void>((resolve) => {
+				setTimeout(resolve, 10);
+			});
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+
+		expect({warnings, unhandled}).toStrictEqual({
+			warnings: [{message: "discovery failed", context: "a:c1"}],
+			unhandled: [],
+		});
+	});
+
 	it("pulls nothing for a project with local changes", async () => {
 		const h = harness({repos: () => [repo("dirty", {localChanges: true}), repo("clean")], gated: true});
 

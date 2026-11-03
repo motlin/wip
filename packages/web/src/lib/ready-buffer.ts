@@ -194,6 +194,11 @@ export interface ReadyBufferDeps {
 	firstSeen?: (project: string, id: string) => string | undefined;
 	/** Whether the machine runs on battery; while it does, a pull starts no background work. */
 	onBattery?: () => boolean;
+	/**
+	 * Reports a buffer item's chain failing, including the refill pull its finish requests, which
+	 * nothing awaits; `context` is `project:id`. Defaults to console.error.
+	 */
+	warn?: (error: unknown, context: string) => void;
 }
 
 export interface ReadyBuffer {
@@ -316,6 +321,11 @@ function onePerPatchId(candidates: BufferCandidate[]): BufferCandidate[] {
 const BUFFER_RANK = -10;
 
 export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
+	const warn =
+		deps.warn ??
+		((error: unknown, context: string) => {
+			console.error(`Ready-buffer item ${context} failed`, error);
+		});
 	/** project → item id → last outcome. `ready` = buffered; anything else = parked. */
 	const results = new Map<string, Map<string, AdvanceOutcome>>();
 	/** project → item id → settle promise of its in-flight job. */
@@ -458,6 +468,9 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			.then(async () => {
 				jobs.delete(candidate.id);
 				return requestPull();
+			})
+			.catch((error: unknown) => {
+				warn(error, `${repo.name}:${candidate.id}`);
 			});
 		jobs.set(candidate.id, settled);
 	}

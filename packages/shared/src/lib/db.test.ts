@@ -24,6 +24,8 @@ import {
 	snoozeTodo,
 	unsnoozeTodo,
 	getActiveSnoozedTodoKeys,
+	getActiveSnoozed,
+	clearExpiredSnoozes,
 	getAllSnoozed,
 	getAllSnoozedForDisplay,
 	cacheMiseEnv,
@@ -323,6 +325,41 @@ describe("Snoozed items", () => {
 		// Verify no temporal fields
 		expect("systemFrom" in display[0]!).toBe(false);
 		expect("systemTo" in display[0]!).toBe(false);
+	});
+});
+
+describe("Snooze expiry on the same day", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-11-03T10:00:00.000Z"));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("expires a one-hour commit snooze an hour later, not after the UTC date passes", () => {
+		snoozeItem("sha1", "project-a", "sha1abc", "Fix the thing", "2026-11-03T11:00:00.000Z");
+		const activeBefore = getActiveSnoozed().map((row) => row.sha);
+		vi.setSystemTime(new Date("2026-11-03T12:00:00.000Z"));
+
+		expect({
+			activeBefore,
+			activeAfter: getActiveSnoozed().map((row) => row.sha),
+			cleared: clearExpiredSnoozes(),
+			remaining: getAllSnoozed().map((row) => row.sha),
+		}).toStrictEqual({activeBefore: ["sha1"], activeAfter: [], cleared: 1, remaining: []});
+	});
+
+	it("expires a one-hour todo snooze an hour later", () => {
+		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Later", "2026-11-03T11:00:00.000Z");
+		const before = [...getActiveSnoozedTodoKeys("project-a")];
+		vi.setSystemTime(new Date("2026-11-03T12:00:00.000Z"));
+
+		expect({before, after: [...getActiveSnoozedTodoKeys("project-a")]}).toStrictEqual({
+			before: ["/a/.llm/todo.md\u0000Later"],
+			after: [],
+		});
 	});
 });
 

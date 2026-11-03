@@ -4,12 +4,9 @@ import {
 	asc,
 	desc,
 	eq,
-	gte,
 	inArray,
-	isNotNull,
 	isNull,
 	like,
-	lte,
 	or,
 	sql,
 	type InferInsertModel,
@@ -698,6 +695,18 @@ export function repointSnoozed(row: SnoozedItem, next: {sha: string; shortSha: s
 	}, WRITE_TRANSACTION_CONFIG);
 }
 
+/**
+ * A snooze `until` is an ISO string ("…T11:00:00.000Z") while `now()` is "… 11:00:00.000";
+ * as text, 'T' sorts after ' ', so compare them as instants via julianday().
+ */
+function untilNotPassed(until: SQLiteColumn, at: string): SQL {
+	return sql`(${until} IS NULL OR julianday(${until}) >= julianday(${at}))`;
+}
+
+function untilPassed(until: SQLiteColumn, at: string): SQL {
+	return sql`julianday(${until}) <= julianday(${at})`;
+}
+
 function activeTodoSnooze(project: string, itemKey: string) {
 	return and(
 		eq(snoozedTodos.project, project),
@@ -728,7 +737,7 @@ export function getActiveSnoozedTodoKeys(project: string): Set<string> {
 			and(
 				eq(snoozedTodos.project, project),
 				eq(snoozedTodos.systemTo, FAR_FUTURE),
-				or(isNull(snoozedTodos.until), gte(snoozedTodos.until, now())),
+				untilNotPassed(snoozedTodos.until, now()),
 			),
 		)
 		.all();
@@ -741,7 +750,7 @@ export function getActiveSnoozed(): SnoozedItem[] {
 	return d
 		.select()
 		.from(snoozed)
-		.where(and(eq(snoozed.systemTo, FAR_FUTURE), or(isNull(snoozed.until), gte(snoozed.until, nowStr))))
+		.where(and(eq(snoozed.systemTo, FAR_FUTURE), untilNotPassed(snoozed.until, nowStr)))
 		.all();
 }
 
@@ -773,7 +782,7 @@ export function clearExpiredSnoozes(): number {
 	const result = d
 		.update(snoozed)
 		.set({systemTo: timestamp})
-		.where(and(isNotNull(snoozed.until), lte(snoozed.until, timestamp), eq(snoozed.systemTo, FAR_FUTURE)))
+		.where(and(untilPassed(snoozed.until, timestamp), eq(snoozed.systemTo, FAR_FUTURE)))
 		.run();
 	return result.changes;
 }

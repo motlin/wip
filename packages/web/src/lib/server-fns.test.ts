@@ -3738,13 +3738,24 @@ describe("getMainPushesHandler", () => {
 		const {dir, shas} = await mainAheadGreenGreenUnknown();
 		tmpDirs.push(`${dir}-test-worktree`);
 		seedProjectCache([makeProject({name: "getting-ready", dir})]);
+		// The test log and worktree lock land under a temp cache dir, not ~/.cache/wip.
+		const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
+		tmpDirs.push(cache);
+		vi.stubEnv("XDG_CACHE_HOME", cache);
 		readyBufferOverride.running = true;
+		// An idle machine on AC, whatever the real load and power source are.
+		workQueue.setProbe({loadPerCore: () => 0, freeMemRatio: () => 1});
+		workQueue.setOnBattery(false);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
 		try {
 			const {getMainPushesHandler} = await import("./server-fns.impl.js");
 			const first = await getMainPushesHandler({});
-			await vi.waitFor(async () => {
-				expect((await getMainPushesHandler({}))[0]?.commits[2]?.status).toBe("good");
+			const jobs = enqueueSpy.mock.calls.flatMap(([job], index) => {
+				const handle = enqueueSpy.mock.results[index]?.value as ReturnType<typeof workQueue.enqueue>;
+				return job.kind === "main-push-test" ? [handle] : [];
 			});
+			expect(jobs).toHaveLength(1);
+			await jobs[0]?.settled;
 
 			expect({testing: first[0]?.testing, after: await getMainPushesHandler({})}).toStrictEqual({
 				testing: shas[2],
@@ -3763,6 +3774,8 @@ describe("getMainPushesHandler", () => {
 				],
 			});
 		} finally {
+			enqueueSpy.mockRestore();
+			workQueue.setProbe(null);
 			readyBufferOverride.running = false;
 		}
 	});

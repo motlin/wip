@@ -208,6 +208,46 @@ describe("withTestWorktree excludes other processes", () => {
 		});
 	});
 
+	it("stops waiting behind an in-process run when the signal aborts, and the next caller still waits for that run", async () => {
+		const head = git(dir, "rev-parse HEAD");
+		const events: string[] = [];
+		let finishFirst!: () => void;
+		const firstRunning = new Promise<void>((resolveStarted) => {
+			void withTestWorktree(dir, head, async () => {
+				events.push("first starts");
+				resolveStarted();
+				await new Promise<void>((resolve) => {
+					finishFirst = resolve;
+				});
+				events.push("first ends");
+			});
+		});
+		await firstRunning;
+		const controller = new AbortController();
+
+		const second = withTestWorktree(
+			dir,
+			head,
+			async () => {
+				events.push("second ran");
+				return Promise.resolve();
+			},
+			controller.signal,
+		);
+		const third = withTestWorktree(dir, head, async () => {
+			events.push("third runs");
+			return Promise.resolve();
+		});
+		controller.abort();
+
+		await expect(second).rejects.toThrow(`Aborted waiting for test worktree lock ${worktree}`);
+		events.push("second aborted");
+		finishFirst();
+		await third;
+
+		expect(events).toStrictEqual(["first starts", "second aborted", "first ends", "third runs"]);
+	});
+
 	it("stops waiting for the lock when the signal aborts", async () => {
 		const lockFile = testWorktreeLockFile(worktree);
 		fs.mkdirSync(path.dirname(lockFile), {recursive: true});

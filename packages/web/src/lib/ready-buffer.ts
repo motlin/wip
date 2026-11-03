@@ -19,7 +19,7 @@ import {
 	type ReadyToLandState,
 } from "@wip/shared/ready-to-land.js";
 import {stopsLine, upstreamOwnership, type GitHubIdentity, type UpstreamOwnership} from "@wip/shared/upstream-red.js";
-import {repoResource} from "./repo-resource.js";
+import {repoResource, testWorktreeResource} from "./repo-resource.js";
 
 /**
  * The ready-buffer pull controller (lean plan 4.6). Client-safe: no node builtins; the
@@ -367,7 +367,9 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			costClass: "build",
 			priority: "background",
 			rank: BUFFER_RANK,
-			resources: [repoResource(repo.name)],
+			// It tests in the test worktree too, so it queues behind a Push main pre-test there
+			// instead of blocking inside git test run, where a preempting user action would wait.
+			resources: [repoResource(repo.name), testWorktreeResource(repo.name)],
 			buffer: true,
 			pauseOnBattery: true,
 			// It replays and pushes the user's refs, so it holds the repo; a user action preempts it.

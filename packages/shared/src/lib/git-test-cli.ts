@@ -77,12 +77,33 @@ const worktreeLocks = new Map<string, Promise<unknown>>();
 // that can finish in any order.
 let lockQueue: Promise<unknown> = Promise.resolve();
 
+/** `wait`, or a rejection with `message` as soon as `signal` aborts. */
+async function untilAborted(wait: Promise<unknown>, signal: AbortSignal | undefined, message: string): Promise<void> {
+	if (signal === undefined) {
+		await wait;
+		return;
+	}
+	if (signal.aborted) throw new Error(message);
+	let onAbort!: () => void;
+	const aborted = new Promise<never>((_resolve, reject) => {
+		onAbort = () => {
+			reject(new Error(message));
+		};
+		signal.addEventListener("abort", onAbort, {once: true});
+	});
+	try {
+		await Promise.race([wait, aborted]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
+}
+
 /**
  * Run `fn` in the repo's test worktree, created detached on demand the way git-test.just does
  * (`git worktree add --detach`) and never removed, so background tests never check commits out
  * in the user's checkout. Concurrent calls for the same worktree run one at a time, in call order,
  * and a lock file excludes runs from other wip processes (the CLI and the server). Aborting
- * `signal` stops waiting for that lock.
+ * `signal` stops waiting, both behind an earlier run in this process and for that lock.
  */
 export async function withTestWorktree<T>(
 	dir: string,
@@ -94,11 +115,12 @@ export async function withTestWorktree<T>(
 	const queued = lockQueue.then(async () => lookup);
 	lockQueue = queued.catch(() => undefined);
 	const worktree = await queued;
+	const abortMessage = `Aborted waiting for test worktree lock ${worktree}`;
 	const previous = worktreeLocks.get(worktree) ?? Promise.resolve();
-	const run = previous.then(async () => {
+	const run = untilAborted(previous, signal, abortMessage).then(async () => {
 		const release = await acquireFileLock(testWorktreeLockFile(worktree), {
 			...(signal === undefined ? {} : {signal}),
-			abortMessage: `Aborted waiting for test worktree lock ${worktree}`,
+			abortMessage,
 		});
 		try {
 			if (!fs.existsSync(worktree)) {
@@ -114,11 +136,9 @@ export async function withTestWorktree<T>(
 			release();
 		}
 	});
-	const settled: Promise<void> = run
-		.then(
-			() => undefined,
-			() => undefined,
-		)
+	// A caller that stops waiting still keeps its place until the run ahead of it is done.
+	const settled: Promise<void> = Promise.allSettled([previous, run])
+		.then(() => undefined)
 		.finally(() => {
 			if (worktreeLocks.get(worktree) === settled) worktreeLocks.delete(worktree);
 		});

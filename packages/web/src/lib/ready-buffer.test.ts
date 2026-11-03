@@ -271,7 +271,7 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("enqueues exactly 2 preemptible advance-commit jobs for 5 candidates with a ready target of 2, in rank order", async () => {
+	it("enqueues exactly 2 preemptible advance-commit jobs holding the repo and its test worktree for 5 candidates with a ready target of 2, in rank order", async () => {
 		const h = harness({repos: () => [repo("a")], gated: true});
 
 		await h.buffer.pull();
@@ -283,7 +283,7 @@ describe("createReadyBuffer", () => {
 				project: "a",
 				costClass: "build",
 				priority: "background",
-				resources: ["repo:a"],
+				resources: ["repo:a", "test-worktree:a"],
 				buffer: true,
 				preemptible: true,
 				coalesced: false,
@@ -294,7 +294,7 @@ describe("createReadyBuffer", () => {
 				project: "a",
 				costClass: "build",
 				priority: "background",
-				resources: ["repo:a"],
+				resources: ["repo:a", "test-worktree:a"],
 				buffer: true,
 				preemptible: true,
 				coalesced: false,

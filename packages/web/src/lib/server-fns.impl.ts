@@ -239,15 +239,18 @@ export function resetProjectCache(): void {
 async function refreshProjectCache(): Promise<ProjectInfo[]> {
 	if (discoverInFlight) return discoverInFlight;
 	const projectsDirs = getProjectsDirs();
-	discoverInFlight = discoverAllProjects(projectsDirs).then(async (projects) => {
-		cachedProjects = projects;
-		cachedProjectsTime = Date.now();
-		discoverInFlight = null;
-		setCachedProjectList(projects);
-		const {projectEmitter} = await import("./project-events.js");
-		projectEmitter.emit("projects", projects);
-		return projects;
-	});
+	discoverInFlight = discoverAllProjects(projectsDirs)
+		.then(async (projects) => {
+			cachedProjects = projects;
+			cachedProjectsTime = Date.now();
+			setCachedProjectList(projects);
+			const {projectEmitter} = await import("./project-events.js");
+			projectEmitter.emit("projects", projects);
+			return projects;
+		})
+		.finally(() => {
+			discoverInFlight = null;
+		});
 	return discoverInFlight;
 }
 

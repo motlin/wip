@@ -2702,6 +2702,26 @@ describe("refreshAllHandler rediscovers projects", () => {
 	});
 });
 
+describe("refreshAllHandler after a failed discovery", () => {
+	it("rediscovers instead of replaying the rejected discovery", async () => {
+		const {refreshAllHandler} = await import("./server-fns.impl.js");
+		const projectsDir = await mkdtemp(join(tmpdir(), "wip-projects-"));
+		tmpDirs.push(projectsDir);
+		try {
+			projectsDirsOverride.dirs = [join(projectsDir, "missing")];
+			await expect(refreshAllHandler()).rejects.toThrow("ENOENT");
+
+			projectsDirsOverride.dirs = [projectsDir];
+			await addDiscoverableRepo(projectsDir, "rf-recovered");
+			forcedRefreshSpy.mockClear();
+
+			expect(await refreshAllHandler()).toStrictEqual({started: 1});
+		} finally {
+			projectsDirsOverride.dirs = undefined;
+		}
+	});
+});
+
 describe("refreshAllHandler", () => {
 	it("invalidates all caches and returns success", async () => {
 		const {cachePrStatuses, getCachedPrStatuses} = await import("@wip/shared");

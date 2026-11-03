@@ -72,6 +72,23 @@ describe("squashFixup", () => {
 		});
 	});
 
+	it.each(["relative", "short"])(
+		"keeps the original author date to the second under log.date=%s",
+		async (logDate) => {
+			sh(dir, `git config log.date ${logDate}`);
+			const original = sh(dir, "git rev-parse feat~1");
+			const fixup = sh(dir, "git rev-parse feat");
+			const authorDate = sh(dir, "git log -1 --format=%aI feat~1");
+
+			const squashed = await squashFixup(dir, "feat", original, fixup);
+
+			expect({
+				tip: sh(dir, "git rev-parse feat"),
+				authorDate: sh(dir, "git log -1 --format=%aI feat"),
+			}).toStrictEqual({tip: squashed, authorDate});
+		},
+	);
+
 	it("leaves the branch alone when the fixup does not sit directly on the original", async () => {
 		const fixup = sh(dir, "git rev-parse feat");
 		const before = sh(dir, "git rev-parse feat");

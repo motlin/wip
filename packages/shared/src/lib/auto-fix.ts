@@ -39,7 +39,7 @@ export async function squashFixup(
 ): Promise<string | null> {
 	const parent = await git(dir, ["rev-parse", `${fixupSha}^`]);
 	if (parent.exitCode !== 0 || parent.stdout.trim() !== originalSha) return null;
-	const info = await git(dir, ["log", "-1", "--format=%an%x00%ae%x00%ad%x00%B", originalSha]);
+	const info = await git(dir, ["log", "-1", "--format=%an%x00%ae%x00%aI%x00%B", originalSha]);
 	if (info.exitCode !== 0) return null;
 	const [name = "", email = "", date = "", ...message] = info.stdout.split("\0");
 	const base = await git(dir, ["rev-parse", `${originalSha}^`]);

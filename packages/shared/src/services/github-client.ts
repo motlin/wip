@@ -62,12 +62,18 @@ function rateLimitResetEpochMs(response: Response): number | undefined {
 	return epochSeconds * 1000;
 }
 
+/** GitHub's GraphQL endpoint; `WIP_GITHUB_GRAPHQL_URL` points it at the landing harness's fake GitHub. */
+function graphqlUrl(): string {
+	const url = process.env["WIP_GITHUB_GRAPHQL_URL"];
+	return url === undefined || url === "" ? "https://api.github.com/graphql" : url;
+}
+
 function createProductionClient(): GitHubClient {
 	return {
 		async graphql(query: string, variables?: Record<string, unknown>): Promise<unknown> {
 			const token = await getToken();
 			const start = performance.now();
-			const response = await fetch("https://api.github.com/graphql", {
+			const response = await fetch(graphqlUrl(), {
 				method: "POST",
 				headers: {
 					Authorization: `bearer ${token}`,

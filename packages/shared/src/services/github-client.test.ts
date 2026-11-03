@@ -76,3 +76,25 @@ describe("GitHub token caching", () => {
 		expect(authorizationHeaders(fetchMock)).toStrictEqual(["bearer revoked", "bearer renewed"]);
 	});
 });
+
+describe("GitHub GraphQL endpoint", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+		resetGitHubClient();
+	});
+
+	it("posts to WIP_GITHUB_GRAPHQL_URL when it is set, so the end-to-end harness never reaches GitHub", async () => {
+		vi.stubEnv("GITHUB_TOKEN", "fake-token");
+		vi.stubEnv("WIP_GITHUB_GRAPHQL_URL", "http://127.0.0.1:9/graphql");
+		const fetchMock = vi
+			.fn<(url: string, init: {headers: Record<string, string>}) => Promise<Response>>()
+			.mockImplementation(async () => Promise.resolve(Response.json({data: {}})));
+		vi.stubGlobal("fetch", fetchMock);
+		resetGitHubClient();
+
+		await getGitHubClient().graphql("query { viewer { login } }");
+
+		expect(fetchMock.mock.calls.map((call) => call[0])).toStrictEqual(["http://127.0.0.1:9/graphql"]);
+	});
+});

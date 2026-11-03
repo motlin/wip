@@ -15,6 +15,9 @@
 		"packages/web/src/stories/**/*.mdx",
 		"packages/cli/bin/**/*.js",
 		"packages/cli/src/commands/**/*.{ts,tsx}",
+		"packages/web/e2e/*.e2e.mjs",
+		// Run as a process (the fake gh on the harness server's PATH), never imported.
+		"packages/web/e2e/fake-gh.mjs",
 	],
 	"ignorePatterns": ["**/dist/**", "**/.output/**", "**/node_modules/**", "packages/web/.storybook/**"],
 	"rules": {

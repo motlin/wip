@@ -66,14 +66,21 @@ export function landingAction(
 /**
  * Finds a row's commit among the cached children. The children list each sha once across projects,
  * so a commit shared by two projects on the same repo sits under only one of them: a row whose own
- * project lacks it falls back to the same sha elsewhere, for its subject, PR and checks.
+ * project lacks it falls back to the same sha elsewhere, for its subject, PR and checks. A rebase
+ * (Open PR on a behind row) changes the sha but not the change, and the buffer's state and the
+ * children reach the page separately: a row whose sha the children lack yet finds its change by the
+ * patch-id it is keyed by, so it keeps its subject and PR until both caught up.
  */
 function commitLookup(
 	commits: readonly GitChildResult[],
-): (item: Pick<ReadyToLandItem, "project" | "sha">) => GitChildResult | undefined {
+): (item: Pick<ReadyToLandItem, "project" | "id" | "sha">) => GitChildResult | undefined {
 	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
 	const bySha = new Map(commits.map((c) => [c.sha, c]));
-	return (item) => byKey.get(`${item.project}:${item.sha}`) ?? bySha.get(item.sha);
+	const byChange = new Map(
+		commits.flatMap((c) => (c.patchId === undefined ? [] : [[`${c.project}:${c.patchId}`, c] as const])),
+	);
+	return (item) =>
+		byKey.get(`${item.project}:${item.sha}`) ?? bySha.get(item.sha) ?? byChange.get(`${item.project}:${item.id}`);
 }
 
 function sizeText(commit: GitChildResult | undefined): string | null {
@@ -472,7 +479,7 @@ function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 	const {item, commit, projectInfo} = land;
 	const action = useLandControl(land);
 	const size = sizeText(commit);
-	const params = {project: item.project, sha: item.sha};
+	const params = {project: item.project, sha: commit?.sha ?? item.sha};
 	const behind = item.behind === true;
 	const hasChips =
 		stoppedLine ||
@@ -733,7 +740,7 @@ function WaitingRow({
 				<p className="min-w-0 flex-1 truncate">
 					<Link
 						to="/item/$project/$sha"
-						params={{project: item.project, sha: item.sha}}
+						params={{project: item.project, sha: commit?.sha ?? item.sha}}
 						className="font-medium text-text-000 hover:underline"
 					>
 						{commit?.subject ?? item.sha.slice(0, 7)}

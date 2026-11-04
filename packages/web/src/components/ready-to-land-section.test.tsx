@@ -801,6 +801,27 @@ function prUrl(n: number): string {
 	return `https://github.com/motlin/pr/pull/${n}`;
 }
 
+/** The ready and waiting rows the section renders for `pr` from this state and these children. */
+function shownRows(rowState: ReadyToLandState, rowCommits: GitChildResult[]) {
+	render(
+		<ReadyToLandSection
+			state={rowState}
+			commits={rowCommits}
+			projects={[project("pr")]}
+			now={now}
+			onLand={() => undefined}
+			onPush={() => undefined}
+		/>,
+	);
+	const rows = {
+		ready: screen.queryAllByTestId("ready-to-land-row").map((row) => row.textContent),
+		waiting: screen.queryAllByTestId("waiting-row").map((row) => row.textContent),
+		links: screen.queryAllByTestId("waiting-row").map(links),
+	};
+	cleanup();
+	return rows;
+}
+
 describe("ReadyToLandSection while PR checks run", () => {
 	afterEach(() => {
 		cleanup();
@@ -875,6 +896,64 @@ describe("ReadyToLandSection while PR checks run", () => {
 			/>,
 		);
 	}
+
+	it("keeps a row whose branch Open PR just rebased, by its change, while the buffer and the children disagree on its sha", () => {
+		const rebased = makeChild({
+			project: "pr",
+			sha: sha("b2"),
+			patchId: "pb",
+			subject: "Behind",
+			branch: "behind",
+			prNumber: 6,
+			prUrl: prUrl(6),
+			checkStatus: "pending",
+		});
+		const preRebase = makeChild({
+			project: "pr",
+			sha: sha("b1"),
+			patchId: "pb",
+			subject: "Behind",
+			branch: "behind",
+			prNumber: 6,
+			prUrl: prUrl(6),
+			checkStatus: "pending",
+		});
+		const item = (at: string): ReadyToLandItem => ({
+			project: "pr",
+			id: "pb",
+			sha: sha(at),
+			branch: "behind",
+			landing: "pull-request",
+		});
+		const waitingRow = {
+			ready: [],
+			waiting: ["Behind · pr · PR #6 · waiting for checks"],
+			links: [
+				[
+					["Behind", `/item/pr/${sha("b2")}`],
+					["PR #6", prUrl(6)],
+				],
+			],
+		};
+
+		expect({
+			// The children refresh reached the page first: the buffer still lists the pre-rebase sha.
+			bufferBehind: shownRows({...checksState, ready: [item("b1")], awaitingChecks: []}, [rebased]),
+			// The buffer caught up first: the page's children still hold the pre-rebase sha, given the PR.
+			childrenBehind: shownRows({...checksState, ready: [], awaitingChecks: [item("b2")]}, [preRebase]),
+		}).toStrictEqual({
+			bufferBehind: waitingRow,
+			childrenBehind: {
+				...waitingRow,
+				links: [
+					[
+						["Behind", `/item/pr/${sha("b1")}`],
+						["PR #6", prUrl(6)],
+					],
+				],
+			},
+		});
+	});
 
 	it("shows every PR whose checks are pending as a compact waiting row linking to the PR, with no button, whether or not auto-merge is on", () => {
 		renderChecks();

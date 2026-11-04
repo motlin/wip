@@ -1,5 +1,5 @@
 import {trace, type Tracer} from "@opentelemetry/api";
-import type {tracing as sdkTracing} from "@opentelemetry/sdk-node";
+import type {SpanExporter} from "@opentelemetry/sdk-trace";
 
 declare global {
 	// eslint-disable-next-line no-var
@@ -22,7 +22,9 @@ export interface Tracing {
 // `void` those promises turn it into a fatal unhandled rejection. Every export
 // path below reports failure through warnOnce instead.
 export async function startTracing(url: string): Promise<Tracing> {
-	const {NodeSDK, core, tracing} = await import("@opentelemetry/sdk-node");
+	const {NodeSDK} = await import("@opentelemetry/sdk-node");
+	const {ExportResultCode} = await import("@opentelemetry/core");
+	const {BatchSpanProcessor} = await import("@opentelemetry/sdk-trace");
 	const {OTLPTraceExporter} = await import("@opentelemetry/exporter-trace-otlp-proto");
 	const {HttpInstrumentation} = await import("@opentelemetry/instrumentation-http");
 
@@ -35,10 +37,10 @@ export async function startTracing(url: string): Promise<Tracing> {
 	};
 
 	const otlp = new OTLPTraceExporter({url});
-	const exporter: sdkTracing.SpanExporter = {
+	const exporter: SpanExporter = {
 		export: (spans, resultCallback) => {
 			otlp.export(spans, (result) => {
-				if (result.code !== core.ExportResultCode.SUCCESS) {
+				if (result.code !== ExportResultCode.SUCCESS) {
 					warnOnce(result.error);
 				}
 				resultCallback(result);
@@ -47,7 +49,7 @@ export async function startTracing(url: string): Promise<Tracing> {
 		shutdown: async () => otlp.shutdown(),
 		forceFlush: async () => otlp.forceFlush(),
 	};
-	const processor = new tracing.BatchSpanProcessor(exporter);
+	const processor = new BatchSpanProcessor({exporter});
 	const sdk = new NodeSDK({
 		serviceName: "wip",
 		spanProcessors: [processor],

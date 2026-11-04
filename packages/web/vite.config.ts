@@ -8,6 +8,14 @@ import {fileURLToPath} from "node:url";
 process.title = "wip-web-dev";
 
 const webRoot = path.dirname(fileURLToPath(import.meta.url));
+const openTelemetryPackages = [
+	"@opentelemetry/api",
+	"@opentelemetry/core",
+	"@opentelemetry/exporter-trace-otlp-proto",
+	"@opentelemetry/instrumentation-http",
+	"@opentelemetry/sdk-node",
+	"@opentelemetry/sdk-trace",
+];
 const serverOnlyModules = ["execa", "better-sqlite3", "pino", "pino-pretty", "drizzle-orm/better-sqlite3"];
 
 // Stub server-only modules so Vite's dev client doesn't walk into execa → unicorn-magic
@@ -90,7 +98,10 @@ export default defineConfig({
 	},
 	ssr: {
 		noExternal: ["@wip/shared"],
-		external: ["better-sqlite3", "execa"],
+		// OpenTelemetry stays out of the SSR bundle: its rolldown-built CJS (api 1.10+) already names requires
+		// require_context and require_context$1, and re-bundling renames both to require_context$1, so tracing died at
+		// startup with "createContextKey is not a function". Node loads these from @wip/web's dependencies instead.
+		external: ["better-sqlite3", "execa", ...openTelemetryPackages],
 	},
 	test: {
 		setupFiles: [path.resolve(webRoot, "../shared/src/test/git-env-setup.ts")],

@@ -37,6 +37,13 @@
 		"@storybook/addon-docs",
 		"@storybook/addon-vitest",
 		"eslint-plugin-storybook",
+		// External to @wip/web's SSR bundle (see vite.config.ts), so Node resolves them
+		// from @wip/web at runtime when the bundled @wip/shared telemetry imports them.
+		"@opentelemetry/core",
+		"@opentelemetry/exporter-trace-otlp-proto",
+		"@opentelemetry/instrumentation-http",
+		"@opentelemetry/sdk-node",
+		"@opentelemetry/sdk-trace",
 	],
 	// Per-project: Handler Extraction Pattern (see CLAUDE.md) exports handlers so
 	// tests can import and call them directly, bypassing createServerFn.

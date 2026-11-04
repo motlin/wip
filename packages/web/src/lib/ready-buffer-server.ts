@@ -53,6 +53,8 @@ async function checkedOut(dir: string): Promise<string[]> {
 async function snapshot(): Promise<BufferRepo[]> {
 	const {
 		draftPrVerification,
+		getCachedMergeStatuses,
+		getCachedUpstreamSha,
 		getGitHubIdentity,
 		getLastKnownChildren,
 		getPriorityOverride,
@@ -84,6 +86,12 @@ async function snapshot(): Promise<BufferRepo[]> {
 					await readDraftPrRepoFacts(p.dir, p.upstreamRef, prRepository(p))
 				: null;
 		const verification = draftPrVerification(record, facts);
+		// Durable merge status for the current upstream tip: a children cache written before the
+		// merge-tree check on a new tip (or before a restart) still shows the old behind counts.
+		const upstreamSha = getCachedUpstreamSha(p.name);
+		const mergeStatuses = new Map(
+			(upstreamSha ? getCachedMergeStatuses(p.name, upstreamSha) : []).map((ms) => [ms.sha, ms]),
+		);
 		repos.push(
 			bufferRepoFromChildren(p, children, {
 				identity,
@@ -98,6 +106,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 				backgroundPush: pushesInBackground(record),
 				verifyByDraftPr: verification?.active === true,
 				...(verification?.active === false ? {verifyNotice: verification.reason} : {}),
+				mergeStatus: (sha) => mergeStatuses.get(sha),
 			}),
 		);
 	}

@@ -3,6 +3,7 @@ import {
 	fetchUpstreamRef,
 	computeMergeStatus,
 	getChildren,
+	getBehindBranchTips,
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	heldShas,
@@ -163,7 +164,13 @@ async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]
 		if (from) await detectProjectLandings(p, from, upstreamSha);
 	}
 
-	const allShas = await getChildren(p.dir, p.upstreamRef);
+	// Branches upstream moved past too: their behind count and clean rebase decide whether a green one
+	// is still ready to land (Open PR rebases and retests it).
+	const [children, behindTips] = await Promise.all([
+		getChildren(p.dir, p.upstreamRef),
+		getBehindBranchTips(p.dir, p.upstreamRef),
+	]);
+	const allShas = [...new Set([...children, ...behindTips])];
 	// On hold items get no background merge-tree work.
 	const held = await heldShas(p.dir, p.name, allShas);
 	const work = await rankWork(

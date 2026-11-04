@@ -43,6 +43,7 @@ export {
 	fetchUpstreamRef,
 	computeMergeStatus,
 	getNeedsRebaseBranches,
+	getBehindBranchTips,
 	isSkippable,
 	parseBranch,
 	parseRemoteBranchOutput,

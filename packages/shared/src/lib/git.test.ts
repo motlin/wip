@@ -17,6 +17,7 @@ import {
 	getChildren,
 	getChildCommits,
 	getNeedsRebaseBranches,
+	getBehindBranchTips,
 	getRemoteBranchInfo,
 	pruneRemote,
 	testBranch,
@@ -966,6 +967,39 @@ describe("getChildren", () => {
 		expect(result.map((c) => ({sha: c.sha, parentSha: c.parentSha}))).toStrictEqual([
 			{sha: childSha, parentSha: upstreamSha},
 		]);
+	});
+});
+
+describe("getBehindBranchTips", () => {
+	let tempDir: string | undefined;
+
+	afterEach(() => {
+		if (tempDir) {
+			rmSync(tempDir, {recursive: true, force: true});
+			tempDir = undefined;
+		}
+	});
+
+	it("lists the tip of every local branch upstream moved past, never main, nor a branch on upstream", async () => {
+		tempDir = createTestGitRepo("owner", "repo");
+		const run = (command: string) => execSync(command, {cwd: tempDir, stdio: "pipe"}).toString().trim();
+		writeFileSync(join(tempDir, "file.txt"), "hello");
+		run("git add . && git commit -m 'initial'");
+		run("git checkout -b stale-branch");
+		writeFileSync(join(tempDir, "stale.txt"), "stale");
+		run("git add . && git commit -m 'stale'");
+		const staleSha = run("git rev-parse HEAD");
+		run("git checkout main");
+		writeFileSync(join(tempDir, "upstream.txt"), "moved");
+		run("git add . && git commit -m 'upstream moved'");
+		run("git tag upstream-ref");
+		run("git checkout -b fresh-branch");
+		writeFileSync(join(tempDir, "fresh.txt"), "fresh");
+		run("git add . && git commit -m 'fresh'");
+		run("git checkout main");
+		run("git branch master main~1");
+
+		expect(await getBehindBranchTips(tempDir, "upstream-ref")).toStrictEqual([staleSha]);
 	});
 });
 

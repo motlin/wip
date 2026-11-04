@@ -179,6 +179,27 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 	return output.split("\n").filter(Boolean);
 }
 
+/**
+ * The tip of every local branch (main and master aside) that doesn't contain `upstreamRef`: upstream
+ * moved past it, so `git children` of the upstream tip no longer lists it, yet its merge status
+ * (behind count, clean rebase) still decides whether it is ready to land.
+ */
+export async function getBehindBranchTips(dir: string, upstreamRef: string): Promise<string[]> {
+	const output = await git(
+		dir,
+		"for-each-ref",
+		"--format=%(objectname) %(refname:short)",
+		`--no-contains=${upstreamRef}`,
+		"refs/heads/",
+	);
+	const tips = output
+		.split("\n")
+		.map((line) => line.split(" "))
+		.filter(([sha, branch]) => sha && branch && !/^(main|master)$/.test(branch))
+		.map(([sha]) => sha ?? "");
+	return [...new Set(tips)];
+}
+
 export async function getNeedsRebaseBranches(
 	dir: string,
 	upstreamRef: string,

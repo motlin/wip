@@ -5,7 +5,8 @@
  * It builds a throwaway world (landing-world.mjs), starts a fake GitHub (fake-github.mjs) and the
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
  * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Fast-forward
- * main, and Push main, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
+ * main, Push main, and a restart after which upstream moves past a green row that must stay listed
+ * (Open PR rebases and retests it), checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
@@ -199,11 +200,19 @@ async function openPr(page, subject, expectedPrUrl, stay = []) {
 	return {tab, firstUrl};
 }
 
+async function stopServer(running) {
+	running.kill("SIGTERM");
+	await new Promise((resolve) => {
+		if (running.exitCode !== null) resolve(undefined);
+		else running.once("exit", resolve);
+	});
+}
+
 async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken} = world.repos;
+	const {widgets, gadgets, broken, sprockets} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -221,11 +230,13 @@ async function run() {
 	const baseUrl = `http://localhost:${port}`;
 	const serverLog = path.join(world.dirs.root, "server.log");
 	const logFd = fs.openSync(serverLog, "a");
-	const server = spawn(process.execPath, ["serve.mjs", "--port", String(port)], {
-		cwd: webDir,
-		env: {...world.env, WIP_GITHUB_GRAPHQL_URL: gh.graphqlUrl, WIP_E2E_FAKE_GITHUB: gh.url},
-		stdio: ["ignore", logFd, logFd],
-	});
+	const startServer = () =>
+		spawn(process.execPath, ["serve.mjs", "--port", String(port)], {
+			cwd: webDir,
+			env: {...world.env, WIP_GITHUB_GRAPHQL_URL: gh.graphqlUrl, WIP_E2E_FAKE_GITHUB: gh.url},
+			stdio: ["ignore", logFd, logFd],
+		});
+	let server = startServer();
 	const browser = await chromium.launch({headless: process.env.WIP_E2E_HEADED !== "true"});
 	const blocked = [];
 	const pageErrors = [];
@@ -254,6 +265,8 @@ async function run() {
 		await readyRow(page, "Add the ready feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the behind feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the fast-forward feature").getByRole("button", {name: "Fast-forward main"}).waitFor();
+		await readyRow(page, "Add the steady feature").getByRole("button", {name: "Open PR"}).waitFor();
+		await readyRow(page, "Add the stale feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).waitFor();
 		const redRow = readyRow(page, "Fix broken's tests");
 		await redRow.getByTestId("upstream-red-marker").waitFor();
@@ -369,12 +382,46 @@ async function run() {
 		await page.getByTestId("action-outcome").filter({hasText: "Pushed 1 green commit to upstream/main"}).waitFor();
 		assert.equal(world.git(gadgets.upstreamBare, "rev-parse", "refs/heads/main"), world.shas.ffSha);
 
+		step("Restart, then upstream moves past a green row: it stays, marked behind, with Open PR");
+		await stopServer(server);
+		// After the restart the buffer remembers nothing, and cogs' steady row alone fills the target, so
+		// nothing re-advances the stale row: only durable state (its git test result and merge status) lists it.
+		world.setReadyTarget(1);
+		server = startServer();
+		await waitForServer(`${baseUrl}/`, server);
+		await page.goto(`${baseUrl}/queue`);
+		await readyRow(page, "Add the steady feature").getByRole("button", {name: "Open PR"}).waitFor();
+		await readyRow(page, "Add the stale feature").getByRole("button", {name: "Open PR"}).waitFor();
+		const movedPast = sprockets.landUpstream("other.txt", "Land someone else's sprockets change");
+		world.git(sprockets.clone, "fetch", "--quiet", "upstream");
+		const staleRow = readyRow(page, "Add the stale feature");
+		await staleRow.getByTestId("behind-marker").waitFor();
+		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
+		assert.equal(
+			world.git(sprockets.clone, "rev-parse", "refs/heads/stale-feature"),
+			world.shas.staleSha,
+			"listed from durable state, not re-advanced by the buffer",
+		);
+		const stale = await openPr(page, "Add the stale feature", `${gh.url}/acme/sprockets/pull/1`, [
+			["ready-to-land-row", "Add the steady feature"],
+		]);
+		await stale.tab.close();
+		const pushedStale = world.git(sprockets.forkBare, "rev-parse", "refs/heads/stale-feature");
+		assert.equal(world.git(sprockets.forkBare, "rev-parse", `${pushedStale}^`), movedPast, "rebased first");
+		assert.match(world.git(sprockets.clone, "test", "results", pushedStale), /^good /, "retested green");
+		await page
+			.getByTestId("waiting-row")
+			.filter({hasText: "Add the stale feature"})
+			.filter({hasText: "PR #1 · waiting for checks"})
+			.waitFor();
+
 		step("Checking what reached gh and GitHub");
 		assert.deepEqual(
 			world.ghCalls().filter((args) => args[0] !== "auth"),
 			[
 				["pr", "merge", "2", "--squash", "--delete-branch", "--auto", "-R", "acme/widgets"],
 				["pr", "merge", "3", "--squash", "--delete-branch", "--auto", "-R", "acme/widgets"],
+				["pr", "merge", "1", "--squash", "--delete-branch", "--auto", "-R", "acme/sprockets"],
 			],
 		);
 		assert.equal(
@@ -387,11 +434,7 @@ async function run() {
 		console.log("\n✓ landing flows passed");
 	} finally {
 		await browser.close();
-		server.kill("SIGTERM");
-		await new Promise((resolve) => {
-			if (server.exitCode !== null) resolve(undefined);
-			else server.once("exit", resolve);
-		});
+		await stopServer(server);
 		await gh.close();
 		if (ok && !keep) world.remove();
 		else console.log(`\nKept the world at ${world.dirs.root} (server log: ${serverLog})`);

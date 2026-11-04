@@ -4,6 +4,7 @@ vi.mock("@wip/shared", () => ({
 	fetchUpstreamRef: vi.fn<(...args: unknown[]) => unknown>(),
 	computeMergeStatus: vi.fn<(...args: unknown[]) => unknown>(),
 	getChildren: vi.fn<(...args: unknown[]) => unknown>(),
+	getBehindBranchTips: vi.fn<(...args: unknown[]) => unknown>(),
 	cacheMergeStatus: vi.fn<(...args: unknown[]) => unknown>(),
 	getCachedMergeStatuses: vi.fn<(...args: unknown[]) => unknown>(),
 	heldShas: vi.fn<(...args: unknown[]) => unknown>(),
@@ -25,6 +26,7 @@ import {
 	fetchUpstreamRef,
 	computeMergeStatus,
 	getChildren,
+	getBehindBranchTips,
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	heldShas,
@@ -51,6 +53,7 @@ import {
 const mockGetProjects = getProjects as unknown as Mock;
 const mockFetchUpstreamRef = fetchUpstreamRef as Mock;
 const mockGetChildren = getChildren as Mock;
+const mockGetBehindBranchTips = getBehindBranchTips as Mock;
 const mockGetCachedMergeStatuses = getCachedMergeStatuses as Mock;
 const mockComputeMergeStatus = computeMergeStatus as Mock;
 const mockCacheMergeStatus = cacheMergeStatus as Mock;
@@ -112,6 +115,7 @@ describe("checkProject", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		mockHeldShas.mockResolvedValue(new Set());
+		mockGetBehindBranchTips.mockResolvedValue([]);
 		mockFindLandingSuspects.mockResolvedValue([]);
 		mockDetectLandings.mockResolvedValue([]);
 		mockGetMergedPrHeads.mockResolvedValue([]);
@@ -472,6 +476,21 @@ describe("checkProject", () => {
 				transition: undefined,
 			},
 		]);
+	});
+
+	it("computes merge status for a branch tip upstream moved past, not only the upstream tip's children", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockResolvedValue(["child-1"]);
+		mockGetBehindBranchTips.mockResolvedValue(["stale-tip", "child-1"]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 2, rebaseable: true});
+
+		await checkProject("test-project");
+
+		expect(
+			mockCacheMergeStatus.mock.calls.map((call) => call.join(" ")).toSorted((a, b) => a.localeCompare(b)),
+		).toStrictEqual(["test-project child-1 upstream-abc 1 2 true", "test-project stale-tip upstream-abc 1 2 true"]);
 	});
 
 	it("processes a mix of cached and uncached children", async () => {

@@ -466,6 +466,56 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("lists a green, conflict-free, behind item as ready (marked behind) after a restart with the target already full", async () => {
+		// A fresh buffer (a restart): nothing in memory, and the ready target is already met.
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					candidates: candidates(2, {
+						c1: {state: "ready", branch: "b1"},
+						c2: {branch: "b2", behind: true, greenBehind: true},
+					}),
+				}),
+			],
+			target: 1,
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		const state = h.buffer.state();
+
+		expect({advanced: h.advanced, ready: state.ready, next: state.next}).toStrictEqual({
+			advanced: [],
+			ready: [
+				{project: "a", id: "c1", sha: paddedSha("c1"), branch: "b1", landing: "pull-request"},
+				{project: "a", id: "c2", sha: paddedSha("c2"), branch: "b2", landing: "pull-request", behind: true},
+			],
+			next: [],
+		});
+	});
+
+	it("no longer lists a green behind item ready once its advance parked it with a failure", async () => {
+		const h = harness({
+			repos: () => [
+				repo("a", {
+					landing: "pull-request",
+					candidates: candidates(1, {c1: {branch: "b1", behind: true, greenBehind: true}}),
+				}),
+			],
+			target: 1,
+			outcome: () => "stuck",
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({advanced: h.advanced, ready: h.buffer.state().ready}).toStrictEqual({
+			advanced: ["a:c1"],
+			ready: [],
+		});
+	});
+
 	it("coalesces a duplicate with a job already queued for the same item", async () => {
 		const h = harness({repos: () => [repo("a")], gated: true});
 		h.queue.enqueue({
@@ -1369,6 +1419,72 @@ describe("bufferRepoFromChildren with PR checks still running", () => {
 			pullRequest: ["a", "b"],
 			fastForward: [],
 		});
+	});
+});
+
+describe("bufferRepoFromChildren with a green commit that only went behind upstream", () => {
+	it("flags a green, conflict-free, behind branch without a PR in a pull-request repo, leaving it unready", () => {
+		const children = [
+			makeChild({sha: sha("a"), branch: "clean", commitsBehind: 2, rebaseable: true, patchId: "pa"}),
+			makeChild({sha: sha("b"), branch: "conflicts", commitsBehind: 2, rebaseable: false}),
+			makeChild({sha: sha("c"), branch: "unknown", commitsBehind: 2}),
+			makeChild({sha: sha("d"), branch: "red", commitsBehind: 2, rebaseable: true, testStatus: "failed"}),
+			makeChild({sha: sha("e"), branch: undefined, commitsBehind: 2, rebaseable: true}),
+			makeChild({sha: sha("f"), branch: "with-pr", commitsBehind: 2, rebaseable: true, prNumber: 7}),
+			makeChild({sha: sha("1"), branch: "on-tip", commitsBehind: 0}),
+		];
+		const flagged = (landing: "pull-request" | "fast-forward") =>
+			bufferRepoFromChildren(project("motlin/wip"), children, {
+				identity: null,
+				checkedOutBranches: [],
+				onHold: () => false,
+				override: () => undefined,
+				landing,
+			}).candidates.filter((c) => c.greenBehind === true);
+
+		expect({pullRequest: flagged("pull-request"), fastForward: flagged("fast-forward")}).toStrictEqual({
+			pullRequest: [
+				{
+					id: "pa",
+					sha: sha("a"),
+					branch: "clean",
+					state: "unready",
+					onHold: false,
+					job: 1,
+					behind: true,
+					greenBehind: true,
+				},
+			],
+			fastForward: [],
+		});
+	});
+
+	it("reads the merge status cached for the current upstream over the children cache's, so a needs-rebase branch counts", () => {
+		// The children refresh ran before the merge-tree check on the new upstream tip.
+		const children = [
+			makeChild({sha: sha("a"), branch: "stale", commitsBehind: 0, needsRebase: true, patchId: "pa"}),
+			makeChild({sha: sha("b"), branch: "conflicts", needsRebase: true}),
+			makeChild({sha: sha("c"), branch: "unmeasured", needsRebase: true}),
+		];
+		const statuses = new Map([
+			[sha("a"), {commitsBehind: 2, rebaseable: true}],
+			[sha("b"), {commitsBehind: 2, rebaseable: false}],
+		]);
+
+		const mapped = bufferRepoFromChildren(project("motlin/wip"), children, {
+			identity: null,
+			checkedOutBranches: [],
+			onHold: () => false,
+			override: () => undefined,
+			landing: "pull-request",
+			mergeStatus: (s) => statuses.get(s),
+		});
+
+		expect(mapped.candidates.map((c) => [c.branch, c.behind, c.greenBehind])).toStrictEqual([
+			["stale", true, true],
+			["unmeasured", true, undefined],
+			["conflicts", true, undefined],
+		]);
 	});
 });
 

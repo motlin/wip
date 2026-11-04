@@ -184,28 +184,40 @@ export function createWorld() {
 	})();
 	const blockedSha = broken.branch("blocked-feature", "blocked.txt", "Add a feature on red upstream");
 
+	// Pull-request repos for the restart: cogs' steady commit stays on its upstream tip and fills the
+	// ready target, and sprockets' stale one goes behind its upstream after the restart.
+	const cogs = repo("cogs");
+	const steadySha = cogs.branch("steady-feature", "steady.txt", "Add the steady feature");
+	const sprockets = repo("sprockets");
+	const staleSha = sprockets.branch("stale-feature", "stale.txt", "Add the stale feature");
+
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
 	fs.mkdirSync(wipConfig, {recursive: true});
 	fs.writeFileSync(
-		path.join(wipConfig, "config.json5"),
-		`${JSON.stringify({projectsDir: dirs.projects, "readyBuffer.size": "10", "ownership.orgs": ["acme"]}, null, "\t")}\n`,
-	);
-	fs.writeFileSync(
 		path.join(wipConfig, "projects.json5"),
-		`${JSON.stringify([record(broken, "pull-request"), record(gadgets, "fast-forward"), record(widgets, "pull-request")], null, "\t")}\n`,
+		`${JSON.stringify([record(broken, "pull-request"), record(gadgets, "fast-forward"), record(widgets, "pull-request"), record(cogs, "pull-request"), record(sprockets, "pull-request")], null, "\t")}\n`,
 	);
+	/** Sets the global ready target the next pull reads. */
+	const setReadyTarget = (size) => {
+		fs.writeFileSync(
+			path.join(wipConfig, "config.json5"),
+			`${JSON.stringify({projectsDir: dirs.projects, "readyBuffer.size": String(size), "ownership.orgs": ["acme"]}, null, "\t")}\n`,
+		);
+	};
+	setReadyTarget(10);
 
 	return {
 		dirs,
 		env,
 		ghLog,
 		git,
-		repos: {widgets, gadgets, broken},
-		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha},
+		setReadyTarget,
+		repos: {widgets, gadgets, broken, cogs, sprockets},
+		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
-		fakeRepos: [widgets, gadgets, broken].flatMap((r) => [
+		fakeRepos: [widgets, gadgets, broken, cogs, sprockets].flatMap((r) => [
 			{owner: "acme", name: r.name, bareDir: r.upstreamBare},
 			{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `acme/${r.name}`},
 		]),

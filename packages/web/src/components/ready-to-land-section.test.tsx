@@ -130,6 +130,32 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
+	it("marks a row listed behind upstream, still offering Open PR, which rebases and retests it first", () => {
+		render(
+			<ReadyToLandSection
+				state={{
+					...state,
+					ready: [{project: "plain", id: "pp1", sha: sha("p1"), landing: "pull-request", behind: true}],
+					inFlight: [],
+					stoppedProjects: [],
+				}}
+				commits={commits}
+				projects={[project("plain")]}
+				now={now}
+				onLand={() => undefined}
+				onPush={() => undefined}
+			/>,
+		);
+
+		expect({
+			row: screen.getByTestId("ready-to-land-row").textContent,
+			title: screen.getByTestId("behind-marker").getAttribute("title"),
+		}).toStrictEqual({
+			row: "No tests hereplainbehind upstreamReviewOpen PR",
+			title: "Behind main: Open PR rebases it and retests it before pushing",
+		});
+	});
+
 	it("names every branch carrying the change on its one row", () => {
 		render(
 			<ReadyToLandSection

@@ -25,6 +25,11 @@ export const ReadyToLandItemSchema = z.object({
 	 * reads as medium.
 	 */
 	priority: PrioritySchema.optional(),
+	/**
+	 * Behind upstream: a green, conflict-free row listed from durable state (git test results and the
+	 * cached merge status). Open PR rebases and retests it before pushing.
+	 */
+	behind: z.literal(true).optional(),
 });
 export type ReadyToLandItem = z.infer<typeof ReadyToLandItemSchema>;
 

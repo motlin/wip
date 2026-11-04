@@ -83,7 +83,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 			record?.verify === "draft-pr" && pushesInBackground(record)
 				? // Sequential on purpose: cached per repo, asked only for opted-in repos
 					// eslint-disable-next-line no-await-in-loop
-					await readDraftPrRepoFacts(p.dir, p.upstreamRef, prRepository(p))
+					await readDraftPrRepoFacts(p.dir, p.upstreamRef, prRepository(p), p.upstreamRemote !== "origin")
 				: null;
 		const verification = draftPrVerification(record, facts);
 		// Durable merge status for the current upstream tip: a children cache written before the

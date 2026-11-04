@@ -152,4 +152,16 @@ describe("processesHolding", () => {
 		expect(processesHolding(file)).toStrictEqual([]);
 		expect(processesHolding(path.join(dir, "missing.db"))).toStrictEqual([]);
 	});
+
+	it("answers at once while another process is stuck in the kernel or a mounted filesystem stalls, by asking only processes started since the file's directory and never touching a mount point", () => {
+		const file = heldFile();
+		const fd = fs.openSync(file, "r");
+		const holder = spawn("sleep", ["300"], {stdio: [fd, "ignore", "ignore"]});
+		fs.closeSync(fd);
+		strays.push(holder.pid);
+		const started = performance.now();
+		const holders = processesHolding(file);
+		const elapsed = performance.now() - started;
+		expect({holders, fast: elapsed < 3000}).toStrictEqual({holders: [holder.pid], fast: true});
+	});
 });

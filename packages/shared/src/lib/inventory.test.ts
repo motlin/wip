@@ -161,7 +161,12 @@ describe("landingMode and trustsPatchIdGreen", () => {
 
 describe("draftPrVerification", () => {
 	const draft = record({kind: "fork", landing: "pull-request", verify: "draft-pr"});
-	const publicWithPrChecks = {repository: "alice/repo", isPrivate: false, hasPullRequestWorkflows: true};
+	const publicWithPrChecks = {
+		repository: "alice/repo",
+		isPrivate: false,
+		hasPullRequestWorkflows: true,
+		tokenShortfall: null,
+	};
 
 	it("is off unless the repo sets verify: draft-pr, whatever the repo is", () => {
 		expect({
@@ -188,6 +193,7 @@ describe("draftPrVerification", () => {
 			unknown: draftPrVerification(draft, null),
 			private: draftPrVerification(draft, {...publicWithPrChecks, isPrivate: true}),
 			noWorkflows: draftPrVerification(draft, {...publicWithPrChecks, hasPullRequestWorkflows: false}),
+			readOnlyToken: draftPrVerification(draft, {...publicWithPrChecks, tokenShortfall: "read-only"}),
 		}).toStrictEqual({
 			unsetLanding: {
 				active: false,
@@ -208,6 +214,10 @@ describe("draftPrVerification", () => {
 			noWorkflows: {
 				active: false,
 				reason: "alice/repo has no GitHub Actions workflow that runs on pull_request; testing locally",
+			},
+			readOnlyToken: {
+				active: false,
+				reason: "your GitHub token has read-only access to alice/repo; grant it access to open PRs; testing locally",
 			},
 		});
 	});

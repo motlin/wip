@@ -1,8 +1,9 @@
 /**
  * A fake GitHub for the landing end-to-end harness: answers the GraphQL queries wip sends (viewer,
- * fork parent, repository id, open PRs with checks, auto-merge setting, merged PRs, create PR) from
- * in-memory state plus the refs of the harness's local bare repos, and serves a stand-in PR page so a
- * browser tab sent to a PR URL lands somewhere local. Every request is recorded. It never talks to
+ * fork parent, repository id, open PRs with checks, auto-merge setting, visibility and the token's
+ * permission, merged PRs, create PR) from in-memory state plus the refs of the harness's local bare
+ * repos, and serves stand-in PR and new-PR (compare) pages so a browser tab sent to GitHub lands
+ * somewhere local. A repo whose viewerPermission is READ refuses a PR from its own branch, like GitHub. Every request is recorded. It never talks to
  * the network.
  */
 import {execFileSync} from "node:child_process";
@@ -11,7 +12,7 @@ import {createServer} from "node:http";
 const VIEWER_LOGIN = "e2e-user";
 
 /**
- * @typedef {{owner: string; name: string; bareDir: string; parent?: string; baseCheck?: "SUCCESS" | "FAILURE" | "PENDING"}} FakeRepo
+ * @typedef {{owner: string; name: string; bareDir: string; parent?: string; baseCheck?: "SUCCESS" | "FAILURE" | "PENDING"; viewerPermission?: "ADMIN" | "WRITE" | "READ"}} FakeRepo
  * @typedef {{number: number; repository: string; headRefName: string; baseRefName: string; title: string; draft: boolean; check: "SUCCESS" | "FAILURE" | "PENDING"; autoMerge: boolean; headOid?: string}} FakePr
  */
 
@@ -110,6 +111,9 @@ export async function startFakeGitHub(options) {
 			}
 			const headRefName = String(variables.headRefName).replace(/^[^:]+:/, "");
 			const repository = `${target.owner}/${target.name}`;
+			if (target.viewerPermission === "READ" && !String(variables.headRefName).includes(":")) {
+				return {kind: "createPullRequest", body: {data: null, errors: [{message: "must be a collaborator"}]}};
+			}
 			// The head as the PR was opened on it: the fork's branch for owner:branch, else the target's.
 			const headOwner = /^([^:]+):/.exec(String(variables.headRefName))?.[1] ?? target.owner;
 			const headRepo = repos.get(`${headOwner}/${target.name}`) ?? target;
@@ -148,7 +152,7 @@ export async function startFakeGitHub(options) {
 						repository: {
 							url: `${baseUrl}/${key}`,
 							autoMergeAllowed: true,
-							viewerPermission: "ADMIN",
+							viewerPermission: repo.viewerPermission ?? "ADMIN",
 							ref:
 								target === null
 									? null
@@ -167,6 +171,18 @@ export async function startFakeGitHub(options) {
 		}
 		if (/autoMergeAllowed/.test(query)) {
 			return {kind: "autoMergeAllowed", body: {data: {repository: {autoMergeAllowed: true}}}};
+		}
+		if (/\bisPrivate\b/.test(query)) {
+			return {
+				kind: "repoFacts",
+				body: {data: {repository: {isPrivate: false, viewerPermission: repo.viewerPermission ?? "ADMIN"}}},
+			};
+		}
+		if (/\bviewerPermission\b/.test(query)) {
+			return {
+				kind: "viewerPermission",
+				body: {data: {repository: {viewerPermission: repo.viewerPermission ?? "ADMIN"}}},
+			};
 		}
 		if (/repository\(owner: \$owner, name: \$name\)\s*\{\s*id\s*\}/.test(query)) {
 			return {kind: "repositoryId", body: {data: {repository: {id: `R_${key}`}}}};
@@ -200,6 +216,15 @@ export async function startFakeGitHub(options) {
 				response.writeHead(pr === undefined ? 404 : 200, {"Content-Type": "text/html; charset=utf-8"});
 				response.end(
 					`<!doctype html><title>Fake PR</title><h1 data-testid="fake-pr">${pull[1]}#${pull[2]}</h1>`,
+				);
+				return;
+			}
+			// GitHub's prefilled new-PR page, where the user clicks Create in their own browser session.
+			const compare = /^\/([^/]+\/[^/]+)\/compare\/(.+)$/.exec(url.pathname);
+			if (request.method === "GET" && compare !== null) {
+				response.writeHead(200, {"Content-Type": "text/html; charset=utf-8"});
+				response.end(
+					`<!doctype html><title>Fake new PR</title><h1 data-testid="fake-compare">${compare[1]} ${compare[2]}</h1>`,
 				);
 				return;
 			}

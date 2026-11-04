@@ -31,6 +31,7 @@ import {
 	resetAutoMergeAllowedCache,
 	resetGitHubRateLimit,
 	resetRepositoryIdCache,
+	resetViewerPermissionCache,
 } from "@wip/shared";
 import {
 	drainBackgroundEnqueues,
@@ -227,12 +228,26 @@ let pollyStop: (() => Promise<void>) | undefined;
 
 const leakedWork = {refreshSettled: false, enqueueSettled: false};
 
+/** Bumped as each test starts, so a teardown that outlived its test leaves the next test's state alone. */
+let testGeneration = 0;
+let teardownPending = false;
+
 beforeEach(() => {
+	testGeneration += 1;
+	if (teardownPending) {
+		// The previous test's teardown timed out while draining work that test left running. Drop its
+		// state here, so that failure stays its own instead of failing this test's initDb().
+		resetGitHubClient();
+		resetProjectCache();
+		resetDb();
+	}
 	initDb(":memory:");
 	setGitHubClient(createTestClient());
 });
 
 afterEach(async () => {
+	const generation = testGeneration;
+	teardownPending = true;
 	if (pollyStop) {
 		await pollyStop();
 		pollyStop = undefined;
@@ -242,6 +257,8 @@ afterEach(async () => {
 	await drainBackgroundEnqueues();
 	await resetQueue();
 	await resetScheduler();
+	// Timed out: a later test owns the database and caches now.
+	if (generation !== testGeneration) return;
 	resetGitHubClient();
 	resetProjectCache();
 	resetDb();
@@ -250,6 +267,7 @@ afterEach(async () => {
 	// Clean up temporary git repos
 	await Promise.all(tmpDirs.map(async (dir) => rm(dir, {recursive: true, force: true})));
 	tmpDirs = [];
+	teardownPending = false;
 });
 
 // -- Harness smoke tests --
@@ -3570,6 +3588,89 @@ describe("queued git actions", () => {
 				gh: [],
 				drafts: [false],
 				result: {ok: true, message: "Opened PR #7", autoMerge: undefined, prNumber: 7},
+			});
+		});
+	});
+
+	describe("createPrHandler when the GitHub token can't open PRs in the repo", () => {
+		beforeEach(() => {
+			resetGitHubRateLimit();
+			resetAutoMergeAllowedCache();
+			resetViewerPermissionCache();
+		});
+
+		afterEach(() => {
+			resetAutoMergeAllowedCache();
+			resetRepositoryIdCache();
+			resetViewerPermissionCache();
+		});
+
+		it("pushes the branch with git, then hands off to GitHub's prefilled new-PR page instead of the API", async () => {
+			const dir = await createTestGitRepo();
+			seedProjectCache([
+				makeProject({
+					name: "read-only-token",
+					dir,
+					remote: "FactorioBlueprints/factorio-prints",
+					originRemote: "FactorioBlueprints/factorio-prints",
+					upstreamBranch: "factorio-prints.com",
+					upstreamRef: "origin/factorio-prints.com",
+				}),
+			]);
+			const pushes: string[][] = [];
+			fakeExeca.handler = (command, args) => {
+				if (args.includes("push")) pushes.push(args);
+				const stdout = command === "mise" ? "{}" : args.includes("rev-parse") ? "b".repeat(40) : "";
+				return {stdout, stderr: "", exitCode: 0, failed: false, command: [command, ...args].join(" ")};
+			};
+			const queries: string[] = [];
+			setGitHubClient({
+				graphql: async (query: string) => {
+					if (query.includes("viewerPermission")) {
+						queries.push("viewerPermission");
+						return Promise.resolve({data: {repository: {viewerPermission: "READ"}}});
+					}
+					if (query.includes("autoMergeAllowed")) {
+						return Promise.resolve({data: {repository: {autoMergeAllowed: true}}});
+					}
+					queries.push(query.includes("createPullRequest") ? "createPullRequest" : "other");
+					return Promise.resolve({data: {repository: {id: "REPOSITORY_7"}}});
+				},
+			});
+			const steps: string[] = [];
+			const {actionEmitter} = await import("./action-events.js");
+			const onAction = (event: {step?: string}) => {
+				if (event.step !== undefined) steps.push(event.step);
+			};
+			actionEmitter.on("action", onAction);
+			const {createPrHandler} = await import("./server-fns.impl.js");
+
+			const result = await createPrHandler({
+				project: "read-only-token",
+				branch: "account-privacy",
+				title: "Ignore the .tanstack/ temp directory",
+				autoMerge: true,
+			});
+			actionEmitter.off("action", onAction);
+
+			expect({
+				result: {ok: result.ok, message: result.message, compareUrl: result.compareUrl, prUrl: result.prUrl},
+				pushes,
+				queries,
+				handoffStep: steps.at(-1),
+			}).toStrictEqual({
+				result: {
+					ok: true,
+					message:
+						"Pushed account-privacy; your GitHub token has read-only access to FactorioBlueprints/factorio-prints, so create the PR on GitHub",
+					compareUrl:
+						"https://github.com/FactorioBlueprints/factorio-prints/compare/factorio-prints.com...account-privacy?quick_pull=1&title=Ignore+the+.tanstack%2F+temp+directory",
+					prUrl: undefined,
+				},
+				pushes: [["-C", dir, "push", "origin", `${"b".repeat(40)}:refs/heads/account-privacy`]],
+				queries: ["viewerPermission"],
+				handoffStep:
+					"Your GitHub token can't open PRs in FactorioBlueprints/factorio-prints; finish creating it on GitHub",
 			});
 		});
 	});

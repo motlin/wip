@@ -11,6 +11,7 @@ import {
 	readPullRequestWorkflows,
 	resetDraftPrRepoFactsCache,
 } from "./draft-pr-facts.js";
+import {getViewerPermission, resetViewerPermissionCache} from "./github-viewer-permission.js";
 import {resetGitHubRateLimit} from "./rate-limit.js";
 import {resetGitHubClient, setGitHubClient} from "../services/github-client.js";
 
@@ -79,16 +80,20 @@ describe("readDraftPrRepoFacts", () => {
 	const dirs: string[] = [];
 	let queries = 0;
 	let isPrivate: boolean | Error = false;
+	let viewerPermission: string | null = "WRITE";
 
 	beforeEach(() => {
 		resetGitHubRateLimit();
 		resetDraftPrRepoFactsCache();
 		queries = 0;
+		isPrivate = false;
+		viewerPermission = "WRITE";
+		resetViewerPermissionCache();
 		setGitHubClient({
 			graphql: async () => {
 				queries += 1;
 				if (isPrivate instanceof Error) throw isPrivate;
-				return Promise.resolve({data: {repository: {isPrivate}}});
+				return Promise.resolve({data: {repository: {isPrivate, viewerPermission}}});
 			},
 		});
 	});
@@ -102,11 +107,11 @@ describe("readDraftPrRepoFacts", () => {
 		const dir = await repoWithWorkflows({"ci.yml": "on: pull_request\n"});
 		dirs.push(dir);
 		isPrivate = false;
-		const first = await readDraftPrRepoFacts(dir, "main", "alice/repo");
-		const second = await readDraftPrRepoFacts(dir, "main", "alice/repo");
+		const first = await readDraftPrRepoFacts(dir, "main", "alice/repo", false);
+		const second = await readDraftPrRepoFacts(dir, "main", "alice/repo", false);
 		expect({first, second, queries}).toStrictEqual({
-			first: {repository: "alice/repo", isPrivate: false, hasPullRequestWorkflows: true},
-			second: {repository: "alice/repo", isPrivate: false, hasPullRequestWorkflows: true},
+			first: {repository: "alice/repo", isPrivate: false, hasPullRequestWorkflows: true, tokenShortfall: null},
+			second: {repository: "alice/repo", isPrivate: false, hasPullRequestWorkflows: true, tokenShortfall: null},
 			queries: 1,
 		});
 	});
@@ -115,12 +120,32 @@ describe("readDraftPrRepoFacts", () => {
 		const dir = await repoWithWorkflows({"ci.yml": "on: pull_request\n"});
 		dirs.push(dir);
 		isPrivate = new Error("boom");
-		const failed = await readDraftPrRepoFacts(dir, "main", "alice/repo");
+		const failed = await readDraftPrRepoFacts(dir, "main", "alice/repo", false);
 		isPrivate = true;
-		const retried = await readDraftPrRepoFacts(dir, "main", "alice/repo");
+		const retried = await readDraftPrRepoFacts(dir, "main", "alice/repo", false);
 		expect({failed, retried, queries}).toStrictEqual({
 			failed: null,
-			retried: {repository: "alice/repo", isPrivate: true, hasPullRequestWorkflows: true},
+			retried: {repository: "alice/repo", isPrivate: true, hasPullRequestWorkflows: true, tokenShortfall: null},
+			queries: 2,
+		});
+	});
+
+	it("reads whether the token can open PRs with a head branch in the repo, and seeds Open PR's permission cache", async () => {
+		const dir = await repoWithWorkflows({"ci.yml": "on: pull_request\n"});
+		dirs.push(dir);
+		viewerPermission = "READ";
+		const sameRepo = await readDraftPrRepoFacts(dir, "main", "org/repo", false);
+		const fromFork = await readDraftPrRepoFacts(dir, "main", "org/repo", true);
+		const permission = await getViewerPermission("org/repo");
+		expect({sameRepo, fromFork, permission, queries}).toStrictEqual({
+			sameRepo: {
+				repository: "org/repo",
+				isPrivate: false,
+				hasPullRequestWorkflows: true,
+				tokenShortfall: "read-only",
+			},
+			fromFork: {repository: "org/repo", isPrivate: false, hasPullRequestWorkflows: true, tokenShortfall: null},
+			permission: "READ",
 			queries: 2,
 		});
 	});

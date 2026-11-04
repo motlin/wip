@@ -105,10 +105,12 @@ export function useLandReadyItem(): (item: ReadyToLandItem, commit: GitChildResu
 				const {prNumber, prUrl} = result;
 				if (tab !== null) {
 					// The tab's own poll gets there too; this also covers a request that threw before the
-					// server recorded the action. A failure stays visible in the tab, never closed.
+					// server recorded the action. A failure stays visible in the tab, never closed. Without a
+					// PR (the token couldn't open one) it goes to GitHub's new-PR page for the pushed branch.
+					const githubUrl = prUrl ?? result.compareUrl;
 					tab.location.href =
-						result.ok && prUrl !== undefined
-							? prUrl
+						result.ok && githubUrl !== undefined
+							? githubUrl
 							: `/opening/${actionId}?failed=${encodeURIComponent(result.message)}`;
 				}
 				if (action.kind === "open-pr" && result.ok && prNumber !== undefined) {

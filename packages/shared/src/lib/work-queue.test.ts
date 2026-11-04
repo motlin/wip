@@ -703,21 +703,29 @@ describe("state", () => {
 	});
 
 	it("notifies state listeners with coalesced snapshots ending in the final state", async () => {
-		makeQueue({globalConcurrency: 2});
-		const snapshots: Array<{running: number; queued: number}> = [];
-		queue.onStateChange((state) => {
-			snapshots.push({running: state.running.length, queued: state.queued.length});
-		});
+		// Fake timers: a wall-clock wait raced the 100ms coalesce timer, and a
+		// CPU stall between the two under load left the final emit unfired.
+		vi.useFakeTimers({toFake: ["setTimeout", "clearTimeout"]});
+		try {
+			makeQueue({globalConcurrency: 2, stateCoalesceMs: 100});
+			const snapshots: Array<{running: number; queued: number}> = [];
+			queue.onStateChange((state) => {
+				snapshots.push({running: state.running.length, queued: state.queued.length});
+			});
 
-		const gate = deferred();
-		queue.enqueue(job("alpha", async () => gate.promise));
-		await waitForCoalesce();
-		gate.resolve();
-		await waitForCoalesce();
+			const gate = deferred();
+			queue.enqueue(job("alpha", async () => gate.promise));
+			await vi.advanceTimersByTimeAsync(100);
+			gate.resolve();
+			await vi.advanceTimersByTimeAsync(100);
 
-		expect(snapshots.length).toBeGreaterThan(0);
-		expect(snapshots.at(0)).toStrictEqual({running: 1, queued: 0});
-		expect(snapshots.at(-1)).toStrictEqual({running: 0, queued: 0});
+			expect(snapshots).toStrictEqual([
+				{running: 1, queued: 0},
+				{running: 0, queued: 0},
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("does not re-broadcast an unchanged state", async () => {

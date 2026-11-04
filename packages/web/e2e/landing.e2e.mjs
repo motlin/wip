@@ -4,8 +4,9 @@
  *
  * It builds a throwaway world (landing-world.mjs), starts a fake GitHub (fake-github.mjs) and the
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
- * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Fast-forward
- * main, Push main, and a restart after which upstream moves past a green row that must stay listed
+ * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Open PR where
+ * the GitHub token is read-only on the PR repo (git pushes, the tab goes to GitHub's new-PR page),
+ * Fast-forward main, Push main, and a restart after which upstream moves past a green row that must stay listed
  * (Open PR rebases and retests it), checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. The browser may only reach the wip server and the fake GitHub.
  *
@@ -176,7 +177,7 @@ async function assertRowsStay(page, rows, what) {
  * the fake GitHub opened, after checking the confirm and the running outcome never moved a row and
  * the `stay` rows never left the page while it ran.
  */
-async function openPr(page, subject, expectedPrUrl, stay = []) {
+async function openPr(page, subject, expectedPrUrl, stay = [], landingTestId = "fake-pr") {
 	const row = readyRow(page, subject);
 	const before = await stableRowBoxes(page);
 	await row.getByRole("button", {name: "Open PR"}).click();
@@ -198,7 +199,7 @@ async function openPr(page, subject, expectedPrUrl, stay = []) {
 		// eslint-disable-next-line no-await-in-loop -- polls the tab's URL
 		await tab.waitForTimeout(100);
 	}
-	await tab.getByTestId("fake-pr").waitFor();
+	await tab.getByTestId(landingTestId).waitFor();
 	return {tab, firstUrl};
 }
 
@@ -206,7 +207,7 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken, cogs, sprockets} = world.repos;
+	const {widgets, gadgets, broken, cogs, sprockets, gears} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -227,7 +228,12 @@ async function run() {
 	const startServer = () =>
 		startProcessTree(process.execPath, ["serve.mjs", "--port", String(port)], {
 			cwd: webDir,
-			env: {...world.env, WIP_GITHUB_GRAPHQL_URL: gh.graphqlUrl, WIP_E2E_FAKE_GITHUB: gh.url},
+			env: {
+				...world.env,
+				WIP_GITHUB_GRAPHQL_URL: gh.graphqlUrl,
+				WIP_GITHUB_WEB_URL: gh.url,
+				WIP_E2E_FAKE_GITHUB: gh.url,
+			},
 			stdio: ["ignore", logFd, logFd],
 		});
 	let server = startServer();
@@ -263,6 +269,14 @@ async function run() {
 		await readyRow(page, "Add the steady feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the stale feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).waitFor();
+		await readyRow(page, "Add the gear feature").getByRole("button", {name: "Open PR"}).waitFor();
+		await page
+			.getByTestId("ready-to-land-verify-notice")
+			.filter({
+				hasText:
+					"gears: your GitHub token has read-only access to acme/gears; grant it access to open PRs; testing locally",
+			})
+			.waitFor();
 		const redRow = readyRow(page, "Fix broken's tests");
 		await redRow.getByTestId("upstream-red-marker").waitFor();
 		await redRow.getByText("broken's upstream is red: fix it before landing").waitFor();
@@ -377,6 +391,32 @@ async function run() {
 		await page.getByTestId("push-confirm").getByRole("button", {name: "Confirm"}).click();
 		await page.getByTestId("action-outcome").filter({hasText: "Pushed 1 green commit to upstream/main"}).waitFor();
 		assert.equal(world.git(gadgets.upstreamBare, "rev-parse", "refs/heads/main"), world.shas.ffSha);
+
+		step("Open PR where the GitHub token is read-only: git pushes, then the tab goes to GitHub's new-PR page");
+		const gearCompare = `${gh.url}/acme/gears/compare/main...gear-feature?quick_pull=1&title=Add+the+gear+feature`;
+		const gear = await openPr(page, "Add the gear feature", gearCompare, [], "fake-compare");
+		await gear.tab.close();
+		const gearOutcome = page
+			.getByTestId("action-outcome")
+			.filter({hasText: "Pushed gear-feature; your GitHub token has read-only access to acme/gears"});
+		await gearOutcome.waitFor();
+		assert.equal(world.git(gears.upstreamBare, "rev-parse", "refs/heads/gear-feature"), world.shas.gearSha);
+		assert.deepEqual(
+			gh.prs.filter((pr) => pr.repository === "acme/gears"),
+			[],
+			"no PR opened through the API, and no draft PR either",
+		);
+		assert.deepEqual(
+			gh.graphqlCalls.filter(
+				(call) => call.kind === "createPullRequest" && call.variables.repositoryId === "R_acme/gears",
+			),
+			[],
+			"wip never asked the API to open a PR the token can't open",
+		);
+		await readyRow(page, "Add the gear feature").getByRole("button", {name: "Open PR"}).waitFor();
+		// The outcome overlays the rows below it; dismiss it so the later clicks reach their rows.
+		await gearOutcome.getByRole("button", {name: "Dismiss"}).click();
+		await gearOutcome.waitFor({state: "detached"});
 
 		step("Restart, then upstream moves past a green row: it stays, marked behind, with Open PR");
 		await stopProcessTree(server);

@@ -95,10 +95,11 @@ function record(repo, landing, priority) {
 		name: repo.name,
 		dir: repo.clone,
 		template: "unknown",
-		kind: "fork",
-		upstreamRemote: "upstream",
+		kind: repo.forkBare === undefined ? "own" : "fork",
+		upstreamRemote: repo.forkBare === undefined ? "origin" : "upstream",
 		upstreamBranch: "main",
 		landing,
+		...(repo.verify === undefined ? {} : {verify: repo.verify}),
 	};
 }
 
@@ -125,10 +126,14 @@ export function createWorld() {
 	 * One repo: upstream acme/<name> and the user's fork e2e-user/<name> as bare repos, a seed
 	 * checkout that plays everyone else pushing upstream, and the user's clone with upstream + origin.
 	 */
-	const repo = (name, {red = false} = {}) => {
+	/**
+	 * With `noFork`, the clone's only remote is origin = acme/<name> itself: branches push to the
+	 * upstream repo and PRs open from there, so the GitHub token needs WRITE on it to open them.
+	 */
+	const repo = (name, {red = false, noFork = false, workflow, verify} = {}) => {
 		const upstreamBare = bare("acme", name);
-		const forkBare = bare("e2e-user", name);
-		for (const dir of [upstreamBare, forkBare]) {
+		const forkBare = noFork ? undefined : bare("e2e-user", name);
+		for (const dir of [upstreamBare, forkBare].filter((d) => d !== undefined)) {
 			fs.mkdirSync(dir, {recursive: true});
 			git(dir, "init", "--quiet", "--bare");
 		}
@@ -136,17 +141,24 @@ export function createWorld() {
 		fs.mkdirSync(seed);
 		git(seed, "init", "--quiet");
 		commitFile(seed, "README.md", `# ${name}\n`, `Start ${name}`);
+		if (workflow !== undefined) {
+			fs.mkdirSync(path.join(seed, ".github", "workflows"), {recursive: true});
+			commitFile(seed, path.join(".github", "workflows", "ci.yml"), workflow, `Add ${name}'s CI`);
+		}
 		if (red) commitFile(seed, "RED", "upstream is broken\n", `Break ${name}'s tests`);
 		git(seed, "remote", "add", "upstream", upstreamBare);
 		git(seed, "push", "--quiet", "upstream", "main");
-		git(seed, "push", "--quiet", forkBare, "main");
+		if (forkBare !== undefined) git(seed, "push", "--quiet", forkBare, "main");
 		const clone = path.join(dirs.projects, name);
-		git(dirs.projects, "clone", "--quiet", "--origin", "upstream", upstreamBare, clone);
-		git(clone, "remote", "add", "origin", forkBare);
-		git(clone, "fetch", "--quiet", "origin");
+		const upstreamRemote = noFork ? "origin" : "upstream";
+		git(dirs.projects, "clone", "--quiet", "--origin", upstreamRemote, upstreamBare, clone);
+		if (forkBare !== undefined) {
+			git(clone, "remote", "add", "origin", forkBare);
+			git(clone, "fetch", "--quiet", "origin");
+		}
 		git(clone, "config", "test.default.command", TEST_COMMAND);
 		const branch = (branchName, file, message) => {
-			git(clone, "checkout", "--quiet", "-b", branchName, "upstream/main");
+			git(clone, "checkout", "--quiet", "-b", branchName, `${upstreamRemote}/main`);
 			const sha = commitFile(clone, file, `${branchName}\n`, message);
 			git(clone, "checkout", "--quiet", "main");
 			return sha;
@@ -157,7 +169,7 @@ export function createWorld() {
 			git(seed, "push", "--quiet", "upstream", "main");
 			return sha;
 		};
-		return {name, clone, seed, upstreamBare, forkBare, branch, landUpstream};
+		return {name, clone, seed, upstreamBare, forkBare, verify, branch, landUpstream};
 	};
 
 	// Pull-request repo: one ready commit, one that goes behind upstream after the first Open PR, and
@@ -192,6 +204,12 @@ export function createWorld() {
 	const sprockets = repo("sprockets");
 	const staleSha = sprockets.branch("stale-feature", "stale.txt", "Add the stale feature");
 
+	// Draft-PR verification asked for, but the GitHub token has read-only access to acme/gears (the fake
+	// GitHub says READ) and branches push straight to it: it tests locally and says why, and Open PR
+	// pushes with git, then sends the tab to GitHub's new-PR page instead of opening the PR itself.
+	const gears = repo("gears", {noFork: true, workflow: "on: [push, pull_request]\n", verify: "draft-pr"});
+	const gearSha = gears.branch("gear-feature", "gear.txt", "Add the gear feature");
+
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
@@ -204,6 +222,7 @@ export function createWorld() {
 			[widgets, "pull-request"],
 			[cogs, "pull-request"],
 			[sprockets, "pull-request"],
+			[gears, "pull-request"],
 		].map(([r, landing]) => record(r, landing, priorities.get(r.name)));
 		fs.writeFileSync(path.join(wipConfig, "projects.json5"), `${JSON.stringify(records, null, "\t")}\n`);
 	};
@@ -229,13 +248,16 @@ export function createWorld() {
 		git,
 		setReadyTarget,
 		setPriority,
-		repos: {widgets, gadgets, broken, cogs, sprockets},
-		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha},
+		repos: {widgets, gadgets, broken, cogs, sprockets, gears},
+		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha, gearSha},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
-		fakeRepos: [widgets, gadgets, broken, cogs, sprockets].flatMap((r) => [
-			{owner: "acme", name: r.name, bareDir: r.upstreamBare},
-			{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `acme/${r.name}`},
-		]),
+		fakeRepos: [
+			...[widgets, gadgets, broken, cogs, sprockets].flatMap((r) => [
+				{owner: "acme", name: r.name, bareDir: r.upstreamBare},
+				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `acme/${r.name}`},
+			]),
+			{owner: "acme", name: gears.name, bareDir: gears.upstreamBare, viewerPermission: "READ"},
+		],
 		ghCalls() {
 			if (!fs.existsSync(ghLog)) return [];
 			return fs

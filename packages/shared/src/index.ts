@@ -375,6 +375,14 @@ export {actionsBlockedByBilling, githubChecksSource} from "./lib/gha-checks.js";
 export {readDraftPrRepoFacts, resetDraftPrRepoFactsCache} from "./lib/draft-pr-facts.js";
 export {getAutoMergeAllowed, prRepository, resetAutoMergeAllowedCache} from "./lib/github-auto-merge.js";
 export {
+	compareUrl,
+	getViewerPermission,
+	prTokenShortfall,
+	type PrTokenShortfall,
+	resetViewerPermissionCache,
+	type ViewerPermission,
+} from "./lib/github-viewer-permission.js";
+export {
 	DEFAULT_PRIORITY,
 	effectivePriority,
 	type Priority,

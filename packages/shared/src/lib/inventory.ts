@@ -7,6 +7,7 @@ import {z} from "zod";
 import {getConfigDir} from "./config.js";
 import type {TemplateTexts} from "./inventory-import.js";
 import {PrioritySchema} from "./priority.js";
+import type {PrTokenShortfall} from "./github-viewer-permission.js";
 
 export {diffInventories, type InventoryDiff} from "./inventory-import.js";
 
@@ -61,6 +62,8 @@ export interface DraftPrRepoFacts {
 	isPrivate: boolean;
 	/** A workflow on the upstream branch runs on pull_request, so a draft PR gets checks. */
 	hasPullRequestWorkflows: boolean;
+	/** Too little access for the GitHub token to open these PRs unattended (see prTokenShortfall), else null. */
+	tokenShortfall: PrTokenShortfall | null;
 }
 
 export type DraftPrVerification = {active: true} | {active: false; reason: string};
@@ -70,7 +73,7 @@ export type DraftPrVerification = {active: true} | {active: false; reason: strin
  * local git test; null when the registry doesn't ask for it. Opt-in per repo only: it pushes and opens
  * PRs in the background, so it also needs the explicit pull-request landing pushesInBackground needs,
  * and only a public PR target with pull_request workflows qualifies (a private repo's Actions minutes
- * cost money). `facts` is null while unknown. An ineligible repo keeps its local test and says why.
+ * cost money) whose PRs the GitHub token can open. `facts` is null while unknown. An ineligible repo keeps its local test and says why.
  */
 export function draftPrVerification(
 	record: Pick<ProjectRecord, "landing" | "verify"> | undefined,
@@ -100,6 +103,12 @@ export function draftPrVerification(
 		return {
 			active: false,
 			reason: `${facts.repository} has no GitHub Actions workflow that runs on pull_request; ${testingLocally}`,
+		};
+	}
+	if (facts.tokenShortfall !== null) {
+		return {
+			active: false,
+			reason: `your GitHub token has ${facts.tokenShortfall} access to ${facts.repository}; grant it access to open PRs; ${testingLocally}`,
 		};
 	}
 	return {active: true};

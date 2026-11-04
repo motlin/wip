@@ -1064,12 +1064,31 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 					return {ok: false, message: `Could not parse owner/repo from remote: ${repo}`};
 				}
 
-				const {createPullRequest, getAutoMergeAllowed} = await import("@wip/shared");
+				const {compareUrl, createPullRequest, getAutoMergeAllowed, getViewerPermission, prTokenShortfall} =
+					await import("@wip/shared");
 				// Ready to land opens a PR to land it: ready for review (auto-merge refuses drafts).
 				const autoMerge = data.autoMerge === true && (await getAutoMergeAllowed(repo));
 				if (data.draftPrNumber !== undefined) {
 					step("Marking the draft pull request ready…");
 					return markDraftReady(p, data.draftPrNumber, autoMerge, env);
+				}
+
+				// git's credential pushed the branch, but the API token may lack the access to open a PR
+				// from a branch in this repo ("must be a collaborator"): the user creates the PR on GitHub,
+				// in their own browser session.
+				const shortfall = prTokenShortfall(await getViewerPermission(repo), p.upstreamRemote !== "origin");
+				if (shortfall !== null) {
+					step(`Your GitHub token can't open PRs in ${repo}; finish creating it on GitHub`);
+					return {
+						ok: true,
+						message: `Pushed ${data.branch}; your GitHub token has ${shortfall} access to ${repo}, so create the PR on GitHub`,
+						compareUrl: compareUrl({
+							repository: repo,
+							baseRefName: p.upstreamBranch,
+							headRefName: data.branch,
+							title: data.title,
+						}),
+					};
 				}
 
 				step("Opening the pull request…");

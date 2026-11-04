@@ -267,6 +267,31 @@ describe("landing outcomes outlive their toasts", () => {
 		});
 	});
 
+	it("sends the tab to GitHub's new-PR page when the token couldn't open the PR, leaving the row ready", async () => {
+		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
+		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};
+		vi.mocked(window.open).mockReturnValue(tab as unknown as Window);
+		const compareUrl = "https://github.com/motlin/plain/compare/main...add-parser?quick_pull=1&title=Add+parser";
+		serverFns.createPr.mockResolvedValue({
+			ok: true,
+			message:
+				"Pushed add-parser; your GitHub token has read-only access to motlin/plain, so create the PR on GitHub",
+			compareUrl,
+		});
+		renderHarness();
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+		await act(async () => {
+			await Promise.resolve();
+		});
+
+		expect({href: tab.location.href, closed: tab.close.mock.calls.length}).toStrictEqual({
+			href: compareUrl,
+			closed: 0,
+		});
+	});
+
 	it("keeps the tab open on the wip page showing why Open PR failed", async () => {
 		vi.spyOn(crypto, "randomUUID").mockReturnValue("0000-0000-0000-0000-tab");
 		const tab = {location: {href: ""}, opener: null, close: vi.fn<() => void>()};

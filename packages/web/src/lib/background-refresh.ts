@@ -26,7 +26,7 @@ async function refSnapshot(project: string): Promise<string> {
 	const p = (await getProjects()).find((proj) => proj.name === project);
 	if (!p) return "";
 	const [refs, head] = await Promise.all([
-		tracedExeca("git", ["-C", p.dir, "for-each-ref", "--format=%(refname)%(objectname)"], {reject: false}),
+		tracedExeca("git", ["-C", p.dir, "for-each-ref", "--format=%(refname) %(objectname)"], {reject: false}),
 		tracedExeca("git", ["-C", p.dir, "rev-parse", "HEAD"], {reject: false}),
 	]);
 	if (refs.exitCode !== 0 || head.exitCode !== 0) return "";
@@ -65,10 +65,9 @@ export function enqueueProjectRefresh(project: string, options: {force?: boolean
 				}
 			}
 
-			await refreshProjectChildren(project);
-			// Absorb this refresh's own ref writes (fetch, prune) so the watcher
-			// echo they cause compares equal and gets dropped.
-			await watchGate.recordRefreshed(project);
+			// Record the refs as they stood before this refresh read them: the
+			// prune above is absorbed, and a change landing mid-read still passes.
+			await watchGate.refreshing(project, async () => refreshProjectChildren(project));
 		},
 	});
 	enqueueRefresh({
@@ -90,10 +89,10 @@ export function enqueueProjectRefresh(project: string, options: {force?: boolean
 			const {isCacheFresh, markCacheFresh} = await import("@wip/shared");
 			if (!force && isCacheFresh(`merge-status:${project}`, MERGE_STATUS_TTL_MS)) return;
 			const {checkProject} = await import("./merge-queue.js");
-			await checkProject(project);
+			// checkProject fetches the upstream ref — absorb that write, but never
+			// a branch change the children cache has not read yet.
+			await watchGate.absorbOwnWrites(project, async () => checkProject(project));
 			markCacheFresh(`merge-status:${project}`);
-			// checkProject fetches the upstream ref — absorb that write too.
-			await watchGate.recordRefreshed(project);
 		},
 	});
 }
@@ -102,7 +101,7 @@ export function enqueueProjectRefresh(project: string, options: {force?: boolean
  * One deferred merge-tree check per sweep tick: children outside the pull window
  * (lean plan step 24) run here at background rank, rotating across projects.
  */
-async function enqueueDeferredMergeStatus(): Promise<void> {
+export async function enqueueDeferredMergeStatus(): Promise<void> {
 	const {deferredMergeStatusProjects, checkDeferredMergeStatus} = await import("./merge-queue.js");
 	const [project] = deferredMergeStatusProjects();
 	if (project === undefined) return;
@@ -110,10 +109,24 @@ async function enqueueDeferredMergeStatus(): Promise<void> {
 		kind: "merge-status-deferred",
 		project,
 		run: async () => {
-			await checkDeferredMergeStatus(project);
-			await watchGate.recordRefreshed(project);
+			await watchGate.absorbOwnWrites(project, async () => checkDeferredMergeStatus(project));
 		},
 	});
+}
+
+/**
+ * A git-watcher fire for one project: force a refresh when its refs differ
+ * from what the children cache last read. Returns whether it enqueued.
+ */
+export async function handleRepoChange(project: string): Promise<boolean> {
+	const changed = await watchGate.shouldRefresh(project);
+	if (changed) enqueueProjectRefresh(project, {force: true});
+	return changed;
+}
+
+/** Test-only: forget recorded ref snapshots. */
+export function resetWatchGate(): void {
+	watchGate.reset();
 }
 
 export function ensureBackgroundRefresh(): void {
@@ -131,15 +144,9 @@ export function ensureBackgroundRefresh(): void {
 		// fetch/prune writes echo through fs.watch, and the old time-based
 		// suppression raced FSEvents delivery, looping refreshes forever.
 		await startGitWatcher((projectName) => {
-			void watchGate
-				.shouldRefresh(projectName)
-				.then((changed) => {
-					if (changed) enqueueProjectRefresh(projectName, {force: true});
-					return undefined;
-				})
-				.catch((error: unknown) => {
-					log.general.error({project: projectName, error}, "watch-gate check failed");
-				});
+			handleRepoChange(projectName).catch((error: unknown) => {
+				log.general.error({project: projectName, error}, "watch-gate check failed");
+			});
 		});
 
 		const {getProjects} = await import("./server-fns.js");

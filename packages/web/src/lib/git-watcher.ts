@@ -28,9 +28,14 @@ function triggerRefresh(project: WatchedProject): void {
 	if (project.debounceTimer) clearTimeout(project.debounceTimer);
 	project.debounceTimer = setTimeout(() => {
 		project.debounceTimer = null;
-		// Checked at fire time, not event time: our own refresh work (fetch,
-		// prune) writes into .git and would otherwise loop the watcher forever.
-		if (isWatcherSuppressed(project.name)) return;
+		// Checked at fire time, not event time. While our own refresh work
+		// (fetch, prune) runs, wait for it to finish rather than drop the fire:
+		// a real ref change can land in that window too, and the watch gate
+		// tells it apart from our own writes by comparing ref state.
+		if (isWatcherSuppressed(project.name)) {
+			triggerRefresh(project);
+			return;
+		}
 		refresh?.(project.name).catch((error: unknown) => {
 			log.general.error({project: project.name, error}, "git-watcher refresh failed");
 		});
@@ -39,7 +44,10 @@ function triggerRefresh(project: WatchedProject): void {
 
 function watchProject(p: ProjectInfo): WatchedProject | null {
 	const gitDir = path.join(p.dir, ".git");
-	if (!fs.existsSync(gitDir)) return null;
+	if (!fs.existsSync(gitDir)) {
+		log.general.warn({project: p.name, dir: p.dir}, "git-watcher not watching project: no .git directory");
+		return null;
+	}
 
 	// Watch only ref state, never the whole .git dir: a recursive watch on
 	// sixty repos (objects/, index churn) drove fseventsd to a full core all
@@ -61,10 +69,18 @@ function watchProject(p: ProjectInfo): WatchedProject | null {
 		const refsDir = path.join(gitDir, "refs");
 		if (fs.existsSync(refsDir)) {
 			project.watchers.push(fs.watch(refsDir, {recursive: true}, onChange));
+		} else {
+			log.general.warn(
+				{project: p.name, dir: p.dir},
+				"git-watcher not watching branch refs: no .git/refs directory",
+			);
 		}
 		for (const watcher of project.watchers) {
 			watcher.on("error", (error) => {
-				log.general.error({project: p.name, error}, "git-watcher fs.watch error");
+				// A dead watcher never fires again: drop it and watch afresh so the
+				// repo's ref changes keep reaching the refresh pipeline.
+				log.general.error({project: p.name, error}, "git-watcher fs.watch died; re-watching");
+				rewatchProject(p, project);
 			});
 		}
 		return project;
@@ -79,6 +95,14 @@ function unwatchProject(project: WatchedProject): void {
 	for (const watcher of project.watchers) {
 		watcher.close();
 	}
+}
+
+function rewatchProject(p: ProjectInfo, dead: WatchedProject): void {
+	if (watched.get(p.name) !== dead) return;
+	unwatchProject(dead);
+	watched.delete(p.name);
+	const project = watchProject(p);
+	if (project) watched.set(p.name, project);
 }
 
 function syncWatchers(projects: ProjectInfo[]): void {
@@ -96,6 +120,7 @@ function syncWatchers(projects: ProjectInfo[]): void {
 		const project = watchProject(p);
 		if (project) watched.set(p.name, project);
 	}
+	log.general.info({watching: watched.size, projects: projects.length}, "git-watcher projects watched");
 }
 
 /**

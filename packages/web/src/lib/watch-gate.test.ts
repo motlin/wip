@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vite-plus/test";
 
-import {createWatchGate} from "./watch-gate";
+import {createWatchGate, onlyRemoteRefsChanged} from "./watch-gate";
 
 function gateWithSnapshots(snapshots: Record<string, string[]>) {
 	const cursors = new Map<string, number>();
@@ -22,13 +22,13 @@ describe("createWatchGate", () => {
 	it("drops fires whose ref state matches the last recorded refresh", async () => {
 		// recordRefreshed sees refs-v1; the follow-up fire (our own write echo) still sees refs-v1.
 		const gate = gateWithSnapshots({wip: ["refs-v1", "refs-v1"]});
-		await gate.recordRefreshed("wip");
+		await gate.refreshing("wip", async () => Promise.resolve());
 		await expect(gate.shouldRefresh("wip")).resolves.toBe(false);
 	});
 
 	it("passes fires when refs moved past the recorded snapshot", async () => {
 		const gate = gateWithSnapshots({wip: ["refs-v1", "refs-v2"]});
-		await gate.recordRefreshed("wip");
+		await gate.refreshing("wip", async () => Promise.resolve());
 		await expect(gate.shouldRefresh("wip")).resolves.toBe(true);
 	});
 
@@ -37,21 +37,34 @@ describe("createWatchGate", () => {
 		// → echo fire sees v2 → dropped. The old timing race looped here forever.
 		const gate = gateWithSnapshots({wip: ["refs-v1", "refs-v2", "refs-v2"]});
 		await expect(gate.shouldRefresh("wip")).resolves.toBe(true);
-		await gate.recordRefreshed("wip");
+		await gate.refreshing("wip", async () => Promise.resolve());
 		await expect(gate.shouldRefresh("wip")).resolves.toBe(false);
 	});
 
 	it("fails open when the snapshot is unreadable", async () => {
 		const gate = gateWithSnapshots({wip: [""]});
-		await gate.recordRefreshed("wip");
+		await gate.refreshing("wip", async () => Promise.resolve());
 		await expect(gate.shouldRefresh("wip")).resolves.toBe(true);
 	});
 
 	it("tracks projects independently", async () => {
 		const gate = gateWithSnapshots({alpha: ["a1", "a1"], beta: ["b1", "b2"]});
-		await gate.recordRefreshed("alpha");
-		await gate.recordRefreshed("beta");
+		await gate.refreshing("alpha", async () => Promise.resolve());
+		await gate.refreshing("beta", async () => Promise.resolve());
 		await expect(gate.shouldRefresh("alpha")).resolves.toBe(false);
 		await expect(gate.shouldRefresh("beta")).resolves.toBe(true);
+	});
+});
+
+describe("onlyRemoteRefsChanged", () => {
+	it("accepts remote-tracking changes and rejects branch or HEAD changes", () => {
+		const base = "h\nrefs/heads/a 1\nrefs/remotes/upstream/main 1";
+		expect([
+			onlyRemoteRefsChanged(base, base),
+			onlyRemoteRefsChanged(base, "h\nrefs/heads/a 1\nrefs/remotes/upstream/main 2"),
+			onlyRemoteRefsChanged(base, "h\nrefs/heads/a 1"),
+			onlyRemoteRefsChanged(base, "h\nrefs/heads/a 2\nrefs/remotes/upstream/main 1"),
+			onlyRemoteRefsChanged(base, "h2\nrefs/heads/a 1\nrefs/remotes/upstream/main 1"),
+		]).toStrictEqual([true, true, true, false, false]);
 	});
 });

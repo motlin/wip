@@ -14,6 +14,7 @@ import {
 	cacheUpstreamSha,
 	cacheMiseEnv,
 	cacheMergeStatus,
+	getCachedMergeStatuses,
 	cacheIssues,
 	cacheProjectItems,
 	type GitHubIssue,
@@ -2620,6 +2621,63 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 			head,
 			status: "",
 			calls: 1,
+		});
+	});
+
+	it("keeps a green behind row ready, waiting for checks, after Open PR rebases it to a tip no sweep has measured", async () => {
+		const {dir} = await behindFeatureBranch("fix-listed", {conflict: false});
+		await execa("git", ["-C", dir, "config", "test.default.command", "true"]);
+		const upstreamSha = await gitOut(dir, "rev-parse", "origin/main");
+		// Listed after a restart from durable state: the merge queue measured the old tip, behind but clean.
+		cacheUpstreamSha("pr-listed", "origin/main", upstreamSha);
+		const before = await gitOut(dir, "rev-parse", "fix-listed");
+		cacheMergeStatus("pr-listed", before, upstreamSha, 1, 1, true);
+		const project = makeProject({name: "pr-listed", dir, remote: "alice/repo", originRemote: "alice/repo"});
+		seedProjectCache([project]);
+		fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-listed", branch: "fix-listed", title: "Fix"});
+		const tip = await gitOut(dir, "rev-parse", "fix-listed");
+		// The children refresh after Open PR sees the new tip with its PR, before any sweep measures it.
+		const {bufferRepoFromChildren} = await import("./ready-buffer.js");
+		const mergeStatuses = new Map(getCachedMergeStatuses("pr-listed", upstreamSha).map((ms) => [ms.sha, ms]));
+		const repo = bufferRepoFromChildren(
+			{...project, hasTestConfigured: true},
+			[
+				makeChild({
+					project: "pr-listed",
+					sha: tip,
+					branch: "fix-listed",
+					testStatus: "passed",
+					prNumber: 9,
+					checkStatus: "pending",
+				}),
+			],
+			{
+				identity: null,
+				checkedOutBranches: [],
+				onHold: () => false,
+				override: () => undefined,
+				landing: "pull-request",
+				mergeStatus: (sha) => mergeStatuses.get(sha),
+			},
+		);
+
+		expect({
+			ok: result.ok,
+			measured: mergeStatuses.get(tip),
+			candidates: repo.candidates.map(({sha, state, behind, greenBehind, checksPending}) => ({
+				sha,
+				state,
+				behind,
+				greenBehind,
+				checksPending,
+			})),
+		}).toStrictEqual({
+			ok: true,
+			measured: {sha: tip, upstreamSha, commitsAhead: 1, commitsBehind: 0, rebaseable: null},
+			candidates: [{sha: tip, state: "ready", behind: undefined, greenBehind: undefined, checksPending: true}],
 		});
 	});
 

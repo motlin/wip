@@ -322,6 +322,7 @@ async function run() {
 				draft: false,
 				check: "PENDING",
 				autoMerge: true,
+				headOid: world.shas.readySha,
 			},
 		);
 
@@ -408,18 +409,34 @@ async function run() {
 			world.shas.staleSha,
 			"listed from durable state, not re-advanced by the buffer",
 		);
+		// Open PR rebases it to a tip no sweep has measured: the row must never leave while it runs.
 		const stale = await openPr(page, "Add the stale feature", `${gh.url}/acme/sprockets/pull/1`, [
+			[["ready-to-land-row", "waiting-row"], "Add the stale feature"],
 			["ready-to-land-row", "Add the steady feature"],
 		]);
 		await stale.tab.close();
 		const pushedStale = world.git(sprockets.forkBare, "rev-parse", "refs/heads/stale-feature");
 		assert.equal(world.git(sprockets.forkBare, "rev-parse", `${pushedStale}^`), movedPast, "rebased first");
 		assert.match(world.git(sprockets.clone, "test", "results", pushedStale), /^good /, "retested green");
+		assert.equal(
+			gh.prs.find((pr) => pr.repository === "acme/sprockets" && pr.number === 1)?.headOid,
+			pushedStale,
+			"the PR opened on the rebased tip",
+		);
+		// Without waiting for a sweep or the safety tick: the rebased tip's merge status is known at once.
 		await page
 			.getByTestId("waiting-row")
 			.filter({hasText: "Add the stale feature"})
 			.filter({hasText: "PR #1 · waiting for checks"})
-			.waitFor();
+			.waitFor({timeout: 30_000});
+		await assertRowsStay(
+			page,
+			[
+				["waiting-row", "Add the stale feature"],
+				["ready-to-land-row", "Add the steady feature"],
+			],
+			"after Open PR on the behind row listed from durable state",
+		);
 
 		step("Checking what reached gh and GitHub");
 		assert.deepEqual(

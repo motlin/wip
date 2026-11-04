@@ -12,7 +12,7 @@ const VIEWER_LOGIN = "e2e-user";
 
 /**
  * @typedef {{owner: string; name: string; bareDir: string; parent?: string; baseCheck?: "SUCCESS" | "FAILURE" | "PENDING"}} FakeRepo
- * @typedef {{number: number; repository: string; headRefName: string; baseRefName: string; title: string; draft: boolean; check: "SUCCESS" | "FAILURE" | "PENDING"; autoMerge: boolean}} FakePr
+ * @typedef {{number: number; repository: string; headRefName: string; baseRefName: string; title: string; draft: boolean; check: "SUCCESS" | "FAILURE" | "PENDING"; autoMerge: boolean; headOid?: string}} FakePr
  */
 
 async function readJson(request) {
@@ -110,6 +110,10 @@ export async function startFakeGitHub(options) {
 			}
 			const headRefName = String(variables.headRefName).replace(/^[^:]+:/, "");
 			const repository = `${target.owner}/${target.name}`;
+			// The head as the PR was opened on it: the fork's branch for owner:branch, else the target's.
+			const headOwner = /^([^:]+):/.exec(String(variables.headRefName))?.[1] ?? target.owner;
+			const headRepo = repos.get(`${headOwner}/${target.name}`) ?? target;
+			const headOid = commitOf(headRepo.bareDir, `refs/heads/${headRefName}`)?.oid;
 			const pr = {
 				number: prs.reduce((max, p) => (p.repository === repository ? Math.max(max, p.number) : max), 0) + 1,
 				repository,
@@ -119,6 +123,7 @@ export async function startFakeGitHub(options) {
 				draft: variables.draft === true,
 				check: "PENDING",
 				autoMerge: false,
+				...(headOid === undefined ? {} : {headOid}),
 			};
 			prs.push(pr);
 			return {kind: "createPullRequest", body: {data: {createPullRequest: {pullRequest: {url: prUrl(pr)}}}}};

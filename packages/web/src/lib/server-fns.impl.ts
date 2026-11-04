@@ -925,13 +925,17 @@ async function catchUpPrBranch(
 	env: Record<string, string>,
 	step: ActionStep,
 ): Promise<string | null> {
-	const {replayBranchOnto} = await import("@wip/shared");
+	const {cacheMergeStatus, computeMergeStatus, replayBranchOnto} = await import("@wip/shared");
 	if ((await checkedOutBranches(p.dir)).has(branch)) {
 		return `${branch} is behind ${p.upstreamRef} and checked out in a worktree; rebase it there before opening a PR`;
 	}
 	step(`Rebasing ${branch} onto ${p.upstreamRef}…`);
 	const replayed = await replayBranchOnto(p.dir, branch, branchSha, upstreamSha);
 	if (replayed === null) return `${branch} conflicts with ${p.upstreamRef}; resolve the rebase before opening a PR`;
+	// The new tip sits on upstream: record that now, or the buffer counts it unready and lists it
+	// nowhere until a sweep measures it and some later event pulls.
+	const ms = await computeMergeStatus(p.dir, replayed, upstreamSha);
+	cacheMergeStatus(p.name, replayed, upstreamSha, ms.commitsAhead, ms.commitsBehind, ms.rebaseable);
 	invalidateChildrenCache(p.name);
 	if (!p.hasTestConfigured) return null;
 	step(`Testing ${branch}…`);

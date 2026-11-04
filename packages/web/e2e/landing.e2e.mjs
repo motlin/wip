@@ -12,9 +12,10 @@
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
  * WIP_E2E_KEEP=true keeps the temp world; it is always kept when a step fails.
  * WIP_E2E_HEADED=true shows the browser.
+ * The server runs in its own process group, killed on every way out (pass, failure, timeout, signal),
+ * and the run fails if any process is left holding the world's database.
  */
 import assert from "node:assert/strict";
-import {spawn} from "node:child_process";
 import * as fs from "node:fs";
 import {createServer} from "node:net";
 import * as path from "node:path";
@@ -24,6 +25,7 @@ import {chromium} from "playwright";
 
 import {startFakeGitHub} from "./fake-github.mjs";
 import {createWorld} from "./landing-world.mjs";
+import {processesHolding, startProcessTree, stopProcessTree} from "./server-process.mjs";
 
 const webDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const WAIT_MS = 180_000;
@@ -200,14 +202,6 @@ async function openPr(page, subject, expectedPrUrl, stay = []) {
 	return {tab, firstUrl};
 }
 
-async function stopServer(running) {
-	running.kill("SIGTERM");
-	await new Promise((resolve) => {
-		if (running.exitCode !== null) resolve(undefined);
-		else running.once("exit", resolve);
-	});
-}
-
 async function run() {
 	step("Building the temp world");
 	const world = createWorld();
@@ -231,17 +225,18 @@ async function run() {
 	const serverLog = path.join(world.dirs.root, "server.log");
 	const logFd = fs.openSync(serverLog, "a");
 	const startServer = () =>
-		spawn(process.execPath, ["serve.mjs", "--port", String(port)], {
+		startProcessTree(process.execPath, ["serve.mjs", "--port", String(port)], {
 			cwd: webDir,
 			env: {...world.env, WIP_GITHUB_GRAPHQL_URL: gh.graphqlUrl, WIP_E2E_FAKE_GITHUB: gh.url},
 			stdio: ["ignore", logFd, logFd],
 		});
 	let server = startServer();
-	const browser = await chromium.launch({headless: process.env.WIP_E2E_HEADED !== "true"});
+	let browser;
 	const blocked = [];
 	const pageErrors = [];
 	let ok = false;
 	try {
+		browser = await chromium.launch({headless: process.env.WIP_E2E_HEADED !== "true"});
 		step(`Starting wip on ${baseUrl} (ready buffer on) with fake GitHub at ${gh.url}`);
 		await waitForServer(`${baseUrl}/`, server);
 
@@ -384,7 +379,7 @@ async function run() {
 		assert.equal(world.git(gadgets.upstreamBare, "rev-parse", "refs/heads/main"), world.shas.ffSha);
 
 		step("Restart, then upstream moves past a green row: it stays, marked behind, with Open PR");
-		await stopServer(server);
+		await stopProcessTree(server);
 		// After the restart the buffer remembers nothing, and cogs' steady row alone fills the target, so
 		// nothing re-advances the stale row: only durable state (its git test result and merge status) lists it.
 		world.setReadyTarget(1);
@@ -456,9 +451,18 @@ async function run() {
 		ok = true;
 		console.log("\n✓ landing flows passed");
 	} finally {
-		await browser.close();
-		await stopServer(server);
+		await browser?.close();
+		await stopProcessTree(server);
 		await gh.close();
+		const dbPath = world.env.WIP_DB_PATH;
+		const holders = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`].flatMap((file) => processesHolding(file));
+		if (holders.length > 0) {
+			ok = false;
+			process.exitCode = 1;
+			console.error(
+				`\n✗ processes still hold the world's database after the server stopped: ${holders.join(", ")}`,
+			);
+		}
 		if (ok && !keep) world.remove();
 		else console.log(`\nKept the world at ${world.dirs.root} (server log: ${serverLog})`);
 	}

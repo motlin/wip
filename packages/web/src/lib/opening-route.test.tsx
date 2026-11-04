@@ -80,9 +80,29 @@ describe("the tab Open PR opens", () => {
 
 	it("goes to the new PR when the action succeeds", async () => {
 		const url = "https://github.com/o/alpha/pull/12";
-		await renderAt("/opening/tab-1", {...base, status: "done", result: {ok: true, message: "Opened PR #12", url}});
+		await renderAt("/opening/tab-1", {
+			...base,
+			status: "done",
+			result: {ok: true, message: "Opened PR #12", prUrl: url},
+		});
 		expect({text: text(), redirects: navigation.redirectTo.mock.calls}).toStrictEqual({
 			text: "Opened PR #12Go to the pull request",
+			redirects: [[url]],
+		});
+	});
+
+	it("goes to GitHub's new-PR page when the token could not open the PR, and the link says to create it", async () => {
+		const url = "https://github.com/o/alpha/compare/main...add-parser?quick_pull=1&title=Add+parser";
+		const message =
+			"Pushed add-parser; your GitHub token has read-only access to o/alpha, so create the PR on GitHub";
+		await renderAt("/opening/tab-1", {...base, status: "done", result: {ok: true, message, compareUrl: url}});
+		expect({
+			text: text(),
+			link: screen.getByRole("link", {name: "Create the pull request on GitHub"}).getAttribute("href"),
+			redirects: navigation.redirectTo.mock.calls,
+		}).toStrictEqual({
+			text: `${message}Create the pull request on GitHub`,
+			link: url,
 			redirects: [[url]],
 		});
 	});

@@ -30,13 +30,13 @@ function resultOf(outcome: {ok: true; value: unknown} | {ok: false; error: unkno
 	const {value} = outcome;
 	if (typeof value !== "object" || value === null || !("ok" in value) || !("message" in value)) return undefined;
 	if (typeof value.ok !== "boolean" || typeof value.message !== "string") return undefined;
-	const url =
-		"prUrl" in value && typeof value.prUrl === "string"
-			? value.prUrl
-			: "compareUrl" in value && typeof value.compareUrl === "string"
-				? value.compareUrl
-				: undefined;
-	return {ok: value.ok, message: value.message, ...(url === undefined ? {} : {url})};
+	if ("prUrl" in value && typeof value.prUrl === "string") {
+		return {ok: value.ok, message: value.message, prUrl: value.prUrl};
+	}
+	if ("compareUrl" in value && typeof value.compareUrl === "string") {
+		return {ok: value.ok, message: value.message, compareUrl: value.compareUrl};
+	}
+	return {ok: value.ok, message: value.message};
 }
 
 /** Human-readable name for the job holding a repo, naming the AI conflict rung when that is what runs. */

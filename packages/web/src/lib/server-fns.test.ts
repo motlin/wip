@@ -2578,7 +2578,7 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 				{status: "running", step: "Opening the pull request…"},
 				{status: "done"},
 			],
-			result: {ok: true, message: "Opened PR #9", url: "https://github.com/alice/repo/pull/9"},
+			result: {ok: true, message: "Opened PR #9", prUrl: "https://github.com/alice/repo/pull/9"},
 		});
 	});
 

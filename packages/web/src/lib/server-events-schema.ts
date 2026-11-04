@@ -70,8 +70,15 @@ const ActionEventSchema = z.object({
 	waitingFor: z.string().optional(),
 	/** What a running action is doing now, in plain words ("Pushing add-parser…"). */
 	step: z.string().optional(),
-	/** A finished (done or busy) action's outcome; `url` is the PR or compare page it produced. */
-	result: z.object({ok: z.boolean(), message: z.string(), url: z.string().optional()}).optional(),
+	/** A finished (done or busy) action's outcome, with the PR it opened or the new-PR (compare) page it left for the user. */
+	result: z
+		.object({
+			ok: z.boolean(),
+			message: z.string(),
+			prUrl: z.string().optional(),
+			compareUrl: z.string().optional(),
+		})
+		.optional(),
 });
 export type ActionEvent = z.infer<typeof ActionEventSchema>;
 

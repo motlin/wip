@@ -14,7 +14,8 @@ const openingSearchSchema = z.object({
 
 /**
  * The tab Open PR opens in its confirm click: the action's progress while it waits or runs, then the
- * new PR (this tab goes there) or the reason it failed with the log link. Never blank, never closed.
+ * new PR or, when the token could not open one, GitHub's new-PR page (this tab goes there), or the
+ * reason it failed with the log link. Never blank, never closed.
  */
 export const Route = createFileRoute("/opening/$actionId")({
 	validateSearch: openingSearchSchema,
@@ -28,7 +29,7 @@ function OpeningAction() {
 	const {data} = useQuery(actionStatusQueryOptions(actionId));
 	const event = data ?? null;
 	const result = event?.result;
-	const url = result?.ok === true ? result.url : undefined;
+	const url = result?.ok === true ? (result.prUrl ?? result.compareUrl) : undefined;
 
 	useEffect(() => {
 		if (url !== undefined) redirectTo(url);
@@ -44,7 +45,9 @@ function OpeningAction() {
 						<p className="text-sm text-text-200">{result.message}</p>
 						{url !== undefined && (
 							<a className="mt-4 inline-block text-sm underline" href={url}>
-								Go to the pull request
+								{result.prUrl === undefined
+									? "Create the pull request on GitHub"
+									: "Go to the pull request"}
 							</a>
 						)}
 					</>

@@ -292,13 +292,13 @@ describe("action status for the opened tab", () => {
 				{
 					...base,
 					status: "done",
-					result: {ok: true, message: "Opened PR #12", url: "https://github.com/o/alpha/pull/12"},
+					result: {ok: true, message: "Opened PR #12", prUrl: "https://github.com/o/alpha/pull/12"},
 				},
 			],
 			status: {
 				...base,
 				status: "done",
-				result: {ok: true, message: "Opened PR #12", url: "https://github.com/o/alpha/pull/12"},
+				result: {ok: true, message: "Opened PR #12", prUrl: "https://github.com/o/alpha/pull/12"},
 			},
 		});
 	});

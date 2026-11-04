@@ -32,7 +32,7 @@ export function resetActionLogs(): void {
 
 /**
  * Runs a user action, attaching the subprocess/general logs it emitted to its result. A failure
- * (an ok: false result or a throw) keeps its logs and last failing subprocess under `id`, and a
+ * (an ok: false result or a throw) keeps its logs and last failing subprocess or GitHub API request under `id`, and a
  * failed result carries `actionId` so its "See the log" link opens that action's own log.
  */
 export async function loggedAction(
@@ -47,9 +47,16 @@ export async function loggedAction(
 		category: e.category,
 		msg: e.msg,
 	}));
-	const failedCommand = failures.at(-1);
+	// The last failure is the one that failed the action: a subprocess, or a GitHub API request.
+	const last = failures.at(-1);
+	const failure =
+		last === undefined
+			? {}
+			: last.kind === "subprocess"
+				? {failedCommand: {command: last.command, exitCode: last.exitCode, stderr: last.stderr}}
+				: {failedRequest: {operation: last.operation, message: last.message}};
 	const record = (message: string): void => {
-		keep({id, label, message, ...(failedCommand === undefined ? {} : {failedCommand}), logs: entries});
+		keep({id, label, message, ...failure, logs: entries});
 	};
 	if (settled.status === "rejected") {
 		const reason: unknown = settled.reason;

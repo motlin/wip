@@ -8,6 +8,7 @@ import {describe, it, expect} from "vite-plus/test";
 
 import {SUBPROCESS_LIMIT} from "./subprocess-gate.js";
 import {
+	isExpectedProbeExit,
 	subscribeSubprocessFailures,
 	tracedExeca,
 	unsubscribeSubprocessFailures,
@@ -203,6 +204,68 @@ describe("tracedExeca failure listeners", () => {
 		expect(failures).toStrictEqual([
 			{command: "sh -c 'echo boom >&2; exit 3'", exitCode: 3, stderr: "boom"},
 			{command: "sh -c 'echo bang >&2; exit 4'", exitCode: 4, stderr: "bang"},
+		]);
+	});
+});
+
+describe("isExpectedProbeExit", () => {
+	it("knows the git probes whose non-zero exit is an answer, not a failure", () => {
+		const cases: [string[], number][] = [
+			[["-C", "/r", "merge-base", "--is-ancestor", "a", "b"], 1],
+			[["-C", "/r", "merge-base", "--is-ancestor", "a", "b"], 128],
+			[["-C", "/r", "rev-parse", "--verify", "--quiet", "refs/heads/x"], 1],
+			[["-C", "/r", "rev-parse", "--verify", "x^{commit}"], 128],
+			[["-C", "/r", "rev-parse", "HEAD"], 128],
+			[["-C", "/r", "show-ref", "--verify", "--quiet", "refs/heads/x"], 1],
+			[["-C", "/r", "diff", "--cached", "--quiet"], 1],
+			[["-C", "/r", "diff", "--quiet", "HEAD"], 128],
+			[["-C", "/r", "symbolic-ref", "--quiet", "--short", "HEAD"], 1],
+			[["-C", "/r", "merge-tree", "--quiet", "--write-tree", "a", "b"], 1],
+			[["-C", "/r", "config", "--get", "branch.x.remote"], 1],
+			[["-C", "/r", "ls-remote", "--exit-code", "origin", "x"], 2],
+			[["-C", "/r", "push", "upstream", "main"], 1],
+			[["-c", "core.quotePath=false", "-C", "/r", "cat-file", "-e", "abc"], 1],
+		];
+		expect(
+			cases.map(([args, exitCode]) => [args.join(" "), exitCode, isExpectedProbeExit("git", args, exitCode)]),
+		).toStrictEqual([
+			["-C /r merge-base --is-ancestor a b", 1, true],
+			["-C /r merge-base --is-ancestor a b", 128, false],
+			["-C /r rev-parse --verify --quiet refs/heads/x", 1, true],
+			["-C /r rev-parse --verify x^{commit}", 128, true],
+			["-C /r rev-parse HEAD", 128, false],
+			["-C /r show-ref --verify --quiet refs/heads/x", 1, true],
+			["-C /r diff --cached --quiet", 1, true],
+			["-C /r diff --quiet HEAD", 128, false],
+			["-C /r symbolic-ref --quiet --short HEAD", 1, true],
+			["-C /r merge-tree --quiet --write-tree a b", 1, true],
+			["-C /r config --get branch.x.remote", 1, true],
+			["-C /r ls-remote --exit-code origin x", 2, true],
+			["-C /r push upstream main", 1, false],
+			["-c core.quotePath=false -C /r cat-file -e abc", 1, true],
+		]);
+		expect(isExpectedProbeExit("sh", ["-c", "exit 1"], 1)).toBe(false);
+	});
+
+	it("never reports a probe's expected exit as a failing subprocess", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-probe-"));
+		childProcess.execFileSync("git", ["init", "--quiet", dir]);
+		const failures: SubprocessFailure[] = [];
+		const listener = (failure: SubprocessFailure): void => {
+			failures.push(failure);
+		};
+		subscribeSubprocessFailures(listener);
+		try {
+			await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", "--quiet", "refs/heads/nope"], {
+				reject: false,
+			});
+			await tracedExeca("git", ["-C", dir, "config", "--get", "no.such"], {reject: false});
+			await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", "nope", "HEAD"], {reject: false});
+		} finally {
+			unsubscribeSubprocessFailures(listener);
+		}
+		expect(failures.map((f) => [f.command, f.exitCode])).toStrictEqual([
+			[`git -C ${dir} merge-base --is-ancestor nope HEAD`, 128],
 		]);
 	});
 });

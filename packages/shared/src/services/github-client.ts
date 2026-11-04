@@ -142,15 +142,76 @@ export function createTestClient(): GitHubClient {
 	};
 }
 
+/** A GitHub API request that failed (threw, or answered with a GraphQL errors array), as a failed action's log shows it. */
+export interface GitHubApiFailure {
+	/** The operation type and its first field, e.g. "mutation createPullRequest". */
+	operation: string;
+	message: string;
+}
+
+type GitHubApiFailureListener = (failure: GitHubApiFailure) => void;
+const apiFailureListeners = new Set<GitHubApiFailureListener>();
+
+/** Hears every failing GitHub API request, so an action that failed on one shows it instead of a stale subprocess. */
+export function subscribeGitHubApiFailures(listener: GitHubApiFailureListener): void {
+	apiFailureListeners.add(listener);
+}
+
+export function unsubscribeGitHubApiFailures(listener: GitHubApiFailureListener): void {
+	apiFailureListeners.delete(listener);
+}
+
+function reportApiFailure(failure: GitHubApiFailure): void {
+	for (const listener of apiFailureListeners) {
+		try {
+			listener(failure);
+		} catch {
+			// a failing listener must not break the request
+		}
+	}
+}
+
+function operationName(query: string): string {
+	const match = /^\s*(query|mutation|subscription)?[^{]*\{\s*(\w+)/.exec(query);
+	return `${match?.[1] ?? "query"} ${match?.[2] ?? "unknown"}`;
+}
+
+/** Wraps a client so each failing request is reported to the API failure listeners. */
+function reporting(inner: GitHubClient): GitHubClient {
+	return {
+		async graphql(query: string, variables?: Record<string, unknown>): Promise<unknown> {
+			let payload: unknown;
+			try {
+				payload = await inner.graphql(query, variables);
+			} catch (error) {
+				reportApiFailure({
+					operation: operationName(query),
+					message: error instanceof Error ? error.message : String(error),
+				});
+				throw error;
+			}
+			const parsed = graphqlErrorsSchema.safeParse(payload);
+			const errors = parsed.success ? (parsed.data.errors ?? []) : [];
+			if (errors.length > 0) {
+				reportApiFailure({
+					operation: operationName(query),
+					message: errors.map((e) => e.message ?? e.type ?? "unknown error").join("; "),
+				});
+			}
+			return payload;
+		},
+	};
+}
+
 let client: GitHubClient | undefined;
 
 export function getGitHubClient(): GitHubClient {
-	client ??= createProductionClient();
+	client ??= reporting(createProductionClient());
 	return client;
 }
 
 export function setGitHubClient(c: GitHubClient): void {
-	client = c;
+	client = reporting(c);
 }
 
 export function resetGitHubClient(): void {

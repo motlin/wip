@@ -5,10 +5,11 @@ import {CATEGORY_CLASS, formatTime, LEVEL_CLASS, LEVEL_LABEL} from "../lib/log-f
 
 /**
  * A failed action's own log, static: the reason, then the subprocess that failed it (command, exit
- * code, stderr) where it is seen without scrolling, then only the entries that action emitted.
+ * code, stderr) or the GitHub API request that did (operation, error) where it is seen without
+ * scrolling, then only the entries that action emitted.
  */
 export function ActionLogView({log}: {log: ActionLog}) {
-	const {failedCommand} = log;
+	const {failedCommand, failedRequest} = log;
 	return (
 		<>
 			<h1 className="text-xl font-semibold text-red-600">{actionName(log.label)} failed</h1>
@@ -32,6 +33,20 @@ export function ActionLogView({log}: {log: ActionLog}) {
 							{failedCommand.stderr}
 						</pre>
 					)}
+				</section>
+			)}
+			{failedRequest !== undefined && (
+				<section className="mt-4 rounded border border-red-500/30 bg-bg-100 p-3">
+					<h2 className="text-xs font-semibold uppercase text-text-400">Failing GitHub API request</h2>
+					<p className="mt-1 break-all font-mono text-xs text-text-100" data-testid="action-log-request">
+						{failedRequest.operation}
+					</p>
+					<pre
+						className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs text-red-600 dark:text-red-400"
+						data-testid="action-log-request-error"
+					>
+						{failedRequest.message}
+					</pre>
 				</section>
 			)}
 			<h2 className="mt-6 text-xs font-semibold uppercase text-text-400">Entries</h2>

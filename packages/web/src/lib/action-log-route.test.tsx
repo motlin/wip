@@ -99,6 +99,26 @@ describe("a failed action's own log page", () => {
 		});
 	});
 
+	it("shows the failing GitHub API request's operation and error when an API error failed the action", async () => {
+		serverFns.getActionLog.mockResolvedValue({
+			id: "pr-2",
+			label: "createPr",
+			message: "GitHub API error: Head sha can't be blank",
+			failedRequest: {operation: "mutation createPullRequest", message: "Head sha can't be blank"},
+			logs: [],
+		});
+		await renderAt("/action-log/pr-2");
+		expect({
+			command: screen.queryByTestId("action-log-command"),
+			request: screen.getByTestId("action-log-request").textContent,
+			error: screen.getByTestId("action-log-request-error").textContent,
+		}).toStrictEqual({
+			command: null,
+			request: "mutation createPullRequest",
+			error: "Head sha can't be blank",
+		});
+	});
+
 	it("says when no log is kept for the action and links the recent failures", async () => {
 		serverFns.getActionLog.mockResolvedValue(null);
 		await renderAt("/action-log/gone");

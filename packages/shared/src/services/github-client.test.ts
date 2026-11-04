@@ -3,7 +3,15 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 const execaMock = vi.hoisted(() => vi.fn<(file: string, args: string[]) => Promise<{stdout: string}>>());
 vi.mock("execa", () => ({execa: execaMock}));
 
-import {getGitHubClient, resetGitHubClient, resetGitHubTokenCache} from "./github-client.js";
+import {
+	getGitHubClient,
+	resetGitHubClient,
+	resetGitHubTokenCache,
+	setGitHubClient,
+	subscribeGitHubApiFailures,
+	unsubscribeGitHubApiFailures,
+	type GitHubApiFailure,
+} from "./github-client.js";
 
 const TOKEN_TTL_MS = 60_000;
 
@@ -96,5 +104,52 @@ describe("GitHub GraphQL endpoint", () => {
 		await getGitHubClient().graphql("query { viewer { login } }");
 
 		expect(fetchMock.mock.calls.map((call) => call[0])).toStrictEqual(["http://127.0.0.1:9/graphql"]);
+	});
+});
+
+describe("GitHub API failure listeners", () => {
+	afterEach(() => {
+		resetGitHubClient();
+	});
+
+	it("reports each failing request's operation and message: thrown errors and GraphQL errors arrays", async () => {
+		const responses: (() => Promise<unknown>)[] = [
+			async () => Promise.resolve({data: {viewer: {login: "me"}}}),
+			async () =>
+				Promise.resolve({data: null, errors: [{message: "Head sha can't be blank"}, {message: "No commits"}]}),
+			async () => Promise.reject(new Error("GitHub API server error (502): Bad gateway")),
+		];
+		setGitHubClient({
+			async graphql(): Promise<unknown> {
+				const next = responses.shift();
+				return next === undefined ? Promise.resolve({}) : next();
+			},
+		});
+		const failures: GitHubApiFailure[] = [];
+		const listener = (failure: GitHubApiFailure): void => {
+			failures.push(failure);
+		};
+		subscribeGitHubApiFailures(listener);
+		const thrown: string[] = [];
+		try {
+			await getGitHubClient().graphql("query { viewer { login } }");
+			await getGitHubClient().graphql(
+				"\n  mutation($repositoryId: ID!) {\n    createPullRequest(input: {repositoryId: $repositoryId}) { pullRequest { url } }\n  }",
+			);
+			await getGitHubClient()
+				.graphql("query($owner: String!) { repository(owner: $owner) { id } }")
+				.catch((error: unknown) => {
+					thrown.push(error instanceof Error ? error.message : String(error));
+				});
+		} finally {
+			unsubscribeGitHubApiFailures(listener);
+		}
+		expect({failures, thrown}).toStrictEqual({
+			failures: [
+				{operation: "mutation createPullRequest", message: "Head sha can't be blank; No commits"},
+				{operation: "query repository", message: "GitHub API server error (502): Bad gateway"},
+			],
+			thrown: ["GitHub API server error (502): Bad gateway"],
+		});
 	});
 });

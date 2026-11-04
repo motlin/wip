@@ -1,6 +1,14 @@
 import {emitAction, type ActionEvent} from "./action-events.js";
 import {repoResource} from "./repo-resource.js";
-import {subscribeLogs, unsubscribeLogs, type CostClass, type LogEntry} from "@wip/shared";
+import {
+	subscribeGitHubApiFailures,
+	subscribeLogs,
+	unsubscribeGitHubApiFailures,
+	unsubscribeLogs,
+	type CostClass,
+	type GitHubApiFailure,
+	type LogEntry,
+} from "@wip/shared";
 import {
 	subscribeSubprocessFailures,
 	unsubscribeSubprocessFailures,
@@ -43,27 +51,34 @@ interface LogGate {
 
 const logGate = new asyncHooks.AsyncLocalStorage<LogGate>();
 
+/** A failing subprocess or GitHub API request an action saw, in the order it happened. */
+export type ActionFailure = ({kind: "subprocess"} & SubprocessFailure) | ({kind: "api"} & GitHubApiFailure);
+
 /**
- * Capture subprocess/general logs and failing subprocesses emitted while `fn` runs, whether it
+ * Capture subprocess/general logs and failing subprocesses and GitHub API requests emitted while `fn` runs, whether it
  * resolves or throws. A queued action (runQueuedAction) pauses capture while it waits for the repo,
  * so logs from other jobs running meanwhile are not attached to this action's result.
  */
 export async function captureActionLogs<T>(
 	fn: () => Promise<T>,
-): Promise<{settled: PromiseSettledResult<T>; logs: LogEntry[]; failures: SubprocessFailure[]}> {
+): Promise<{settled: PromiseSettledResult<T>; logs: LogEntry[]; failures: ActionFailure[]}> {
 	const gate: LogGate = {active: true};
 	const logs: LogEntry[] = [];
-	const failures: SubprocessFailure[] = [];
+	const failures: ActionFailure[] = [];
 	const listener = (entry: LogEntry): void => {
 		if (!gate.active) return;
 		if (entry.category !== "subprocess" && entry.category !== "general") return;
 		logs.push(entry);
 	};
 	const failureListener = (failure: SubprocessFailure): void => {
-		if (gate.active) failures.push(failure);
+		if (gate.active) failures.push({kind: "subprocess", ...failure});
+	};
+	const apiFailureListener = (failure: GitHubApiFailure): void => {
+		if (gate.active) failures.push({kind: "api", ...failure});
 	};
 	subscribeLogs(listener);
 	subscribeSubprocessFailures(failureListener);
+	subscribeGitHubApiFailures(apiFailureListener);
 	try {
 		const value = await logGate.run(gate, fn);
 		return {settled: {status: "fulfilled", value}, logs, failures};
@@ -72,6 +87,7 @@ export async function captureActionLogs<T>(
 	} finally {
 		unsubscribeLogs(listener);
 		unsubscribeSubprocessFailures(failureListener);
+		unsubscribeGitHubApiFailures(apiFailureListener);
 	}
 }
 

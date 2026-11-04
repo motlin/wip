@@ -31,6 +31,53 @@ export function unsubscribeSubprocessFailures(listener: SubprocessFailureListene
 	failureListeners.delete(listener);
 }
 
+/** The git subcommand and its own args, past global options such as `-C dir` and `-c key=value`. */
+function gitSubcommand(args: readonly string[]): {name: string; rest: readonly string[]} | undefined {
+	let i = 0;
+	while (i < args.length) {
+		const arg = args[i];
+		if (arg === "-C" || arg === "-c") i += 2;
+		else if (arg?.startsWith("-") === true) i += 1;
+		else break;
+	}
+	const name = args[i];
+	return name === undefined ? undefined : {name, rest: args.slice(i + 1)};
+}
+
+/**
+ * True when a git probe exited with the code that answers its question ("not an ancestor", "no such
+ * ref", "differs", "conflicts"): the caller handles that exit, so it is not the command that failed an action.
+ */
+export function isExpectedProbeExit(command: string, args: readonly string[], exitCode: number): boolean {
+	if (command !== "git") return false;
+	const sub = gitSubcommand(args);
+	if (sub === undefined) return false;
+	const has = (...flags: string[]): boolean => flags.some((flag) => sub.rest.includes(flag));
+	switch (sub.name) {
+		case "merge-base":
+			return has("--is-ancestor") && exitCode === 1;
+		case "rev-parse":
+			// Without --quiet a missing ref exits 128 ("Needed a single revision").
+			return has("--verify") && (exitCode === 1 || exitCode === 128);
+		case "show-ref":
+			return exitCode === 1 || (has("--exists") && exitCode === 2);
+		case "diff":
+			return has("--quiet", "--exit-code") && exitCode === 1;
+		case "symbolic-ref":
+			return has("--quiet", "-q") && exitCode === 1;
+		case "merge-tree":
+			return has("--write-tree") && exitCode === 1;
+		case "config":
+			return has("--get", "--get-all", "--get-regexp") && exitCode === 1;
+		case "ls-remote":
+			return has("--exit-code") && exitCode === 2;
+		case "cat-file":
+			return has("-e") && exitCode === 1;
+		default:
+			return false;
+	}
+}
+
 function reportFailure(failure: SubprocessFailure): void {
 	for (const listener of failureListeners) {
 		try {
@@ -154,7 +201,7 @@ async function runTraced(
 				failed: result.failed,
 				command: result.command,
 			};
-			if (finished.exitCode !== 0) {
+			if (finished.exitCode !== 0 && !isExpectedProbeExit(command, args, finished.exitCode)) {
 				reportFailure({command: result.escapedCommand, exitCode: finished.exitCode, stderr: finished.stderr});
 			}
 			return finished;
@@ -168,11 +215,12 @@ async function runTraced(
 			});
 			span.setStatus({code: SpanStatusCode.ERROR, message});
 			const stderr: unknown = error instanceof ExecaError ? error.stderr : undefined;
-			reportFailure({
-				command: error instanceof ExecaError ? error.escapedCommand : [command, ...args].join(" "),
-				exitCode: exitCode ?? -1,
-				stderr: typeof stderr === "string" ? stderr : message,
-			});
+			if (exitCode === undefined || !isExpectedProbeExit(command, args, exitCode))
+				reportFailure({
+					command: error instanceof ExecaError ? error.escapedCommand : [command, ...args].join(" "),
+					exitCode: exitCode ?? -1,
+					stderr: typeof stderr === "string" ? stderr : message,
+				});
 			throw error;
 		} finally {
 			span.end();

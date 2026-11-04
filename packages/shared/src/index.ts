@@ -462,8 +462,11 @@ export {
 } from "./services/logger.js";
 export {type CreatePrParams, createPullRequest, resetRepositoryIdCache} from "./lib/github-prs.js";
 export {
+	type GitHubApiFailure,
 	type GitHubClient,
 	createTestClient,
+	subscribeGitHubApiFailures,
+	unsubscribeGitHubApiFailures,
 	getGitHubClient,
 	setGitHubClient,
 	resetGitHubClient,

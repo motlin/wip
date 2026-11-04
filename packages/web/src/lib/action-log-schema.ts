@@ -1,13 +1,17 @@
 import {z} from "zod";
 import {ActionLogEntrySchema} from "@wip/shared/schemas.js";
 
-/** A failed user action's own log: its reason, the last subprocess that failed, and the entries it emitted. */
+/**
+ * A failed user action's own log: its reason, the last subprocess or GitHub API request that failed
+ * (at most one of the two), and the entries it emitted.
+ */
 const ActionLogSchema = z.object({
 	id: z.string(),
 	/** The internal action name (createPr, rebaseLocal); the page turns it into words. */
 	label: z.string(),
 	message: z.string(),
 	failedCommand: z.object({command: z.string(), exitCode: z.number(), stderr: z.string()}).optional(),
+	failedRequest: z.object({operation: z.string(), message: z.string()}).optional(),
 	logs: z.array(ActionLogEntrySchema),
 });
 export type ActionLog = z.infer<typeof ActionLogSchema>;

@@ -16,6 +16,8 @@ vi.mock("@wip/shared", () => ({
 	getCommitFacts: vi.fn<(...args: unknown[]) => unknown>(),
 	loadInventory: vi.fn<(...args: unknown[]) => unknown>(),
 	getReadyBufferSize: vi.fn<(...args: unknown[]) => unknown>(),
+	getGitTestStatuses: vi.fn<(...args: unknown[]) => unknown>(),
+	getCachedPrStatuses: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("./server-fns.js", () => ({
@@ -38,6 +40,8 @@ import {
 	getCommitFacts,
 	loadInventory,
 	getReadyBufferSize,
+	getGitTestStatuses,
+	getCachedPrStatuses,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
 import {getProjects} from "./server-fns.js";
@@ -66,6 +70,8 @@ const mockRecordLandingOutcomes = recordLandingOutcomes as Mock;
 const mockGetCommitFacts = getCommitFacts as Mock;
 const mockLoadInventory = loadInventory as Mock;
 const mockGetReadyBufferSize = getReadyBufferSize as Mock;
+const mockGetGitTestStatuses = getGitTestStatuses as Mock;
+const mockGetCachedPrStatuses = getCachedPrStatuses as Mock;
 
 function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
 	return {
@@ -123,6 +129,8 @@ describe("checkProject", () => {
 		mockGetCommitFacts.mockResolvedValue(new Map());
 		mockLoadInventory.mockReturnValue({projects: [], errors: []});
 		mockGetReadyBufferSize.mockReturnValue(3);
+		mockGetGitTestStatuses.mockResolvedValue(new Map());
+		mockGetCachedPrStatuses.mockReturnValue([]);
 		resetDeferredMergeStatus();
 		emitter.removeAllListeners();
 	});
@@ -482,7 +490,10 @@ describe("checkProject", () => {
 		mockGetProjects.mockResolvedValue([makeProject()]);
 		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
 		mockGetChildren.mockResolvedValue(["child-1"]);
-		mockGetBehindBranchTips.mockResolvedValue(["stale-tip", "child-1"]);
+		mockGetBehindBranchTips.mockResolvedValue([
+			{sha: "stale-tip", branch: "stale"},
+			{sha: "child-1", branch: "child"},
+		]);
 		mockGetCachedMergeStatuses.mockReturnValue([]);
 		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 2, rebaseable: true});
 
@@ -491,6 +502,59 @@ describe("checkProject", () => {
 		expect(
 			mockCacheMergeStatus.mock.calls.map((call) => call.join(" ")).toSorted((a, b) => a.localeCompare(b)),
 		).toStrictEqual(["test-project child-1 upstream-abc 1 2 true", "test-project stale-tip upstream-abc 1 2 true"]);
+	});
+
+	it("measures a green behind branch with no PR right away, even outside the pull window", async () => {
+		mockGetReadyBufferSize.mockReturnValue(0);
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		// The children fill the whole window (ready target 0 + lookahead 2).
+		mockGetChildren.mockResolvedValue(["child-1", "child-2", "child-3"]);
+		mockGetBehindBranchTips.mockResolvedValue([
+			{sha: "green-tip", branch: "green"},
+			{sha: "red-tip", branch: "red"},
+			{sha: "untested-tip", branch: "untested"},
+			{sha: "pr-tip", branch: "with-pr"},
+		]);
+		mockGetGitTestStatuses.mockResolvedValue(
+			new Map([
+				["green-tip", "passed"],
+				["red-tip", "failed"],
+				["pr-tip", "passed"],
+			]),
+		);
+		mockGetCachedPrStatuses.mockReturnValue([
+			{branch: "with-pr", reviewStatus: "none", checkStatus: "pending", prUrl: "https://x/pr/1", prNumber: 1},
+		]);
+		mockGetCachedMergeStatuses.mockReturnValue([]);
+		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 2, rebaseable: true});
+
+		await checkProject("test-project");
+
+		expect({
+			computed: mockComputeMergeStatus.mock.calls.map(([, sha]: unknown[]) => sha),
+			gitTestAsked: mockGetGitTestStatuses.mock.calls,
+		}).toStrictEqual({
+			computed: ["green-tip", "child-1", "child-2"],
+			gitTestAsked: [["/tmp/test-project", ["green-tip", "red-tip", "untested-tip"]]],
+		});
+	});
+
+	it("asks git test about no behind tip once every one is cached for the current upstream", async () => {
+		mockGetProjects.mockResolvedValue([makeProject()]);
+		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
+		mockGetChildren.mockResolvedValue([]);
+		mockGetBehindBranchTips.mockResolvedValue([{sha: "green-tip", branch: "green"}]);
+		mockGetCachedMergeStatuses.mockReturnValue([
+			{sha: "green-tip", commitsAhead: 1, commitsBehind: 2, rebaseable: true},
+		]);
+
+		await checkProject("test-project");
+
+		expect({
+			computed: mockComputeMergeStatus.mock.calls,
+			gitTestAsked: mockGetGitTestStatuses.mock.calls,
+		}).toStrictEqual({computed: [], gitTestAsked: []});
 	});
 
 	it("processes a mix of cached and uncached children", async () => {

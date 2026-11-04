@@ -89,8 +89,9 @@ function writeFakes(bin) {
 }
 
 /** The registry entry for one of the world's clones. */
-function record(repo, landing) {
+function record(repo, landing, priority) {
 	return {
+		...(priority === undefined ? {} : {priority}),
 		name: repo.name,
 		dir: repo.clone,
 		template: "unknown",
@@ -195,10 +196,23 @@ export function createWorld() {
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
 	fs.mkdirSync(wipConfig, {recursive: true});
-	fs.writeFileSync(
-		path.join(wipConfig, "projects.json5"),
-		`${JSON.stringify([record(broken, "pull-request"), record(gadgets, "fast-forward"), record(widgets, "pull-request"), record(cogs, "pull-request"), record(sprockets, "pull-request")], null, "\t")}\n`,
-	);
+	const priorities = new Map();
+	const writeRegistry = () => {
+		const records = [
+			[broken, "pull-request"],
+			[gadgets, "fast-forward"],
+			[widgets, "pull-request"],
+			[cogs, "pull-request"],
+			[sprockets, "pull-request"],
+		].map(([r, landing]) => record(r, landing, priorities.get(r.name)));
+		fs.writeFileSync(path.join(wipConfig, "projects.json5"), `${JSON.stringify(records, null, "\t")}\n`);
+	};
+	writeRegistry();
+	/** Sets one repo's registry priority, read the next time the server loads the registry. */
+	const setPriority = (name, priority) => {
+		priorities.set(name, priority);
+		writeRegistry();
+	};
 	/** Sets the global ready target the next pull reads. */
 	const setReadyTarget = (size) => {
 		fs.writeFileSync(
@@ -214,6 +228,7 @@ export function createWorld() {
 		ghLog,
 		git,
 		setReadyTarget,
+		setPriority,
 		repos: {widgets, gadgets, broken, cogs, sprockets},
 		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */

@@ -999,7 +999,9 @@ describe("getBehindBranchTips", () => {
 		run("git checkout main");
 		run("git branch master main~1");
 
-		expect(await getBehindBranchTips(tempDir, "upstream-ref")).toStrictEqual([staleSha]);
+		expect(await getBehindBranchTips(tempDir, "upstream-ref")).toStrictEqual([
+			{sha: staleSha, branch: "stale-branch"},
+		]);
 	});
 });
 

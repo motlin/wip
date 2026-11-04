@@ -212,7 +212,7 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken, sprockets} = world.repos;
+	const {widgets, gadgets, broken, cogs, sprockets} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -387,6 +387,11 @@ async function run() {
 		// After the restart the buffer remembers nothing, and cogs' steady row alone fills the target, so
 		// nothing re-advances the stale row: only durable state (its git test result and merge status) lists it.
 		world.setReadyTarget(1);
+		// High-priority cogs work (red, so never ready) fills the pull window (ready target 1 + lookahead 2),
+		// so no eager in-window check measures the stale row at the moved upstream: it is measured because
+		// it is green, behind and has no PR, within a couple of sweeps rather than the one-per-sweep backlog.
+		for (const n of [1, 2, 3]) cogs.branch(`red-cog-${n}`, "RED", `Break cogs ${n}`);
+		world.setPriority("cogs", "high");
 		server = startServer();
 		await waitForServer(`${baseUrl}/`, server);
 		await page.goto(`${baseUrl}/queue`);
@@ -395,8 +400,9 @@ async function run() {
 		const movedPast = sprockets.landUpstream("other.txt", "Land someone else's sprockets change");
 		world.git(sprockets.clone, "fetch", "--quiet", "upstream");
 		const staleRow = readyRow(page, "Add the stale feature");
-		await staleRow.getByTestId("behind-marker").waitFor();
-		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
+		const twoSweeps = {timeout: 2 * 45_000 + 15_000};
+		await staleRow.getByTestId("behind-marker").waitFor(twoSweeps);
+		await staleRow.getByRole("button", {name: "Open PR"}).waitFor(twoSweeps);
 		assert.equal(
 			world.git(sprockets.clone, "rev-parse", "refs/heads/stale-feature"),
 			world.shas.staleSha,

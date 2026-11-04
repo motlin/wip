@@ -390,14 +390,19 @@ describe("Snoozed todos", () => {
 describe("Mise env cache", () => {
 	it("round-trips a Record<string, string>", () => {
 		const env = {PATH: "/usr/bin", HOME: "/home/user", CUSTOM: "value"};
-		cacheMiseEnv("/projects/test", env);
-		const cached = getCachedMiseEnv("/projects/test");
+		cacheMiseEnv("/projects/test", env, "fp");
+		const cached = getCachedMiseEnv("/projects/test", "fp");
 		expect(cached).toStrictEqual(env);
 	});
 
 	it("returns null for uncached directory", () => {
-		const cached = getCachedMiseEnv("/nonexistent");
+		const cached = getCachedMiseEnv("/nonexistent", "fp");
 		expect(cached).toBeNull();
+	});
+
+	it("returns null when the mise config fingerprint changed since the env was cached", () => {
+		cacheMiseEnv("/projects/test", {PATH: "/usr/bin"}, "before");
+		expect(getCachedMiseEnv("/projects/test", "after")).toBeNull();
 	});
 });
 
@@ -1148,10 +1153,10 @@ describe("cacheMiseEnv deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
 		const env = {PATH: "/usr/bin", HOME: "/home/user"};
-		cacheMiseEnv("/projects/test", env);
+		cacheMiseEnv("/projects/test", env, "fp");
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		cacheMiseEnv("/projects/test", env);
+		cacheMiseEnv("/projects/test", env, "fp");
 
 		const rows = getDb().all<{
 			system_from: string;
@@ -1167,12 +1172,12 @@ describe("cacheMiseEnv deduplication", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
-		cacheMiseEnv("/projects/test", {PATH: "/usr/bin"});
+		cacheMiseEnv("/projects/test", {PATH: "/usr/bin"}, "fp");
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		cacheMiseEnv("/projects/test", {PATH: "/usr/local/bin"});
+		cacheMiseEnv("/projects/test", {PATH: "/usr/local/bin"}, "fp");
 
-		const cached = getCachedMiseEnv("/projects/test");
+		const cached = getCachedMiseEnv("/projects/test", "fp");
 		expect(cached).toStrictEqual({PATH: "/usr/local/bin"});
 
 		const allRows = getDb().all<{

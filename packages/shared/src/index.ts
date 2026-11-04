@@ -52,6 +52,7 @@ export {
 	getRepoOwnerAndName,
 	getPatchId,
 } from "./lib/git.js";
+export {miseConfigFingerprint} from "./lib/mise-env.js";
 export {
 	type ApplyFixesOptions,
 	type RebaseBranchOptions,

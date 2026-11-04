@@ -30,6 +30,25 @@ export interface GitTestRunOptions {
 export interface GitTestRunResult {
 	exitCode: number;
 	logPath: string;
+	/** Set when the test could not run because this command is not on PATH (exit 127). */
+	missingCommand?: string;
+}
+
+const COMMAND_NOT_FOUND_PATTERNS = [
+	/command not found: (\S+)/,
+	/([^\s:]+): command not found/,
+	/^[^\n]*?: \d+: ([^\s:]+): not found$/m,
+	/Command '([^']+)' not found/,
+	/Unknown command: (\S+)/,
+];
+
+/** The command a shell said it could not find in this test output, or undefined. */
+export function missingCommandOf(output: string): string | undefined {
+	for (const pattern of COMMAND_NOT_FOUND_PATTERNS) {
+		const name = pattern.exec(output)?.[1];
+		if (name !== undefined) return name;
+	}
+	return undefined;
 }
 
 /**
@@ -180,7 +199,13 @@ export async function gitTestRun(dir: string, sha: string, opts: GitTestRunOptio
 	// A cached answer carries no test output; keep the log of the run that produced it.
 	if (!(logContent.includes(CACHED_RESULT) && fs.existsSync(logPath))) fs.writeFileSync(logPath, logContent + "\n");
 
-	return {exitCode: result.exitCode, logPath};
+	// Exit 127 with a shell's "command not found" means the environment, not the commit, is broken:
+	// git-test marked the tree bad, so forget that mark and let a run with a fixed PATH decide.
+	const missingCommand = result.exitCode === 127 ? missingCommandOf(logContent) : undefined;
+	if (missingCommand === undefined) return {exitCode: result.exitCode, logPath};
+	const forgetArgs = ["-C", dir, "test", "run", "--test", opts.testName ?? DEFAULT_GIT_TEST, "--forget", sha];
+	await tracedExeca("git", forgetArgs, opts.env ? {reject: false, env: opts.env} : {reject: false});
+	return {exitCode: result.exitCode, logPath, missingCommand};
 }
 
 // eslint-disable-next-line no-control-regex

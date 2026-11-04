@@ -940,7 +940,11 @@ async function catchUpPrBranch(
 	if (!p.hasTestConfigured) return null;
 	step(`Testing ${branch}…`);
 	const run = await gitTestRun(p.dir, replayed, {logDir: getTestLogDir(p.name), env});
-	return run.exitCode === 0 ? null : `${branch} failed its test after rebasing onto ${p.upstreamRef}; not pushed`;
+	if (run.exitCode === 0) return null;
+	if (run.missingCommand !== undefined) {
+		return `Couldn't run ${branch}'s test after rebasing onto ${p.upstreamRef}: ${run.missingCommand}: command not found; not pushed`;
+	}
+	return `${branch} failed its test after rebasing onto ${p.upstreamRef}; not pushed`;
 }
 
 /** The latest progress or result of a user action, for the tab Open PR opened; null when unknown. */

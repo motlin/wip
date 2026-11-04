@@ -9,7 +9,7 @@ const {mockedExeca} = vi.hoisted(() => ({
 
 vi.mock("execa", () => ({execa: mockedExeca}));
 
-import {gitTestResults, gitTestRun, parseGitTestResults} from "./git-test-cli.js";
+import {gitTestResults, gitTestRun, missingCommandOf, parseGitTestResults} from "./git-test-cli.js";
 
 const SHA_BAD = "03f5706aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SHA_GOOD = "8cf6f2ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -26,6 +26,22 @@ const UNKNOWN_LINE =
 function execaResult(exitCode: number, stdout = "", stderr = "") {
 	return {exitCode, stdout, stderr, failed: exitCode !== 0, command: "git"};
 }
+
+describe("missingCommandOf", () => {
+	it("reads the command name from sh, bash, zsh, dash, Oils and fish not-found messages", () => {
+		expect(
+			[
+				"sh: yarn: command not found",
+				"bash: line 1: pnpm: command not found",
+				"zsh: command not found: just",
+				"/bin/sh: 1: node: not found",
+				"[ -c flag ]:1: Command 'mise' not found (OILS-ERR-100)",
+				"fish: Unknown command: vp",
+				"FAIL src/a.test.ts\nexpected 1 to be 2",
+			].map(missingCommandOf),
+		).toStrictEqual(["yarn", "pnpm", "just", "node", "mise", "vp", undefined]);
+	});
+});
 
 describe("parseGitTestResults", () => {
 	it("maps good, bad and unknown lines to the requested shas in order", () => {
@@ -164,6 +180,42 @@ describe("gitTestRun", () => {
 			["git", ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"], {reject: false}],
 			["git", ["-C", worktree, "test", "run", "--test", "lint", "--retest", SHA_BAD], {reject: false, env}],
 		]);
+	});
+
+	it("forgets the bad mark and names the missing command when the test exits 127 because a command is not on PATH", async () => {
+		fs.mkdirSync(worktree);
+		mockedExeca
+			.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`))
+			.mockResolvedValueOnce(
+				execaResult(
+					127,
+					"yarn install",
+					"sh: yarn: command not found\nBAD COMMIT abc (default:bad:retcode=127)",
+				),
+			)
+			.mockResolvedValueOnce(execaResult(0));
+		const env = {PATH: "/bin"};
+		const result = await gitTestRun(repo, SHA_BAD, {logDir, env});
+		expect({result, calls: mockedExeca.mock.calls}).toStrictEqual({
+			result: {exitCode: 127, logPath: path.join(logDir, `${SHA_BAD}.log`), missingCommand: "yarn"},
+			calls: [
+				["git", ["-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"], {reject: false}],
+				["git", ["-C", worktree, "test", "run", "--test", "default", SHA_BAD], {reject: false, env}],
+				["git", ["-C", repo, "test", "run", "--test", "default", "--forget", SHA_BAD], {reject: false, env}],
+			],
+		});
+	});
+
+	it("treats exit 127 without a command-not-found message as an ordinary failure", async () => {
+		fs.mkdirSync(worktree);
+		mockedExeca
+			.mockResolvedValueOnce(execaResult(0, `${repo}/.git\n`))
+			.mockResolvedValueOnce(execaResult(127, "", "tests exited 127"));
+		const result = await gitTestRun(repo, SHA_BAD, {logDir});
+		expect({result, calls: mockedExeca.mock.calls.length}).toStrictEqual({
+			result: {exitCode: 127, logPath: path.join(logDir, `${SHA_BAD}.log`)},
+			calls: 2,
+		});
 	});
 
 	it("runs a cancellable test as its own process group, so aborting the signal kills the test runner's whole tree", async () => {

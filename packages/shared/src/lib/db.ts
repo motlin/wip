@@ -298,11 +298,17 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		CREATE TABLE IF NOT EXISTS mise_env_cache (
 			dir TEXT NOT NULL,
 			env TEXT NOT NULL,
+			config_fingerprint TEXT NOT NULL DEFAULT '',
 			system_from TEXT NOT NULL,
 			system_to TEXT NOT NULL DEFAULT '${FAR_FUTURE}',
 			PRIMARY KEY (dir, system_to)
 		)
 	`);
+	// Migrate: envs cached before the config fingerprint existed are stale forever; drop and recreate.
+	if (!tableInfo(sqlite, "mise_env_cache").some((c) => c.name === "config_fingerprint")) {
+		sqlite.exec("DELETE FROM mise_env_cache");
+		sqlite.exec("ALTER TABLE mise_env_cache ADD COLUMN config_fingerprint TEXT NOT NULL DEFAULT ''");
+	}
 	sqlite.exec(`CREATE INDEX IF NOT EXISTS mise_env_cache_active_idx ON mise_env_cache (dir, system_to)`);
 
 	sqlite.exec(`
@@ -1105,25 +1111,26 @@ export function invalidatePrCache(project: string): void {
 
 // --- Mise env cache ---
 
-export function getCachedMiseEnv(dir: string): Record<string, string> | null {
+/** The env cached for `dir`, or null when none is cached under this mise config fingerprint. */
+export function getCachedMiseEnv(dir: string, configFingerprint: string): Record<string, string> | null {
 	const d = getDb();
 	const row = d
 		.select()
 		.from(miseEnvCache)
 		.where(and(eq(miseEnvCache.dir, dir), eq(miseEnvCache.systemTo, FAR_FUTURE)))
 		.get();
-	if (!row) return null;
+	if (row?.configFingerprint !== configFingerprint) return null;
 	const parsed = envRecordSchema.safeParse(JSON.parse(row.env));
 	return parsed.success ? parsed.data : null;
 }
 
-export function cacheMiseEnv(dir: string, env: Record<string, string>): void {
+export function cacheMiseEnv(dir: string, env: Record<string, string>, configFingerprint: string): void {
 	const serialized = JSON.stringify(env);
 	temporalUpsert({
 		table: miseEnvCache,
 		keyWhere: eq(miseEnvCache.dir, dir),
-		isUnchanged: (existing) => existing.env === serialized,
-		newRow: {dir, env: serialized},
+		isUnchanged: (existing) => existing.env === serialized && existing.configFingerprint === configFingerprint,
+		newRow: {dir, env: serialized, configFingerprint},
 	});
 }
 

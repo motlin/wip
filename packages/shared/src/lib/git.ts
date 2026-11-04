@@ -1,52 +1,26 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {z} from "zod";
 
 import {log} from "../services/logger-pino.js";
 import {tracedExeca} from "../services/traced-execa.js";
 import {nameBranch} from "./branch-namer.js";
-import {
-	getBranchName,
-	setBranchName,
-	getCachedMiseEnv,
-	cacheMiseEnv,
-	getCachedUpstreamSha,
-	cacheUpstreamSha,
-} from "./db.js";
+import {getBranchName, setBranchName, getCachedUpstreamSha, cacheUpstreamSha} from "./db.js";
 import {mapWithConcurrency} from "./concurrency.js";
 import {getConfigValue} from "./config.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
 import {getGitTestStatuses} from "./git-test-cli.js";
+import {getMiseEnv} from "./mise-env.js";
 import {inventoryExists, loadInventory, type Inventory} from "./inventory.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
 import {testWorktreeOf} from "./registry-review.js";
 import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
 
-const MiseEnvSchema = z.record(z.string(), z.string());
+export {getMiseEnv};
 
 const SKIPPABLE_PATTERNS = ["[skip]", "[pass]", "[stop]", "[fail]"];
 
 // Cap for repo-independent git fan-outs (project discovery).
 const DISCOVERY_CONCURRENCY = 8;
-
-export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
-	const cached = getCachedMiseEnv(dir);
-	if (cached) return MiseEnvSchema.parse(cached);
-
-	const start = performance.now();
-	const result = await tracedExeca("mise", ["env", "-C", dir, "--json"], {reject: false});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "mise", args: ["env", "-C", dir, "--json"], duration},
-		`mise env -C ${dir} --json (${duration}ms)`,
-	);
-
-	if (result.exitCode !== 0) return {};
-
-	const env = MiseEnvSchema.parse(JSON.parse(result.stdout));
-	cacheMiseEnv(dir, env);
-	return env;
-}
 
 function parseEnvrc(dir: string): {upstreamRemote: string; upstreamBranch: string} {
 	const envrcPath = path.join(dir, ".envrc");

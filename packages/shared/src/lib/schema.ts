@@ -85,6 +85,7 @@ export const miseEnvCache = sqliteTable(
 	{
 		dir: text("dir").notNull(),
 		env: text("env").notNull(),
+		configFingerprint: text("config_fingerprint").notNull().default(""),
 		systemFrom: text("system_from").notNull(),
 		systemTo: text("system_to").notNull().default(FAR_FUTURE),
 	},

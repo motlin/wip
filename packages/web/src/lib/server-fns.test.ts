@@ -13,6 +13,7 @@ import {
 	createTestClient,
 	cacheUpstreamSha,
 	cacheMiseEnv,
+	miseConfigFingerprint,
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	cacheIssues,
@@ -2733,6 +2734,35 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 		});
 	});
 
+	it("says the test couldn't run, and leaves the commit untested, when the rebased branch's test command is not on PATH", async () => {
+		const {dir, remoteDir} = await behindFeatureBranch("fix-no-yarn", {conflict: false});
+		await execa("git", ["-C", dir, "config", "test.default.command", "wip-no-such-command-xyz install"]);
+		seedProjectCache([makeProject({name: "pr-no-yarn", dir, remote: "alice/repo", originRemote: "alice/repo"})]);
+		const github = fakeCreatePullRequest();
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-no-yarn", branch: "fix-no-yarn", title: "Fix"});
+		const pushed = await execa("git", ["-C", remoteDir, "rev-parse", "--verify", "refs/heads/fix-no-yarn"], {
+			reject: false,
+		});
+		const status = await execa("git", ["-C", dir, "test", "results", "--no-color", "fix-no-yarn"], {reject: false});
+
+		expect({
+			ok: result.ok,
+			message: result.message,
+			pushed: pushed.exitCode,
+			calls: github.calls.length,
+			status: /^\w+/.exec(status.stdout)?.[0],
+		}).toStrictEqual({
+			ok: false,
+			message:
+				"Couldn't run fix-no-yarn's test after rebasing onto origin/main: wip-no-such-command-xyz: command not found; not pushed",
+			pushed: 128,
+			calls: 0,
+			status: "unknown",
+		});
+	});
+
 	it("force-pushes with lease when origin's copy of the branch was rewritten locally", async () => {
 		const {dir, remoteDir} = await repoWithFeatureBranch("fix-rewritten");
 		await execa("git", ["-C", dir, "push", "-u", "origin", "fix-rewritten"]);
@@ -4186,7 +4216,7 @@ describe("getMainPushesHandler", () => {
 		tmpDirs.push(`${dir}-test-worktree`);
 		// A test command that only passes when the project's mise [env] reaches it.
 		await gitOut(dir, "config", "test.default.command", 'test "$WIP_MISE_PROBE" = from-mise');
-		cacheMiseEnv(dir, {WIP_MISE_PROBE: "from-mise"});
+		cacheMiseEnv(dir, {WIP_MISE_PROBE: "from-mise"}, miseConfigFingerprint(dir));
 		seedProjectCache([makeProject({name: "mise-push", dir})]);
 		const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
 		tmpDirs.push(cache);
@@ -4253,7 +4283,7 @@ describe("ready buffer advance", () => {
 		const sha = await commitNewFile(dir, "ready.txt");
 		tmpDirs.push(`${dir}-test-worktree`);
 		await gitOut(dir, "config", "test.default.command", 'test "$WIP_MISE_PROBE" = from-mise');
-		cacheMiseEnv(dir, {WIP_MISE_PROBE: "from-mise"});
+		cacheMiseEnv(dir, {WIP_MISE_PROBE: "from-mise"}, miseConfigFingerprint(dir));
 		seedProjectCache([makeProject({name: "mise-buffer", dir})]);
 		const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
 		tmpDirs.push(cache);

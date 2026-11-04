@@ -1,4 +1,3 @@
-import {EventEmitter} from "node:events";
 import {
 	fetchUpstreamRef,
 	computeMergeStatus,
@@ -7,11 +6,6 @@ import {
 	cacheMergeStatus,
 	getCachedMergeStatuses,
 	heldShas,
-	findLandingSuspects,
-	detectLandings,
-	getMergedPrHeads,
-	markMergedPrs,
-	recordLandingOutcomes,
 	getCommitFacts,
 	loadInventory,
 	getReadyBufferSize,
@@ -22,9 +16,9 @@ import {rankCandidates} from "@wip/shared/candidate-rank.js";
 import {orderReadyQueue} from "@wip/shared/ready-queue.js";
 import type {ProjectInfo, Transition} from "@wip/shared";
 import type {MergeStatusEvent} from "./server-events-schema.js";
+import {mergeQueueEvents as emitter, upstreamTipSeen} from "./upstream-moves.js";
 
-export const emitter = new EventEmitter();
-emitter.setMaxListeners(100);
+export {mergeQueueEvents as emitter} from "./upstream-moves.js";
 
 // Map merge status data to formal state machine transitions
 export function mergeStatusToTransition(
@@ -34,41 +28,6 @@ export function mergeStatusToTransition(
 	if (commitsBehind == null || commitsBehind === 0) return undefined;
 	if (rebaseable === false) return "resolve_conflicts";
 	return "rebase";
-}
-
-export interface UpstreamMovedEvent {
-	project: string;
-	/** The previously cached upstream tip, or null on the first fetch for this project. */
-	from: string | null;
-	to: string;
-}
-
-export interface LandedEvent {
-	project: string;
-	/** The tip that landed (its sha before any replay). */
-	sha: string;
-	branch?: string;
-}
-
-/** Replay-first landing detection after upstream moved; emits `landed` for each tip the replay shows landed. */
-async function detectProjectLandings(p: ProjectInfo, from: string, to: string): Promise<void> {
-	const found = await findLandingSuspects(p.dir, from, to);
-	if (found.length === 0) return;
-	// A squash-merged PR leaves no patch-id evidence; its MERGED state is the landing signal.
-	const suspects = found.some((s) => s.branch !== undefined)
-		? markMergedPrs(found, await getMergedPrHeads(p.dir, p.upstreamRemote))
-		: found;
-	const outcomes = await detectLandings({dir: p.dir, project: p.name, from, to, suspects});
-	if (outcomes.length > 0) await recordLandingOutcomes(p.dir, p.name, from, to, outcomes);
-	for (const outcome of outcomes) {
-		if (outcome.outcome !== "landed") continue;
-		const landed: LandedEvent = {
-			project: p.name,
-			sha: outcome.sha,
-			...(outcome.branch === undefined ? {} : {branch: outcome.branch}),
-		};
-		emitter.emit("landed", landed);
-	}
 }
 
 function emit(event: MergeStatusEvent): void {
@@ -184,14 +143,10 @@ async function greenBehindWithoutPr(
 }
 
 async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]): Promise<void> {
-	const {changed, from, sha: upstreamSha} = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
+	const fetched = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
+	const upstreamSha = fetched.sha;
 	if (!upstreamSha) return;
-	if (changed) {
-		const moved: UpstreamMovedEvent = {project: p.name, from, to: upstreamSha};
-		emitter.emit("upstreamMoved", moved);
-		// With no previous tip there is no new upstream range to compare against.
-		if (from) await detectProjectLandings(p, from, upstreamSha);
-	}
+	await upstreamTipSeen(p, fetched);
 
 	// Branches upstream moved past too: their behind count and clean rebase decide whether a green one
 	// is still ready to land (Open PR rebases and retests it).

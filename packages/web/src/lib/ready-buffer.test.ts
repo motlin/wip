@@ -358,6 +358,23 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
+	it("records no outcome for an advance whose branch moved since its snapshot, and re-plans the item from the next one", async () => {
+		const outcomes: AdvanceOutcome[] = ["moved", "ready"];
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(1, {c1: {branch: "b1"}})})],
+			outcome: () => outcomes.shift() ?? "ready",
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({advanced: h.advanced, resolved: h.resolved, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			advanced: ["a:c1", "a:c1"],
+			resolved: [],
+			outcomes: {c1: "ready"},
+		});
+	});
+
 	it("keeps a buffered PR still on upstream whose checks run waiting when upstream moves, re-advancing only the rest", async () => {
 		let opened = false;
 		const h = harness({

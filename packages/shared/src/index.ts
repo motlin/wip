@@ -41,6 +41,7 @@ export {
 	testFix,
 	hasLocalModifications,
 	fetchUpstreamRef,
+	recordUpstreamRef,
 	computeMergeStatus,
 	getNeedsRebaseBranches,
 	getBehindBranchTips,

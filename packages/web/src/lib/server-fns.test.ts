@@ -16,6 +16,8 @@ import {
 	miseConfigFingerprint,
 	cacheMergeStatus,
 	getCachedMergeStatuses,
+	getCachedUpstreamSha,
+	getLastKnownChildren,
 	cacheIssues,
 	cacheProjectItems,
 	type GitHubIssue,
@@ -2700,6 +2702,44 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 		});
 	});
 
+	it("records the upstream tip its own fetch saw, so the rebased row is measured before the merge queue's next fetch", async () => {
+		const {dir} = await behindFeatureBranch("fix-first-fetch", {conflict: false});
+		await execa("git", ["-C", dir, "config", "test.default.command", "true"]);
+		const movedSha = await gitOut(dir, "rev-parse", "origin/main");
+		const oldSha = await gitOut(dir, "rev-parse", "origin/main^");
+		// The merge queue last fetched before upstream moved; Open PR's fetch is the first to see the move.
+		cacheUpstreamSha("pr-first-fetch", "origin/main", oldSha);
+		const project = makeProject({name: "pr-first-fetch", dir, remote: "alice/repo", originRemote: "alice/repo"});
+		seedProjectCache([project]);
+		fakeCreatePullRequest();
+		const {emitter} = await import("./merge-queue.js");
+		const moved: unknown[] = [];
+		// What the ready buffer's snapshot reads when upstreamMoved reaches it.
+		const childrenAtMove: string[][] = [];
+		const onMoved = (event: unknown) => {
+			moved.push(event);
+			childrenAtMove.push((getLastKnownChildren("pr-first-fetch") ?? []).map((c) => c.sha));
+		};
+		emitter.on("upstreamMoved", onMoved);
+
+		const {createPrHandler} = await import("./server-fns.impl.js");
+		const result = await createPrHandler({project: "pr-first-fetch", branch: "fix-first-fetch", title: "Fix"});
+		emitter.off("upstreamMoved", onMoved);
+		const tip = await gitOut(dir, "rev-parse", "fix-first-fetch");
+		// The children refresh and the buffer's snapshot read merge statuses at the cached upstream tip.
+		const cachedUpstream = getCachedUpstreamSha("pr-first-fetch");
+		const measured = getCachedMergeStatuses("pr-first-fetch", cachedUpstream ?? "").find((ms) => ms.sha === tip);
+
+		expect({ok: result.ok, cachedUpstream, measured, moved, childrenAtMove}).toStrictEqual({
+			ok: true,
+			cachedUpstream: movedSha,
+			measured: {sha: tip, upstreamSha: movedSha, commitsAhead: 1, commitsBehind: 0, rebaseable: null},
+			// Announced once the children show the rebased tip, never the pre-rebase sha the buffer would re-advance.
+			moved: [{project: "pr-first-fetch", from: oldSha, to: movedSha}],
+			childrenAtMove: [[tip]],
+		});
+	});
+
 	it("stops with the reason when a behind branch conflicts with upstream, leaving it alone and pushing nothing", async () => {
 		const {dir, remoteDir} = await behindFeatureBranch("fix-conflict", {conflict: true});
 		const before = await gitOut(dir, "rev-parse", "fix-conflict");
@@ -4406,6 +4446,37 @@ describe("ready buffer advance", () => {
 		);
 
 		expect(outcome).toBe("ready");
+	});
+
+	it("reports a branch that moved since the snapshot as moved, not a conflict, and leaves it alone", async () => {
+		const {dir} = await behindFeatureBranch("fix-moved", {conflict: false});
+		await gitOut(dir, "config", "test.default.command", "true");
+		const stale = await gitOut(dir, "rev-parse", "fix-moved");
+		// Open PR rebased the branch after the buffer's snapshot read it.
+		await gitOut(dir, "rebase", "origin/main", "fix-moved");
+		await gitOut(dir, "checkout", "main");
+		const rebased = await gitOut(dir, "rev-parse", "fix-moved");
+		seedProjectCache([makeProject({name: "moved-buffer", dir})]);
+
+		const {advance} = await import("./ready-buffer-server.js");
+		const outcome = await advance(
+			{
+				name: "moved-buffer",
+				upstreamRed: false,
+				ownership: "own",
+				localChanges: false,
+				checkedOutBranches: [],
+				candidates: [],
+			},
+			{id: stale, sha: stale, branch: "fix-moved", state: "unready", onHold: false},
+			new AbortController().signal,
+			() => {},
+		);
+
+		expect({outcome, branch: await gitOut(dir, "rev-parse", "fix-moved")}).toStrictEqual({
+			outcome: "moved",
+			branch: rebased,
+		});
 	});
 });
 

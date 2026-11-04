@@ -136,7 +136,9 @@ export type AdvanceOutcome =
 	| "stuck"
 	| "auto_fixed"
 	| "checks_pending"
-	| "verify_held";
+	| "verify_held"
+	/** Its branch moved since the snapshot the job was planned from: no outcome, the next pull re-plans. */
+	| "moved";
 
 /** How long an item whose draft-PR publish was held waits before the buffer pulls it again. */
 export const VERIFY_HELD_RETRY_MS = 60_000;
@@ -491,6 +493,10 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				const outcome = await deps.advance(repo, current, signal, (sha) => {
 					current = {...current, replayedSha: sha};
 				});
+				if (outcome === "moved") {
+					done.delete(candidate.id);
+					return;
+				}
 				done.set(candidate.id, outcome);
 				advancedShasOf(repo.name).set(candidate.id, current.replayedSha ?? current.sha);
 				const held = heldAt.get(repo.name) ?? new Map<string, number>();

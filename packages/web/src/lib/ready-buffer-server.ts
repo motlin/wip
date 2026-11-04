@@ -197,7 +197,18 @@ export async function advance(
 		if (candidate.branch === undefined) return "skipped";
 		if ((await checkedOutBranches(p.dir)).has(candidate.branch)) return "skipped";
 		const replayed = await replayBranchOnto(p.dir, candidate.branch, sha, upstream);
-		if (replayed === null) return "rebase_conflicts";
+		if (replayed === null) {
+			// The branch no longer points at the snapshot's sha (Open PR rebased it meanwhile): the
+			// snapshot was stale, not the replay in conflict.
+			const tip = await tracedExeca(
+				"git",
+				["-C", p.dir, "rev-parse", "--verify", `refs/heads/${candidate.branch}`],
+				{
+					reject: false,
+				},
+			);
+			return tip.stdout.trim() === sha ? "rebase_conflicts" : "moved";
+		}
 		sha = replayed;
 		onReplayed(sha);
 	}

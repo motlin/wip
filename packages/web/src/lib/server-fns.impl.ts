@@ -510,6 +510,12 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 	}
 }
 
+/** A children refresh that starts after this call, not one already running (it may predate a change). */
+async function freshProjectChildren(projectName: string): Promise<ProjectChildrenResult> {
+	await inflightChildrenRefresh.get(projectName)?.catch(() => undefined);
+	return refreshProjectChildren(projectName);
+}
+
 export const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
 export const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -973,7 +979,9 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				target: data.title,
 				...(data.actionId === undefined ? {} : {id: data.actionId}),
 			};
-			return runQueuedAction(data.project, action, async (step) => {
+			// Set once Open PR's own fetch moved the upstream tip; announced when the action ends.
+			let announceUpstream: (() => Promise<void>) | null = null;
+			const openPr = async (step: ActionStep): Promise<ActionResult> => {
 				const env = await getMiseEnv(p.dir);
 
 				// A stale client may still offer Open PR on a repo whose own upstream went red.
@@ -999,6 +1007,10 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 					}
 					return {ok: false, message: `Failed to fetch ${p.upstreamRef}: ${fetch.stderr}`};
 				}
+				// The rebase below measures the branch at the tip this fetch saw; merge statuses are keyed
+				// by that tip only once the merge queue has it too.
+				const {upstreamFetched} = await import("./upstream-moves.js");
+				announceUpstream = await upstreamFetched(p);
 
 				const branch = await tracedExeca(
 					"git",
@@ -1121,6 +1133,18 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 				}
 
 				return {ok: false, message: result.message};
+			};
+			return runQueuedAction(data.project, action, async (step) => {
+				try {
+					return await openPr(step);
+				} finally {
+					// Upstream moved only once the branch sits on it and the children show it, with its new
+					// PR: announced at the fetch, the buffer would re-advance the branch's pre-rebase sha.
+					if (announceUpstream !== null) {
+						await freshProjectChildren(p.name);
+						await announceUpstream();
+					}
+				}
 			});
 		},
 		data.actionId,

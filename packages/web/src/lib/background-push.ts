@@ -52,7 +52,14 @@ const keyOf = (project: string, branch: string): string => `${project}\0${branch
 export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPusher {
 	const now = deps.now ?? Date.now;
 	const deferred = new Map<string, PushRequest>();
+	/** Per deferred push, the origin sha when it was first held: the sha its eventual push may replace. */
+	const leases = new Map<string, string>();
 	let chain: Promise<unknown> = Promise.resolve();
+
+	function forget(key: string): void {
+		deferred.delete(key);
+		leases.delete(key);
+	}
 
 	async function pushOne(request: PushRequest, defer: boolean): Promise<PushOutcome> {
 		const key = keyOf(request.project, request.branch);
@@ -65,8 +72,11 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			`refs/remotes/origin/${request.branch}`,
 		]);
 		const remoteSha = remote.exitCode === 0 ? remote.stdout.trim() : "";
+		// A held push replaces only what origin held when it was held: a push since (Open PR's
+		// rebased tip) fails the lease instead of being overwritten by this older sha.
+		const lease = (deferred.get(key)?.sha === request.sha ? leases.get(key) : undefined) ?? remoteSha;
 		if (remoteSha === request.sha) {
-			deferred.delete(key);
+			forget(key);
 			return {status: "up_to_date"};
 		}
 		const decision = await deps.gate.check();
@@ -74,10 +84,11 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			if (defer) {
 				deferred.delete(key);
 				deferred.set(key, request);
+				leases.set(key, lease);
 			}
 			return {status: "held", reason: decision.reason};
 		}
-		deferred.delete(key);
+		forget(key);
 		// Push the tested sha, not the branch tip: a held push can flush after the user moved the branch.
 		// The explicit lease (empty = absent) is the origin sha this push replaces.
 		const ref = `refs/heads/${request.branch}`;
@@ -85,7 +96,7 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			"-C",
 			request.dir,
 			"push",
-			`--force-with-lease=${ref}:${remoteSha}`,
+			`--force-with-lease=${ref}:${lease}`,
 			"origin",
 			`${request.sha}:${ref}`,
 		]);
@@ -104,7 +115,7 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 	return {
 		push: async (request, {defer}) => serialized(async () => pushOne(request, defer)),
 		cancel: (project, branch) => {
-			deferred.delete(keyOf(project, branch));
+			forget(keyOf(project, branch));
 		},
 		flush: async () =>
 			serialized(async () => {

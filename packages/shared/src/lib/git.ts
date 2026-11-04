@@ -381,7 +381,18 @@ export async function fetchUpstreamRef(
 	const env = await getMiseEnv(dir);
 
 	await tracedExeca("git", ["-C", dir, "fetch", remote, branch], {reject: false, env});
+	return recordUpstreamRef(dir, upstreamRef, projectName);
+}
 
+/**
+ * Caches the upstream tip a fetch left in `upstreamRef` as the project's upstream sha, the tip merge
+ * statuses are keyed by. `changed` when it differs from the cached one (`from`).
+ */
+export async function recordUpstreamRef(
+	dir: string,
+	upstreamRef: string,
+	projectName: string,
+): Promise<{changed: boolean; from: string | null; sha: string}> {
 	const result = await git(dir, "rev-parse", upstreamRef);
 	const newSha = result.trim();
 	const cachedSha = getCachedUpstreamSha(projectName);

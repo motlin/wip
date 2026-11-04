@@ -120,6 +120,20 @@ describe("publishAfterAdvance", () => {
 		});
 	});
 
+	it("leases a deferred push on what origin held when it was deferred, so a push made meanwhile is never overwritten", async () => {
+		const NEWER = "c".repeat(40);
+		const remote: {remoteSha?: string} = {remoteSha: OLD};
+		const options: Parameters<typeof fakes>[0] = {gate: [{open: false, reason: "held"}, {open: true}]};
+		const {pusher, commands} = fakes(
+			Object.defineProperty(options, "remoteSha", {get: () => remote.remoteSha, enumerable: true}),
+		);
+		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
+		// Open PR rebased the branch and pushed its new tip while this push was held.
+		remote.remoteSha = NEWER;
+		await pusher.flush();
+		expect(commands.filter((args) => args.includes("push"))).toStrictEqual([PUSH]);
+	});
+
 	it("leases on the branch being absent from origin when origin has no such branch", async () => {
 		const {pusher, commands} = fakes();
 		await pusher.push(request, {defer: true});

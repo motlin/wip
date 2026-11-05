@@ -62,4 +62,51 @@ describe("createStderrLog", () => {
 			},
 		]);
 	});
+
+	it("scrubs tokens and URL credentials from the fields and message, like the in-memory log buffer", () => {
+		const {stream, lines} = collector();
+		const log = createStderrLog(stream);
+
+		log.subprocess.error(
+			{
+				cmd: "git",
+				args: [
+					"push",
+					"https://e2e-user:ghp_12345abcdefghijklmnopqrstuvwxyz0123@github.com/acme/gears.git",
+					"-c",
+					"http.extraHeader=Authorization: bearer github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz",
+				],
+				stderr: "fatal: could not read from https://someone:hunter2secret@example.com/repo.git (token ghp_abcdefghijklmnopqrstuvwxyz0123456789)",
+			},
+			"git push https://someone:hunter2secret@example.com/repo.git failed",
+		);
+
+		const [line] = lines() as Record<string, unknown>[];
+		expect({args: line?.["args"], stderr: line?.["stderr"], msg: line?.["msg"]}).toEqual({
+			args: [
+				"push",
+				"https://[REDACTED]@github.com/acme/gears.git",
+				"-c",
+				"http.extraHeader=Authorization: bearer [REDACTED]",
+			],
+			stderr: "fatal: could not read from https://[REDACTED]@example.com/repo.git (token [REDACTED])",
+			msg: "git push https://[REDACTED]@example.com/repo.git failed",
+		});
+	});
+
+	it("keeps a logged error's type, message and stack, scrubbed", () => {
+		const {stream, lines} = collector();
+		const log = createStderrLog(stream);
+		const error = new Error("push to https://u:ghp_12345abcdefghijklmnopqrstuvwxyz0123@github.com/a/b failed");
+		error.stack = "Error: boom\n    at https://u:secretpass@example.com/x";
+
+		log.general.error({err: error}, "push failed");
+
+		const [line] = lines() as Record<string, unknown>[];
+		expect(line?.["err"]).toEqual({
+			type: "Error",
+			message: "push to https://[REDACTED]@github.com/a/b failed",
+			stack: "Error: boom\n    at https://[REDACTED]@example.com/x",
+		});
+	});
 });

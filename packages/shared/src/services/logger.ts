@@ -15,17 +15,35 @@ const buffer: LogEntry[] = [];
 const listeners = new Set<LogListener>();
 
 const TOKEN_PATTERNS: RegExp[] = [/gh[pousr]_[A-Za-z0-9]{20,}/g, /github_pat_[A-Za-z0-9_]{20,}/g];
+// user:password (or user:token) credentials embedded in a URL, e.g. https://user:token@github.com/
+const URL_CREDENTIALS = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi;
 
-function scrubSensitive(value: unknown): unknown {
+/** Replaces GitHub tokens and URL credentials in a string. */
+export function scrubString(value: string): string {
+	let out = value.replace(URL_CREDENTIALS, "$1[REDACTED]@");
+	for (const pattern of TOKEN_PATTERNS) {
+		out = out.replace(pattern, "[REDACTED]");
+	}
+	return out;
+}
+
+/** Applies scrubString to every string, recursing into arrays and objects. */
+export function scrubSensitive(value: unknown): unknown {
 	if (typeof value === "string") {
-		let out = value;
-		for (const pattern of TOKEN_PATTERNS) {
-			out = out.replace(pattern, "[REDACTED]");
-		}
-		return out;
+		return scrubString(value);
 	}
 	if (Array.isArray(value)) {
 		return value.map((v) => scrubSensitive(v));
+	}
+	if (value instanceof Error) {
+		// Own enumerable entries alone would drop message and stack; keep the
+		// prototype so pino's err serializer still reports the error's type.
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of [...Object.entries(value), ["message", value.message], ["stack", value.stack]]) {
+			out[String(k)] = scrubSensitive(v);
+		}
+		Reflect.setPrototypeOf(out, Reflect.getPrototypeOf(value));
+		return out;
 	}
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};

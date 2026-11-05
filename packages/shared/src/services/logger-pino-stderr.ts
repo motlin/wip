@@ -7,26 +7,17 @@ export type StderrLog = {
 };
 
 /**
- * Builds a pino logger that pretty-prints to stderr. Server-only: this module is
- * loaded exclusively via dynamic import from logger-pino.ts so its node-only
- * dependencies (pino, pino-pretty) are never evaluated in the browser.
+ * Builds a pino logger that writes one JSON line per entry, synchronously, to
+ * stderr (or the given stream). No transport: a worker-thread target such as
+ * pino-pretty can't be resolved from the bundled production server, which left
+ * the production server.log empty. Server-only: this module is loaded
+ * exclusively via dynamic import from logger-pino.ts so pino is never evaluated
+ * in the browser.
  */
-export function createStderrLog(): StderrLog {
-	const base = pino(
-		{level: "debug"},
-		pino.transport({
-			target: "pino-pretty",
-			options: {
-				destination: 2,
-				sync: true,
-				colorize: true,
-				translateTime: "HH:MM:ss.l",
-				ignore: "pid,hostname,category,cmd,args,duration",
-				messageFormat: "{msg}",
-				singleLine: true,
-			},
-		}),
-	);
+export function createStderrLog(
+	destination: pino.DestinationStream = pino.destination({dest: 2, sync: true}),
+): StderrLog {
+	const base = pino({level: "debug", timestamp: pino.stdTimeFunctions.isoTime}, destination);
 
 	return {
 		subprocess: base.child({category: "subprocess"}),

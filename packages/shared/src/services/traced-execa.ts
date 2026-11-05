@@ -1,6 +1,7 @@
 import {ExecaError, execa, type Options} from "execa";
 import {SpanStatusCode} from "@opentelemetry/api";
 
+import {log} from "./logger-pino.js";
 import {withSubprocessSlot} from "./subprocess-gate.js";
 import {getTracer} from "./telemetry.js";
 
@@ -86,6 +87,32 @@ function reportFailure(failure: SubprocessFailure): void {
 			// a failing listener must not break the subprocess call
 		}
 	}
+}
+
+/** An arg past this length (a claude prompt) is cut short in the log message; the args field keeps it whole. */
+const MESSAGE_ARG_MAX = 200;
+
+/**
+ * Logs every finished subprocess to the subprocess category, so a server log shows the whole timeline:
+ * debug when it succeeded or exited with a probe's expected code, info with its stderr when it failed.
+ */
+function logSubprocess(
+	command: string,
+	args: string[],
+	options: Options | undefined,
+	outcome: {exitCode: number; stderr: string; duration: number},
+): void {
+	const shown = [command, ...args]
+		.map((arg) => (arg.length > MESSAGE_ARG_MAX ? `${arg.slice(0, MESSAGE_ARG_MAX)}…` : arg))
+		.join(" ");
+	const cwd = options?.cwd === undefined ? {} : {cwd: String(options.cwd)};
+	const {exitCode, stderr, duration} = outcome;
+	if (exitCode === 0) {
+		log.subprocess.debug({cmd: command, args, ...cwd, exitCode, duration}, shown);
+		return;
+	}
+	const level = isExpectedProbeExit(command, args, exitCode) ? "debug" : "info";
+	log.subprocess[level]({cmd: command, args, ...cwd, exitCode, stderr, duration}, `${shown} exited ${exitCode}`);
 }
 
 export interface TreeKillOptions {
@@ -201,6 +228,7 @@ async function runTraced(
 				failed: result.failed,
 				command: result.command,
 			};
+			logSubprocess(command, args, options, {...finished, duration});
 			if (finished.exitCode !== 0 && !isExpectedProbeExit(command, args, finished.exitCode)) {
 				reportFailure({command: result.escapedCommand, exitCode: finished.exitCode, stderr: finished.stderr});
 			}
@@ -215,6 +243,11 @@ async function runTraced(
 			});
 			span.setStatus({code: SpanStatusCode.ERROR, message});
 			const stderr: unknown = error instanceof ExecaError ? error.stderr : undefined;
+			logSubprocess(command, args, options, {
+				exitCode: exitCode ?? -1,
+				stderr: typeof stderr === "string" ? stderr : message,
+				duration,
+			});
 			if (exitCode === undefined || !isExpectedProbeExit(command, args, exitCode))
 				reportFailure({
 					command: error instanceof ExecaError ? error.escapedCommand : [command, ...args].join(" "),

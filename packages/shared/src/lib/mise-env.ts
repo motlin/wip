@@ -3,7 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {z} from "zod";
 
-import {log} from "../services/logger-pino.js";
 import {tracedExeca} from "../services/traced-execa.js";
 import {cacheMiseEnv, getCachedMiseEnv} from "./db.js";
 
@@ -89,13 +88,7 @@ export async function getMiseEnv(dir: string): Promise<Record<string, string>> {
 	const cached = getCachedMiseEnv(dir, fingerprint);
 	if (cached) return MiseEnvSchema.parse(cached);
 
-	const start = performance.now();
 	const result = await tracedExeca("mise", ["env", "-C", dir, "--json"], {reject: false});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "mise", args: ["env", "-C", dir, "--json"], duration},
-		`mise env -C ${dir} --json (${duration}ms)`,
-	);
 
 	if (result.exitCode !== 0) return {};
 

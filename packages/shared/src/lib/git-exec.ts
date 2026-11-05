@@ -1,4 +1,3 @@
-import {log} from "../services/logger-pino.js";
 import {tracedExeca} from "../services/traced-execa.js";
 
 /**
@@ -7,13 +6,7 @@ import {tracedExeca} from "../services/traced-execa.js";
  */
 
 export async function git(dir: string, ...args: string[]): Promise<string> {
-	const start = performance.now();
 	const result = await tracedExeca("git", ["-C", dir, ...args], {reject: false});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "git", args: ["-C", dir, ...args], duration},
-		`git -C ${dir} ${args.join(" ")} (${duration}ms)`,
-	);
 	if (result.exitCode !== 0) return "";
 	return result.stdout.trim();
 }

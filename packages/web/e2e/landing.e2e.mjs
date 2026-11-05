@@ -259,6 +259,8 @@ async function run() {
 				WIP_GITHUB_GRAPHQL_URL: gh.graphqlUrl,
 				WIP_GITHUB_WEB_URL: gh.url,
 				WIP_E2E_FAKE_GITHUB: gh.url,
+				// server.log gets the subprocess and general timeline as JSON lines.
+				WIP_SUBPROCESS_LOGGING: "true",
 			},
 			stdio: ["ignore", logFd, logFd],
 		});

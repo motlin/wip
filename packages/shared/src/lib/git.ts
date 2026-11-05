@@ -43,7 +43,6 @@ export function isSkippable(message: string): boolean {
 }
 
 export async function getPatchId(dir: string, sha: string): Promise<string> {
-	const start = performance.now();
 	const formatPatch = await tracedExeca("git", ["-C", dir, "diff-tree", "-p", sha], {
 		reject: false,
 	});
@@ -52,8 +51,6 @@ export async function getPatchId(dir: string, sha: string): Promise<string> {
 		input: formatPatch.stdout,
 		reject: false,
 	});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug({cmd: "git", args: ["patch-id", sha], duration}, `git patch-id for ${sha} (${duration}ms)`);
 	if (patchId.exitCode !== 0 || !patchId.stdout) return "";
 	return patchId.stdout.trim().split(/\s+/)[0] ?? "";
 }
@@ -93,15 +90,9 @@ async function findRemoteBranchByPatchId(
 }
 
 export async function isDirty(dir: string): Promise<boolean> {
-	const diffStart = performance.now();
 	const diffResult = await tracedExeca("git", ["-C", dir, "diff", "--quiet", "HEAD"], {
 		reject: false,
 	});
-	const diffDuration = Math.round(performance.now() - diffStart);
-	log.subprocess.debug(
-		{cmd: "git", args: ["-C", dir, "diff", "--quiet", "HEAD"], duration: diffDuration},
-		`git -C ${dir} diff --quiet HEAD (${diffDuration}ms)`,
-	);
 	if (diffResult.exitCode !== 0) return true;
 
 	const untracked = await git(dir, "ls-files", "--others", "--exclude-standard");
@@ -109,41 +100,23 @@ export async function isDirty(dir: string): Promise<boolean> {
 }
 
 export async function isDetachedHead(dir: string): Promise<boolean> {
-	const start = performance.now();
 	const result = await tracedExeca("git", ["-C", dir, "symbolic-ref", "-q", "HEAD"], {
 		reject: false,
 	});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "git", args: ["-C", dir, "symbolic-ref", "-q", "HEAD"], duration},
-		`git -C ${dir} symbolic-ref -q HEAD (${duration}ms)`,
-	);
 	return result.exitCode !== 0;
 }
 
 export async function hasUpstreamRef(dir: string, ref: string): Promise<boolean> {
-	const start = performance.now();
 	const result = await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", ref], {
 		reject: false,
 	});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "git", args: ["-C", dir, "rev-parse", "--verify", ref], duration},
-		`git -C ${dir} rev-parse --verify ${ref} (${duration}ms)`,
-	);
 	return result.exitCode === 0;
 }
 
 export async function hasTestConfigured(dir: string): Promise<boolean> {
-	const start = performance.now();
 	const result = await tracedExeca("git", ["-C", dir, "config", "--get-regexp", "^test\\."], {
 		reject: false,
 	});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "git", args: ["-C", dir, "config", "--get-regexp", "^test\\."], duration},
-		`git -C ${dir} config --get-regexp ^test. (${duration}ms)`,
-	);
 	return result.exitCode === 0;
 }
 
@@ -446,7 +419,6 @@ export async function getChildCommits(
 
 	const RS = "\x1e";
 
-	const start = performance.now();
 	const format = "%H%x00%h%x00%s%x00%B%x00%ai%x00%D%x00%ae%x00%P%x1e";
 	const [logResult, remoteBranchOutput, userEmail] = await Promise.all([
 		tracedExeca(
@@ -460,15 +432,6 @@ export async function getChildCommits(
 		git(dir, "branch", "-r"),
 		git(dir, "config", "user.email"),
 	]);
-	const logDuration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{
-			cmd: "git",
-			args: ["-C", dir, "log", "--stdin", "--no-walk", "--format=..."],
-			duration: logDuration,
-		},
-		`git -C ${dir} log --stdin --no-walk --format=... (${logDuration}ms)`,
-	);
 
 	if (logResult.exitCode !== 0) return [];
 
@@ -637,13 +600,7 @@ export async function testBranch(
 	if (opts?.force) testArgs.push("--force");
 	testArgs.push(`${upstreamRef}..${branch}`);
 
-	const start = performance.now();
 	const result = await tracedExeca("git", ["-C", dir, ...testArgs], {reject: false, env});
-	const duration = Math.round(performance.now() - start);
-	log.subprocess.debug(
-		{cmd: "git", args: ["-C", dir, ...testArgs], duration},
-		`git -C ${dir} ${testArgs.join(" ")} (${duration}ms)`,
-	);
 
 	const logContent = [result.stdout, result.stderr].filter(Boolean).join("\n");
 	return {exitCode: result.exitCode, logContent};

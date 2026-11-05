@@ -34,21 +34,40 @@ function isLoggingEnabled(): boolean {
 	return typeof process === "object" ? process.env["WIP_SUBPROCESS_LOGGING"] === "true" : false;
 }
 
-// Pino pretty-printer for stderr, loaded lazily on the server only. The dynamic
-// import keeps node-only code out of the client module graph; in the browser the
-// import would reject (and is gated behind isLoggingEnabled anyway), so stderr
-// output is simply skipped while the in-memory buffer is still fed below.
+// Pino JSON-lines logger for stderr, loaded lazily on the server only. The
+// dynamic import keeps node-only code out of the client module graph; in the
+// browser the import would reject (and is gated behind isLoggingEnabled
+// anyway), so stderr output is simply skipped while the in-memory buffer is
+// still fed below. Entries logged while the import is in flight are queued and
+// written once it lands, so a server's first subprocess lines aren't lost.
+type Pending = {category: Category; level: LevelName; fields: Fields; msg: string};
 let stderrLog: StderrLog | undefined;
-let stderrLoading = false;
-function ensureStderrLog(): void {
-	if (stderrLog || stderrLoading || !isLoggingEnabled()) return;
-	stderrLoading = true;
+let stderrPending: Pending[] | undefined;
+let stderrUnavailable = false;
+function writeStderr(entry: Pending): void {
+	if (stderrUnavailable) return;
+	if (stderrLog) {
+		stderrLog[entry.category][entry.level](entry.fields, entry.msg);
+		return;
+	}
+	if (stderrPending) {
+		stderrPending.push(entry);
+		return;
+	}
+	const queue = [entry];
+	stderrPending = queue;
 	void (async () => {
 		try {
 			const {createStderrLog} = await import("./logger-pino-stderr.js");
 			stderrLog = createStderrLog();
+			for (const queued of queue) {
+				stderrLog[queued.category][queued.level](queued.fields, queued.msg);
+			}
 		} catch {
-			// stderr pretty-printing is best-effort
+			// stderr logging is best-effort; don't retry the import on every entry
+			stderrUnavailable = true;
+		} finally {
+			stderrPending = undefined;
 		}
 	})();
 }
@@ -61,8 +80,7 @@ function emit(category: Category, level: LevelName, arg1: Fields | string, arg2?
 
 	writeLogEntry({time: Date.now(), level: LEVELS[level], category, msg, ...fields});
 
-	ensureStderrLog();
-	stderrLog?.[category][level](fields, msg);
+	writeStderr({category, level, fields, msg});
 }
 
 function makeCategoryLogger(category: Category): CategoryLogger {

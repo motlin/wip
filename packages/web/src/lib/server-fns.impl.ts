@@ -1550,9 +1550,12 @@ async function markDraftReady(
 	autoMerge: boolean,
 	env: Record<string, string>,
 ): Promise<ActionResult> {
-	const {execa} = await import("execa");
 	const repo = prRepository(p);
-	const ready = await execa("gh", ["pr", "ready", String(prNumber), "-R", repo], {reject: false, cwd: p.dir, env});
+	const ready = await tracedExeca("gh", ["pr", "ready", String(prNumber), "-R", repo], {
+		reject: false,
+		cwd: p.dir,
+		env,
+	});
 	if (ready.exitCode !== 0) {
 		return {
 			ok: false,
@@ -1575,8 +1578,7 @@ async function markDraftReady(
 
 /** Turns on auto-merge (squash, delete the branch) for a PR; null on success, else gh's reason. */
 async function enableAutoMerge(p: ProjectInfo, prNumber: number, env: Record<string, string>): Promise<string | null> {
-	const {execa} = await import("execa");
-	const result = await execa(
+	const result = await tracedExeca(
 		"gh",
 		["pr", "merge", String(prNumber), "--squash", "--delete-branch", "--auto", "-R", prRepository(p)],
 		{reject: false, cwd: p.dir, env},
@@ -1593,7 +1595,6 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 		return runQueuedAction(data.project, {label: "mergePr", target: `PR #${data.prNumber}`}, async () => {
 			const red = redUpstreamRefusal(data.project);
 			if (red !== null) return {ok: false, message: red};
-			const {execa} = await import("execa");
 			const env = await getMiseEnv(p.dir);
 			if (data.autoMerge === true) {
 				const refused = await enableAutoMerge(p, data.prNumber, env);
@@ -1607,7 +1608,7 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 						}
 					: {ok: false, message: `Couldn't turn on auto-merge: ${refused}`};
 			}
-			const result = await execa(
+			const result = await tracedExeca(
 				"gh",
 				["pr", "merge", String(data.prNumber), "--squash", "--delete-branch", "-R", repo],
 				{reject: false, cwd: p.dir, env},

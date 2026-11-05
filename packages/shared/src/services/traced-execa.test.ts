@@ -6,6 +6,7 @@ import * as url from "node:url";
 
 import {describe, it, expect} from "vite-plus/test";
 
+import {captureLogs} from "./logger.js";
 import {SUBPROCESS_LIMIT} from "./subprocess-gate.js";
 import {
 	isExpectedProbeExit,
@@ -266,6 +267,71 @@ describe("isExpectedProbeExit", () => {
 		}
 		expect(failures.map((f) => [f.command, f.exitCode])).toStrictEqual([
 			[`git -C ${dir} merge-base --is-ancestor nope HEAD`, 128],
+		]);
+	});
+});
+
+async function logged(run: () => Promise<unknown>): Promise<Record<string, unknown>[]> {
+	const saved = process.env["WIP_SUBPROCESS_LOGGING"];
+	process.env["WIP_SUBPROCESS_LOGGING"] = "true";
+	try {
+		const {logs} = await captureLogs(run, {categories: ["subprocess"]});
+		return logs.map(({time, duration, ...rest}) =>
+			Object.assign(rest, {time: typeof time, duration: typeof duration}),
+		);
+	} finally {
+		if (saved === undefined) delete process.env["WIP_SUBPROCESS_LOGGING"];
+		else process.env["WIP_SUBPROCESS_LOGGING"] = saved;
+	}
+}
+
+describe("tracedExeca subprocess log", () => {
+	it("logs every subprocess with its command, cwd and exit code, and stderr when it fails", async () => {
+		const script = "process.stderr.write('remote rejected'); process.exit(3)";
+		const logs = await logged(async () => {
+			await tracedExeca("node", ["-e", "process.stdout.write('ok')"], {reject: false, cwd: os.tmpdir()});
+			await tracedExeca("node", ["-e", script], {reject: false});
+		});
+		expect(logs).toStrictEqual([
+			{
+				level: 20,
+				category: "subprocess",
+				cmd: "node",
+				args: ["-e", "process.stdout.write('ok')"],
+				cwd: os.tmpdir(),
+				exitCode: 0,
+				msg: "node -e process.stdout.write('ok')",
+				time: "number",
+				duration: "number",
+			},
+			{
+				level: 30,
+				category: "subprocess",
+				cmd: "node",
+				args: ["-e", script],
+				exitCode: 3,
+				stderr: "remote rejected",
+				msg: `node -e ${script} exited 3`,
+				time: "number",
+				duration: "number",
+			},
+		]);
+	});
+
+	it("logs a subprocess that throws", async () => {
+		const logs = await logged(async () => tracedExeca("node", ["-e", "process.exit(2)"]).catch(() => undefined));
+		expect(logs).toStrictEqual([
+			{
+				level: 30,
+				category: "subprocess",
+				cmd: "node",
+				args: ["-e", "process.exit(2)"],
+				exitCode: 2,
+				stderr: "",
+				msg: "node -e process.exit(2) exited 2",
+				time: "number",
+				duration: "number",
+			},
 		]);
 	});
 });

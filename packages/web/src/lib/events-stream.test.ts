@@ -1,7 +1,8 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 
-vi.mock("./background-refresh.js", () => ({ensureBackgroundRefresh: () => {}}));
-vi.mock("./server-fns.js", () => ({getProjects: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([])}));
+const {ensureBackgroundRefresh} = vi.hoisted(() => ({ensureBackgroundRefresh: vi.fn<() => void>()}));
+vi.mock("./background-refresh.js", () => ({ensureBackgroundRefresh}));
+vi.mock("./server-fns.js", () => ({listProjects: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([])}));
 
 import {initDb, resetDb} from "@wip/shared";
 
@@ -45,6 +46,12 @@ describe("createEventsResponse", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		resetDb();
+	});
+
+	it("only subscribes: background work starts at server boot, not on connect", async () => {
+		const response = await createEventsResponse();
+		await response.body?.cancel();
+		expect(ensureBackgroundRefresh).not.toHaveBeenCalled();
 	});
 
 	it("releases listeners and the keepalive timer when the client disconnects", async () => {

@@ -339,3 +339,11 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 export async function refreshProjectTodos(projectName: string) {
 	return (await serverFns()).refreshProjectTodos(projectName);
 }
+
+/**
+ * The project list for server code that runs outside a request (background refresh, the git watcher,
+ * the ready buffer, all started at boot): the getProjects server function needs a Start context.
+ */
+export async function listProjects() {
+	return (await serverFns()).getProjectsHandler();
+}

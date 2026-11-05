@@ -12,12 +12,10 @@ export async function createEventsResponse(): Promise<Response> {
 	const {todoEmitter} = await import("./todo-events.js");
 	const {githubEmitter} = await import("./github-events.js");
 	const {getSchedulerState, onRefreshError, onSchedulerStateChange} = await import("./refresh-scheduler.js");
-	const {ensureBackgroundRefresh} = await import("./background-refresh.js");
-	const {getProjects} = await import("./server-fns.js");
+	const {listProjects} = await import("./server-fns.js");
 	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
 	const {currentReadyBuffer} = await import("./ready-buffer-instance.js");
 	const {log} = await import("@wip/shared/services/logger-pino.js");
-	ensureBackgroundRefresh();
 
 	// Set once start() has registered listeners; called when the client disconnects.
 	let releaseOnCancel: (() => void) | undefined;
@@ -54,7 +52,7 @@ export async function createEventsResponse(): Promise<Response> {
 					message: task.message,
 				});
 			}
-			getProjects()
+			listProjects()
 				.then((projects) => {
 					send("projects", projects);
 					return undefined;

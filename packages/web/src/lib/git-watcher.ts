@@ -132,7 +132,7 @@ export async function startGitWatcher(onRepoChange: (projectName: string) => voi
 	if (started) return;
 	started = true;
 
-	const {getProjects} = await import("./server-fns.js");
+	const {listProjects} = await import("./server-fns.js");
 	const {projectEmitter} = await import("./project-events.js");
 	refresh = async (projectName: string) => {
 		onRepoChange(projectName);
@@ -144,7 +144,7 @@ export async function startGitWatcher(onRepoChange: (projectName: string) => voi
 	});
 
 	try {
-		const projects = await getProjects();
+		const projects = await listProjects();
 		syncWatchers(projects);
 	} catch (error) {
 		log.general.error({error}, "git-watcher initial project load failed");

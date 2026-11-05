@@ -31,7 +31,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 vi.mock("./server-fns.js", () => ({
-	getProjects: async () =>
+	listProjects: async () =>
 		Promise.resolve([
 			{name: "avalon-online", dir: repoDir.value},
 			{name: "not-a-repo", dir: path.join(repoDir.value, "missing")},

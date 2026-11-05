@@ -179,8 +179,8 @@ async function checkDeferredInfo(p: ProjectInfo): Promise<void> {
 }
 
 export async function checkProject(projectName: string): Promise<void> {
-	const {getProjects} = await import("./server-fns.js");
-	const projects = await getProjects();
+	const {listProjects} = await import("./server-fns.js");
+	const projects = await listProjects();
 	const p = projects.find((proj) => proj.name === projectName);
 	if (!p) return;
 	// fetchUpstreamRef writes into .git — suppress the watcher so computing
@@ -191,8 +191,8 @@ export async function checkProject(projectName: string): Promise<void> {
 
 /** Run one deferred merge-tree check for `projectName` (called once per sweep tick, at background rank). */
 export async function checkDeferredMergeStatus(projectName: string): Promise<void> {
-	const {getProjects} = await import("./server-fns.js");
-	const p = (await getProjects()).find((proj) => proj.name === projectName);
+	const {listProjects} = await import("./server-fns.js");
+	const p = (await listProjects()).find((proj) => proj.name === projectName);
 	if (!p) {
 		deferred.delete(projectName);
 		return;

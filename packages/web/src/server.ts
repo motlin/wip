@@ -2,10 +2,10 @@
 // eslint-disable-next-line import/no-unassigned-import
 import "@wip/shared/services/telemetry.js";
 import handler, {createServerEntry} from "@tanstack/react-start/server-entry";
-import {installResourceProbeAtBoot} from "./lib/resource-probe.js";
+import {bootServer} from "./lib/server-boot.js";
 
-// Gate the shared work queue from boot, not from the first SSE connect (B27).
-void installResourceProbeAtBoot();
+// Gate the shared work queue and start background work at boot, not on the first SSE connect.
+void bootServer();
 
 export default createServerEntry({
 	async fetch(request: Request) {

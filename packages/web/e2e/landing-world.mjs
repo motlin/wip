@@ -197,7 +197,7 @@ export function createWorld() {
 	})();
 	const blockedSha = broken.branch("blocked-feature", "blocked.txt", "Add a feature on red upstream");
 
-	// Pull-request repos for the restart: cogs' steady commit lands while wip is down, and sprockets'
+	// Pull-request repos for the restart: cogs' steady commit lands after the restart before any page opens, and sprockets'
 	// stale one goes behind its upstream after the restart, so the buffer must rebase and retest it.
 	const cogs = repo("cogs");
 	const steadySha = cogs.branch("steady-feature", "steady.txt", "Add the steady feature");

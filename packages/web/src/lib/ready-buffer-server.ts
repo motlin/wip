@@ -66,11 +66,11 @@ async function snapshot(): Promise<BufferRepo[]> {
 		readDraftPrRepoFacts,
 		trustsPatchIdGreen,
 	} = await import("@wip/shared");
-	const {getProjects} = await import("./server-fns.js");
+	const {listProjects} = await import("./server-fns.js");
 	const identity = await getGitHubIdentity();
 	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r]));
 	const repos: BufferRepo[] = [];
-	for (const p of await getProjects()) {
+	for (const p of await listProjects()) {
 		// Last known, not just current: an action like Open PR invalidates the cache, and until the
 		// refresh lands the repo still has its rows rather than none.
 		const children = getLastKnownChildren(p.name);
@@ -140,8 +140,8 @@ export async function advance(
 		replayBranchOnto,
 	} = await import("@wip/shared");
 	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
-	const {getProjects} = await import("./server-fns.js");
-	const p = (await getProjects()).find((proj) => proj.name === repo.name);
+	const {listProjects} = await import("./server-fns.js");
+	const p = (await listProjects()).find((proj) => proj.name === repo.name);
 	if (!p || p.dirty) return "skipped";
 	const upstream = (
 		await tracedExeca("git", ["-C", p.dir, "rev-parse", p.upstreamRef], {reject: false})
@@ -337,8 +337,8 @@ async function publishForChecks(
 
 /** The candidate's project as the AI rungs see it; null when it is gone or has local changes. */
 async function rungProject(repo: BufferRepo) {
-	const {getProjects} = await import("./server-fns.js");
-	const p = (await getProjects()).find((proj) => proj.name === repo.name);
+	const {listProjects} = await import("./server-fns.js");
+	const p = (await listProjects()).find((proj) => proj.name === repo.name);
 	if (!p || p.dirty) return null;
 	return {
 		name: p.name,
@@ -499,8 +499,8 @@ export async function startReadyBuffer(
 		firstSeen: (project, id) => firstSeenOf(project, id),
 		nameBranch: async (repo, candidate) => {
 			const {createBranchForChild, getCachedChildren, suggestBranchNames} = await import("@wip/shared");
-			const {getProjects} = await import("./server-fns.js");
-			const p = (await getProjects()).find((proj) => proj.name === repo.name);
+			const {listProjects} = await import("./server-fns.js");
+			const p = (await listProjects()).find((proj) => proj.name === repo.name);
 			const child = getCachedChildren(repo.name)?.find((c) => c.sha === candidate.sha);
 			if (!p || !child) return null;
 			// suggestBranchNames caches the name and honors the failed-naming cooldown.

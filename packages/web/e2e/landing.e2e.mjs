@@ -6,7 +6,8 @@
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
  * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Open PR where
  * the GitHub token is read-only on the PR repo (git pushes, the tab goes to GitHub's new-PR page),
- * Fast-forward main, Push main, and a restart after which upstream moves past the one green row: it leaves
+ * Fast-forward main, Push main, and a restart (with no page open, the restarted server must refresh cogs'
+ * children when its upstream moves, read from the world DB) after which upstream moves past the one green row: it leaves
  * Ready to land and the buffer rebases and retests it until the ready target is met again, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. The browser may only reach the wip server and the fake GitHub.
  *
@@ -22,6 +23,7 @@ import {createServer} from "node:net";
 import * as path from "node:path";
 import {fileURLToPath} from "node:url";
 
+import Database from "better-sqlite3";
 import {chromium} from "playwright";
 
 import {startFakeGitHub} from "./fake-github.mjs";
@@ -69,6 +71,30 @@ async function waitForServer(url, server) {
 		});
 	}
 	throw new Error(`wip server did not answer at ${url}`);
+}
+
+/** Whether the world DB's current children cache for cogs lists a commit. Opens and closes the DB each call. */
+function cogsChildrenListed(world, sha) {
+	const db = new Database(world.env.WIP_DB_PATH, {readonly: true, fileMustExist: true});
+	try {
+		const row = db
+			.prepare("SELECT children_json FROM children_cache WHERE project = ? ORDER BY system_from DESC LIMIT 1")
+			.get("cogs");
+		return row !== undefined && row.children_json.includes(sha);
+	} finally {
+		db.close();
+	}
+}
+
+async function waitUntil(condition, what) {
+	const deadline = Date.now() + WAIT_MS;
+	while (!condition()) {
+		if (Date.now() > deadline) throw new Error(`timed out waiting until ${what}`);
+		// eslint-disable-next-line no-await-in-loop -- polls until the condition holds
+		await new Promise((resolve) => {
+			setTimeout(resolve, 250);
+		});
+	}
 }
 
 const ROW_SELECTOR = ["ready-to-land-row", "waiting-row", "checks-failed-row"]
@@ -426,15 +452,23 @@ async function run() {
 		// candidate the buffer advances first once it falls behind.
 		world.setReadyTarget(1);
 		world.setPriority("sprockets", "high");
+		assert.ok(cogsChildrenListed(world, world.shas.steadySha), "cogs' children list the steady commit");
 		server = startServer();
 		await waitForServer(`${baseUrl}/`, server);
+		step(
+			"With no page open, the restarted server watches repos: landing cogs' steady commit refreshes its children",
+		);
+		// cogs' steady commit and gears' gear commit land upstream, so sprockets' stale row alone is up to
+		// date and green, meeting ready target 1. cogs lands before any page connects to /api/events.
+		world.git(cogs.clone, "push", "--quiet", "upstream", `${world.shas.steadySha}:refs/heads/main`);
+		world.git(cogs.clone, "fetch", "--quiet", "upstream");
+		await waitUntil(
+			() => !cogsChildrenListed(world, world.shas.steadySha),
+			"the background refresh drops cogs' landed steady commit from its children before a page connects",
+		);
 		await page.goto(`${baseUrl}/queue`);
 		const staleRow = readyRow(page, "Add the stale feature");
 		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
-		// cogs' steady commit and gears' gear commit land upstream, so sprockets' stale row alone is up to
-		// date and green, meeting ready target 1.
-		world.git(cogs.clone, "push", "--quiet", "upstream", `${world.shas.steadySha}:refs/heads/main`);
-		world.git(cogs.clone, "fetch", "--quiet", "upstream");
 		world.git(gears.clone, "push", "--quiet", "origin", `${world.shas.gearSha}:refs/heads/main`);
 		world.git(gears.clone, "fetch", "--quiet", "origin");
 		await readyRow(page, "Add the steady feature").waitFor({state: "detached"});

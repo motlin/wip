@@ -3,16 +3,22 @@ import {enqueueRefresh, startPeriodicSweep} from "./refresh-scheduler.js";
 import {createWatchGate} from "./watch-gate.js";
 
 /**
- * Once-only bootstrap for all background data maintenance. SSE routes call
- * this on connect instead of kicking off their own sweeps, so connecting a
- * client never fans out work — it only ensures the shared pipeline is running.
+ * Once-only bootstrap for all background data maintenance, started at server
+ * boot (server-boot.ts). Connecting a client never fans out work: /api/events
+ * only subscribes to the shared pipeline.
  */
 
 const SWEEP_INTERVAL_MS = 45_000;
 const MERGE_STATUS_TTL_MS = 10 * 60 * 1000;
 const PRUNE_REMOTE_TTL_MS = 30 * 60 * 1000;
 
+/** How long a failed bootstrap waits before it tries again. */
+export const BOOTSTRAP_RETRY_MS = 30_000;
+
 let started = false;
+// A retried bootstrap repeats only the steps that have not finished.
+let listeningForProjects = false;
+let sweeping = false;
 let cachedProjectNames: string[] = [];
 
 /**
@@ -22,8 +28,8 @@ let cachedProjectNames: string[] = [];
  */
 async function refSnapshot(project: string): Promise<string> {
 	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
-	const {getProjects} = await import("./server-fns.js");
-	const p = (await getProjects()).find((proj) => proj.name === project);
+	const {listProjects} = await import("./server-fns.js");
+	const p = (await listProjects()).find((proj) => proj.name === project);
 	if (!p) return "";
 	const [refs, head] = await Promise.all([
 		tracedExeca("git", ["-C", p.dir, "for-each-ref", "--format=%(refname) %(objectname)"], {reject: false}),
@@ -48,14 +54,14 @@ export function enqueueProjectRefresh(project: string, options: {force?: boolean
 		force,
 		run: async () => {
 			const {isCacheFresh, markCacheFresh, pruneRemote} = await import("@wip/shared");
-			const {getProjects, refreshProjectChildren, CHILDREN_CACHE_TTL_MS} = await import("./server-fns.js");
+			const {listProjects, refreshProjectChildren, CHILDREN_CACHE_TTL_MS} = await import("./server-fns.js");
 			if (!force && isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS)) return;
 
 			// Prune stale remote tracking refs occasionally so deleted GitHub
 			// branches stop being reported as pushedToRemote. Lives here (not in
 			// every children refresh) because it is a network round trip.
 			if (!isCacheFresh(`prune-remote:${project}`, PRUNE_REMOTE_TTL_MS)) {
-				const projectInfo = (await getProjects()).find((p) => p.name === project);
+				const projectInfo = (await listProjects()).find((p) => p.name === project);
 				if (projectInfo) {
 					const {suppressWatcherEvents} = await import("./watch-suppression.js");
 					await suppressWatcherEvents(project, async () =>
@@ -149,30 +155,39 @@ export function ensureBackgroundRefresh(): void {
 			});
 		});
 
-		const {getProjects} = await import("./server-fns.js");
+		const {listProjects} = await import("./server-fns.js");
 		const {projectEmitter} = await import("./project-events.js");
-		projectEmitter.on("projects", (projects: Array<{name: string}>) => {
-			cachedProjectNames = projects.map((p) => p.name);
-		});
-		cachedProjectNames = (await getProjects()).map((p) => p.name);
+		if (!listeningForProjects) {
+			listeningForProjects = true;
+			projectEmitter.on("projects", (projects: Array<{name: string}>) => {
+				cachedProjectNames = projects.map((p) => p.name);
+			});
+		}
+		cachedProjectNames = (await listProjects()).map((p) => p.name);
 
-		startPeriodicSweep({
-			intervalMs: SWEEP_INTERVAL_MS,
-			listProjects: () => cachedProjectNames,
-			enqueueForProject: (project) => {
-				enqueueProjectRefresh(project);
-				void enqueueDeferredMergeStatus().catch((error: unknown) => {
-					log.general.error({error}, "deferred merge-status enqueue failed");
-				});
-			},
-		});
+		if (!sweeping) {
+			sweeping = true;
+			startPeriodicSweep({
+				intervalMs: SWEEP_INTERVAL_MS,
+				listProjects: () => cachedProjectNames,
+				enqueueForProject: (project) => {
+					enqueueProjectRefresh(project);
+					void enqueueDeferredMergeStatus().catch((error: unknown) => {
+						log.general.error({error}, "deferred merge-status enqueue failed");
+					});
+				},
+			});
+		}
 
 		// The ready buffer pulls on upstreamMoved, landed, task completion, On hold, children
 		// refreshes and its own safety tick (lean plan 4.6).
 		const {startReadyBuffer} = await import("./ready-buffer-server.js");
 		await startReadyBuffer(enqueueProjectRefresh);
 	})().catch((error: unknown) => {
+		// Started once at boot and never again by a client, so a transient failure (a watch limit, a
+		// locked database) retries on a timer instead of leaving wip with no background work.
 		started = false;
-		log.general.error({error}, "Background refresh bootstrap failed");
+		log.general.error({error}, "Background refresh bootstrap failed; retrying");
+		setTimeout(ensureBackgroundRefresh, BOOTSTRAP_RETRY_MS).unref();
 	});
 }

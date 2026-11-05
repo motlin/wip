@@ -25,7 +25,7 @@ vi.mock("./refresh-scheduler.js", () => ({
 }));
 
 vi.mock("./server-fns.js", () => ({
-	getProjects: async () => Promise.resolve([{name: "avalon-online", dir: "/repos/avalon-online"}]),
+	listProjects: async () => Promise.resolve([{name: "avalon-online", dir: "/repos/avalon-online"}]),
 	refreshProjectChildren,
 	CHILDREN_CACHE_TTL_MS: 60_000,
 	TODOS_CACHE_TTL_MS: 60_000,

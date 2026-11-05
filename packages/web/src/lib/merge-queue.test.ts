@@ -21,7 +21,7 @@ vi.mock("@wip/shared", () => ({
 }));
 
 vi.mock("./server-fns.js", () => ({
-	getProjects: vi.fn<(...args: unknown[]) => unknown>(),
+	listProjects: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 import {
@@ -44,7 +44,7 @@ import {
 	getCachedPrStatuses,
 } from "@wip/shared";
 import type {ProjectInfo} from "@wip/shared";
-import {getProjects} from "./server-fns.js";
+import {listProjects} from "./server-fns.js";
 import {
 	mergeStatusToTransition,
 	checkProject,
@@ -54,7 +54,7 @@ import {
 	resetDeferredMergeStatus,
 } from "./merge-queue";
 
-const mockGetProjects = getProjects as unknown as Mock;
+const mockGetProjects = listProjects as unknown as Mock;
 const mockFetchUpstreamRef = fetchUpstreamRef as Mock;
 const mockGetChildren = getChildren as Mock;
 const mockGetBehindBranchTips = getBehindBranchTips as Mock;

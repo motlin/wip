@@ -10,10 +10,21 @@ const DEBOUNCE_MS = 500;
 // refreshes and anything else touching the repo.
 const IGNORED_FILE_SUFFIXES = [".lock", "COMMIT_EDITMSG", "FETCH_HEAD", "ORIG_HEAD", "index"];
 
+// A dead watcher is re-opened after RETRY_BASE_MS, doubling per consecutive
+// failure up to RETRY_MAX_MS. When macOS FSEvents is exhausted every fs.watch
+// dies with EMFILE right after it opens; re-watching at once made a tight loop
+// across all repos that kept fseventsd saturated for the whole machine. While a
+// project waits, the periodic background sweep still refreshes it.
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_MS = 5 * 60_000;
+
 interface WatchedProject {
 	name: string;
 	watchers: fs.FSWatcher[];
 	debounceTimer: NodeJS.Timeout | null;
+	retryTimer: NodeJS.Timeout | null;
+	/** Consecutive failed watch rounds; reset once a change event arrives. */
+	failures: number;
 }
 
 const watched = new Map<string, WatchedProject>();
@@ -42,29 +53,47 @@ function triggerRefresh(project: WatchedProject): void {
 	}, DEBOUNCE_MS);
 }
 
-function watchProject(p: ProjectInfo): WatchedProject | null {
-	const gitDir = path.join(p.dir, ".git");
-	if (!fs.existsSync(gitDir)) {
-		log.general.warn({project: p.name, dir: p.dir}, "git-watcher not watching project: no .git directory");
-		return null;
+function closeWatchers(project: WatchedProject): void {
+	for (const watcher of project.watchers) {
+		watcher.close();
 	}
+	project.watchers = [];
+}
+
+/**
+ * Close the project's watchers and open them again after a backoff. Only the
+ * first failure of a round counts: the round's other watcher erroring too, or
+ * an error while a retry is already pending, changes nothing.
+ */
+function failWatch(p: ProjectInfo, project: WatchedProject, error: unknown): void {
+	if (watched.get(p.name) !== project || project.retryTimer) return;
+	closeWatchers(project);
+	const retryInMs = Math.min(RETRY_BASE_MS * 2 ** project.failures, RETRY_MAX_MS);
+	project.failures++;
+	log.general.error(
+		{project: p.name, error, failures: project.failures, retryInMs},
+		"git-watcher fs.watch failed; re-watching after backoff",
+	);
+	project.retryTimer = setTimeout(() => {
+		project.retryTimer = null;
+		if (watched.get(p.name) === project) openWatchers(p, project);
+	}, retryInMs);
+}
+
+function openWatchers(p: ProjectInfo, project: WatchedProject): void {
+	const gitDir = path.join(p.dir, ".git");
+	const onChange = (_event: string, filename: string | Buffer | null) => {
+		if (!filename) return;
+		if (shouldIgnore(String(filename))) return;
+		project.failures = 0;
+		triggerRefresh(project);
+	};
 
 	// Watch only ref state, never the whole .git dir: a recursive watch on
 	// sixty repos (objects/, index churn) drove fseventsd to a full core all
 	// by itself. HEAD + packed-refs live in .git (non-recursive); branch tips
 	// live under .git/refs (small, safe to watch recursively).
 	try {
-		const project: WatchedProject = {
-			name: p.name,
-			watchers: [],
-			debounceTimer: null,
-		};
-		const onChange = (_event: string, filename: string | Buffer | null) => {
-			if (!filename) return;
-			if (shouldIgnore(String(filename))) return;
-			triggerRefresh(project);
-		};
-
 		project.watchers.push(fs.watch(gitDir, {recursive: false}, onChange));
 		const refsDir = path.join(gitDir, "refs");
 		if (fs.existsSync(refsDir)) {
@@ -75,34 +104,21 @@ function watchProject(p: ProjectInfo): WatchedProject | null {
 				"git-watcher not watching branch refs: no .git/refs directory",
 			);
 		}
-		for (const watcher of project.watchers) {
-			watcher.on("error", (error) => {
-				// A dead watcher never fires again: drop it and watch afresh so the
-				// repo's ref changes keep reaching the refresh pipeline.
-				log.general.error({project: p.name, error}, "git-watcher fs.watch died; re-watching");
-				rewatchProject(p, project);
-			});
-		}
-		return project;
 	} catch (error) {
-		log.general.error({project: p.name, error}, "git-watcher failed to watch .git");
-		return null;
+		failWatch(p, project, error);
+		return;
+	}
+	for (const watcher of project.watchers) {
+		watcher.on("error", (error) => {
+			failWatch(p, project, error);
+		});
 	}
 }
 
 function unwatchProject(project: WatchedProject): void {
 	if (project.debounceTimer) clearTimeout(project.debounceTimer);
-	for (const watcher of project.watchers) {
-		watcher.close();
-	}
-}
-
-function rewatchProject(p: ProjectInfo, dead: WatchedProject): void {
-	if (watched.get(p.name) !== dead) return;
-	unwatchProject(dead);
-	watched.delete(p.name);
-	const project = watchProject(p);
-	if (project) watched.set(p.name, project);
+	if (project.retryTimer) clearTimeout(project.retryTimer);
+	closeWatchers(project);
 }
 
 function syncWatchers(projects: ProjectInfo[]): void {
@@ -117,8 +133,19 @@ function syncWatchers(projects: ProjectInfo[]): void {
 
 	for (const p of projects) {
 		if (watched.has(p.name)) continue;
-		const project = watchProject(p);
-		if (project) watched.set(p.name, project);
+		if (!fs.existsSync(path.join(p.dir, ".git"))) {
+			log.general.warn({project: p.name, dir: p.dir}, "git-watcher not watching project: no .git directory");
+			continue;
+		}
+		const project: WatchedProject = {
+			name: p.name,
+			watchers: [],
+			debounceTimer: null,
+			retryTimer: null,
+			failures: 0,
+		};
+		watched.set(p.name, project);
+		openWatchers(p, project);
 	}
 	log.general.info({watching: watched.size, projects: projects.length}, "git-watcher projects watched");
 }

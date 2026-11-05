@@ -26,6 +26,7 @@ import {fileURLToPath} from "node:url";
 import Database from "better-sqlite3";
 import {chromium} from "playwright";
 
+import {chromiumCrashReportsSince} from "./browser-crash.mjs";
 import {startFakeGitHub} from "./fake-github.mjs";
 import {createWorld, fsmonitorDaemonSockets} from "./landing-world.mjs";
 import {processesHolding, startProcessTree, stopProcessTree} from "./server-process.mjs";
@@ -36,8 +37,14 @@ const keep = process.env.WIP_E2E_KEEP === "true";
 /** How long rows must stay after an Open PR: past the children refresh that follows it. */
 const ROWS_STAY_MS = 60_000;
 
+let currentStep = "";
+/** Logs the /queue page's JS heap and DOM size at each step, so a page that grows shows in the output. */
+let sampleMemory = async () => {};
+
 function step(message) {
+	currentStep = message;
 	console.log(`\n▸ ${message}`);
+	void sampleMemory();
 }
 
 async function freePort() {
@@ -268,6 +275,8 @@ async function run() {
 	let browser;
 	const blocked = [];
 	const pageErrors = [];
+	const crashes = [];
+	const startedAt = Date.now();
 	let ok = false;
 	try {
 		browser = await chromium.launch({headless: process.env.WIP_E2E_HEADED !== "true"});
@@ -285,8 +294,26 @@ async function run() {
 		});
 		context.on("page", (page) => {
 			page.on("pageerror", (error) => pageErrors.push(String(error)));
+			// Playwright only says "Target crashed" on the next call: record which page crashed, where and when.
+			page.on("crash", () => {
+				crashes.push({url: page.url(), step: currentStep, at: new Date().toISOString()});
+				console.error(`\n✗ Chromium renderer crashed: ${page.url()} during "${currentStep}"`);
+			});
 		});
 		const page = await context.newPage();
+		const cdp = await context.newCDPSession(page);
+		await cdp.send("Performance.enable");
+		sampleMemory = async () => {
+			try {
+				const {metrics} = await cdp.send("Performance.getMetrics");
+				const metric = Object.fromEntries(metrics.map(({name, value}) => [name, value]));
+				console.log(
+					`  /queue page: JS heap ${(metric.JSHeapUsedSize / 1e6).toFixed(1)} MB, ${metric.Nodes} DOM nodes, ${metric.JSEventListeners} listeners`,
+				);
+			} catch {
+				// the page crashed or closed; the crash listener reports it
+			}
+		};
 		await page.goto(`${baseUrl}/queue`);
 
 		step("Waiting for the ready buffer to test and ready every row");
@@ -518,9 +545,20 @@ async function run() {
 		);
 		assert.deepEqual(blocked, [], "the browser asked for nothing outside wip and the fake GitHub");
 		assert.deepEqual(pageErrors, [], "no uncaught errors in the page");
+		await sampleMemory();
 		ok = true;
 		console.log("\n✓ landing flows passed");
 	} finally {
+		sampleMemory = async () => {};
+		const reports = chromiumCrashReportsSince(startedAt);
+		if (crashes.length > 0 || reports.length > 0) {
+			console.error(`\nChromium crashes: ${JSON.stringify(crashes)}`);
+			for (const report of reports) {
+				console.error(
+					`  ${report.process} pid ${report.pid} (${report.launched} → ${report.captured}): ${report.exception} on ${report.thread}; ${report.file}`,
+				);
+			}
+		}
 		await browser?.close();
 		await stopProcessTree(server);
 		await gh.close();

@@ -969,6 +969,15 @@ export function getRecentActionLogsHandler(): ActionLog[] {
 	return recentActionLogs();
 }
 
+/**
+ * Why no landing action (Open PR, Merge PR, Fast-forward main, Push main) may run in `project` while
+ * its own upstream is red, or null. The UI hides those actions, but a stale page or a direct call can
+ * still ask, so each landing handler checks again here.
+ */
+function redUpstreamRefusal(project: string): string | null {
+	return stoppedLineRefusal(project, currentReadyBuffer()?.state().stoppedProjects ?? []);
+}
+
 export async function createPrHandler(data: CreatePrInput): Promise<ActionResult> {
 	return tracedAction(
 		"createPr",
@@ -984,10 +993,7 @@ export async function createPrHandler(data: CreatePrInput): Promise<ActionResult
 			const openPr = async (step: ActionStep): Promise<ActionResult> => {
 				const env = await getMiseEnv(p.dir);
 
-				// A stale client may still offer Open PR on a repo whose own upstream went red.
-				const refused =
-					stoppedLineRefusal(data.project, currentReadyBuffer()?.state().stoppedProjects ?? []) ??
-					openPrRefusal(data.branch, p.upstreamBranch);
+				const refused = redUpstreamRefusal(data.project) ?? openPrRefusal(data.branch, p.upstreamBranch);
 				if (refused !== null) return {ok: false, message: refused};
 
 				// Read before any fetch: fetches refresh the tracking ref, which would let the lease
@@ -1585,6 +1591,8 @@ export async function mergePrHandler(data: MergePrInput): Promise<ActionResult> 
 		const p = await resolveProject(data.project);
 		const repo = prRepository(p);
 		return runQueuedAction(data.project, {label: "mergePr", target: `PR #${data.prNumber}`}, async () => {
+			const red = redUpstreamRefusal(data.project);
+			if (red !== null) return {ok: false, message: red};
 			const {execa} = await import("execa");
 			const env = await getMiseEnv(p.dir);
 			if (data.autoMerge === true) {
@@ -1662,7 +1670,8 @@ export async function landFastForwardHandler(data: LandFastForwardInput): Promis
 	return tracedAction("landFastForward", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, {label: "landFastForward", target: data.sha.slice(0, 7)}, async () => {
-			const refused = await fastForwardLocalBranch(p.dir, p.upstreamBranch, data.sha);
+			const refused =
+				redUpstreamRefusal(data.project) ?? (await fastForwardLocalBranch(p.dir, p.upstreamBranch, data.sha));
 			if (refused !== null) return {ok: false, message: refused};
 			invalidateChildrenCache(data.project);
 			return {ok: true, message: `Moved local ${p.upstreamBranch} to ${data.sha.slice(0, 7)}`};
@@ -1778,6 +1787,8 @@ export async function pushUpstreamBranchHandler(data: PushUpstreamBranchInput): 
 	return tracedAction("pushUpstreamBranch", async () => {
 		const p = await resolveProject(data.project);
 		return runQueuedAction(data.project, {label: "pushUpstreamBranch", target: data.sha.slice(0, 7)}, async () => {
+			const red = redUpstreamRefusal(data.project);
+			if (red !== null) return {ok: false, message: red};
 			const target = `${p.upstreamRemote}/${p.upstreamBranch}`;
 			const short = data.sha.slice(0, 7);
 			const push = await readMainPush(p);

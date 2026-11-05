@@ -4283,6 +4283,93 @@ describe("pushUpstreamBranchHandler", () => {
 	});
 });
 
+describe("landing handlers while the project's own upstream is red", () => {
+	beforeEach(() => {
+		readyBufferOverride.running = true;
+	});
+
+	afterEach(() => {
+		readyBufferOverride.running = false;
+		readyBufferOverride.stoppedProjects = [];
+		fakeExeca.handler = undefined;
+	});
+
+	it("mergePrHandler refuses to merge or turn on auto-merge, and calls no gh", async () => {
+		const dir = await createTestGitRepo();
+		seedProjectCache([
+			makeProject({name: "merge-pr-red", dir, remote: "alice/example-repo", originRemote: "alice/example-repo"}),
+		]);
+		readyBufferOverride.stoppedProjects = ["merge-pr-red"];
+		const gh: string[][] = [];
+		fakeExeca.handler = (command, args) => {
+			if (command === "gh") gh.push(args);
+			return {
+				stdout: command === "mise" ? "{}" : "",
+				stderr: "",
+				exitCode: 0,
+				failed: false,
+				command: [command, ...args].join(" "),
+			};
+		};
+
+		const {mergePrHandler} = await import("./server-fns.impl.js");
+		const merged = await mergePrHandler({project: "merge-pr-red", prNumber: 42});
+		const auto = await mergePrHandler({project: "merge-pr-red", prNumber: 43, autoMerge: true});
+
+		const message = "merge-pr-red's upstream is red: fix it before landing";
+		expect({
+			gh,
+			merged: {ok: merged.ok, message: merged.message},
+			auto: {ok: auto.ok, message: auto.message},
+		}).toStrictEqual({
+			gh: [],
+			merged: {ok: false, message},
+			auto: {ok: false, message},
+		});
+	});
+
+	it("landFastForwardHandler refuses and leaves local main unchanged", async () => {
+		const {dir, remote, base} = await repoWithRemote();
+		await gitOut(dir, "checkout", "-b", "feature");
+		await gitOut(dir, "commit", "--allow-empty", "-m", "Ready commit");
+		const sha = await gitOut(dir, "rev-parse", "feature");
+		seedProjectCache([makeProject({name: "land-ff-red", dir})]);
+		readyBufferOverride.stoppedProjects = ["land-ff-red"];
+
+		const {landFastForwardHandler} = await import("./server-fns.impl.js");
+		const result = await landFastForwardHandler({project: "land-ff-red", sha});
+
+		expect({
+			result: {ok: result.ok, message: result.message},
+			localMain: await gitOut(dir, "rev-parse", "main"),
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+		}).toStrictEqual({
+			result: {ok: false, message: "land-ff-red's upstream is red: fix it before landing"},
+			localMain: base,
+			remoteMain: base,
+		});
+	});
+
+	it("pushUpstreamBranchHandler refuses a green sha and pushes nothing", async () => {
+		const {dir, remote, base, shas} = await mainAheadGreenGreenUnknown();
+		seedProjectCache([makeProject({name: "push-main-red", dir})]);
+		readyBufferOverride.stoppedProjects = ["push-main-red"];
+
+		const {pushUpstreamBranchHandler} = await import("./server-fns.impl.js");
+		const result = await pushUpstreamBranchHandler({project: "push-main-red", sha: shas[1] ?? ""});
+
+		expect({
+			result: {ok: result.ok, message: result.message},
+			remoteMain: await gitOut(remote, "rev-parse", "main"),
+			remoteTracking: await gitOut(dir, "rev-parse", "origin/main"),
+		}).toStrictEqual({
+			result: {ok: false, message: "push-main-red's upstream is red: fix it before landing"},
+			remoteMain: base,
+			remoteTracking: base,
+		});
+	});
+});
+
 describe("getMainPushesHandler", () => {
 	it("lists local main's unpushed commits oldest first with their git-test results", async () => {
 		const {dir, shas} = await mainAheadGreenGreenUnknown();

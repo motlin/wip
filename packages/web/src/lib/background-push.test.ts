@@ -206,6 +206,46 @@ describe("createBackgroundPusher", () => {
 		});
 	});
 
+	it("asks the gate about the request's repo, and a flush pushes another repo past one the gate still holds", async () => {
+		const asked: string[] = [];
+		const held = new Set(["acme/cogs"]);
+		const pushes: string[] = [];
+		const pusher = createBackgroundPusher({
+			gate: {
+				check: async (repository) => {
+					asked.push(repository);
+					return Promise.resolve(
+						held.has(repository) ? {open: false, reason: `held on ${repository}`} : {open: true},
+					);
+				},
+				recordPush: () => undefined,
+			},
+			git: async (args) => {
+				if (args.includes("push")) pushes.push(String(args[1]));
+				return Promise.resolve({exitCode: args.includes("rev-parse") ? 1 : 0, stdout: "", stderr: ""});
+			},
+			now: () => 1,
+		});
+		const cogs: PushRequest = {project: "cogs", dir: "/p/cogs", repository: "acme/cogs", branch: "f", sha: SHA};
+		const widgets: PushRequest = {
+			project: "widgets",
+			dir: "/p/widgets",
+			repository: "acme/widgets",
+			branch: "f",
+			sha: OLD,
+		};
+		held.add("acme/widgets");
+		await pusher.push(cogs, {defer: true});
+		await pusher.push(widgets, {defer: true});
+		held.delete("acme/widgets");
+		await pusher.flush();
+		expect({asked, pushes, pending: pusher.pending()}).toStrictEqual({
+			asked: ["acme/cogs", "acme/widgets", "acme/cogs", "acme/widgets"],
+			pushes: ["/p/widgets"],
+			pending: [cogs],
+		});
+	});
+
 	it("serializes pushes, so a second push sees the gate after the first one recorded", async () => {
 		const order: string[] = [];
 		let last: BackgroundPush | undefined;

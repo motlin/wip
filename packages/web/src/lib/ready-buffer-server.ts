@@ -267,10 +267,10 @@ function backgroundPusher(): BackgroundPusher {
 	pusher ??= createBackgroundPusher({
 		gate: {
 			// Created on first use, so the node-only checks source loads lazily.
-			check: async () => {
+			check: async (repository) => {
 				const {GitHubActionsGate: Gate, githubChecksSource} = await import("@wip/shared");
 				gate ??= new Gate(githubChecksSource);
-				return gate.check();
+				return gate.check(repository);
 			},
 			recordPush: (push) => {
 				gate?.recordPush(push);

@@ -4,9 +4,9 @@ import type {AdvanceOutcome} from "./ready-buffer.js";
 /**
  * Background force-push with lease (lean plan step 34). Client-safe: git and the GitHub Actions
  * gate are injected (ready-buffer-server.ts wires production). Every background push in wip goes
- * through one pusher, so one gate sees them all. Pushes are serialized: each checks the gate after
- * the previous one recorded itself. A push held by the gate is deferred (latest request per branch
- * wins) and retried by `flush`, unless the caller asked for no deferral.
+ * through one pusher, so one gate sees them all. Pushes are serialized: each checks the gate for
+ * its repo after the previous one recorded itself. A push held by the gate is deferred (latest
+ * request per branch wins) and retried by `flush`, unless the caller asked for no deferral.
  */
 
 export interface PushRequest {
@@ -21,7 +21,8 @@ export interface PushRequest {
 export type GitRun = (args: readonly string[]) => Promise<{exitCode: number; stdout: string; stderr: string}>;
 
 export interface PushGate {
-	check(): Promise<PushGateDecision>;
+	/** Whether a push to `repository` (`owner/name`) may go now. */
+	check(repository: string): Promise<PushGateDecision>;
 	recordPush(push: BackgroundPush): void;
 }
 
@@ -42,7 +43,7 @@ export interface BackgroundPusher {
 	push(request: PushRequest, options: {defer: boolean}): Promise<PushOutcome>;
 	/** Forget a deferred push of the branch. */
 	cancel(project: string, branch: string): void;
-	/** Retry deferred pushes in order, stopping at the first one the gate holds. */
+	/** Retry deferred pushes in order; one the gate still holds stays deferred. */
 	flush(): Promise<void>;
 	pending(): PushRequest[];
 }
@@ -79,7 +80,7 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 			forget(key);
 			return {status: "up_to_date"};
 		}
-		const decision = await deps.gate.check();
+		const decision = await deps.gate.check(request.repository);
 		if (!decision.open) {
 			if (defer) {
 				deferred.delete(key);
@@ -124,8 +125,7 @@ export function createBackgroundPusher(deps: BackgroundPusherDeps): BackgroundPu
 				for (const request of queue) {
 					// Sequential on purpose: each push must see the gate after the previous one
 					// eslint-disable-next-line no-await-in-loop
-					const outcome = await pushOne(request, true);
-					if (outcome.status === "held") return;
+					await pushOne(request, true);
 				}
 			}),
 		pending: () => [...deferred.values()],

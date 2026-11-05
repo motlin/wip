@@ -41,9 +41,16 @@ export function pushGateDecision(
 
 export type ChecksSource = (push: BackgroundPush) => Promise<readonly CheckRunStatus[]>;
 
-/** Remembers the last background push (across all repos) and asks the checks source before the next one. */
+const ownerOf = (repository: string): string => repository.split("/")[0] ?? repository;
+
+/**
+ * Remembers the last background push per repo and asks the checks source before the next push to
+ * `repository`. GitHub's concurrent-job limit is per account, so a queued check on the last push to
+ * any repo of the same owner holds it; the wait for checks to register is about that one push, so
+ * only a push to the same repo waits on it (a repo without Actions never holds another repo).
+ */
 export class GitHubActionsGate {
-	private lastPush: BackgroundPush | undefined;
+	private readonly lastPushes = new Map<string, BackgroundPush>();
 
 	constructor(
 		private readonly checksSource: ChecksSource,
@@ -51,23 +58,29 @@ export class GitHubActionsGate {
 	) {}
 
 	recordPush(push: BackgroundPush): void {
-		this.lastPush = push;
+		this.lastPushes.set(push.repository, push);
 	}
 
-	async check(): Promise<PushGateDecision> {
-		const lastPush = this.lastPush;
-		if (lastPush === undefined) {
-			return {open: true};
+	async check(repository: string): Promise<PushGateDecision> {
+		const owner = ownerOf(repository);
+		const account = [...this.lastPushes.values()].filter((push) => ownerOf(push.repository) === owner);
+		const observed: {push: BackgroundPush; statuses: readonly CheckRunStatus[]}[] = [];
+		for (const push of account) {
+			try {
+				// Sequential on purpose: one request at a time against the shared GraphQL budget.
+				// eslint-disable-next-line no-await-in-loop
+				observed.push({push, statuses: await this.checksSource(push)});
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					open: false,
+					reason: `GitHub Actions status unavailable for ${push.repository}@${push.sha}: ${message}`,
+				};
+			}
 		}
-		try {
-			const statuses = await this.checksSource(lastPush);
-			return pushGateDecision(lastPush, statuses, this.now());
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return {
-				open: false,
-				reason: `GitHub Actions status unavailable for ${lastPush.repository}@${lastPush.sha}: ${message}`,
-			};
-		}
+		const queued = observed.find(({statuses}) => statuses.includes("queued"));
+		if (queued !== undefined) return pushGateDecision(queued.push, queued.statuses, this.now());
+		const own = observed.find(({push}) => push.repository === repository);
+		return own === undefined ? {open: true} : pushGateDecision(own.push, own.statuses, this.now());
 	}
 }

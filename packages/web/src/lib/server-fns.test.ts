@@ -2645,11 +2645,11 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 		});
 	});
 
-	it("keeps a green behind row ready, waiting for checks, after Open PR rebases it to a tip no sweep has measured", async () => {
+	it("keeps a row that fell behind while shown ready, waiting for checks, after Open PR rebases it to a tip no sweep has measured", async () => {
 		const {dir} = await behindFeatureBranch("fix-listed", {conflict: false});
 		await execa("git", ["-C", dir, "config", "test.default.command", "true"]);
 		const upstreamSha = await gitOut(dir, "rev-parse", "origin/main");
-		// Listed after a restart from durable state: the merge queue measured the old tip, behind but clean.
+		// It fell behind while shown: the merge queue measured the old tip, behind but clean.
 		cacheUpstreamSha("pr-listed", "origin/main", upstreamSha);
 		const before = await gitOut(dir, "rev-parse", "fix-listed");
 		cacheMergeStatus("pr-listed", before, upstreamSha, 1, 1, true);
@@ -2688,17 +2688,16 @@ describe("createPrHandler pushes the branch and targets the base", () => {
 		expect({
 			ok: result.ok,
 			measured: mergeStatuses.get(tip),
-			candidates: repo.candidates.map(({sha, state, behind, greenBehind, checksPending}) => ({
+			candidates: repo.candidates.map(({sha, state, behind, checksPending}) => ({
 				sha,
 				state,
 				behind,
-				greenBehind,
 				checksPending,
 			})),
 		}).toStrictEqual({
 			ok: true,
 			measured: {sha: tip, upstreamSha, commitsAhead: 1, commitsBehind: 0, rebaseable: null},
-			candidates: [{sha: tip, state: "ready", behind: undefined, greenBehind: undefined, checksPending: true}],
+			candidates: [{sha: tip, state: "ready", behind: undefined, checksPending: true}],
 		});
 	});
 

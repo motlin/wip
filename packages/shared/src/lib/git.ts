@@ -156,7 +156,7 @@ export async function getChildren(dir: string, upstreamRef: string): Promise<str
 /**
  * The tip of every local branch (main and master aside) that doesn't contain `upstreamRef`: upstream
  * moved past it, so `git children` of the upstream tip no longer lists it, yet its merge status
- * (behind count, clean rebase) still decides whether it is ready to land.
+ * (behind count, clean rebase) marks it Needs Rebase.
  */
 export async function getBehindBranchTips(
 	dir: string,

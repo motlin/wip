@@ -483,16 +483,20 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("lists a green, conflict-free, behind item as ready (marked behind) after a restart with the target already full", async () => {
-		// A fresh buffer (a restart): nothing in memory, and the ready target is already met.
+	it("never lists or counts a green, conflict-free commit that went behind upstream: the ready target counts only up-to-date green commits", async () => {
+		// A fresh buffer (a restart): nothing in memory, and one up-to-date green commit meets the target.
+		const children = [
+			makeChild({sha: sha("a"), branch: "b1", patchId: "c1", commitsBehind: 0}),
+			makeChild({sha: sha("b"), branch: "b2", patchId: "c2", commitsBehind: 2, rebaseable: true}),
+		];
 		const h = harness({
 			repos: () => [
-				repo("a", {
+				bufferRepoFromChildren(project("motlin/wip"), children, {
+					identity: null,
+					checkedOutBranches: [],
+					onHold: () => false,
+					override: () => undefined,
 					landing: "pull-request",
-					candidates: candidates(2, {
-						c1: {state: "ready", branch: "b1"},
-						c2: {branch: "b2", behind: true, greenBehind: true},
-					}),
 				}),
 			],
 			target: 1,
@@ -502,34 +506,72 @@ describe("createReadyBuffer", () => {
 		await h.buffer.idle();
 		const state = h.buffer.state();
 
-		expect({advanced: h.advanced, ready: state.ready, next: state.next}).toStrictEqual({
+		expect({advanced: h.advanced, ready: state.ready}).toStrictEqual({
 			advanced: [],
-			ready: [
-				{project: "a", id: "c1", sha: paddedSha("c1"), branch: "b1", landing: "pull-request"},
-				{project: "a", id: "c2", sha: paddedSha("c2"), branch: "b2", landing: "pull-request", behind: true},
-			],
-			next: [],
+			ready: [{project: "p", id: "c1", sha: sha("a"), branch: "b1", landing: "pull-request"}],
 		});
 	});
 
-	it("no longer lists a green behind item ready once its advance parked it with a failure", async () => {
-		const h = harness({
-			repos: () => [
-				repo("a", {
-					landing: "pull-request",
-					candidates: candidates(1, {c1: {branch: "b1", behind: true, greenBehind: true}}),
-				}),
-			],
-			target: 1,
-			outcome: () => "stuck",
+	it("after a restart, rebases and retests a green commit upstream moved past until the ready target is met, listing it only once it is up to date", async () => {
+		// The children refresh after a restart: a green, conflict-free branch with no PR that upstream
+		// moved past; once the advance replays it, the refresh shows the replayed tip on upstream.
+		let tip: {sha: string; commitsBehind: number} = {sha: sha("a"), commitsBehind: 2};
+		const snapshot = async (): Promise<BufferRepo[]> =>
+			Promise.resolve([
+				bufferRepoFromChildren(
+					project("motlin/wip"),
+					[
+						makeChild({
+							sha: tip.sha,
+							branch: "stale",
+							patchId: "pa",
+							commitsBehind: tip.commitsBehind,
+							rebaseable: true,
+						}),
+					],
+					{
+						identity: null,
+						checkedOutBranches: [],
+						onHold: () => false,
+						override: () => undefined,
+						landing: "pull-request",
+					},
+				),
+			]);
+		const queue = createWorkQueue({globalConcurrency: 4, classCaps: {build: 4}, probe: null});
+		queues.push(queue);
+		const runs: string[] = [];
+		const advancing = deferred();
+		const buffer = createReadyBuffer({
+			queue,
+			snapshot,
+			target: () => 1,
+			capacity: () => 1,
+			advance: async (_r, candidate, _signal, onReplayed) => {
+				runs.push(candidate.sha);
+				await advancing.promise;
+				onReplayed(sha("e"));
+				tip = {sha: sha("e"), commitsBehind: 0};
+				return "ready";
+			},
+			resolveConflicts: async () => Promise.resolve(null),
+			fixTest: async () => Promise.resolve(null),
+			nameBranch: async () => Promise.resolve(null),
 		});
 
-		await h.buffer.pull();
-		await h.buffer.idle();
+		await buffer.pull();
+		const during = buffer.state();
+		advancing.resolve();
+		await buffer.idle();
 
-		expect({advanced: h.advanced, ready: h.buffer.state().ready}).toStrictEqual({
-			advanced: ["a:c1"],
-			ready: [],
+		expect({
+			runs,
+			during: {ready: during.ready, inFlight: during.inFlight.map((item) => item.id)},
+			after: buffer.state().ready,
+		}).toStrictEqual({
+			runs: [sha("a")],
+			during: {ready: [], inFlight: ["pa"]},
+			after: [{project: "p", id: "pa", sha: sha("e"), branch: "stale", landing: "pull-request"}],
 		});
 	});
 
@@ -1440,48 +1482,30 @@ describe("bufferRepoFromChildren with PR checks still running", () => {
 });
 
 describe("bufferRepoFromChildren with a green commit that only went behind upstream", () => {
-	it("flags a green, conflict-free, behind branch without a PR in a pull-request repo, leaving it unready", () => {
+	it("leaves a green, conflict-free, behind branch unready (Needs Rebase), like any commit behind upstream", () => {
 		const children = [
 			makeChild({sha: sha("a"), branch: "clean", commitsBehind: 2, rebaseable: true, patchId: "pa"}),
-			makeChild({sha: sha("b"), branch: "conflicts", commitsBehind: 2, rebaseable: false}),
-			makeChild({sha: sha("c"), branch: "unknown", commitsBehind: 2}),
-			makeChild({sha: sha("d"), branch: "red", commitsBehind: 2, rebaseable: true, testStatus: "failed"}),
-			makeChild({sha: sha("e"), branch: undefined, commitsBehind: 2, rebaseable: true}),
-			makeChild({sha: sha("f"), branch: "with-pr", commitsBehind: 2, rebaseable: true, prNumber: 7}),
-			makeChild({sha: sha("1"), branch: "on-tip", commitsBehind: 0}),
 		];
-		const flagged = (landing: "pull-request" | "fast-forward") =>
-			bufferRepoFromChildren(project("motlin/wip"), children, {
-				identity: null,
-				checkedOutBranches: [],
-				onHold: () => false,
-				override: () => undefined,
-				landing,
-			}).candidates.filter((c) => c.greenBehind === true);
 
-		expect({pullRequest: flagged("pull-request"), fastForward: flagged("fast-forward")}).toStrictEqual({
-			pullRequest: [
-				{
-					id: "pa",
-					sha: sha("a"),
-					branch: "clean",
-					state: "unready",
-					onHold: false,
-					job: 1,
-					behind: true,
-					greenBehind: true,
-				},
-			],
-			fastForward: [],
+		const mapped = bufferRepoFromChildren(project("motlin/wip"), children, {
+			identity: null,
+			checkedOutBranches: [],
+			onHold: () => false,
+			override: () => undefined,
+			landing: "pull-request",
 		});
+
+		expect(mapped.candidates).toStrictEqual([
+			{id: "pa", sha: sha("a"), branch: "clean", state: "unready", onHold: false, job: 1, behind: true},
+		]);
 	});
 
-	it("reads the merge status cached for the current upstream over the children cache's, so a needs-rebase branch counts", () => {
+	it("reads the merge status cached for the current upstream over the children cache's, so a stale up-to-date branch counts as behind", () => {
 		// The children refresh ran before the merge-tree check on the new upstream tip.
 		const children = [
-			makeChild({sha: sha("a"), branch: "stale", commitsBehind: 0, needsRebase: true, patchId: "pa"}),
+			makeChild({sha: sha("a"), branch: "stale", commitsBehind: 0, patchId: "pa"}),
 			makeChild({sha: sha("b"), branch: "conflicts", needsRebase: true}),
-			makeChild({sha: sha("c"), branch: "unmeasured", needsRebase: true}),
+			makeChild({sha: sha("c"), branch: "unmeasured", commitsBehind: 0}),
 		];
 		const statuses = new Map([
 			[sha("a"), {commitsBehind: 2, rebaseable: true}],
@@ -1497,10 +1521,10 @@ describe("bufferRepoFromChildren with a green commit that only went behind upstr
 			mergeStatus: (s) => statuses.get(s),
 		});
 
-		expect(mapped.candidates.map((c) => [c.branch, c.behind, c.greenBehind])).toStrictEqual([
-			["stale", true, true],
-			["unmeasured", true, undefined],
-			["conflicts", true, undefined],
+		expect(mapped.candidates.map((c) => [c.branch, c.behind, c.state])).toStrictEqual([
+			["unmeasured", undefined, "ready"],
+			["stale", true, "unready"],
+			["conflicts", true, "unready"],
 		]);
 	});
 });

@@ -504,28 +504,14 @@ describe("checkProject", () => {
 		).toStrictEqual(["test-project child-1 upstream-abc 1 2 true", "test-project stale-tip upstream-abc 1 2 true"]);
 	});
 
-	it("measures a green behind branch with no PR right away, even outside the pull window", async () => {
+	it("measures a green behind branch with no PR in its turn like any other commit: no eager sweep outside the pull window", async () => {
 		mockGetReadyBufferSize.mockReturnValue(0);
 		mockGetProjects.mockResolvedValue([makeProject()]);
 		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
 		// The children fill the whole window (ready target 0 + lookahead 2).
 		mockGetChildren.mockResolvedValue(["child-1", "child-2", "child-3"]);
-		mockGetBehindBranchTips.mockResolvedValue([
-			{sha: "green-tip", branch: "green"},
-			{sha: "red-tip", branch: "red"},
-			{sha: "untested-tip", branch: "untested"},
-			{sha: "pr-tip", branch: "with-pr"},
-		]);
-		mockGetGitTestStatuses.mockResolvedValue(
-			new Map([
-				["green-tip", "passed"],
-				["red-tip", "failed"],
-				["pr-tip", "passed"],
-			]),
-		);
-		mockGetCachedPrStatuses.mockReturnValue([
-			{branch: "with-pr", reviewStatus: "none", checkStatus: "pending", prUrl: "https://x/pr/1", prNumber: 1},
-		]);
+		mockGetBehindBranchTips.mockResolvedValue([{sha: "green-tip", branch: "green"}]);
+		mockGetGitTestStatuses.mockResolvedValue(new Map([["green-tip", "passed"]]));
 		mockGetCachedMergeStatuses.mockReturnValue([]);
 		mockComputeMergeStatus.mockResolvedValue({commitsAhead: 1, commitsBehind: 2, rebaseable: true});
 
@@ -534,27 +520,12 @@ describe("checkProject", () => {
 		expect({
 			computed: mockComputeMergeStatus.mock.calls.map(([, sha]: unknown[]) => sha),
 			gitTestAsked: mockGetGitTestStatuses.mock.calls,
+			backlog: deferredMergeStatusProjects(),
 		}).toStrictEqual({
-			computed: ["green-tip", "child-1", "child-2"],
-			gitTestAsked: [["/tmp/test-project", ["green-tip", "red-tip", "untested-tip"]]],
+			computed: ["child-1", "child-2"],
+			gitTestAsked: [],
+			backlog: ["test-project"],
 		});
-	});
-
-	it("asks git test about no behind tip once every one is cached for the current upstream", async () => {
-		mockGetProjects.mockResolvedValue([makeProject()]);
-		mockFetchUpstreamRef.mockResolvedValue({changed: false, sha: "upstream-abc"});
-		mockGetChildren.mockResolvedValue([]);
-		mockGetBehindBranchTips.mockResolvedValue([{sha: "green-tip", branch: "green"}]);
-		mockGetCachedMergeStatuses.mockReturnValue([
-			{sha: "green-tip", commitsAhead: 1, commitsBehind: 2, rebaseable: true},
-		]);
-
-		await checkProject("test-project");
-
-		expect({
-			computed: mockComputeMergeStatus.mock.calls,
-			gitTestAsked: mockGetGitTestStatuses.mock.calls,
-		}).toStrictEqual({computed: [], gitTestAsked: []});
 	});
 
 	it("processes a mix of cached and uncached children", async () => {

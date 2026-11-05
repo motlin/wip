@@ -476,14 +476,12 @@ interface ReadyRowProps extends LandControlProps {
 }
 
 function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
-	const {item, commit, projectInfo} = land;
+	const {item, commit} = land;
 	const action = useLandControl(land);
 	const size = sizeText(commit);
 	const params = {project: item.project, sha: commit?.sha ?? item.sha};
-	const behind = item.behind === true;
 	const hasChips =
 		stoppedLine ||
-		behind ||
 		noTests ||
 		commit?.localTestSkipped === true ||
 		commit?.considerSplitting === true ||
@@ -518,15 +516,6 @@ function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 									className={`${CHIP_CLASS} border-status-red/50 bg-status-red/10 text-status-red`}
 								>
 									upstream red
-								</span>
-							)}
-							{behind && (
-								<span
-									data-testid="behind-marker"
-									title={`Behind ${projectInfo?.upstreamBranch ?? "upstream"}: Open PR rebases it and retests it before pushing`}
-									className={MARKER_CLASS}
-								>
-									behind upstream
 								</span>
 							)}
 							{noTests && <span className={MARKER_CLASS}>no tests</span>}

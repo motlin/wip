@@ -61,13 +61,6 @@ export interface BufferCandidate {
 	 * earlier "ready" outcome for this same sha is stale, so the item is readied again.
 	 */
 	behind?: boolean;
-	/**
-	 * Green by git test, behind upstream but rebasing cleanly (merge status, kept in the DB), on a
-	 * branch with no PR in a pull-request repo. Still unready for pulls (the buffer may re-advance it),
-	 * but listed ready (marked behind) from durable state alone, so a restart that forgot the buffer's
-	 * own "ready" outcome never hides it: Open PR rebases and retests it before pushing.
-	 */
-	greenBehind?: boolean;
 	onHold: boolean;
 	override?: Priority;
 	/** Remaining job (candidate rank); orders candidates of the same priority across repos. */
@@ -347,16 +340,6 @@ export function bufferRepoFromChildren(
 					job: gitChildJob(child),
 				};
 				if ((child.commitsBehind ?? 0) > 0 || child.needsRebase === true) candidate.behind = true;
-				if (
-					candidate.behind === true &&
-					green &&
-					child.rebaseable === true &&
-					child.branch !== undefined &&
-					child.prNumber === undefined &&
-					context.landing === "pull-request"
-				) {
-					candidate.greenBehind = true;
-				}
 				if (child.branch !== undefined) candidate.branch = child.branch;
 				if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
 				if (override !== undefined) candidate.override = override;
@@ -675,15 +658,6 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 		notify();
 	}
 
-	/**
-	 * A green, conflict-free item that only went behind upstream and that the buffer has no outcome
-	 * for (after a restart, or never pulled): listed ready, marked behind; Open PR rebases and retests it.
-	 */
-	function readyBehind(repo: BufferRepo, c: BufferCandidate): boolean {
-		// An advanced "ready" outcome lists it already, replayed onto upstream (no longer behind).
-		return c.greenBehind === true && !resultsOf(repo.name).has(c.id);
-	}
-
 	function stateItem(repo: BufferRepo, candidate: BufferCandidate): ReadyToLandItem {
 		const firstSeen = deps.firstSeen?.(repo.name, candidate.id);
 		const priority = effectivePriority({repo: repo.priority, override: candidate.override});
@@ -697,7 +671,6 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			...(repo.landing === undefined ? {} : {landing: repo.landing}),
 			...(firstSeen === undefined ? {} : {firstSeen}),
 			...(priority === DEFAULT_PRIORITY ? {} : {priority}),
-			...(readyBehind(repo, candidate) ? {behind: true as const} : {}),
 		};
 	}
 
@@ -721,7 +694,6 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				const entry: Entry = [repo, c];
 				byKey.set(`${repo.name}:${c.id}`, entry);
 				if (jobs.has(c.id)) running.push(entry);
-				else if (readyBehind(repo, c) && !c.onHold && c.autoFixed !== true) ready.push(entry);
 				else if ((c.state === "ready" || done.get(c.id) === "ready") && !c.onHold && c.autoFixed !== true) {
 					(c.checksFailed === true ? checksFailed : c.checksPending === true ? awaitingChecks : ready).push([
 						repo,

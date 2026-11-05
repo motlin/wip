@@ -9,8 +9,6 @@ import {
 	getCommitFacts,
 	loadInventory,
 	getReadyBufferSize,
-	getGitTestStatuses,
-	getCachedPrStatuses,
 } from "@wip/shared";
 import {rankCandidates} from "@wip/shared/candidate-rank.js";
 import {orderReadyQueue} from "@wip/shared/ready-queue.js";
@@ -115,41 +113,14 @@ async function computeAndEmit(p: ProjectInfo, sha: string, upstreamSha: string):
 	});
 }
 
-/**
- * Uncached behind branch tips that are green by git test and have no PR: Ready to land lists them
- * once their merge status at the current upstream tip is known, so they skip the pull window and the
- * one-per-sweep backlog. merge-tree is cheap and read-only; red and untested tips still wait their turn.
- */
-async function greenBehindWithoutPr(
-	p: ProjectInfo,
-	behindTips: ReadonlyArray<{sha: string; branch: string}>,
-	uncached: ReadonlySet<string>,
-): Promise<Set<string>> {
-	if (!p.hasTestConfigured) return new Set();
-	const withPr = new Set(
-		(getCachedPrStatuses(p.name) ?? []).filter((pr) => pr.prNumber !== undefined).map((pr) => pr.branch),
-	);
-	const shas = [
-		...new Set(behindTips.filter((tip) => uncached.has(tip.sha) && !withPr.has(tip.branch)).map((tip) => tip.sha)),
-	];
-	if (shas.length === 0) return new Set();
-	try {
-		const statuses = await getGitTestStatuses(p.dir, shas);
-		return new Set(shas.filter((sha) => statuses.get(sha) === "passed"));
-	} catch {
-		// No usable git-test answer: leave them to the window and the backlog.
-		return new Set();
-	}
-}
-
 async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]): Promise<void> {
 	const fetched = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
 	const upstreamSha = fetched.sha;
 	if (!upstreamSha) return;
 	await upstreamTipSeen(p, fetched);
 
-	// Branches upstream moved past too: their behind count and clean rebase decide whether a green one
-	// is still ready to land (Open PR rebases and retests it).
+	// Branches upstream moved past too: measured in their turn, so a behind one reads as Needs Rebase
+	// (never ready to land) and the buffer can rebase it.
 	const [children, behindTips] = await Promise.all([
 		getChildren(p.dir, p.upstreamRef),
 		getBehindBranchTips(p.dir, p.upstreamRef),
@@ -182,13 +153,11 @@ async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]
 		});
 	}
 
-	const eager = await greenBehindWithoutPr(p, behindTips, new Set(uncached));
-	const windowed = uncached.filter((sha) => !eager.has(sha));
-	const rest = windowed.slice(window);
+	const rest = uncached.slice(window);
 	deferred.delete(p.name);
 	if (rest.length > 0) deferred.set(p.name, {upstreamSha, shas: rest});
 
-	for (const sha of [...eager, ...windowed.slice(0, window)]) {
+	for (const sha of uncached.slice(0, window)) {
 		// Sequential on purpose: each call spawns git subprocesses, so fan-out must stay bounded
 		// eslint-disable-next-line no-await-in-loop
 		await computeAndEmit(p, sha, upstreamSha);

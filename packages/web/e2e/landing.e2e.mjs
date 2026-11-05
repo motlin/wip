@@ -6,8 +6,8 @@
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
  * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Open PR where
  * the GitHub token is read-only on the PR repo (git pushes, the tab goes to GitHub's new-PR page),
- * Fast-forward main, Push main, and a restart after which upstream moves past a green row that must stay listed
- * (Open PR rebases and retests it), checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
+ * Fast-forward main, Push main, and a restart after which upstream moves past the one green row: it leaves
+ * Ready to land and the buffer rebases and retests it until the ready target is met again, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
@@ -418,60 +418,54 @@ async function run() {
 		await gearOutcome.getByRole("button", {name: "Dismiss"}).click();
 		await gearOutcome.waitFor({state: "detached"});
 
-		step("Restart, then upstream moves past a green row: it stays, marked behind, with Open PR");
+		step(
+			"Restart, then upstream moves past a green row: it leaves Ready to land, and the buffer rebases and retests it",
+		);
 		await stopProcessTree(server);
-		// After the restart the buffer remembers nothing, and cogs' steady row alone fills the target, so
-		// nothing re-advances the stale row: only durable state (its git test result and merge status) lists it.
+		// After the restart the buffer remembers nothing. sprockets is high priority, so its stale row is the
+		// candidate the buffer advances first once it falls behind.
 		world.setReadyTarget(1);
-		// High-priority cogs work (red, so never ready) fills the pull window (ready target 1 + lookahead 2),
-		// so no eager in-window check measures the stale row at the moved upstream: it is measured because
-		// it is green, behind and has no PR, within a couple of sweeps rather than the one-per-sweep backlog.
-		for (const n of [1, 2, 3]) cogs.branch(`red-cog-${n}`, "RED", `Break cogs ${n}`);
-		world.setPriority("cogs", "high");
+		world.setPriority("sprockets", "high");
 		server = startServer();
 		await waitForServer(`${baseUrl}/`, server);
 		await page.goto(`${baseUrl}/queue`);
-		await readyRow(page, "Add the steady feature").getByRole("button", {name: "Open PR"}).waitFor();
-		await readyRow(page, "Add the stale feature").getByRole("button", {name: "Open PR"}).waitFor();
+		const staleRow = readyRow(page, "Add the stale feature");
+		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
+		// cogs' steady commit and gears' gear commit land upstream, so sprockets' stale row alone is up to
+		// date and green, meeting ready target 1.
+		world.git(cogs.clone, "push", "--quiet", "upstream", `${world.shas.steadySha}:refs/heads/main`);
+		world.git(cogs.clone, "fetch", "--quiet", "upstream");
+		world.git(gears.clone, "push", "--quiet", "origin", `${world.shas.gearSha}:refs/heads/main`);
+		world.git(gears.clone, "fetch", "--quiet", "origin");
+		await readyRow(page, "Add the steady feature").waitFor({state: "detached"});
+		await readyRow(page, "Add the gear feature").waitFor({state: "detached"});
+		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
 		const movedPast = sprockets.landUpstream("other.txt", "Land someone else's sprockets change");
 		world.git(sprockets.clone, "fetch", "--quiet", "upstream");
-		const staleRow = readyRow(page, "Add the stale feature");
-		const twoSweeps = {timeout: 2 * 45_000 + 15_000};
-		await staleRow.getByTestId("behind-marker").waitFor(twoSweeps);
-		await staleRow.getByRole("button", {name: "Open PR"}).waitFor(twoSweeps);
-		assert.equal(
-			world.git(sprockets.clone, "rev-parse", "refs/heads/stale-feature"),
-			world.shas.staleSha,
-			"listed from durable state, not re-advanced by the buffer",
-		);
-		// Open PR rebases it to a tip no sweep has measured: the row must never leave while it runs.
+		// Behind upstream it is Needs Rebase, never ready: it leaves Ready to land, and the ready count drops
+		// below the target, so the buffer rebases and retests it.
+		await staleRow.waitFor({state: "detached"});
+		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
+		const advancedStale = world.git(sprockets.clone, "rev-parse", "refs/heads/stale-feature");
+		assert.equal(world.git(sprockets.clone, "rev-parse", `${advancedStale}^`), movedPast, "the buffer rebased it");
+		assert.match(world.git(sprockets.clone, "test", "results", advancedStale), /^good /, "and retested it green");
+		// Listed at its up-to-date tip once the children refresh catches up with the replay.
+		await staleRow.locator(`a[href="/item/sprockets/${advancedStale}"]`).waitFor();
 		const stale = await openPr(page, "Add the stale feature", `${gh.url}/acme/sprockets/pull/1`, [
 			[["ready-to-land-row", "waiting-row"], "Add the stale feature"],
-			["ready-to-land-row", "Add the steady feature"],
 		]);
 		await stale.tab.close();
-		const pushedStale = world.git(sprockets.forkBare, "rev-parse", "refs/heads/stale-feature");
-		assert.equal(world.git(sprockets.forkBare, "rev-parse", `${pushedStale}^`), movedPast, "rebased first");
-		assert.match(world.git(sprockets.clone, "test", "results", pushedStale), /^good /, "retested green");
 		assert.equal(
 			gh.prs.find((pr) => pr.repository === "acme/sprockets" && pr.number === 1)?.headOid,
-			pushedStale,
-			"the PR opened on the rebased tip",
+			advancedStale,
+			"the PR opened on the tip the buffer rebased and retested",
 		);
-		// Without waiting for a sweep or the safety tick: the rebased tip's merge status is known at once.
 		await page
 			.getByTestId("waiting-row")
 			.filter({hasText: "Add the stale feature"})
 			.filter({hasText: "PR #1 · waiting for checks"})
 			.waitFor({timeout: 30_000});
-		await assertRowsStay(
-			page,
-			[
-				["waiting-row", "Add the stale feature"],
-				["ready-to-land-row", "Add the steady feature"],
-			],
-			"after Open PR on the behind row listed from durable state",
-		);
+		await assertRowsStay(page, [["waiting-row", "Add the stale feature"]], "after Open PR on the re-advanced row");
 
 		step("Checking what reached gh and GitHub");
 		assert.deepEqual(

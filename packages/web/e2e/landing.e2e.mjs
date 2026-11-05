@@ -27,7 +27,7 @@ import Database from "better-sqlite3";
 import {chromium} from "playwright";
 
 import {startFakeGitHub} from "./fake-github.mjs";
-import {createWorld} from "./landing-world.mjs";
+import {createWorld, fsmonitorDaemonSockets} from "./landing-world.mjs";
 import {processesHolding, startProcessTree, stopProcessTree} from "./server-process.mjs";
 
 const webDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -530,6 +530,12 @@ async function run() {
 			console.error(
 				`\n✗ processes still hold the world's database after the server stopped: ${holders.join(", ")}`,
 			);
+		}
+		const fsmonitorSockets = fsmonitorDaemonSockets(world.dirs.root);
+		if (fsmonitorSockets.length > 0) {
+			ok = false;
+			process.exitCode = 1;
+			console.error(`\n✗ git fsmonitor daemons still watch repos in the world: ${fsmonitorSockets.join(", ")}`);
 		}
 		if (ok && !keep) world.remove();
 		else console.log(`\nKept the world at ${world.dirs.root} (server log: ${serverLog})`);

@@ -1,10 +1,10 @@
 import {describe, it, expect, afterEach} from "vite-plus/test";
-import {mkdtempSync, readFileSync, rmSync} from "node:fs";
+import {existsSync, mkdtempSync, readFileSync, realpathSync, rmSync} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
-import {execFileSync} from "node:child_process";
+import {execFileSync, spawnSync} from "node:child_process";
 
 import {resolveDbPath} from "../lib/db.js";
 import {getInventoryPath} from "../lib/inventory.js";
@@ -48,6 +48,9 @@ describe("sanitizeGitEnv", () => {
 			GIT_CONFIG_GLOBAL: "/dev/null",
 			GIT_CONFIG_NOSYSTEM: "1",
 			GIT_TERMINAL_PROMPT: "0",
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: "core.fsmonitor",
+			GIT_CONFIG_VALUE_0: "false",
 		});
 	});
 
@@ -77,6 +80,29 @@ describe("sanitizeGitEnv", () => {
 		});
 		expect(testIdentity).toBe("user.name Test User\nuser.email test@test.com\n");
 	});
+
+	it("starts no git fsmonitor daemon in a temp repo, even one whose own config turns fsmonitor on", () => {
+		const repo = realpathSync(makeTempDir());
+		const env = {...process.env};
+		execFileSync("git", ["init", "-q", "-b", "main"], {cwd: repo, env});
+		execFileSync("git", ["config", "core.fsmonitor", "true"], {cwd: repo, env});
+		execFileSync("git", ["status", "--porcelain"], {cwd: repo, env});
+
+		const daemonStatus = spawnSync("git", ["fsmonitor--daemon", "status"], {cwd: repo, env, encoding: "utf8"});
+		expect({
+			effectiveFsmonitor: execFileSync("git", ["config", "core.fsmonitor"], {
+				cwd: repo,
+				env,
+				encoding: "utf8",
+			}).trim(),
+			daemonSocket: existsSync(join(repo, ".git", "fsmonitor--daemon.ipc")),
+			daemonStatus: {status: daemonStatus.status, stdout: daemonStatus.stdout},
+		}).toStrictEqual({
+			effectiveFsmonitor: "false",
+			daemonSocket: false,
+			daemonStatus: {status: 1, stdout: "fsmonitor-daemon is not watching '" + repo + "'\n"},
+		});
+	});
 });
 
 function underTmp(p: string): boolean {
@@ -96,6 +122,9 @@ describe("test worker environment", () => {
 			GIT_CONFIG_GLOBAL: "/dev/null",
 			GIT_CONFIG_NOSYSTEM: "1",
 			GIT_TERMINAL_PROMPT: "0",
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: "core.fsmonitor",
+			GIT_CONFIG_VALUE_0: "false",
 		});
 	});
 

@@ -57,6 +57,11 @@ function createRoot() {
 		GIT_CONFIG_NOSYSTEM: "1",
 		GIT_CONFIG_GLOBAL: path.join(dirs.home, ".gitconfig"),
 		GIT_TERMINAL_PROMPT: "0",
+		// Command-scope config outranks every config file: no repo here (nor a git the server spawns) starts a
+		// git fsmonitor--daemon, whose FSEvents stream outlives the deleted world and exhausts macOS FSEvents.
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: "core.fsmonitor",
+		GIT_CONFIG_VALUE_0: "false",
 		GH_CONFIG_DIR: path.join(dirs.config, "gh"),
 		WIP_E2E_GH_LOG: ghLog,
 		PATH: `${dirs.bin}:${process.env.PATH ?? ""}`,
@@ -101,6 +106,14 @@ function record(repo, landing, priority) {
 		landing,
 		...(repo.verify === undefined ? {} : {verify: repo.verify}),
 	};
+}
+
+/** Every git fsmonitor--daemon socket under `root`: one exists while a daemon watches that repo. */
+export function fsmonitorDaemonSockets(root) {
+	return fs
+		.readdirSync(root, {recursive: true})
+		.filter((entry) => path.basename(entry) === "fsmonitor--daemon.ipc")
+		.map((entry) => path.join(root, entry));
 }
 
 export function createWorld() {

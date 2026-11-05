@@ -297,9 +297,12 @@ export function bufferRepoFromChildren(
 			...(status.rebaseable === null ? {} : {rebaseable: status.rebaseable}),
 		};
 	};
-	// A commit already fast-forwarded onto local main waits for the user's push, not a landing.
+	// A commit already fast-forwarded onto local main waits for the user's push, not a landing. An
+	// empty commit (measured, zero files changed) carries no change to land.
 	const work = rankGitChildren(
-		children.filter((child) => child.kind !== "upstream_ci" && child.onLocalMain !== true).map(measured),
+		children
+			.filter((child) => child.kind !== "upstream_ci" && child.onLocalMain !== true && child.files !== 0)
+			.map(measured),
 	);
 	return {
 		name: project.name,

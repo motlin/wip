@@ -1,5 +1,10 @@
+import {execFileSync} from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
 import {afterEach, describe, expect, it} from "vite-plus/test";
-import {createWorkQueue, type EnqueueOptions, type WorkQueue} from "@wip/shared";
+import {createWorkQueue, getCommitFacts, initDb, resetDb, type EnqueueOptions, type WorkQueue} from "@wip/shared";
 
 import {repoResource} from "./repo-resource.js";
 import {makeChild} from "./test-factories.js";
@@ -1371,6 +1376,57 @@ describe("bufferRepoFromChildren", () => {
 			writeAccessOnly: ownership("eclipse/eclipse-collections", identity),
 			unknownIdentity: ownership("motlin/wip", null),
 		}).toStrictEqual({login: "own", org: "own", writeAccessOnly: "foreign", unknownIdentity: "foreign"});
+	});
+
+	it("leaves an empty commit out: no diff is no landable work, so it never shows as +0 −0 · 0 files", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-empty-commit-"));
+		const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], {encoding: "utf8"}).trim();
+		initDb(":memory:");
+		try {
+			git("init", "-q");
+			git("config", "user.email", "test@example.com");
+			git("config", "user.name", "Test");
+			git("config", "commit.gpgsign", "false");
+			fs.writeFileSync(path.join(dir, "base.txt"), "base\n");
+			git("add", "base.txt");
+			git("commit", "-qm", "base");
+			const upstream = git("rev-parse", "HEAD");
+			fs.writeFileSync(path.join(dir, "work.txt"), "work\n");
+			git("add", "work.txt");
+			git("commit", "-qm", "real work");
+			const work = git("rev-parse", "HEAD");
+			git("commit", "-q", "--allow-empty", "-m", "nothing changed");
+			const empty = git("rev-parse", "HEAD");
+
+			const facts = await getCommitFacts(dir, "p", [work, empty]);
+			const child = (commit: string, parentSha: string, branch?: string) => {
+				const f = facts.get(commit);
+				return makeChild({
+					sha: commit,
+					parentSha,
+					branch,
+					commitsBehind: 0,
+					testStatus: "passed",
+					...(f?.patchId ? {patchId: f.patchId} : {}),
+					files: f?.files,
+					insertions: f?.insertions,
+					deletions: f?.deletions,
+				});
+			};
+
+			const mapped = bufferRepoFromChildren(
+				project("motlin/wip"),
+				[child(work, upstream), child(empty, work, "allowsIterator")],
+				{identity, checkedOutBranches: [], onHold: () => false, override: () => undefined},
+			);
+
+			expect(mapped.candidates.map((c) => ({sha: c.sha, state: c.state}))).toStrictEqual([
+				{sha: work, state: "ready"},
+			]);
+		} finally {
+			resetDb();
+			fs.rmSync(dir, {recursive: true, force: true});
+		}
 	});
 
 	it("counts a commit as ready only when it is known to be on upstream and green; no test configured counts as green", () => {

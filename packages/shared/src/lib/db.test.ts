@@ -741,6 +741,18 @@ describe("Children cache", () => {
 		expect(getCachedChildren("test-project")).toBeNull();
 	});
 
+	it("an invalidated children cache is no longer fresh, so the next unforced refresh rereads it", () => {
+		// Push main invalidates the cache; a server restart before the refresh lands leaves only the
+		// sweep's unforced refresh, which skipped a fresh key and left the landed commit counted ready.
+		cacheChildren("test-project", sampleChildren);
+		markCacheFresh("children:other-project");
+		invalidateChildrenCache("test-project");
+		expect({
+			invalidated: isCacheFresh("children:test-project", 10 * 60 * 1000),
+			other: isCacheFresh("children:other-project", 10 * 60 * 1000),
+		}).toEqual({invalidated: false, other: true});
+	});
+
 	it("getLastKnownChildren keeps the last cached children through an invalidation", () => {
 		expect(getLastKnownChildren("test-project")).toBeNull();
 		cacheChildren("test-project", sampleChildren);

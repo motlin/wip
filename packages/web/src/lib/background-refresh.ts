@@ -166,6 +166,10 @@ export function ensureBackgroundRefresh(): void {
 		cachedProjectNames = (await listProjects()).map((p) => p.name);
 
 		if (!sweeping) {
+			// One unforced pass at boot: fresh caches skip themselves, but one invalidated before a
+			// restart (Push main, Open PR) is reread now, not when the rotating sweep reaches it, so the
+			// ready buffer never counts a landed commit from the last known children as ready.
+			for (const project of cachedProjectNames) enqueueProjectRefresh(project);
 			sweeping = true;
 			startPeriodicSweep({
 				intervalMs: SWEEP_INTERVAL_MS,

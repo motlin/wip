@@ -1913,13 +1913,23 @@ export function cacheChildren(project: string, children: GitChildResult[]): void
 	markCacheFresh(`children:${project}`);
 }
 
+/**
+ * Closes the current children and drops their freshness mark, so the next refresh rereads them even
+ * unforced: the sweep after a restart would otherwise skip the "fresh" key for up to the TTL while
+ * readers of the last known children (the ready buffer) count a landed commit as ready.
+ */
 export function invalidateChildrenCache(project: string): void {
 	const d = getDb();
 	const timestamp = now();
-	d.update(childrenCache)
-		.set({systemTo: timestamp})
-		.where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
-		.run();
+	d.transaction((tx) => {
+		tx.update(childrenCache)
+			.set({systemTo: timestamp})
+			.where(and(eq(childrenCache.project, project), eq(childrenCache.systemTo, FAR_FUTURE)))
+			.run();
+		tx.delete(cacheFreshness)
+			.where(eq(cacheFreshness.cacheKey, `children:${project}`))
+			.run();
+	}, WRITE_TRANSACTION_CONFIG);
 }
 
 // --- Todos cache ---

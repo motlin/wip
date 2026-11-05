@@ -1,18 +1,21 @@
 import {describe, expect, it, vi} from "vite-plus/test";
 
-const {startGitWatcher, startReadyBuffer, logError, startPeriodicSweep, onProjects} = vi.hoisted(() => ({
-	startPeriodicSweep: vi.fn<() => void>(),
-	onProjects: vi.fn<() => void>(),
-	startGitWatcher: vi.fn<() => Promise<void>>(),
-	startReadyBuffer: vi.fn<() => Promise<void>>(async () => Promise.resolve()),
-	logError: vi.fn<(...args: unknown[]) => void>(),
-}));
+const {startGitWatcher, startReadyBuffer, logError, startPeriodicSweep, onProjects, enqueueRefresh, projects} =
+	vi.hoisted(() => ({
+		projects: [] as Array<{name: string}>,
+		enqueueRefresh: vi.fn<(job: {kind: string; project: string; force?: boolean}) => void>(),
+		startPeriodicSweep: vi.fn<() => void>(),
+		onProjects: vi.fn<() => void>(),
+		startGitWatcher: vi.fn<() => Promise<void>>(),
+		startReadyBuffer: vi.fn<() => Promise<void>>(async () => Promise.resolve()),
+		logError: vi.fn<(...args: unknown[]) => void>(),
+	}));
 
 vi.mock("./resource-probe.js", () => ({installResourceProbe: async () => Promise.resolve()}));
 vi.mock("./git-watcher.js", () => ({startGitWatcher}));
 vi.mock("./ready-buffer-server.js", () => ({startReadyBuffer}));
-vi.mock("./refresh-scheduler.js", () => ({enqueueRefresh: vi.fn<() => void>(), startPeriodicSweep}));
-vi.mock("./server-fns.js", () => ({listProjects: async () => Promise.resolve([])}));
+vi.mock("./refresh-scheduler.js", () => ({enqueueRefresh, startPeriodicSweep}));
+vi.mock("./server-fns.js", () => ({listProjects: async () => Promise.resolve(projects)}));
 vi.mock("./project-events.js", () => ({projectEmitter: {on: onProjects}}));
 vi.mock("@wip/shared/services/logger-pino.js", () => ({
 	log: {general: {error: logError, warn: vi.fn<() => void>(), info: vi.fn<() => void>()}},
@@ -71,6 +74,31 @@ describe("ensureBackgroundRefresh", () => {
 				projectListeners: onProjects.mock.calls.length,
 			}).toStrictEqual({readyBufferCalls: 2, sweeps: 1, projectListeners: 1});
 		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("enqueues every project's refresh at boot, unforced, so a cache invalidated before a restart is reread right away", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.resetModules();
+			startReadyBuffer.mockClear();
+			enqueueRefresh.mockClear();
+			projects.splice(0, projects.length, {name: "gadgets"}, {name: "sprockets"});
+			const fresh = await import("./background-refresh.js");
+
+			fresh.ensureBackgroundRefresh();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(enqueueRefresh.mock.calls.map(([job]) => [job.kind, job.project, job.force])).toStrictEqual([
+				["children", "gadgets", false],
+				["todos", "gadgets", false],
+				["merge-status", "gadgets", false],
+				["children", "sprockets", false],
+				["todos", "sprockets", false],
+				["merge-status", "sprockets", false],
+			]);
+		} finally {
+			projects.splice(0, projects.length);
 			vi.useRealTimers();
 		}
 	});

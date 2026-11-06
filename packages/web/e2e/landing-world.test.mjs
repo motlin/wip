@@ -44,4 +44,35 @@ describe("landing world", () => {
 			widgetsSocket: fs.existsSync(path.join(clone, ".git", "fsmonitor--daemon.ipc")),
 		}).toStrictEqual({effectiveFsmonitor: "false", daemonStatus: 1, sockets: [], widgetsSocket: false});
 	});
+
+	it("gives bolts a fragile commit whose test fails, and the fake claude's /build:fix commits a separate fixup that passes", () => {
+		world = createWorld();
+		const {bolts} = world.repos;
+		const failing = world.shas.fragileSha;
+		const failed = spawnSync("git", ["test", "run", "--quiet", failing], {cwd: bolts.clone, env: world.env});
+
+		const worktree = path.join(world.dirs.root, "fix-worktree");
+		world.git(bolts.clone, "worktree", "add", "--quiet", worktree, "fragile-feature");
+		const claude = spawnSync(
+			"claude",
+			[
+				`/build:fix The test fails at commit ${failing} (log: /nowhere.log). Commit the fix as a separate commit with git commit --fixup=${failing} on top of it. Do not amend, squash, rebase or fold the fix into ${failing}.`,
+			],
+			{cwd: worktree, env: world.env, encoding: "utf8"},
+		);
+		const fixup = world.git(bolts.clone, "rev-parse", "fragile-feature");
+		const passed = spawnSync("git", ["test", "run", "--quiet", fixup], {cwd: bolts.clone, env: world.env});
+
+		expect({
+			failedStatus: failed.status,
+			claudeStatus: claude.status,
+			fixup: world.git(bolts.clone, "log", "-1", "--format=%P %s", fixup),
+			passedStatus: passed.status,
+		}).toStrictEqual({
+			failedStatus: 1,
+			claudeStatus: 0,
+			fixup: `${failing} fixup! Add the fragile feature`,
+			passedStatus: 0,
+		});
+	});
 });

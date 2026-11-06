@@ -11,13 +11,18 @@ import {clearAutoFix, getAutoFixes, type AutoFix} from "./db.js";
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const FAILURE_LINE_RE = /FAIL|Error|error\[|AssertionError|✕|not ok|panicked|Exception/;
 const MAX_SUMMARY = 120;
+/** git-test's own report after a red run; it names no failure, so the test's line is kept. */
+const GIT_TEST_TRAILER_RE = /^(?:FAILURE!|BAD COMMIT |Marked tree )/;
 
-/** The failure the marker names: the log's last failure line, without colours, at most 120 characters. */
+/**
+ * The failure the marker names: the log's last failure line, without colours and skipping
+ * git-test's own trailer, at most 120 characters.
+ */
 export function failureSummary(log: string): string {
 	let line = "test failed";
 	for (const raw of log.split("\n")) {
 		const clean = raw.replace(ANSI_RE, "").trim();
-		if (FAILURE_LINE_RE.test(clean)) line = clean;
+		if (FAILURE_LINE_RE.test(clean) && !GIT_TEST_TRAILER_RE.test(clean)) line = clean;
 	}
 	return line.slice(0, MAX_SUMMARY);
 }

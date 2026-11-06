@@ -85,7 +85,10 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 	};
 
 	return (
-		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
+		<div
+			data-testid={`commit-card-${commit.sha}`}
+			className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow"
+		>
 			<div className="flex items-start justify-between gap-2">
 				<div className="flex items-center gap-1.5 min-w-0">
 					<a

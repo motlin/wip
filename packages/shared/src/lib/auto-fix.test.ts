@@ -27,6 +27,31 @@ describe("failureSummary", () => {
 			long: 120,
 		});
 	});
+
+	it("skips git-test's own trailer (BAD COMMIT, FAILURE!) so the test's failure is named", () => {
+		const log = [
+			"",
+			"FAIL: fragile.txt breaks the bolts test",
+			"Marked tree 4dc8598^{tree} to be bad for test 'default'",
+			"",
+			"*******************************************************************************",
+			"BAD COMMIT 4dc8598d77b77694576835cac136ae26b5f3b86f: (default:bad:retcode=1)",
+			"",
+			"commit 4dc8598d77b77694576835cac136ae26b5f3b86f (HEAD, fragile-feature)",
+			"    Add the fragile feature",
+			"*******************************************************************************",
+			"",
+			"FAILURE!",
+			"",
+		].join("\n");
+		expect({
+			named: failureSummary(log),
+			bare: failureSummary("BAD COMMIT abc: (default:bad)\n\nFAILURE!\n"),
+		}).toStrictEqual({
+			named: "FAIL: fragile.txt breaks the bolts test",
+			bare: "test failed",
+		});
+	});
 });
 
 describe("squashFixup", () => {

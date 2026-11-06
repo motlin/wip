@@ -1,7 +1,8 @@
 /**
  * Builds the landing harness's throwaway world under one temp directory: bare "GitHub" repos, the
  * user's clones with branches in each landing state, a WIP config and registry pointing at them, and
- * a bin directory of fakes (gh, claude, mise, pmset) to put first on the server's PATH. Its env points
+ * a bin directory of fakes (gh, claude, mise, pmset) to put first on the server's PATH, and a socket path
+ * for the fake herdr (fake-herdr.mjs). Its env points
  * HOME, the XDG dirs and WIP_DB_PATH into the temp directory, so nothing reads or writes
  * ~/.config/wip, the real wip.db, real repos, real gh or real remotes.
  */
@@ -64,6 +65,8 @@ function createRoot() {
 		GIT_CONFIG_VALUE_0: "false",
 		GH_CONFIG_DIR: path.join(dirs.config, "gh"),
 		WIP_E2E_GH_LOG: ghLog,
+		// The fake herdr the harness starts listens here; the server's AI rungs launch their agents through it.
+		HERDR_SOCKET_PATH: path.join(root, "herdr.sock"),
 		PATH: `${dirs.bin}:${process.env.PATH ?? ""}`,
 	};
 	delete env.GITHUB_TOKEN;
@@ -80,10 +83,25 @@ function writeFakes(bin) {
 		path.join(bin, "gh"),
 		`#!/bin/sh\nexec "${process.execPath}" "${path.join(e2eDir, "fake-gh.mjs")}" "$@"\n`,
 	);
-	// Branch naming and other claude calls fail fast; every branch here is already named.
+	// The ready buffer's test fix (`claude "/build:fix ... --fixup=<sha> ..."`, launched in the fake herdr) deletes
+	// RED and commits a separate `fixup!` on the failing sha, as the real agent is told to. Branch naming and every
+	// other claude call fail fast; every branch here is already named.
 	writeExecutable(
 		path.join(bin, "claude"),
-		'#!/bin/sh\nprintf \'%s\\n\' "claude $*" >> "$(dirname "$WIP_E2E_GH_LOG")/claude-calls.log"\necho "fake claude: refused" >&2\nexit 1\n',
+		[
+			"#!/bin/sh",
+			'printf \'%s\\n\' "claude $*" >> "$(dirname "$WIP_E2E_GH_LOG")/claude-calls.log"',
+			'case "$1" in',
+			'"/build:fix "*)',
+			"\tsha=$(printf '%s' \"$1\" | sed -n 's/.*--fixup=\\([0-9a-f]*\\).*/\\1/p')",
+			'\tgit rm --quiet RED && git commit --quiet --fixup="$sha" && exit 0',
+			"\texit 1",
+			"\t;;",
+			"esac",
+			'echo "fake claude: refused" >&2',
+			"exit 1",
+			"",
+		].join("\n"),
 	);
 	writeExecutable(path.join(bin, "mise"), "#!/bin/sh\necho '{}'\n");
 	// Always on AC power, so the ready buffer runs whatever this machine is plugged into.
@@ -223,6 +241,24 @@ export function createWorld() {
 	const gears = repo("gears", {noFork: true, workflow: "on: [push, pull_request]\n", verify: "draft-pr"});
 	const gearSha = gears.branch("gear-feature", "gear.txt", "Add the gear feature");
 
+	// Auto-fix repo: its one commit breaks the test, so the buffer's test fix (the fake claude in the fake herdr)
+	// commits a fixup the user reviews and accepts. The RED file names the failure the marker shows.
+	const bolts = repo("bolts");
+	const fragileSha = (() => {
+		git(bolts.clone, "checkout", "--quiet", "-b", "fragile-feature", "upstream/main");
+		fs.writeFileSync(path.join(bolts.clone, "fragile.txt"), "fragile-feature\n");
+		const sha = commitFile(
+			bolts.clone,
+			"RED",
+			"FAIL: fragile.txt breaks the bolts test\n",
+			"Add the fragile feature",
+		);
+		git(bolts.clone, "checkout", "--quiet", "main");
+		return sha;
+	})();
+	// The failing run's log names the failure: the test prints RED's line before failing.
+	git(bolts.clone, "config", "test.default.command", "if test -e RED; then cat RED; exit 1; fi");
+
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
@@ -236,6 +272,7 @@ export function createWorld() {
 			[cogs, "pull-request"],
 			[sprockets, "pull-request"],
 			[gears, "pull-request"],
+			[bolts, "pull-request"],
 		].map(([r, landing]) => record(r, landing, priorities.get(r.name)));
 		fs.writeFileSync(path.join(wipConfig, "projects.json5"), `${JSON.stringify(records, null, "\t")}\n`);
 	};
@@ -261,11 +298,11 @@ export function createWorld() {
 		git,
 		setReadyTarget,
 		setPriority,
-		repos: {widgets, gadgets, broken, cogs, sprockets, gears},
-		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha, gearSha},
+		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts},
+		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha, gearSha, fragileSha},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
 		fakeRepos: [
-			...[widgets, gadgets, broken, cogs, sprockets].flatMap((r) => [
+			...[widgets, gadgets, broken, cogs, sprockets, bolts].flatMap((r) => [
 				{owner: "acme", name: r.name, bareDir: r.upstreamBare},
 				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `acme/${r.name}`},
 			]),

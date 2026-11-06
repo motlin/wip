@@ -9,7 +9,10 @@
  * Fast-forward main, Push main, and a restart (with no page open, the restarted server must refresh cogs'
  * children when its upstream moves, read from the world DB) after which upstream moves past the one green row: it leaves
  * Ready to land and the buffer rebases and retests it until the ready target is met again, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
- * recorded gh calls. The browser may only reach the wip server and the fake GitHub.
+ * recorded gh calls. Before those, the auto-fix flow: bolts' commit fails its test, the buffer's test-fix agent
+ * (the fake claude, launched through the fake herdr in fake-herdr.mjs) commits a separate fixup, the
+ * card shows "auto-fixed: <failure>" and its review the fixup's diff, and Accept squashes it into one
+ * green commit that lists in Ready to land. The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
  * WIP_E2E_KEEP=true keeps the temp world; it is always kept when a step fails.
@@ -28,6 +31,7 @@ import {chromium} from "playwright";
 
 import {waitForChromiumCrashReports} from "./browser-crash.mjs";
 import {startFakeGitHub} from "./fake-github.mjs";
+import {startFakeHerdr} from "./fake-herdr.mjs";
 import {createWorld, fsmonitorDaemonSockets} from "./landing-world.mjs";
 import {processesHolding, startProcessTree, stopProcessTree} from "./server-process.mjs";
 
@@ -240,7 +244,7 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken, cogs, sprockets, gears} = world.repos;
+	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -254,6 +258,8 @@ async function run() {
 			},
 		],
 	});
+	// The ready buffer's test-fix agent launches here: the command runs with the world's fake claude.
+	const herdr = await startFakeHerdr({socketPath: world.env.HERDR_SOCKET_PATH, env: world.env});
 	const port = await freePort();
 	const baseUrl = `http://localhost:${port}`;
 	const serverLog = path.join(world.dirs.root, "server.log");
@@ -354,6 +360,71 @@ async function run() {
 			await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).innerText(),
 			/PR #1 · waiting for checks, merges itself when they pass/,
 		);
+
+		step("Auto-fix: bolts' commit fails its test, the agent commits a separate fixup, and Accept squashes it");
+		const fragile = world.shas.fragileSha;
+		const failure = "FAIL: fragile.txt breaks the bolts test";
+		// A commit card: the branch tip is the fixup, so the failing commit is not its own branch.
+		const fragileCard = page.getByTestId(`commit-card-${fragile}`);
+		await fragileCard
+			.getByTestId("auto-fixed-marker")
+			.filter({hasText: `auto-fixed: ${failure}`})
+			.waitFor();
+		const fixupSha = world.git(bolts.clone, "rev-parse", "refs/heads/fragile-feature");
+		assert.equal(
+			world.git(bolts.clone, "log", "-1", "--format=%P %s", fixupSha),
+			`${fragile} fixup! Add the fragile feature`,
+			"the fix is a separate fixup commit on the failing commit",
+		);
+		assert.deepEqual(
+			herdr.launches.map(({label, focus, cwd, exitCode}) => ({label, focus, exitCode, cwd: path.dirname(cwd)})),
+			[
+				{
+					label: "wip:bolts:test-fix:fragile-feature",
+					focus: false,
+					exitCode: 0,
+					cwd: path.join(world.dirs.cache, "wip", "test-fix-worktrees", "bolts"),
+				},
+			],
+			"one unfocused test-fix agent, in a throwaway worktree",
+		);
+		assert.equal(
+			await readyRow(page, "Add the fragile feature").count(),
+			0,
+			"an unreviewed auto-fix is not ready to land",
+		);
+		await fragileCard.getByRole("button", {name: "Review fix"}).click();
+		const review = fragileCard.getByTestId("auto-fix-review");
+		await review
+			.getByTestId("auto-fix-diff")
+			.filter({hasText: `-${failure}`})
+			.waitFor();
+		assert.match(await review.getByTestId("auto-fix-diff").innerText(), /deleted file mode 100644/);
+		assert.match(await review.getByTestId("auto-fix-failure").innerText(), new RegExp(failure));
+		await review.getByRole("button", {name: "Accept fix"}).click();
+		const fragileRow = readyRow(page, "Add the fragile feature");
+		await fragileRow.getByRole("button", {name: "Open PR"}).waitFor();
+		const squashed = world.git(bolts.clone, "rev-parse", "refs/heads/fragile-feature");
+		const commitOf = (sha) => world.git(bolts.clone, "log", "-1", "--format=%P%n%an <%ae> %aI%n%B", sha);
+		assert.deepEqual(
+			{
+				commits: world.git(bolts.clone, "rev-list", "upstream/main..fragile-feature"),
+				commit: commitOf(squashed),
+				tree: world.git(bolts.clone, "rev-parse", `${squashed}^{tree}`),
+			},
+			{
+				commits: squashed,
+				commit: commitOf(fragile),
+				tree: world.git(bolts.clone, "rev-parse", `${fixupSha}^{tree}`),
+			},
+			"one commit: the original's parent, author and message with the fixup's tree",
+		);
+		assert.match(world.git(bolts.clone, "test", "results", squashed), /^good /, "the squashed commit is green");
+		await fragileRow.locator(`a[href="/item/bolts/${squashed}"]`).waitFor();
+		// It lands upstream before the other flows, so the restart's ready target of 1 still counts only sprockets.
+		world.git(bolts.clone, "push", "--quiet", "upstream", `${squashed}:refs/heads/main`);
+		world.git(bolts.clone, "fetch", "--quiet", "upstream");
+		await fragileRow.waitFor({state: "detached"});
 
 		step("Open PR on a ready row");
 		const ready = await openPr(page, "Add the ready feature", `${gh.url}/acme/widgets/pull/2`);
@@ -567,6 +638,7 @@ async function run() {
 		await browser?.close();
 		await stopProcessTree(server);
 		await gh.close();
+		await herdr.close();
 		const dbPath = world.env.WIP_DB_PATH;
 		const holders = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`].flatMap((file) => processesHolding(file));
 		if (holders.length > 0) {

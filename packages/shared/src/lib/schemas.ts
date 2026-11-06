@@ -280,6 +280,11 @@ export const ProjectInfoSchema = z.object({
 	branchCount: z.number(),
 	hasTestConfigured: z.boolean(),
 	rebaseInProgress: z.boolean(),
+	/**
+	 * The git top level enclosing dir (dir itself for a repo root); a nested project shares its
+	 * parent's. Background repo work runs once per top level (see sharedRepoOwners).
+	 */
+	gitTopLevel: z.string().optional(),
 });
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 

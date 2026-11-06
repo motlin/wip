@@ -11,6 +11,7 @@ import {git, parseRemoteUrl} from "./git-exec.js";
 import {getGitTestStatuses} from "./git-test-cli.js";
 import {getMiseEnv} from "./mise-env.js";
 import {inventoryExists, loadInventory, type Inventory} from "./inventory.js";
+import {gitTopLevelOf} from "./git-repo-owner.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
 import {testWorktreeOf} from "./registry-review.js";
 import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
@@ -722,6 +723,7 @@ async function gatherProjectInfo(
 
 	const rebaseInProgress =
 		fs.existsSync(path.join(dir, ".git", "rebase-merge")) || fs.existsSync(path.join(dir, ".git", "rebase-apply"));
+	const gitTopLevel = gitTopLevelOf(dir);
 
 	return {
 		name,
@@ -736,6 +738,7 @@ async function gatherProjectInfo(
 		branchCount,
 		hasTestConfigured: hasTest,
 		rebaseInProgress,
+		...(gitTopLevel === undefined ? {} : {gitTopLevel}),
 	} satisfies ProjectInfo;
 }
 

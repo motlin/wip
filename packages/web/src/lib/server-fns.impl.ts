@@ -111,6 +111,7 @@ import {
 	inventoryExists,
 	loadInventory,
 	selectTrackedProjects,
+	sharedRepoOwners,
 	readTemplateTexts,
 	saveInventory,
 	summarizeRegistry,
@@ -1759,7 +1760,12 @@ async function readMainPush(p: ProjectInfo): Promise<MainPush | null> {
  */
 export async function getMainPushesHandler(data: {project?: string}): Promise<MainPush[]> {
 	return traced("getMainPushes", async () => {
-		const projects = (await ensureProjects()).filter((p) => data.project === undefined || p.name === data.project);
+		const all = await ensureProjects();
+		// A git repo's main is listed and pre-tested once, under the project that owns the repo.
+		const owners = sharedRepoOwners(all);
+		const projects = all.filter(
+			(p) => !owners.has(p.name) && (data.project === undefined || p.name === data.project),
+		);
 		const pushes = await Promise.all(
 			projects.map(async (p) => {
 				try {

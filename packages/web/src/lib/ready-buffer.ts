@@ -106,7 +106,10 @@ export interface BufferRepo {
 	 * toward the ready target so only that many are in flight.
 	 */
 	verifyByDraftPr?: boolean;
-	/** The registry asks for draft-PR verification but it isn't in effect: why (the repo tests locally). */
+	/**
+	 * Why the repo is listed with a note: draft-PR verification the registry asks for isn't in effect
+	 * (the repo tests locally), or the project shares another listed project's git repo (no candidates).
+	 */
 	verifyNotice?: string;
 	/** In rank order (shortest remaining job first). */
 	candidates: BufferCandidate[];
@@ -279,6 +282,11 @@ export interface BufferRepoContext {
 	/** Why the draft-PR verification the registry asks for isn't in effect. */
 	verifyNotice?: string;
 	/**
+	 * The project that owns this project's git repo (see sharedRepoOwners): background work runs there
+	 * only, so this one gets no candidates, never stops the line, and says why once.
+	 */
+	repoOwner?: string;
+	/**
 	 * The merge status cached for a sha against the current upstream tip. It overrides the children
 	 * cache's, which a refresh that ran before the merge-tree check on a new upstream tip left stale.
 	 */
@@ -308,6 +316,17 @@ export function bufferRepoFromChildren(
 	};
 	// A commit already fast-forwarded onto local main waits for the user's push, not a landing. An
 	// empty commit (measured, zero files changed) carries no change to land.
+	if (context.repoOwner !== undefined) {
+		return {
+			name: project.name,
+			upstreamRed: false,
+			ownership: context.identity === null ? "foreign" : upstreamOwnership(project.remote, context.identity),
+			localChanges: project.dirty,
+			checkedOutBranches: [],
+			verifyNotice: `inside ${context.repoOwner}'s git repo; its branches are advanced, tested and pushed under ${context.repoOwner} only`,
+			candidates: [],
+		};
+	}
 	const work = rankGitChildren(
 		children
 			.filter((child) => child.kind !== "upstream_ci" && child.onLocalMain !== true && child.files !== 0)

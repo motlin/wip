@@ -518,6 +518,7 @@ export {
 	selectTrackedProjects,
 	trustsPatchIdGreen,
 } from "./lib/inventory.js";
+export {gitTopLevelOf, type RepoProject, sharedRepoOwners} from "./lib/git-repo-owner.js";
 export {
 	type BuildInventoryOptions,
 	type InventoryConflict,

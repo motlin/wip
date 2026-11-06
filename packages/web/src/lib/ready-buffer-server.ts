@@ -64,13 +64,30 @@ async function snapshot(): Promise<BufferRepo[]> {
 		prRepository,
 		pushesInBackground,
 		readDraftPrRepoFacts,
+		sharedRepoOwners,
 		trustsPatchIdGreen,
 	} = await import("@wip/shared");
 	const {listProjects} = await import("./server-fns.js");
 	const identity = await getGitHubIdentity();
 	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r]));
 	const repos: BufferRepo[] = [];
-	for (const p of await listProjects()) {
+	const projects = await listProjects();
+	// Once per git repo: a project nested in another listed project's repo is never advanced here.
+	const owners = sharedRepoOwners(projects);
+	for (const p of projects) {
+		const repoOwner = owners.get(p.name);
+		if (repoOwner !== undefined) {
+			repos.push(
+				bufferRepoFromChildren(p, [], {
+					identity,
+					checkedOutBranches: [],
+					onHold: () => false,
+					override: () => undefined,
+					repoOwner,
+				}),
+			);
+			continue;
+		}
 		// Last known, not just current: an action like Open PR invalidates the cache, and until the
 		// refresh lands the repo still has its rows rather than none.
 		const children = getLastKnownChildren(p.name);

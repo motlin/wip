@@ -4491,6 +4491,41 @@ describe("getMainPushesHandler", () => {
 		]);
 	});
 
+	it("lists and pre-tests a shared git repo's main once, under the project whose dir is its top level", async () => {
+		const {dir} = await mainAheadGreenGreenUnknown();
+		const nested = join(dir, "nested");
+		await makeDirectory(nested);
+		seedProjectCache([
+			makeProject({name: "outer/nested", dir: nested, gitTopLevel: dir}),
+			makeProject({name: "outer", dir, gitTopLevel: dir}),
+		]);
+		const cache = await mkdtemp(join(tmpdir(), "wip-cache-"));
+		tmpDirs.push(cache, `${dir}-test-worktree`);
+		vi.stubEnv("XDG_CACHE_HOME", cache);
+		readyBufferOverride.running = true;
+		workQueue.setProbe({loadPerCore: () => 0, freeMemRatio: () => 1});
+		workQueue.setOnBattery(false);
+		const enqueueSpy = vi.spyOn(workQueue, "enqueue");
+		try {
+			const {getMainPushesHandler} = await import("./server-fns.impl.js");
+			const rows = await getMainPushesHandler({});
+			const tests = enqueueSpy.mock.calls.flatMap(([job], index) => {
+				const handle = enqueueSpy.mock.results[index]?.value as ReturnType<typeof workQueue.enqueue>;
+				return job.kind === "main-push-test" ? [{project: job.project, handle}] : [];
+			});
+			await Promise.all(tests.map(async (t) => t.handle.settled));
+
+			expect({
+				rows: rows.map((r) => r.project),
+				tested: tests.map((t) => t.project),
+			}).toStrictEqual({rows: ["outer"], tested: ["outer"]});
+		} finally {
+			enqueueSpy.mockRestore();
+			workQueue.setProbe(null);
+			readyBufferOverride.running = false;
+		}
+	});
+
 	it("gives a local main that is only behind its upstream branch no row", async () => {
 		const {dir} = await repoWithRemote();
 		await commitNewFile(dir, "upstream.txt");

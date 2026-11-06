@@ -90,6 +90,20 @@ describe("registry-based discovery", () => {
 		});
 	});
 
+	it("records each project's git top level, the enclosing repo for a nested record", async () => {
+		const parent = createRepo(projectsDir, "klass");
+		const nested = join(parent, "archetype", "resources");
+		mkdirSync(nested, {recursive: true});
+		saveInventory([record("klass", parent, "own"), record("klass/archetype", nested, "nested")]);
+
+		const projects = await discoverAllProjects([projectsDir]);
+
+		expect(sorted(projects.map((p) => `${p.name} ${p.gitTopLevel ?? "?"}`))).toEqual([
+			`klass ${parent}`,
+			`klass/archetype ${parent}`,
+		]);
+	});
+
 	it("falls back to the directory scan when no registry exists", async () => {
 		createRepo(projectsDir, "scanned");
 

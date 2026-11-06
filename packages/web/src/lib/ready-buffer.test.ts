@@ -1841,6 +1841,27 @@ describe("bufferRepoFromChildren with draft-PR verification", () => {
 		});
 	});
 
+	it("gives a project inside another project's git repo no candidates and says why once", () => {
+		const nestedChildren = [
+			makeChild({sha: sha("a"), branch: "ready", commitsBehind: 0, testStatus: "passed", patchId: "pa"}),
+			makeChild({kind: "upstream_ci", sha: sha("f"), checkStatus: "failed", testStatus: "unknown"}),
+		];
+
+		const mapped = bufferRepoFromChildren(project("motlin/wip"), nestedChildren, {...context, repoOwner: "klass"});
+
+		expect({
+			candidates: mapped.candidates,
+			upstreamRed: mapped.upstreamRed,
+			backgroundPush: mapped.backgroundPush,
+			verifyNotice: mapped.verifyNotice,
+		}).toStrictEqual({
+			candidates: [],
+			upstreamRed: false,
+			backgroundPush: undefined,
+			verifyNotice: "inside klass's git repo; its branches are advanced, tested and pushed under klass only",
+		});
+	});
+
 	it("carries why verification is not in effect", () => {
 		expect(
 			bufferRepoFromChildren(project("motlin/wip"), [], {...context, verifyNotice: "why not"}).verifyNotice,

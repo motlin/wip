@@ -863,7 +863,7 @@ export function ReadyToLandSection({
 			)}
 			{verifyNotices.map((notice) => (
 				<p
-					key={notice.project}
+					key={`${notice.project}:${notice.reason}`}
 					data-testid="ready-to-land-verify-notice"
 					className="mb-2 text-xs text-text-300"
 				>

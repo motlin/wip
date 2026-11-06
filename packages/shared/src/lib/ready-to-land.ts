@@ -53,7 +53,8 @@ export const ReadyToLandStateSchema = z.object({
 	pausedOnBattery: z.literal(true).optional(),
 	/**
 	 * Per-repo notes, once each: draft-PR verification the registry asks for isn't in effect (the repo
-	 * tests locally), or the project sits inside another listed project's git repo (no background work).
+	 * tests locally), the project sits inside another listed project's git repo (no background work),
+	 * or Claude does not trust the repo, so its background agents were not launched.
 	 */
 	verifyNotices: z.array(z.object({project: z.string(), reason: z.string()})).optional(),
 });

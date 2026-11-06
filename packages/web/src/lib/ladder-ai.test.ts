@@ -61,6 +61,7 @@ function makeAi(available: boolean): {
 				return Promise.resolve(available);
 			},
 			overrides: {
+				untrustedFolder: () => null,
 				results: async () => Promise.resolve("green"),
 				prepare: async (project) =>
 					Promise.resolve({

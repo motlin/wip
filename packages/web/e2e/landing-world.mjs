@@ -73,6 +73,8 @@ function createRoot() {
 	delete env.GH_TOKEN;
 	delete env.WIP_READY_BUFFER;
 	delete env.WIP_TRACING;
+	// Claude's folder trust is read from HOME's .claude.json (the world's), never the user's.
+	delete env.CLAUDE_CONFIG_DIR;
 	delete env.UPSTREAM_REMOTE;
 	delete env.UPSTREAM_BRANCH;
 	return {dirs, env, ghLog};
@@ -258,6 +260,11 @@ export function createWorld() {
 	})();
 	// The failing run's log names the failure: the test prints RED's line before failing.
 	git(bolts.clone, "config", "test.default.command", "if test -e RED; then cat RED; exit 1; fi");
+	// wip launches a background agent only where Claude trusts the repo (its .claude.json, read-only).
+	fs.writeFileSync(
+		path.join(dirs.home, ".claude.json"),
+		JSON.stringify({projects: {[bolts.clone]: {hasTrustDialogAccepted: true}}}),
+	);
 
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.

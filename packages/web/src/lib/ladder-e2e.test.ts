@@ -45,12 +45,19 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 	const saved: Record<string, string | undefined> = {};
 
 	beforeEach(() => {
-		for (const key of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME"]) saved[key] = process.env[key];
+		for (const key of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "CLAUDE_CONFIG_DIR"]) saved[key] = process.env[key];
 		root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ladder-e2e-")));
 		process.env["XDG_CONFIG_HOME"] = path.join(root, "config");
 		process.env["XDG_CACHE_HOME"] = path.join(root, "cache");
 		origin = path.join(root, "origin.git");
 		clone = path.join(root, "clone");
+		// Claude trusts the clone, so its throwaway worktrees' agents launch (read through the real check).
+		process.env["CLAUDE_CONFIG_DIR"] = path.join(root, "claude");
+		fs.mkdirSync(path.join(root, "claude"));
+		fs.writeFileSync(
+			path.join(root, "claude", ".claude.json"),
+			JSON.stringify({projects: {[clone]: {hasTrustDialogAccepted: true}}}),
+		);
 		const seed = path.join(root, "seed");
 		pushMarker = path.join(root, "push-attempted");
 
@@ -189,7 +196,9 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			expect(remoteRefs(origin)).toBe(remoteBefore);
 			// Everything the test touched lives under the temp root.
 			expect(fs.readdirSync(root).toSorted()).toStrictEqual(
-				["cache", "clone", "config", "origin.git", "seed"].filter((n) => fs.existsSync(path.join(root, n))),
+				["cache", "claude", "clone", "config", "origin.git", "seed"].filter((n) =>
+					fs.existsSync(path.join(root, n)),
+				),
 			);
 		},
 		180_000,

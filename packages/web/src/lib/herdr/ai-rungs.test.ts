@@ -101,10 +101,70 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 		memory: new RunMemory(),
 		identity: async (_p, branch) => Promise.resolve(`patch-${branch}`),
 		failureLog: async () => Promise.resolve(""),
+		untrustedFolder: () => null,
 		...overrides,
 	};
 	return {deps, calls};
 }
+
+/** Deps for a repo Claude does not trust: records each trust check and every prepare. */
+function untrustedDeps(): {deps: AiRungDeps; calls: Calls; trust: [string, string | null][]} {
+	const trust: [string, string | null][] = [];
+	const {deps, calls} = makeDeps({
+		untrustedFolder: (p) => p.path,
+		onTrust: (name, folder) => {
+			trust.push([name, folder]);
+		},
+	});
+	const prepare = deps.prepare;
+	const prepareTestFix = deps.prepareTestFix;
+	deps.prepare = async (p, branch) => {
+		calls.order.push("prepare");
+		return prepare(p, branch);
+	};
+	deps.prepareTestFix = async (p, branch) => {
+		calls.order.push("prepare");
+		return prepareTestFix(p, branch);
+	};
+	return {deps, calls, trust};
+}
+
+describe("agents never start in a folder Claude does not trust", () => {
+	const signal = new AbortController().signal;
+
+	it("skips the conflict and test-fix agents before creating a worktree and reports the folder to trust", async () => {
+		const conflict = untrustedDeps();
+		const fixup = untrustedDeps();
+		const rung = untrustedDeps();
+		expect({
+			conflict: await resolveBranchConflict(project, "feat-a", conflict.deps, signal),
+			fixup: await fixTestAsFixup(project, "feat-a", "abc", "/logs/x.log", fixup.deps, signal),
+			rung: await runAiTestFixRung(project, "feat-a", rung.deps),
+			order: [conflict.calls.order, fixup.calls.order, rung.calls.order],
+			trust: [conflict.trust, fixup.trust, rung.trust],
+		}).toStrictEqual({
+			conflict: "stuck",
+			fixup: null,
+			rung: "stuck",
+			order: [[], [], []],
+			trust: [[["demo", "/tmp/demo"]], [["demo", "/tmp/demo"]], [["demo", "/tmp/demo"]]],
+		});
+	});
+
+	it("reports a trusted folder before launching, so a notice from an earlier skip clears", async () => {
+		const trust: [string, string | null][] = [];
+		const {deps, calls} = makeDeps({
+			onTrust: (name, folder) => {
+				trust.push([name, folder]);
+			},
+		});
+		expect({
+			result: await resolveBranchConflict(project, "feat-a", deps, signal),
+			order: calls.order,
+			trust,
+		}).toStrictEqual({result: "resolved", order: ["launch", "wait", "finish"], trust: [["demo", null]]});
+	});
+});
 
 describe("resolveBranchConflict", () => {
 	const signal = new AbortController().signal;

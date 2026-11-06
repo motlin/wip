@@ -23,6 +23,7 @@ import {
 import {tracedExeca} from "@wip/shared/services/traced-execa.js";
 import {repoResource} from "../repo-resource.js";
 import {workQueue} from "../shared-work-queue.js";
+import {recordClaudeTrust, untrustedWorktreeFolder} from "./claude-trust.js";
 import type {HerdrResult} from "./client.js";
 import {launchInHerdr, type HerdrLaunchRequest, type HerdrLaunchResult} from "./launch.js";
 import {waitForHerdrAgent, type HerdrWaitOptions, type HerdrWaitResult} from "./watch.js";
@@ -59,6 +60,23 @@ export interface AiRungDeps {
 	failureLog?: (project: LadderRunProject, branch: string) => Promise<string>;
 	/** Called when a repeated failure signature stops a branch, so the red set can show it. */
 	onRepeatedFailure?: (branch: string, signature: string) => void;
+	/**
+	 * The folder Claude must trust before an agent can start in a throwaway worktree of the project's
+	 * repo, or null when it does. Checked before each worktree is made; an untrusted repo launches no agent.
+	 */
+	untrustedFolder?: (project: LadderRunProject) => string | null;
+	/** Reports each trust check: the folder to trust, or null once trusted. */
+	onTrust?: (project: string, folder: string | null) => void;
+}
+
+/**
+ * Whether Claude trusts the project's throwaway worktrees, so an agent there starts instead of
+ * waiting at the folder-trust prompt; reports the check through onTrust either way.
+ */
+function claudeTrusts(project: LadderRunProject, deps: AiRungDeps): boolean {
+	const folder = deps.untrustedFolder?.(project) ?? null;
+	deps.onTrust?.(project.name, folder);
+	return folder === null;
 }
 
 /** Process-wide memory of failure signatures per change, shared by the conflict and test/fix rungs. */
@@ -256,6 +274,8 @@ export function aiRungDeps(overrides: Partial<AiRungDeps> = {}): AiRungDeps {
 		prepare: prepareConflictWorktree,
 		prepareTestFix: prepareTestFixWorktree,
 		timeoutMs: getAiRungTimeoutMs(),
+		untrustedFolder: (project) => untrustedWorktreeFolder(project.path),
+		onTrust: recordClaudeTrust,
 		...overrides,
 	};
 }
@@ -263,8 +283,8 @@ export function aiRungDeps(overrides: Partial<AiRungDeps> = {}): AiRungDeps {
 /**
  * Resolves one branch's rebase conflict with `claude "/git:conflicts <branch>"` in a herdr tab, in a
  * throwaway worktree stopped on the conflict; runs inside the caller's queue job. "resolved" once the
- * rebase finished (the branch ref moved), else "stuck": no worktree, a repeated failure signature,
- * no tab, a timeout, or a rebase the agent left unfinished.
+ * rebase finished (the branch ref moved), else "stuck": Claude does not trust the repo, no worktree,
+ * a repeated failure signature, no tab, a timeout, or a rebase the agent left unfinished.
  */
 export async function resolveBranchConflict(
 	project: LadderRunProject,
@@ -272,6 +292,7 @@ export async function resolveBranchConflict(
 	deps: AiRungDeps,
 	signal: AbortSignal,
 ): Promise<"resolved" | "stuck"> {
+	if (!claudeTrusts(project, deps)) return "stuck";
 	const prepared = await deps.prepare(project, branch);
 	if (!prepared) return "stuck";
 	let agentDone = false;
@@ -364,6 +385,7 @@ export async function runAiTestFixRung(
 		project: project.name,
 		costClass: "ai",
 		run: async (signal) => {
+			if (!claudeTrusts(project, deps)) return;
 			const prepared = await deps.prepareTestFix(project, branch);
 			if (!prepared) return;
 			try {
@@ -401,7 +423,8 @@ function fixupPrompt(failingSha: string, logPath: string): string {
  * branch's throwaway worktree, told to commit a separate `fixup!` commit on top of `failingSha`.
  * Runs inside the caller's queue job. Returns the fixup sha only when the branch tip is a new
  * `fixup!` commit whose parent is the unchanged `failingSha`; null when the agent folded the fix
- * in, left no fixup, timed out or could not launch, or the same change already failed this way.
+ * in, left no fixup, timed out or could not launch, the same change already failed this way, or
+ * Claude does not trust the repo (no agent is launched to wait at its folder-trust prompt).
  */
 export async function fixTestAsFixup(
 	project: LadderRunProject,
@@ -419,6 +442,7 @@ export async function fixTestAsFixup(
 		deps.onRepeatedFailure?.(branch, repeated);
 		return null;
 	}
+	if (!claudeTrusts(project, deps)) return null;
 	const prepared = await deps.prepareTestFix(project, branch);
 	if (!prepared) return null;
 	try {

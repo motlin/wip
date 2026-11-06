@@ -9,11 +9,14 @@ import {sanitizeGitEnv} from "./git-env.js";
 
 sanitizeGitEnv(process.env);
 
-// Keep every test off the real ~/.config/wip (inventory) and ~/.local/share/wip (database).
+// Keep every test off the real ~/.config/wip (inventory), ~/.local/share/wip (database),
+// ~/.cache/wip (worktrees, logs) and Claude's ~/.claude.json (folder trust).
 // Tests that need a specific config still stub their own XDG_CONFIG_HOME on top of this.
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-home-"));
 process.env.XDG_CONFIG_HOME = path.join(testHome, "config");
 process.env.XDG_DATA_HOME = path.join(testHome, "data");
+process.env.XDG_CACHE_HOME = path.join(testHome, "cache");
+process.env.CLAUDE_CONFIG_DIR = path.join(testHome, "claude");
 delete process.env.WIP_DB_PATH;
 // Logging is opt-in; an ambient WIP_SUBPROCESS_LOGGING would add `logs` to action results. Tests that need it set it themselves.
 delete process.env.WIP_SUBPROCESS_LOGGING;

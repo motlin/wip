@@ -238,6 +238,11 @@ export interface ReadyBufferDeps {
 	firstSeen?: (project: string, id: string) => string | undefined;
 	/** Whether the machine runs on battery; while it does, a pull starts no background work. */
 	onBattery?: () => boolean;
+	/**
+	 * Folders Claude must trust before the buffer's background agents (test fix, conflict resolution)
+	 * can start, by project: a launch there was skipped. Ready to land names each listed repo's once.
+	 */
+	untrustedAgentFolders?: () => ReadonlyMap<string, string>;
 	/** The clock that times a held draft-PR publish's retry; Date.now by default. */
 	now?: () => number;
 	/**
@@ -245,6 +250,11 @@ export interface ReadyBufferDeps {
 	 * nothing awaits; `context` is `project:id`. Defaults to console.error.
 	 */
 	warn?: (error: unknown, context: string) => void;
+}
+
+/** Ready to land's note for a repo whose background agents Claude would stop at its folder-trust prompt. */
+function claudeTrustNotice(folder: string): string {
+	return `trust ${folder} in Claude (open \`claude\` there once and accept) so background fixes can run`;
 }
 
 export interface ReadyBuffer {
@@ -747,9 +757,14 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				}
 			}
 		}
-		const verifyNotices = lastRepos.flatMap((r) =>
-			r.verifyNotice === undefined ? [] : [{project: r.name, reason: r.verifyNotice}],
-		);
+		const untrusted = deps.untrustedAgentFolders?.() ?? new Map<string, string>();
+		const verifyNotices = lastRepos.flatMap((r) => {
+			const folder = untrusted.get(r.name);
+			return [
+				...(r.verifyNotice === undefined ? [] : [{project: r.name, reason: r.verifyNotice}]),
+				...(folder === undefined ? [] : [{project: r.name, reason: claudeTrustNotice(folder)}]),
+			];
+		});
 		// The ledger is read only for the items shown.
 		const items = (entries: Entry[]) => entries.map(([repo, c]) => stateItem(repo, c));
 		return {

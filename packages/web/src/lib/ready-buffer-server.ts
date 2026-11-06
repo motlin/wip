@@ -487,8 +487,10 @@ export async function startReadyBuffer(
 		return;
 	}
 	const power = await startPowerWatch(() => currentReadyBuffer());
+	const {untrustedAgentFolders} = await import("./herdr/claude-trust.js");
 	const started = createReadyBuffer({
 		onBattery: () => power.onBattery(),
+		untrustedAgentFolders,
 		warn: (error, item) => {
 			log.general.error({error, item}, "Ready-buffer item failed");
 		},

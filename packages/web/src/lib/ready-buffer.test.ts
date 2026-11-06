@@ -117,6 +117,8 @@ function harness(options: {
 	onBattery?: () => boolean;
 	/** The buffer's clock; real time unless a test says otherwise. */
 	now?: () => number;
+	/** Folders Claude must trust before background agents can run, by project; none unless a test says otherwise. */
+	untrustedAgentFolders?: () => ReadonlyMap<string, string>;
 }): Harness {
 	const queue = createWorkQueue({
 		globalConcurrency: 4,
@@ -184,6 +186,7 @@ function harness(options: {
 		...(options.firstSeen === undefined ? {} : {firstSeen: options.firstSeen}),
 		...(options.onBattery === undefined ? {} : {onBattery: options.onBattery}),
 		...(options.now === undefined ? {} : {now: options.now}),
+		...(options.untrustedAgentFolders === undefined ? {} : {untrustedAgentFolders: options.untrustedAgentFolders}),
 	});
 	return {
 		buffer,
@@ -1182,6 +1185,31 @@ describe("createReadyBuffer", () => {
 
 		expect(h.buffer.state().verifyNotices).toStrictEqual([
 			{project: "a", reason: "alice/a is private (GitHub Actions minutes cost money); testing locally"},
+		]);
+	});
+
+	it("says once which folder to trust in Claude when an agent launch was skipped, beside the repo's other note", async () => {
+		const untrusted = new Map([
+			["a", "/repos/a"],
+			["gone", "/repos/gone"],
+		]);
+		const h = harness({
+			repos: () => [
+				repo("a", {candidates: [], verifyNotice: "alice/a is private; testing locally"}),
+				repo("b", {candidates: []}),
+			],
+			untrustedAgentFolders: () => untrusted,
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect(h.buffer.state().verifyNotices).toStrictEqual([
+			{project: "a", reason: "alice/a is private; testing locally"},
+			{
+				project: "a",
+				reason: "trust /repos/a in Claude (open `claude` there once and accept) so background fixes can run",
+			},
 		]);
 	});
 

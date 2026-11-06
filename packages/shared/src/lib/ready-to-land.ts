@@ -146,6 +146,42 @@ export function readyRowView(
 }
 
 /**
+ * Finds a row's commit among the cached children. The children list each sha once across projects,
+ * so a commit shared by two projects on the same repo sits under only one of them: a row whose own
+ * project lacks it falls back to the same sha elsewhere, for its subject, PR and checks. A rebase
+ * (Open PR on a behind row) changes the sha but not the change, and the buffer's state and the
+ * children reach the page separately: a row whose sha the children lack yet finds its change by the
+ * patch-id it is keyed by, so it keeps its subject and PR until both caught up.
+ */
+export function commitLookup(
+	commits: readonly GitChildResult[],
+): (item: Pick<ReadyToLandItem, "project" | "id" | "sha">) => GitChildResult | undefined {
+	const byKey = new Map(commits.map((c) => [key(c.project, c.sha), c]));
+	const bySha = new Map(commits.map((c) => [c.sha, c]));
+	const byChange = new Map(
+		commits.flatMap((c) => (c.patchId === undefined ? [] : [[key(c.project, c.patchId), c] as const])),
+	);
+	return (item) =>
+		byKey.get(key(item.project, item.sha)) ?? bySha.get(item.sha) ?? byChange.get(key(item.project, item.id));
+}
+
+/**
+ * The one "ready" count (up to date with upstream + green, as the buffer lists it): the Ready to land
+ * rows whose view is "land". Both that section's heading and the queue header use it; zero while the
+ * buffer reports no state.
+ */
+export function landableCount(
+	state: Pick<ReadyToLandState, "ready" | "awaitingChecks" | "checksFailed"> | null | undefined,
+	commits: readonly GitChildResult[],
+): number {
+	if (state === null || state === undefined) return 0;
+	const commitOf = commitLookup(commits);
+	return [...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])].filter(
+		(item) => readyRowView(item, commitOf(item)) === "land",
+	).length;
+}
+
+/**
  * Why nothing lands in `project` while its own upstream is red (it is in `stoppedProjects`), or null
  * when it may land. A red upstream stops that repo's line: its next action is fixing upstream, and
  * no commit lands on top, even one green on the red tip (a local test can't see a red CI check).

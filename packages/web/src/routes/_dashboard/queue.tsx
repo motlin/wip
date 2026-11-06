@@ -88,8 +88,15 @@ function QueueLayout() {
 	const actionsBlocked = useActionsBlocked(readyToLand, workItems.gitChildren);
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
-		() => flowCounts({projects, gitChildren: workItems.gitChildren, todos: workItems.todos, slots: readySlots}),
-		[projects, workItems, readySlots],
+		() =>
+			flowCounts({
+				projects,
+				gitChildren: workItems.gitChildren,
+				todos: workItems.todos,
+				readyToLand,
+				slots: readySlots,
+			}),
+		[projects, workItems, readyToLand, readySlots],
 	);
 	const waiting = commitsWaiting(counts, readyToLand);
 

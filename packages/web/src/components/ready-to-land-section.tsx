@@ -5,6 +5,8 @@ import {
 	openPrRefusal,
 	prChecksFailed,
 	prChecksPending,
+	commitLookup,
+	landableCount,
 	readyRowView,
 	stableRowOrder,
 	stoppedLineRefusal,
@@ -61,26 +63,6 @@ export function landingAction(
 	}
 	const branch = item.branch ?? commit?.branch;
 	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch, autoMerge: autoMergeAllowed};
-}
-
-/**
- * Finds a row's commit among the cached children. The children list each sha once across projects,
- * so a commit shared by two projects on the same repo sits under only one of them: a row whose own
- * project lacks it falls back to the same sha elsewhere, for its subject, PR and checks. A rebase
- * (Open PR on a behind row) changes the sha but not the change, and the buffer's state and the
- * children reach the page separately: a row whose sha the children lack yet finds its change by the
- * patch-id it is keyed by, so it keeps its subject and PR until both caught up.
- */
-function commitLookup(
-	commits: readonly GitChildResult[],
-): (item: Pick<ReadyToLandItem, "project" | "id" | "sha">) => GitChildResult | undefined {
-	const byKey = new Map(commits.map((c) => [`${c.project}:${c.sha}`, c]));
-	const bySha = new Map(commits.map((c) => [c.sha, c]));
-	const byChange = new Map(
-		commits.flatMap((c) => (c.patchId === undefined ? [] : [[`${c.project}:${c.patchId}`, c] as const])),
-	);
-	return (item) =>
-		byKey.get(`${item.project}:${item.sha}`) ?? bySha.get(item.sha) ?? byChange.get(`${item.project}:${item.id}`);
 }
 
 function sizeText(commit: GitChildResult | undefined): string | null {
@@ -864,7 +846,7 @@ export function ReadyToLandSection({
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	const stopped = new Set(state.stoppedProjects);
-	const landable = rows.filter((row) => row.view === "land").length;
+	const landable = landableCount(state, commits);
 
 	return (
 		<section className="mb-6 rounded-lg border border-status-green/40 bg-bg-100 p-4">

@@ -319,10 +319,13 @@ export function bufferRepoFromChildren(
 		candidates: onePerPatchId(
 			work.map((child) => {
 				const override = child.patchId === undefined ? undefined : context.override(child.patchId);
-				// A draft PR the buffer published for verification: its checks stand in for the local test, so
-				// it shows as awaiting or failed checks below instead of dropping out until they pass.
+				// A draft PR the buffer published for verification, or any PR whose head is this exact sha (an
+				// amend pushed by hand, or a restart that dropped the in-memory marker): its checks stand in for
+				// the local test, so it shows as awaiting or failed checks below instead of dropping out.
 				const verifiedByPr =
-					context.verifyByDraftPr === true && child.localTestSkipped === true && child.prNumber !== undefined;
+					context.verifyByDraftPr === true &&
+					child.prNumber !== undefined &&
+					(child.localTestSkipped === true || child.prHeadSha === child.sha);
 				const green =
 					verifiedByPr ||
 					isGreen({

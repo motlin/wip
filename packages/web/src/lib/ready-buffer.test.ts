@@ -1732,6 +1732,82 @@ describe("bufferRepoFromChildren with draft-PR verification", () => {
 		});
 	});
 
+	it("lists a commit whose PR checks ran on that exact sha without the buffer's in-memory marker, as after an amend or a restart", () => {
+		const unmarked = [
+			makeChild({
+				sha: sha("a"),
+				branch: "a",
+				commitsBehind: 0,
+				prNumber: 1,
+				prHeadSha: sha("a"),
+				checkStatus: "passed",
+				testStatus: "unknown",
+			}),
+			makeChild({
+				sha: sha("b"),
+				branch: "b",
+				commitsBehind: 0,
+				prNumber: 2,
+				prHeadSha: sha("b"),
+				checkStatus: "pending",
+				testStatus: "unknown",
+			}),
+			makeChild({
+				sha: sha("c"),
+				branch: "c",
+				commitsBehind: 0,
+				prNumber: 3,
+				prHeadSha: sha("9"),
+				checkStatus: "passed",
+				testStatus: "unknown",
+			}),
+			makeChild({
+				sha: sha("d"),
+				branch: "d",
+				commitsBehind: 0,
+				prNumber: 4,
+				checkStatus: "passed",
+				testStatus: "unknown",
+			}),
+			makeChild({
+				sha: sha("e"),
+				branch: "e",
+				commitsBehind: 1,
+				prNumber: 5,
+				prHeadSha: sha("e"),
+				checkStatus: "passed",
+				testStatus: "unknown",
+			}),
+		];
+		expect({
+			verified: draftView(
+				bufferRepoFromChildren(project("motlin/wip"), unmarked, {...context, verifyByDraftPr: true}),
+			),
+			unverified: draftView(bufferRepoFromChildren(project("motlin/wip"), unmarked, context)),
+		}).toStrictEqual({
+			verified: {
+				verifyByDraftPr: true,
+				candidates: [
+					[sha("a"), "ready", false, false],
+					[sha("b"), "ready", true, false],
+					[sha("c"), "unready", false, false],
+					[sha("d"), "unready", false, false],
+					[sha("e"), "unready", false, false],
+				],
+			},
+			unverified: {
+				verifyByDraftPr: undefined,
+				candidates: [
+					[sha("a"), "unready", false, false],
+					[sha("b"), "unready", false, false],
+					[sha("c"), "unready", false, false],
+					[sha("d"), "unready", false, false],
+					[sha("e"), "unready", false, false],
+				],
+			},
+		});
+	});
+
 	it("carries why verification is not in effect", () => {
 		expect(
 			bufferRepoFromChildren(project("motlin/wip"), [], {...context, verifyNotice: "why not"}).verifyNotice,

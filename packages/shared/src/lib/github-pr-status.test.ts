@@ -130,6 +130,35 @@ describe("getPrStatuses auto-merge", () => {
 			lookup: true,
 		});
 	});
+
+	it("names the sha at each PR's head, the commit its checks ran on, also from the cache", async () => {
+		const queries: string[] = [];
+		setGitHubClient({
+			graphql: async (query: string) => {
+				queries.push(query);
+				const answer = autoMergeAnswer(query) as {
+					data: {repository: {pullRequests?: {nodes: Array<Record<string, unknown>>}}};
+				};
+				for (const node of answer.data.repository.pullRequests?.nodes ?? []) {
+					node["headRefOid"] = String(node["number"]).repeat(40);
+				}
+				return Promise.resolve(answer);
+			},
+		});
+
+		const fetched = await getPrStatuses(dir!, "head-sha-repo");
+		const cached = await getPrStatuses(dir!, "head-sha-repo");
+
+		expect({
+			asked: queries.some((query) => query.includes("pullRequests") && query.includes("headRefOid")),
+			fetched: Object.fromEntries(fetched.headShas),
+			cached: Object.fromEntries(cached.headShas),
+		}).toStrictEqual({
+			asked: true,
+			fetched: {merging: "1".repeat(40), waiting: "2".repeat(40)},
+			cached: {merging: "1".repeat(40), waiting: "2".repeat(40)},
+		});
+	});
 });
 
 // The fork parent forbids auto-merge and the fork allows it; a standalone lookup answers false, so a true lookup was seeded by the PR query.

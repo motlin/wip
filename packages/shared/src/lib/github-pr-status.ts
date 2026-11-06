@@ -48,6 +48,7 @@ type StatusCheckContext = z.infer<typeof StatusCheckContextSchema>;
 
 const GraphQLPrNodeSchema = z.object({
 	headRefName: z.string(),
+	headRefOid: z.string().optional(),
 	baseRefName: z.string(),
 	url: z.string(),
 	number: z.number(),
@@ -113,6 +114,8 @@ export interface PrStatuses {
 	failedChecks: Map<string, Array<{name: string; url?: string}>>;
 	behind: Map<string, boolean>;
 	prNumbers: Map<string, number>;
+	/** Branch → the sha at its PR's head, the commit its checks ran on. */
+	headShas: Map<string, string>;
 	mergeStateStatuses: Map<string, MergeStateStatus>;
 	externalCiBlockers: Map<string, ExternalCiBlocker[]>;
 	/** Branches whose PR has auto-merge on: GitHub merges it once its checks pass. */
@@ -209,6 +212,7 @@ query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
     pullRequests(first: 100, states: OPEN) {
       nodes {
         headRefName
+        headRefOid
         baseRefName
         url
         number
@@ -354,6 +358,7 @@ function buildPrStatusesFromCached(
 	externalCiBlockers: Map<string, ExternalCiBlocker[]> = new Map(),
 	autoMerge: Set<string> = new Set(),
 	autoMergeAllowed = false,
+	headShas: Map<string, string> = new Map(),
 ): PrStatuses {
 	const review = new Map<string, ReviewStatus>();
 	const checks = new Map<string, CheckStatus>();
@@ -381,6 +386,7 @@ function buildPrStatusesFromCached(
 		failedChecks,
 		behind,
 		prNumbers,
+		headShas,
 		mergeStateStatuses,
 		externalCiBlockers,
 		autoMerge,
@@ -414,6 +420,7 @@ function buildStalePrStatuses(stale: CachedPrStatus[]): PrStatuses {
 		failedChecks,
 		behind,
 		prNumbers,
+		headShas: new Map(),
 		mergeStateStatuses,
 		externalCiBlockers: new Map(),
 		autoMerge: new Set(),
@@ -430,6 +437,7 @@ function emptyPrStatuses(): PrStatuses {
 		failedChecks: new Map(),
 		behind: new Map(),
 		prNumbers: new Map(),
+		headShas: new Map(),
 		mergeStateStatuses: new Map(),
 		externalCiBlockers: new Map(),
 		autoMerge: new Set(),
@@ -449,6 +457,8 @@ const PR_CACHE_TTL_MS = 10 * 60 * 1000;
 const baseBranchStatusCache = new Map<string, BaseBranchStatus[]>();
 const externalCiBlockerCache = new Map<string, Map<string, ExternalCiBlocker[]>>();
 const autoMergeCache = new Map<string, {branches: Set<string>; allowed: boolean}>();
+/** In memory only: until the first fetch after a restart, no PR head is known, so no PR stands in for a test. */
+const headShaCache = new Map<string, Map<string, string>>();
 
 export async function getPrStatuses(
 	dir: string,
@@ -469,6 +479,7 @@ export async function getPrStatuses(
 				externalCiBlockers,
 				autoMerge?.branches,
 				autoMerge?.allowed,
+				headShaCache.get(projectName),
 			);
 		}
 	}
@@ -635,6 +646,7 @@ async function fetchPrStatusesFromApi(
 	const failedChecks = new Map<string, Array<{name: string; url?: string}>>();
 	const behind = new Map<string, boolean>();
 	const prNumbers = new Map<string, number>();
+	const headShas = new Map<string, string>();
 	const mergeStateStatuses = new Map<string, MergeStateStatus>();
 	const externalCiBlockers = new Map<string, ExternalCiBlocker[]>();
 	const autoMerge = new Set<string>();
@@ -693,6 +705,7 @@ async function fetchPrStatusesFromApi(
 
 		// PR number
 		prNumbers.set(branch, pr.number);
+		if (pr.headRefOid !== undefined) headShas.set(branch, pr.headRefOid);
 
 		if (pr.autoMergeRequest) autoMerge.add(branch);
 
@@ -714,6 +727,7 @@ async function fetchPrStatusesFromApi(
 		baseBranchStatusCache.set(projectName, baseBranches);
 		externalCiBlockerCache.set(projectName, externalCiBlockers);
 		autoMergeCache.set(projectName, {branches: autoMerge, allowed: autoMergeAllowed});
+		headShaCache.set(projectName, headShas);
 	}
 
 	return {
@@ -723,6 +737,7 @@ async function fetchPrStatusesFromApi(
 		failedChecks,
 		behind,
 		prNumbers,
+		headShas,
 		mergeStateStatuses,
 		externalCiBlockers,
 		autoMerge,

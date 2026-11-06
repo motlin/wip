@@ -206,6 +206,7 @@ export async function getNeedsRebaseBranches(
 		const checkStatus: CheckStatus = prStatuses ? (prStatuses.checks.get(branch) ?? "none") : "none";
 		const prUrl = prStatuses ? prStatuses.urls.get(branch) : undefined;
 		const prNumber = prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
+		const prHeadSha = prStatuses ? prStatuses.headShas.get(branch) : undefined;
 		const failedChecks = prStatuses ? prStatuses.failedChecks.get(branch) : undefined;
 		const externalCiBlockers = prStatuses ? prStatuses.externalCiBlockers.get(branch) : undefined;
 		const behind = prStatuses ? prStatuses.behind.get(branch) : undefined;
@@ -238,6 +239,7 @@ export async function getNeedsRebaseBranches(
 			reviewStatus,
 			prUrl,
 			prNumber,
+			prHeadSha,
 			failedChecks,
 			externalCiBlockers,
 			behind,
@@ -483,6 +485,7 @@ export async function getChildCommits(
 		const externalCiBlockers = branch && prStatuses ? prStatuses.externalCiBlockers.get(branch) : undefined;
 		const behind = branch && prStatuses ? prStatuses.behind.get(branch) : undefined;
 		const prNumber = branch && prStatuses ? prStatuses.prNumbers.get(branch) : undefined;
+		const prHeadSha = branch && prStatuses ? prStatuses.headShas.get(branch) : undefined;
 		const mergeStateStatus = branch && prStatuses ? prStatuses.mergeStateStatuses.get(branch) : undefined;
 
 		// Merge status from cache (computed asynchronously by merge-queue)
@@ -524,6 +527,7 @@ export async function getChildCommits(
 			reviewStatus,
 			prUrl,
 			prNumber,
+			prHeadSha,
 			failedChecks,
 			externalCiBlockers,
 			behind,

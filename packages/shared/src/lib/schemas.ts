@@ -301,6 +301,8 @@ export const ChildCommitSchema = z.object({
 	reviewStatus: ReviewStatusSchema,
 	prUrl: z.url().optional(),
 	prNumber: z.number().optional(),
+	/** The sha at the PR's head, the commit its checks ran on. */
+	prHeadSha: shaSchema.optional(),
 	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})).optional(),
 	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
 	behind: z.boolean().optional(),
@@ -371,6 +373,8 @@ export const GitChildResultSchema = z.object({
 	reviewStatus: ReviewStatusSchema,
 	prUrl: z.url().optional(),
 	prNumber: z.number().optional(),
+	/** The sha at the PR's head, the commit its checks ran on. */
+	prHeadSha: shaSchema.optional(),
 	failedChecks: z.array(z.object({name: z.string(), url: z.url().optional()})).optional(),
 	externalCiBlockers: z.array(ExternalCiBlockerSchema).optional(),
 	commitsBehind: z.number().optional(),

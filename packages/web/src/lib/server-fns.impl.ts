@@ -411,6 +411,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					reviewStatus: child.reviewStatus,
 					prUrl: child.prUrl,
 					prNumber: child.prNumber,
+					prHeadSha: child.prHeadSha,
 					failedChecks: child.failedChecks,
 					externalCiBlockers: child.externalCiBlockers,
 					commitsBehind: ms?.commitsBehind ?? child.commitsBehind,

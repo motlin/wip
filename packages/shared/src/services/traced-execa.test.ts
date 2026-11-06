@@ -16,6 +16,27 @@ import {
 	type SubprocessFailure,
 } from "./traced-execa.js";
 
+/**
+ * Waits up to 5s for `pid` to be gone. The group's SIGTERM and the grandchild's reaping (its parent
+ * dies too, so launchd reaps it) are asynchronous; under load a fixed short sleep can still see the
+ * grandchild, or its zombie, answer `kill 0`.
+ */
+async function waitUntilGone(pid: number): Promise<boolean> {
+	const deadline = Date.now() + 5000;
+	for (;;) {
+		try {
+			process.kill(pid, 0);
+		} catch {
+			return true;
+		}
+		if (Date.now() > deadline) return false;
+		// eslint-disable-next-line no-await-in-loop
+		await new Promise((resolve) => {
+			setTimeout(resolve, 20);
+		});
+	}
+}
+
 describe("tracedExeca global subprocess cap", () => {
 	it("never runs more than SUBPROCESS_LIMIT children at once, however many callers fire together", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-subprocess-cap-"));
@@ -99,15 +120,8 @@ describe("tracedExeca killTreeOn", () => {
 		const grandchild = Number(fs.readFileSync(pidFile, "utf8").trim());
 		controller.abort();
 		const result = await run;
-		await new Promise((resolve) => {
-			setTimeout(resolve, 100);
-		});
-		let grandchildAlive = true;
-		try {
-			process.kill(grandchild, 0);
-		} catch {
-			grandchildAlive = false;
-		}
+		const grandchildAlive = !(await waitUntilGone(grandchild));
+		if (grandchildAlive) process.kill(grandchild, "SIGKILL");
 		fs.rmSync(dir, {recursive: true, force: true});
 
 		expect({
@@ -166,15 +180,7 @@ describe("tracedExeca detached process groups on server shutdown", () => {
 			const grandchild = Number(fs.readFileSync(pidFile, "utf8").trim());
 			server.kill(signal);
 			const exitCode = await exited;
-			await new Promise((resolve) => {
-				setTimeout(resolve, 200);
-			});
-			let grandchildAlive = true;
-			try {
-				process.kill(grandchild, 0);
-			} catch {
-				grandchildAlive = false;
-			}
+			const grandchildAlive = !(await waitUntilGone(grandchild));
 			if (grandchildAlive) process.kill(grandchild, "SIGKILL");
 			fs.rmSync(dir, {recursive: true, force: true});
 

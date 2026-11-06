@@ -209,6 +209,9 @@ export async function advance(
 			);
 			return tip.stdout.trim() === sha ? "rebase_conflicts" : "moved";
 		}
+		// The replay dropped every commit (its patch already landed upstream) and left the branch at
+		// the upstream tip: nothing to test or publish, and the snapshot's sha is now stale.
+		if (replayed === upstream) return "moved";
 		sha = replayed;
 		onReplayed(sha);
 	}

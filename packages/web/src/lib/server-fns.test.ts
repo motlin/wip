@@ -4564,6 +4564,40 @@ describe("ready buffer advance", () => {
 			branch: rebased,
 		});
 	});
+
+	it("reports a commit whose patch already landed upstream as moved once its replay leaves the branch at the upstream tip, never testing or publishing it", async () => {
+		const {dir} = await behindFeatureBranch("fix-landed", {conflict: false});
+		// A green test command: testing the upstream tip would read the landed commit as ready.
+		await gitOut(dir, "config", "test.default.command", "true");
+		const stale = await gitOut(dir, "rev-parse", "fix-landed");
+		// The same patch landed upstream (squash or cherry-pick), so the replay drops the commit.
+		await gitOut(dir, "cherry-pick", stale);
+		await gitOut(dir, "push", "origin", "main");
+		const upstream = await gitOut(dir, "rev-parse", "origin/main");
+		seedProjectCache([makeProject({name: "landed-buffer", dir})]);
+		const replayed: string[] = [];
+
+		const {advance} = await import("./ready-buffer-server.js");
+		const outcome = await advance(
+			{
+				name: "landed-buffer",
+				upstreamRed: false,
+				ownership: "own",
+				localChanges: false,
+				checkedOutBranches: [],
+				candidates: [],
+			},
+			{id: stale, sha: stale, branch: "fix-landed", state: "unready", onHold: false},
+			new AbortController().signal,
+			(sha) => replayed.push(sha),
+		);
+
+		expect({outcome, replayed, branch: await gitOut(dir, "rev-parse", "fix-landed")}).toStrictEqual({
+			outcome: "moved",
+			replayed: [],
+			branch: upstream,
+		});
+	});
 });
 
 describe("getSystemStatusHandler", () => {

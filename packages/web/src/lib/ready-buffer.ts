@@ -130,11 +130,20 @@ export type AdvanceOutcome =
 	| "auto_fixed"
 	| "checks_pending"
 	| "verify_held"
-	/** Its branch moved since the snapshot the job was planned from: no outcome, the next pull re-plans. */
+	/**
+	 * Its branch moved since the snapshot the job was planned from: no outcome. The item is re-planned
+	 * once a snapshot shows it at another sha, or after MOVED_RETRY_MS on the same stale one.
+	 */
 	| "moved";
 
 /** How long an item whose draft-PR publish was held waits before the buffer pulls it again. */
 export const VERIFY_HELD_RETRY_MS = 60_000;
+
+/**
+ * How long a moved item waits while the snapshot still shows the sha it was planned at. The children
+ * cache can lag the branch for minutes, and every re-plan from it would report "moved" again at once.
+ */
+export const MOVED_RETRY_MS = 60_000;
 
 export interface TestStepInput {
 	/** The repo's patch-id fast path applies (setting on, pull-request repo). */
@@ -405,6 +414,8 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 	const now = deps.now ?? Date.now;
 	/** project → item id → when its draft-PR publish was held; it is pulled again VERIFY_HELD_RETRY_MS later. */
 	const heldAt = new Map<string, Map<string, number>>();
+	/** project → item id → the snapshot sha its advance found its branch had moved from, and when. */
+	const movedFrom = new Map<string, Map<string, {sha: string; at: number}>>();
 	/** Repos whose own upstream is red as of the last pull; their queued jobs stop on start. */
 	const stopped = new Set<string>();
 	/** The last pull's snapshot and the candidates it would pull next, for state(). */
@@ -484,6 +495,9 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				});
 				if (outcome === "moved") {
 					done.delete(candidate.id);
+					const moved = movedFrom.get(repo.name) ?? new Map<string, {sha: string; at: number}>();
+					movedFrom.set(repo.name, moved);
+					moved.set(candidate.id, {sha: current.sha, at: now()});
 					return;
 				}
 				done.set(candidate.id, outcome);
@@ -593,10 +607,16 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 			}
 		}
 		forgetStaleReady(repo);
+		// A moved item stays parked while the snapshot still shows the sha its branch moved from.
+		const moved = movedFrom.get(repo.name) ?? new Map<string, {sha: string; at: number}>();
+		const bySha = new Map(repo.candidates.map((c) => [c.id, c.sha]));
+		for (const [id, {sha, at}] of moved) {
+			if (bySha.get(id) !== sha || now() - at >= MOVED_RETRY_MS) moved.delete(id);
+		}
 		const checkedOut = new Set(repo.checkedOutBranches);
 		return repo.candidates.map((c) => {
 			const ready = c.state === "ready" || done.get(c.id) === "ready";
-			const parked = done.has(c.id) && !ready;
+			const parked = (done.has(c.id) || moved.has(c.id)) && !ready;
 			const blocked = !ready && c.branch !== undefined && checkedOut.has(c.branch);
 			return {
 				repo: repo.name,

@@ -13,6 +13,7 @@ import {
 	createReadyBuffer,
 	readyBufferEnabled,
 	testStep,
+	MOVED_RETRY_MS,
 	VERIFY_HELD_RETRY_MS,
 	type AdvanceOutcome,
 	type BufferCandidate,
@@ -363,20 +364,52 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("records no outcome for an advance whose branch moved since its snapshot, and re-plans the item from the next one", async () => {
+	it("records no outcome for an advance whose branch moved since its snapshot, and re-plans the item once a snapshot shows its new sha", async () => {
 		const outcomes: AdvanceOutcome[] = ["moved", "ready"];
+		let sha = paddedSha("c1");
 		const h = harness({
-			repos: () => [repo("a", {candidates: candidates(1, {c1: {branch: "b1"}})})],
+			repos: () => [repo("a", {candidates: candidates(1, {c1: {branch: "b1", sha}})})],
 			outcome: () => outcomes.shift() ?? "ready",
 		});
 
 		await h.buffer.pull();
 		await h.buffer.idle();
+		const beforeRefresh = {advanced: [...h.advanced], outcomes: h.buffer.outcomes("a")};
+		sha = "e".repeat(40);
+		await h.buffer.pull();
+		await h.buffer.idle();
 
-		expect({advanced: h.advanced, resolved: h.resolved, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
-			advanced: ["a:c1", "a:c1"],
-			resolved: [],
-			outcomes: {c1: "ready"},
+		expect({
+			beforeRefresh,
+			afterRefresh: {advanced: h.advanced, resolved: h.resolved, outcomes: h.buffer.outcomes("a")},
+		}).toStrictEqual({
+			beforeRefresh: {advanced: ["a:c1"], outcomes: {}},
+			afterRefresh: {advanced: ["a:c1", "a:c1"], resolved: [], outcomes: {c1: "ready"}},
+		});
+	});
+
+	it("advances a moved item again on an unchanged snapshot only after the retry delay, never in a tight loop", async () => {
+		let now = 1_000_000;
+		const h = harness({
+			repos: () => [repo("a", {candidates: candidates(1, {c1: {branch: "b1"}})})],
+			target: 1,
+			now: () => now,
+			outcome: () => "moved",
+		});
+
+		await h.buffer.pull();
+		await h.buffer.idle();
+		await h.buffer.pull();
+		await h.buffer.idle();
+		const beforeDelay = [...h.advanced];
+		now += MOVED_RETRY_MS;
+		await h.buffer.pull();
+		await h.buffer.idle();
+
+		expect({beforeDelay, after: h.advanced, outcomes: h.buffer.outcomes("a")}).toStrictEqual({
+			beforeDelay: ["a:c1"],
+			after: ["a:c1", "a:c1"],
+			outcomes: {},
 		});
 	});
 

@@ -26,7 +26,7 @@ import {fileURLToPath} from "node:url";
 import Database from "better-sqlite3";
 import {chromium} from "playwright";
 
-import {chromiumCrashReportsSince} from "./browser-crash.mjs";
+import {waitForChromiumCrashReports} from "./browser-crash.mjs";
 import {startFakeGitHub} from "./fake-github.mjs";
 import {createWorld, fsmonitorDaemonSockets} from "./landing-world.mjs";
 import {processesHolding, startProcessTree, stopProcessTree} from "./server-process.mjs";
@@ -279,7 +279,12 @@ async function run() {
 	const startedAt = Date.now();
 	let ok = false;
 	try {
-		browser = await chromium.launch({headless: process.env.WIP_E2E_HEADED !== "true"});
+		browser = await chromium.launch({
+			headless: process.env.WIP_E2E_HEADED !== "true",
+			// The full Chromium build in new headless mode: chrome-headless-shell 156 segfaulted
+			// (CrRendererMain, 0x5c0) in about one run in four; "chromium-headless-shell" brings it back.
+			channel: process.env.WIP_E2E_CHANNEL || "chromium",
+		});
 		step(`Starting wip on ${baseUrl} (ready buffer on) with fake GitHub at ${gh.url}`);
 		await waitForServer(`${baseUrl}/`, server);
 
@@ -550,7 +555,7 @@ async function run() {
 		console.log("\n✓ landing flows passed");
 	} finally {
 		sampleMemory = async () => {};
-		const reports = chromiumCrashReportsSince(startedAt);
+		const reports = await waitForChromiumCrashReports(startedAt, {crashSeen: crashes.length > 0});
 		if (crashes.length > 0 || reports.length > 0) {
 			console.error(`\nChromium crashes: ${JSON.stringify(crashes)}`);
 			for (const report of reports) {

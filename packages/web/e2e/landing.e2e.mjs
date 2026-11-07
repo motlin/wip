@@ -12,7 +12,10 @@
  * recorded gh calls. Before those, the auto-fix flow: bolts' commit fails its test, the buffer's test-fix agent
  * (the fake claude, launched through the fake herdr in fake-herdr.mjs) commits a separate fixup, the
  * card shows "auto-fixed: <failure>" and its review the fixup's diff, and Accept squashes it into one
- * green commit that lists in Ready to land. The browser may only reach the wip server and the fake GitHub.
+ * green commit that lists in Ready to land. First of all, the andon: every page shows one banner naming
+ * broken's own red upstream, and levers' foreign red upstream is a baseline: its commit adding no failure
+ * lines up, its commit adding one does not, and the buffer pulled no commit in broken (server.log's test runs).
+ * The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
  * WIP_E2E_KEEP=true keeps the temp world; it is always kept when a step fails.
@@ -95,6 +98,33 @@ function cogsChildrenListed(world, sha) {
 	} finally {
 		db.close();
 	}
+}
+
+/**
+ * The shas `git test run` ran on, by repo, from server.log's subprocess lines: every test run happens in
+ * the repo's sibling <repo>-test-worktree.
+ */
+function testRunsByRepo(serverLog) {
+	const byRepo = new Map();
+	for (const line of fs.readFileSync(serverLog, "utf8").split("\n")) {
+		if (!line.startsWith("{")) continue;
+		let entry;
+		try {
+			entry = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		const args = Array.isArray(entry.args) ? entry.args : [];
+		const at = args.indexOf("test");
+		const worktree = args[args.indexOf("-C") + 1];
+		if (at === -1 || args[at + 1] !== "run" || typeof worktree !== "string") continue;
+		const repo = /^(.+)-test-worktree$/.exec(path.basename(worktree))?.[1];
+		if (repo === undefined) continue;
+		const shas = byRepo.get(repo) ?? new Set();
+		shas.add(args.at(-1));
+		byRepo.set(repo, shas);
+	}
+	return byRepo;
 }
 
 async function waitUntil(condition, what) {
@@ -244,7 +274,7 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts} = world.repos;
+	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -359,6 +389,47 @@ async function run() {
 		assert.match(
 			await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).innerText(),
 			/PR #1 · waiting for checks, merges itself when they pass/,
+		);
+
+		step("The andon: every page names broken's red upstream, and only broken's");
+		// Another tab, so the /queue page the flows drive keeps its state.
+		const andonTab = await context.newPage();
+		for (const route of ["/queue", "/kanban", "/flow", `/item/widgets/${world.shas.readySha}`]) {
+			// eslint-disable-next-line no-await-in-loop -- visits one page at a time in the one tab
+			await andonTab.goto(`${baseUrl}${route}`);
+			// eslint-disable-next-line no-await-in-loop -- visits one page at a time in the one tab
+			await andonTab.getByTestId("andon-banner").waitFor();
+			assert.deepEqual(
+				// eslint-disable-next-line no-await-in-loop -- visits one page at a time in the one tab
+				await andonTab.getByTestId("andon-banner").allInnerTexts(),
+				["Line stopped: upstream red in broken"],
+				`${route}: one banner naming broken alone; green and foreign red upstreams stop nothing`,
+			);
+		}
+		await andonTab.close();
+
+		step(
+			"Foreign red upstream is the baseline: a commit adding no new failure lines up, one adding a failure does not",
+		);
+		const harmlessRow = readyRow(page, "Add a feature on foreign red upstream");
+		await harmlessRow.getByRole("button", {name: "Open PR"}).waitFor();
+		assert.equal(
+			await harmlessRow.getByTestId("upstream-red-marker").count(),
+			0,
+			"a foreign red upstream stops nothing: no upstream-red marker on its row",
+		);
+		// The regressing commit fails a test upstream passes: its test fix is skipped (Claude doesn't trust levers),
+		// which is how Ready to land learns it failed.
+		await page.getByTestId("ready-to-land-verify-notice").filter({hasText: "levers: trust"}).waitFor();
+		assert.equal(
+			await readyRow(page, "Add a new failure on foreign red upstream").count(),
+			0,
+			"a commit adding a failure to a foreign red upstream is not ready",
+		);
+		assert.match(
+			world.git(levers.clone, "test", "results", world.shas.harmlessSha),
+			/^bad /,
+			"the harmless commit lines up although its own run failed: only the baseline's failure",
 		);
 
 		step("Auto-fix: bolts' commit fails its test, the agent commits a separate fixup, and Accept squashes it");
@@ -567,6 +638,8 @@ async function run() {
 			"Restart, then upstream moves past a green row: it leaves Ready to land, and the buffer rebases and retests it",
 		);
 		await stopProcessTree(server);
+		// levers' commits leave, so the restart's ready target of 1 still counts only sprockets.
+		world.git(levers.clone, "branch", "--quiet", "-D", "harmless-feature", "regressing-feature");
 		// After the restart the buffer remembers nothing. sprockets is high priority, so its stale row is the
 		// candidate the buffer advances first once it falls behind.
 		world.setReadyTarget(1);
@@ -633,6 +706,17 @@ async function run() {
 			world.git(broken.upstreamBare, "rev-parse", "refs/heads/main"),
 			world.git(broken.seed, "rev-parse", "HEAD"),
 		);
+		// Pulls stop for broken only: the buffer tested its upstream once to learn it is red, and none of its
+		// commits, while every other repo's commits were tested.
+		const testedByRepo = testRunsByRepo(serverLog);
+		assert.deepEqual(
+			[...(testedByRepo.get("broken") ?? [])],
+			[world.git(broken.upstreamBare, "rev-parse", "refs/heads/main")],
+			"the ready buffer pulled no commit in broken",
+		);
+		for (const name of ["widgets", "gadgets", "cogs", "sprockets", "bolts", "levers"]) {
+			assert.ok((testedByRepo.get(name)?.size ?? 0) > 0, `the ready buffer tested ${name}'s commits`);
+		}
 		assert.deepEqual(blocked, [], "the browser asked for nothing outside wip and the fake GitHub");
 		assert.deepEqual(pageErrors, [], "no uncaught errors in the page");
 		await sampleMemory();

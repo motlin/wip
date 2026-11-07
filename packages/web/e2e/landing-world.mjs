@@ -156,15 +156,15 @@ export function createWorld() {
 	const bare = (owner, name) => path.join(dirs.github, owner, `${name}.git`);
 
 	/**
-	 * One repo: upstream acme/<name> and the user's fork e2e-user/<name> as bare repos, a seed
+	 * One repo: upstream <owner>/<name> (acme unless given) and the user's fork e2e-user/<name> as bare repos, a seed
 	 * checkout that plays everyone else pushing upstream, and the user's clone with upstream + origin.
 	 */
 	/**
 	 * With `noFork`, the clone's only remote is origin = acme/<name> itself: branches push to the
 	 * upstream repo and PRs open from there, so the GitHub token needs WRITE on it to open them.
 	 */
-	const repo = (name, {red = false, noFork = false, workflow, verify} = {}) => {
-		const upstreamBare = bare("acme", name);
+	const repo = (name, {owner = "acme", red = false, noFork = false, workflow, verify} = {}) => {
+		const upstreamBare = bare(owner, name);
 		const forkBare = noFork ? undefined : bare("e2e-user", name);
 		for (const dir of [upstreamBare, forkBare].filter((d) => d !== undefined)) {
 			fs.mkdirSync(dir, {recursive: true});
@@ -202,7 +202,7 @@ export function createWorld() {
 			git(seed, "push", "--quiet", "upstream", "main");
 			return sha;
 		};
-		return {name, clone, seed, upstreamBare, forkBare, verify, branch, landUpstream};
+		return {name, owner, clone, seed, upstreamBare, forkBare, verify, branch, landUpstream};
 	};
 
 	// Pull-request repo: one ready commit, one that goes behind upstream after the first Open PR, and
@@ -266,6 +266,20 @@ export function createWorld() {
 		JSON.stringify({projects: {[bolts.clone]: {hasTrustDialogAccepted: true}}}),
 	);
 
+	// Foreign red upstream: other-org is neither the user's login nor an ownership org, so its red upstream is
+	// the baseline, not a stop. The test names each failure (go's "--- FAIL:" line) so the buffer can compare
+	// a commit's failures with the baseline's: a commit failing only what upstream fails lines up, one adding
+	// a failure does not.
+	const levers = repo("levers", {owner: "other-org", red: true});
+	git(
+		levers.clone,
+		"config",
+		"test.default.command",
+		'fail=0; for f in RED NEWRED; do if test -e "$f"; then echo "--- FAIL: $f"; fail=1; fi; done; exit $fail',
+	);
+	const harmlessSha = levers.branch("harmless-feature", "harmless.txt", "Add a feature on foreign red upstream");
+	const regressingSha = levers.branch("regressing-feature", "NEWRED", "Add a new failure on foreign red upstream");
+
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
@@ -280,6 +294,7 @@ export function createWorld() {
 			[sprockets, "pull-request"],
 			[gears, "pull-request"],
 			[bolts, "pull-request"],
+			[levers, "pull-request"],
 		].map(([r, landing]) => record(r, landing, priorities.get(r.name)));
 		fs.writeFileSync(path.join(wipConfig, "projects.json5"), `${JSON.stringify(records, null, "\t")}\n`);
 	};
@@ -305,13 +320,26 @@ export function createWorld() {
 		git,
 		setReadyTarget,
 		setPriority,
-		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts},
-		shas: {readySha, behindSha, waitingSha, ffSha, fixSha, blockedSha, steadySha, staleSha, gearSha, fragileSha},
+		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers},
+		shas: {
+			readySha,
+			behindSha,
+			waitingSha,
+			ffSha,
+			fixSha,
+			blockedSha,
+			steadySha,
+			staleSha,
+			gearSha,
+			fragileSha,
+			harmlessSha,
+			regressingSha,
+		},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
 		fakeRepos: [
-			...[widgets, gadgets, broken, cogs, sprockets, bolts].flatMap((r) => [
-				{owner: "acme", name: r.name, bareDir: r.upstreamBare},
-				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `acme/${r.name}`},
+			...[widgets, gadgets, broken, cogs, sprockets, bolts, levers].flatMap((r) => [
+				{owner: r.owner, name: r.name, bareDir: r.upstreamBare},
+				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `${r.owner}/${r.name}`},
 			]),
 			{owner: "acme", name: gears.name, bareDir: gears.upstreamBare, viewerPermission: "READ"},
 		],

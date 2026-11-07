@@ -60,6 +60,12 @@ describe("AndonBanner", () => {
 		expect(screen.getByRole("alert").textContent).toBe("Line stopped: upstream red in wip, liftwizard");
 	});
 
+	it("carries the andon-banner test id the landing harness finds it by", async () => {
+		await renderAt("/queue", state(["wip"]));
+
+		expect(screen.getByTestId("andon-banner")).toBe(screen.getByRole("alert"));
+	});
+
 	it("is absent when no own upstream is red (a foreign red upstream never stops the line)", async () => {
 		await renderAt("/queue", state([]));
 

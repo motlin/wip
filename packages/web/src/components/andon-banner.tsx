@@ -17,6 +17,7 @@ export function AndonBanner() {
 	return (
 		<div
 			role="alert"
+			data-testid="andon-banner"
 			className="border-b border-status-red/50 bg-status-red/10 px-6 py-2 text-sm font-medium text-status-red"
 		>
 			Line stopped: upstream red in {stopped.join(", ")}

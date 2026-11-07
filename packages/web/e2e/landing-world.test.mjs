@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {spawnSync} from "node:child_process";
 
+import {parseFailedTests} from "@wip/shared/baseline-failures.js";
 import {afterEach, describe, expect, it} from "vite-plus/test";
 
 import {createWorld, fsmonitorDaemonSockets} from "./landing-world.mjs";
@@ -73,6 +74,28 @@ describe("landing world", () => {
 			claudeStatus: 0,
 			fixup: `${failing} fixup! Add the fragile feature`,
 			passedStatus: 0,
+		});
+	});
+
+	it("gives levers a foreign red upstream whose test log names its failures: the harmless commit fails only the baseline's, the regressing one adds one", () => {
+		world = createWorld();
+		const {levers} = world.repos;
+		const failedTests = (sha) => {
+			const run = spawnSync("git", ["test", "run", sha], {cwd: levers.clone, env: world.env, encoding: "utf8"});
+			const names = parseFailedTests(`${run.stdout}\n${run.stderr}`);
+			return {status: run.status, failed: names === null ? null : [...names].toSorted()};
+		};
+
+		expect({
+			owner: levers.owner,
+			upstream: failedTests(world.git(levers.clone, "rev-parse", "upstream/main")),
+			harmless: failedTests(world.shas.harmlessSha),
+			regressing: failedTests(world.shas.regressingSha),
+		}).toStrictEqual({
+			owner: "other-org",
+			upstream: {status: 1, failed: ["RED"]},
+			harmless: {status: 1, failed: ["RED"]},
+			regressing: {status: 1, failed: ["NEWRED", "RED"]},
 		});
 	});
 });

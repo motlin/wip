@@ -13,14 +13,9 @@ import {
 	createRouter,
 } from "@tanstack/react-router";
 import type {FlowHistory, FlowMetrics} from "@wip/shared";
-import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 
-import {AndonBanner} from "../components/andon-banner.js";
 import {Route as FlowFile} from "../routes/flow.js";
-import {Route as StatesFile} from "../routes/states.js";
-import {flowHistoryQueryOptions, flowMetricsQueryOptions, readyToLandQueryOptions} from "./queries.js";
-
-const readyToLand: ReadyToLandState = {slots: 2, ready: [], inFlight: [], next: [], stoppedProjects: ["wip"]};
+import {flowHistoryQueryOptions, flowMetricsQueryOptions} from "./queries.js";
 
 const history: FlowHistory = {
 	throughput: [{day: "2026-10-28", landings: 3}],
@@ -43,23 +38,12 @@ function newClient(): QueryClient {
 
 function buildRouter(queryClient: QueryClient, path: string) {
 	const rootRoute = createRootRoute({
-		component: () => (
-			<>
-				<AndonBanner />
-				<Outlet />
-			</>
-		),
+		component: () => <Outlet />,
 	});
 	return createRouter({
 		routeTree: rootRoute.addChildren([
 			createRoute({getParentRoute: () => rootRoute, path: "/queue", component: () => <main>queue</main>}),
 			createRoute({getParentRoute: () => rootRoute, path: "/flow", component: FlowFile.options.component}),
-			createRoute({
-				getParentRoute: () => rootRoute,
-				path: "/states",
-				validateSearch: StatesFile.options.validateSearch,
-				component: StatesFile.options.component,
-			}),
 		]),
 		history: createMemoryHistory({initialEntries: [path]}),
 		context: {queryClient},
@@ -85,41 +69,39 @@ describe("root layout hydration", () => {
 		document.body.innerHTML = "";
 	});
 
-	it.each([
-		{path: "/queue", shown: "Line stopped: upstream red in wip"},
-		{path: "/flow", shown: "Fix hydration"},
-		{path: "/states", shown: "Line stopped: upstream red in wip"},
-	])("hydrates $path without a mismatch when the persister restored client-only queries", async ({path, shown}) => {
-		// Server: these queries are never fetched during SSR, so the cache is empty.
-		const serverClient = newClient();
-		const serverRouter = buildRouter(serverClient, path);
-		await serverRouter.load();
-		const html = renderToString(app(serverClient, serverRouter));
+	it.each([{path: "/flow", shown: "Fix hydration"}])(
+		"hydrates $path without a mismatch when the persister restored client-only queries",
+		async ({path, shown}) => {
+			// Server: these queries are never fetched during SSR, so the cache is empty.
+			const serverClient = newClient();
+			const serverRouter = buildRouter(serverClient, path);
+			await serverRouter.load();
+			const html = renderToString(app(serverClient, serverRouter));
 
-		// Client: the localStorage persister restored them before hydration.
-		const clientClient = newClient();
-		clientClient.setQueryData(readyToLandQueryOptions().queryKey, readyToLand);
-		clientClient.setQueryData(flowHistoryQueryOptions().queryKey, history);
-		clientClient.setQueryData(flowMetricsQueryOptions().queryKey, metrics);
-		const clientRouter = buildRouter(clientClient, path);
-		await clientRouter.load();
+			// Client: the localStorage persister restored them before hydration.
+			const clientClient = newClient();
+			clientClient.setQueryData(flowHistoryQueryOptions().queryKey, history);
+			clientClient.setQueryData(flowMetricsQueryOptions().queryKey, metrics);
+			const clientRouter = buildRouter(clientClient, path);
+			await clientRouter.load();
 
-		const container = document.createElement("div");
-		container.innerHTML = html;
-		document.body.append(container);
+			const container = document.createElement("div");
+			container.innerHTML = html;
+			document.body.append(container);
 
-		const recoverableErrors: string[] = [];
-		await act(async () => {
-			root = hydrateRoot(container, app(clientClient, clientRouter), {
-				onRecoverableError: (error) => {
-					recoverableErrors.push(error instanceof Error ? error.message : String(error));
-				},
+			const recoverableErrors: string[] = [];
+			await act(async () => {
+				root = hydrateRoot(container, app(clientClient, clientRouter), {
+					onRecoverableError: (error) => {
+						recoverableErrors.push(error instanceof Error ? error.message : String(error));
+					},
+				});
+				await Promise.resolve();
 			});
-			await Promise.resolve();
-		});
 
-		expect(recoverableErrors).toStrictEqual([]);
-		// After hydration the restored state is shown.
-		expect(container.textContent).toContain(shown);
-	});
+			expect(recoverableErrors).toStrictEqual([]);
+			// After hydration the restored state is shown.
+			expect(container.textContent).toContain(shown);
+		},
+	);
 });

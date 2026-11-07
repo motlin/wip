@@ -41,4 +41,14 @@ describe("buildGrouped", () => {
 			untriaged: {projectItems: [projectItem]},
 		});
 	});
+
+	it("gives an own red upstream one upstream_red item and a foreign red upstream none", () => {
+		const red = {kind: "upstream_ci" as const, checkStatus: "failed" as const, branch: "main"};
+		const own = makeChild({...red, sha: "c".repeat(40), ownership: "own"});
+		const foreign = makeChild({...red, sha: "d".repeat(40), ownership: "foreign"});
+
+		const grouped = buildGrouped({gitChildren: [own, foreign], issues: [], todos: [], projectItems: []}, [project]);
+
+		expect(grouped).toStrictEqual({...emptyGrouped(), upstream_red: {gitChildren: [own]}});
+	});
 });

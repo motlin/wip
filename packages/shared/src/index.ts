@@ -423,9 +423,12 @@ export {
 export {
 	type GitHubIdentity,
 	type UpstreamOwnership,
+	isOwnUpstreamRed,
+	markUpstreamRed,
 	stopsLine,
 	upstreamOwnership,
 	upstreamRedCommand,
+	upstreamRedFailures,
 } from "./lib/upstream-red.js";
 export {getGitHubIdentity, resetGitHubIdentityForTests} from "./lib/github-identity.js";
 export {replayBranchOnto} from "./lib/buffer-replay.js";

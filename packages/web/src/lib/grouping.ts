@@ -1,5 +1,6 @@
 import type {Category, ProjectInfo} from "@wip/shared";
 import {classifyGitChild, classifyIssue, classifyTodo} from "@wip/shared/classify.js";
+import {isOwnUpstreamRed} from "@wip/shared/upstream-red.js";
 import type {ColumnItems} from "../components/kanban-column.js";
 import type {WorkItems} from "./use-work-items.js";
 
@@ -54,6 +55,8 @@ export function buildGrouped(workItems: WorkItems, projects: ProjectInfo[]): Gro
 	for (const child of workItems.gitChildren) {
 		const project = projectMap.get(child.project);
 		if (!project) continue;
+		// A foreign red upstream is the baseline, not work: it gets no item.
+		if (child.kind === "upstream_ci" && !isOwnUpstreamRed(child)) continue;
 		(grouped[classifyGitChild(child, project)].gitChildren ??= []).push(child);
 	}
 	for (const issue of workItems.issues) {

@@ -7,6 +7,7 @@ import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {branchRemoteUrl} from "../lib/branch-rename.js";
 import {AnsiText} from "./ansi-text.js";
 import {CategoryBadge} from "./category-badge.js";
+import {UpstreamRedBlockedMarker} from "./upstream-ci-card";
 import {PullRequestActions} from "./commit-actions.js";
 
 function relativeTime(dateStr: string): string {
@@ -88,6 +89,11 @@ export function PullRequestCard({pr, category}: {pr: GitChildResult; category: C
 				</div>
 			</div>
 
+			{pr.upstreamRedBlocked === true && (
+				<div className="mt-1.5">
+					<UpstreamRedBlockedMarker project={pr.project} />
+				</div>
+			)}
 			<div className="mt-1 flex items-center gap-1">
 				<GitBranch className="h-3 w-3 shrink-0 text-text-400" />
 				<a

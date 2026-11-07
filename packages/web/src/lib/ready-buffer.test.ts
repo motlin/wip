@@ -213,6 +213,15 @@ async function fillFiveRepos(capacity: number): Promise<{advanced: string[]; max
 
 const paddedSha = (id: string): string => id.padEnd(40, "0");
 
+/** A fast-forward ready item in repo "a", as the state lists it. */
+const a = (id: string) => ({
+	project: "a",
+	id,
+	sha: paddedSha(id),
+	landing: "fast-forward",
+	firstSeen: `2026-10-2${id.at(-1)} a`,
+});
+
 /** A promise and the function that resolves it. */
 function deferred(): {promise: Promise<void>; resolve: () => void} {
 	let resolve!: () => void;
@@ -657,7 +666,7 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("exposes slots, ready, in-flight, next and stopped projects for the Ready to land section", async () => {
+	it("exposes slots, ready, in-flight, next and stopped projects for the Ready to land section, listing nothing in a stopped repo", async () => {
 		const repos = [
 			repo("red", {upstreamRed: true, candidates: candidates(1, {c1: {state: "ready", branch: "red-fix"}})}),
 			repo("a", {landing: "fast-forward"}),
@@ -679,19 +688,10 @@ describe("createReadyBuffer", () => {
 		for (const release of gates.splice(0)) release();
 		await h.buffer.idle();
 
-		const a = (id: string) => ({
-			project: "a",
-			id,
-			sha: paddedSha(id),
-			landing: "fast-forward",
-			firstSeen: `2026-10-2${id.at(-1)} a`,
-		});
 		expect({filling, full: h.buffer.state(), lastSeen: seen.at(-1)}).toStrictEqual({
 			filling: {
 				slots: 2,
-				ready: [
-					{project: "red", id: "c1", sha: paddedSha("c1"), branch: "red-fix", firstSeen: "2026-10-21 red"},
-				],
+				ready: [],
 				awaitingChecks: [],
 				checksFailed: [],
 				inFlight: [a("c1"), a("c2")],
@@ -700,11 +700,7 @@ describe("createReadyBuffer", () => {
 			},
 			full: {
 				slots: 2,
-				ready: [
-					{project: "red", id: "c1", sha: paddedSha("c1"), branch: "red-fix", firstSeen: "2026-10-21 red"},
-					a("c1"),
-					a("c2"),
-				],
+				ready: [a("c1"), a("c2")],
 				awaitingChecks: [],
 				checksFailed: [],
 				inFlight: [],

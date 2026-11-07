@@ -128,10 +128,13 @@ These are properties of an individual work item (commit, branch, or PR).
 
 These are properties of the project, not any individual item. They block or alter the progression of all items in that project.
 
-| Dimension            | Values            | Notes                                       |
-| -------------------- | ----------------- | ------------------------------------------- |
-| **Test defined**     | `yes` / `no`      | Does the project have `git test` configured |
-| **Upstream fetched** | `fresh` / `stale` | Has upstream been fetched recently          |
+| Dimension            | Values                              | Notes                                                                            |
+| -------------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
+| **Test defined**     | `yes` / `no`                        | Does the project have `git test` configured                                      |
+| **Upstream fetched** | `fresh` / `stale`                   | Has upstream been fetched recently                                               |
+| **Upstream red**     | `green` / `own red` / `foreign red` | Failed check runs on the upstream tip, or a failed local baseline `git test run` |
+
+**Upstream red** is the first project-level property surfaced as a project-level item. An own red upstream (owner is the user's login or one of `ownership.orgs`) stops the repo's line: it becomes one `upstream_red` queue item per repo (`upstream_ci` child, ranked first on /queue and /kanban) naming the failing checks or "local baseline test failed", how long it has been red (the failing upstream commit's date), and one action (`/github:gha` for CI, `/build:fix` for a local baseline). The ready buffer pulls nothing in that repo, Ready to land lists none of its commits, and every commit card and item page in it shows "Blocked: `<repo>`'s upstream is red", linking to the item. A foreign red upstream gets no item and blocks nothing: it is the baseline, and a commit that adds no new failure to it is still ready.
 
 ### Constraints (unreachable combinations)
 
@@ -438,4 +441,4 @@ State #37 (approved but checks still running) is collapsed with #31 (checks runn
 
 ### Missing: Project-Level Properties
 
-`no_test` and `upstream_stale` are properties of the **project**, not individual items. They should be surfaced as project-level warnings when that project has active work items, rather than mixed into the item state machine.
+`no_test` and `upstream_stale` are properties of the **project**, not individual items. They should be surfaced as project-level warnings when that project has active work items, rather than mixed into the item state machine. Upstream red already is: see **Upstream red** under Project dimensions.

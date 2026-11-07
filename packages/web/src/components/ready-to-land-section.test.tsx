@@ -89,11 +89,10 @@ const state: ReadyToLandState = {
 	],
 	inFlight: [{project: "a", id: "pa3", sha: sha("a3")}],
 	next: [],
-	stoppedProjects: ["red"],
+	stoppedProjects: [],
 };
 
-/** The same rows with every upstream green, so the red project's rows land too. */
-const green: ReadyToLandState = {...state, stoppedProjects: []};
+const green = state;
 
 const now = Date.parse("2026-10-28T12:00:00Z");
 
@@ -120,12 +119,12 @@ describe("ReadyToLandSection", () => {
 		}).toStrictEqual({
 			heading: "Ready to land6 ready (target 3) · 1 readying",
 			rows: [
-				"Fix redredin wip 3dupstream redconsider splittingPR #7Reviewred's upstream is red: fix it before landing",
+				"Fix redredin wip 3dconsider splittingPR #7ReviewMerge PR #7",
 				"Add parsera+10 −2 · 1 filein wip 1dReviewFast-forward main",
 				"Use parsera+3 −0 · 2 filesReviewFast-forward main",
 				"No tests hereplainno testsReviewOpen PR",
 				"Detachedplainno testsReview",
-				"Unrelatedredupstream redPR #8Reviewred's upstream is red: fix it before landing",
+				"UnrelatedredPR #8ReviewMerge PR #8",
 			],
 		});
 	});
@@ -353,34 +352,12 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
-	it("offers no landing action in a stopped project, only the reason, even for a commit green on the red tip", () => {
-		render(
-			<ReadyToLandSection
-				state={state}
-				commits={commits}
-				projects={[project("a"), project("red"), project("plain", false)]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
-
-		const rows = screen.getAllByTestId("ready-to-land-row");
-		const buttons = (index: number) =>
-			within(rows[index]!)
-				.queryAllByRole("button")
-				.map((button) => button.textContent);
-
-		expect({greenOnRedTip: buttons(0), behind: buttons(5)}).toStrictEqual({greenOnRedTip: [], behind: []});
-	});
-
 	it("names a row's commit by its subject when the commit was listed under another project sharing the repo", () => {
 		render(
 			<ReadyToLandSection
 				state={{
 					...state,
 					ready: [{project: "logs", id: "pl1", sha: sha("l1"), landing: "pull-request"}],
-					stoppedProjects: ["logs"],
 				}}
 				commits={[makeChild({project: "scraper", sha: sha("l1"), subject: "Shared change", branch: "shared"})]}
 				projects={[project("logs"), project("scraper")]}
@@ -394,8 +371,8 @@ describe("ReadyToLandSection", () => {
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
 			buttons: screen.queryAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
-			rows: ["Shared changelogsupstream redReviewlogs's upstream is red: fix it before landing"],
-			buttons: [],
+			rows: ["Shared changelogsReviewOpen PR"],
+			buttons: ["Open PR"],
 		});
 	});
 

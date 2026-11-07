@@ -358,6 +358,10 @@ export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 // Client discriminates by checking child.branch and child.prUrl.
 export const GitChildResultSchema = z.object({
 	kind: z.literal("upstream_ci").optional(),
+	/** On an upstream_ci child: own stops the repo's line and gets a queue item; foreign is the baseline. */
+	ownership: z.enum(["own", "foreign"]).optional(),
+	/** The repo's own upstream is red: nothing in it lands until upstream is fixed. */
+	upstreamRedBlocked: z.boolean().optional(),
 	project: z.string(),
 	remote: z.string(),
 	originRemote: z.string(),

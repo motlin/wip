@@ -22,6 +22,7 @@ import {LadderCardState} from "./ladder-card-state.js";
 import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
 import {AnsiText} from "./ansi-text.js";
 import {CategoryBadge} from "./category-badge.js";
+import {UpstreamRedBlockedMarker} from "./upstream-ci-card";
 import {BranchActions} from "./commit-actions.js";
 import {branchRemoteUrl} from "../lib/branch-rename.js";
 
@@ -122,6 +123,11 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 				</div>
 			</div>
 
+			{branch.upstreamRedBlocked === true && (
+				<div className="mt-1.5">
+					<UpstreamRedBlockedMarker project={branch.project} />
+				</div>
+			)}
 			<div className="mt-1 flex items-center gap-1">
 				<GitBranch className="h-3 w-3 shrink-0 text-text-400" />
 				{ghBranchUrl ? (

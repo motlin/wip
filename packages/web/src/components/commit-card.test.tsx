@@ -110,3 +110,20 @@ describe("CommitCard age", () => {
 		expect(screen.queryByTestId("wip-age")).toBeNull();
 	});
 });
+
+describe("CommitCard upstream red", () => {
+	afterEach(cleanup);
+
+	it("marks a commit blocked by its repo's own red upstream", () => {
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<CommitCard commit={makeChild({project: "broken", upstreamRedBlocked: true})} />
+				<CommitCard commit={makeChild({project: "green", sha: "c".repeat(40)})} />
+			</QueryClientProvider>,
+		);
+
+		expect(screen.getAllByTestId("upstream-red-blocked").map((m) => m.textContent)).toStrictEqual([
+			"Blocked: broken's upstream is red",
+		]);
+	});
+});

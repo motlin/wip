@@ -731,7 +731,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 
 	/**
 	 * Ready = known ready or advanced to ready, and not on hold or awaiting an auto-fix review; a
-	 * stopped repo's ready items stay listed (the section marks them upstream red). A ready item
+	 * stopped repo lists nothing (its commits show blocked by its upstream_red item). A ready item
 	 * whose PR checks are still running is listed as awaiting checks instead, and one whose PR checks
 	 * failed as checks failed.
 	 */
@@ -749,6 +749,7 @@ export function createReadyBuffer(deps: ReadyBufferDeps): ReadyBuffer {
 				const entry: Entry = [repo, c];
 				byKey.set(`${repo.name}:${c.id}`, entry);
 				if (jobs.has(c.id)) running.push(entry);
+				else if (stopped.has(repo.name)) continue;
 				else if ((c.state === "ready" || done.get(c.id) === "ready") && !c.onHold && c.autoFixed !== true) {
 					(c.checksFailed === true ? checksFailed : c.checksPending === true ? awaitingChecks : ready).push([
 						repo,

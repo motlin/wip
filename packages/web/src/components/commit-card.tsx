@@ -8,6 +8,7 @@ import {AnsiText} from "./ansi-text";
 import {CategoryBadge} from "./category-badge";
 import {BranchActions} from "./commit-actions";
 import {wipAgeText} from "../lib/staleness";
+import {UpstreamRedBlockedMarker} from "./upstream-ci-card";
 
 export function CommitCard({commit, category}: {commit: GitChildResult; category?: Category}) {
 	const queryClient = useQueryClient();
@@ -128,6 +129,11 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 				<span className="font-mono text-xs text-text-400 mr-1.5">{commit.shortSha}</span>
 				{commit.subject}
 			</Link>
+			{commit.upstreamRedBlocked === true && (
+				<div className="mt-1.5">
+					<UpstreamRedBlockedMarker project={commit.project} />
+				</div>
+			)}
 
 			{commit.testStatus === "failed" && commit.failureTail && (
 				<AnsiText

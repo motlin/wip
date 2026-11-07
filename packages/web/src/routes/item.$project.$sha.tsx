@@ -21,6 +21,7 @@ import {
 } from "../components/icons.js";
 import {BranchActions, PullRequestActions} from "../components/commit-actions.js";
 import {CategoryBadge} from "../components/category-badge.js";
+import {UpstreamRedBlockedMarker} from "../components/upstream-ci-card.js";
 import {AnsiText} from "../components/ansi-text.js";
 import {
 	projectChildrenQueryOptions,
@@ -373,6 +374,9 @@ function ItemDetail() {
 										</Link>
 									)}
 									{child.date && <span>Committed {child.date}</span>}
+									{child.upstreamRedBlocked === true && (
+										<UpstreamRedBlockedMarker project={child.project} />
+									)}
 								</div>
 							</div>
 						</div>

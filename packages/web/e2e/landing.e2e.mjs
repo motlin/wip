@@ -12,9 +12,11 @@
  * recorded gh calls. Before those, the auto-fix flow: bolts' commit fails its test, the buffer's test-fix agent
  * (the fake claude, launched through the fake herdr in fake-herdr.mjs) commits a separate fixup, the
  * card shows "auto-fixed: <failure>" and its review the fixup's diff, and Accept squashes it into one
- * green commit that lists in Ready to land. First of all, the andon: every page shows one banner naming
- * broken's own red upstream, and levers' foreign red upstream is a baseline: its commit adding no failure
- * lines up, its commit adding one does not, and the buffer pulled no commit in broken (server.log's test runs).
+ * green commit that lists in Ready to land. First of all, upstream red: /queue shows one upstream_red item,
+ * for broken's own red upstream (its failed local baseline and /build:fix), broken's commits show blocked by
+ * it and none lists in Ready to land, and levers' foreign red upstream gets no item and is a baseline: its
+ * commit adding no failure lines up, its commit adding one does not, and the buffer pulled no commit in broken
+ * (server.log's test runs).
  * The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
@@ -373,40 +375,47 @@ async function run() {
 					"gears: your GitHub token has read-only access to acme/gears; grant it access to open PRs; testing locally",
 			})
 			.waitFor();
-		const redRow = readyRow(page, "Fix broken's tests");
-		await redRow.getByTestId("upstream-red-marker").waitFor();
-		await redRow.getByText("broken's upstream is red: fix it before landing").waitFor();
-		assert.deepEqual(
-			await redRow.getByRole("button").allInnerTexts(),
-			[],
-			"a red upstream stops its repo's line: no Open PR, even for a commit green on the red tip",
-		);
-		assert.equal(
-			await readyRow(page, "Add a feature on red upstream").count(),
-			0,
-			"a red commit on a red upstream is not ready",
-		);
 		assert.match(
 			await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).innerText(),
 			/PR #1 · waiting for checks, merges itself when they pass/,
 		);
 
-		step("The andon: every page names broken's red upstream, and only broken's");
-		// Another tab, so the /queue page the flows drive keeps its state.
-		const andonTab = await context.newPage();
-		for (const route of ["/queue", "/kanban", "/flow", `/item/widgets/${world.shas.readySha}`]) {
-			// eslint-disable-next-line no-await-in-loop -- visits one page at a time in the one tab
-			await andonTab.goto(`${baseUrl}${route}`);
-			// eslint-disable-next-line no-await-in-loop -- visits one page at a time in the one tab
-			await andonTab.getByTestId("andon-banner").waitFor();
+		step("Upstream red: one queue item for broken, naming its failed baseline, and broken's commits show blocked");
+		const redItem = page.getByTestId("upstream-red-item");
+		await redItem.filter({hasText: "broken"}).waitFor();
+		assert.deepEqual(
+			{
+				projects: await redItem.getByTestId("upstream-red-project").allInnerTexts(),
+				failures: await redItem.getByTestId("upstream-red-failure").allInnerTexts(),
+				actions: await redItem.getByRole("button").allInnerTexts(),
+			},
+			{projects: ["broken"], failures: ["local baseline test failed"], actions: ["/build:fix"]},
+			"one upstream_red item, for broken alone: green and foreign red upstreams get none",
+		);
+		// How long it has been red: the failing upstream commit's date, and its age once the client clock is read.
+		await redItem
+			.getByTestId("upstream-red-age")
+			.filter({hasText: /^red since \d{4}-\d{2}-\d{2} \(\d+d\)$/})
+			.waitFor();
+		for (const sha of [world.shas.fixSha, world.shas.blockedSha]) {
+			const card = page.locator(`[data-testid="branch-card-${sha}"], [data-testid="commit-card-${sha}"]`);
+			// eslint-disable-next-line no-await-in-loop -- checks one card at a time
+			await card.getByTestId("upstream-red-blocked").waitFor();
 			assert.deepEqual(
-				// eslint-disable-next-line no-await-in-loop -- visits one page at a time in the one tab
-				await andonTab.getByTestId("andon-banner").allInnerTexts(),
-				["Line stopped: upstream red in broken"],
-				`${route}: one banner naming broken alone; green and foreign red upstreams stop nothing`,
+				// eslint-disable-next-line no-await-in-loop -- checks one card at a time
+				await card.getByTestId("upstream-red-blocked").allInnerTexts(),
+				["Blocked: broken's upstream is red"],
+				`broken's commit ${sha.slice(0, 7)} shows it is blocked by the upstream_red item`,
 			);
 		}
-		await andonTab.close();
+		assert.deepEqual(
+			{
+				fix: await readyRow(page, "Fix broken's tests").count(),
+				blocked: await readyRow(page, "Add a feature on red upstream").count(),
+			},
+			{fix: 0, blocked: 0},
+			"a red upstream stops its repo's line: Ready to land lists nothing in it, not even a commit green on the red tip",
+		);
 
 		step(
 			"Foreign red upstream is the baseline: a commit adding no new failure lines up, one adding a failure does not",
@@ -414,9 +423,9 @@ async function run() {
 		const harmlessRow = readyRow(page, "Add a feature on foreign red upstream");
 		await harmlessRow.getByRole("button", {name: "Open PR"}).waitFor();
 		assert.equal(
-			await harmlessRow.getByTestId("upstream-red-marker").count(),
+			await page.getByTestId(`branch-card-${world.shas.harmlessSha}`).getByTestId("upstream-red-blocked").count(),
 			0,
-			"a foreign red upstream stops nothing: no upstream-red marker on its row",
+			"a foreign red upstream blocks nothing: no blocked marker on its commit",
 		);
 		// The regressing commit fails a test upstream passes: its test fix is skipped (Claude doesn't trust levers),
 		// which is how Ready to land learns it failed.
@@ -531,7 +540,6 @@ async function run() {
 				["ready-to-land-row", "Add the behind feature"],
 				["waiting-row", "Add the waiting feature"],
 				["ready-to-land-row", "Add the fast-forward feature"],
-				["ready-to-land-row", "Fix broken's tests"],
 			],
 			"after Open PR on widgets",
 		);
@@ -561,7 +569,6 @@ async function run() {
 		const behind = await openPr(page, "Add the behind feature", `${gh.url}/acme/widgets/pull/3`, [
 			[["ready-to-land-row", "waiting-row"], "Add the behind feature"],
 			["ready-to-land-row", "Add the fast-forward feature"],
-			["ready-to-land-row", "Fix broken's tests"],
 		]);
 		await behind.tab.close();
 		const pushedBehind = world.git(widgets.forkBare, "rev-parse", "refs/heads/behind-feature");
@@ -585,7 +592,6 @@ async function run() {
 			[
 				["waiting-row", "Add the behind feature"],
 				["ready-to-land-row", "Add the fast-forward feature"],
-				["ready-to-land-row", "Fix broken's tests"],
 			],
 			"after the second Open PR on widgets",
 		);

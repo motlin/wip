@@ -121,6 +121,9 @@ import {
 	type SaveRegistryInput,
 	classifyGitChild,
 	parseWorktreeList,
+	getGitHubIdentity,
+	markUpstreamRed,
+	upstreamOwnership,
 } from "@wip/shared";
 import {considerSplitting} from "@wip/shared/candidate-rank.js";
 import {doTodoTaskPrompt} from "./category-actions.js";
@@ -497,10 +500,17 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				const childFirstSeen = firstSeen.get(commitFacts.get(child.sha)?.patchId ?? "");
 				if (child.kind !== "upstream_ci" && childFirstSeen !== undefined) child.firstSeen = childFirstSeen;
 			}
-			cacheChildren(projectName, results);
+			// An own red upstream gets one queue item and blocks the repo's commits; a foreign one is the
+			// baseline. Ownership is the ready buffer's: the upstream owner against the user's login and orgs.
+			const identity = results.some((child) => child.kind === "upstream_ci") ? await getGitHubIdentity() : null;
+			const marked = markUpstreamRed(
+				results,
+				identity === null ? "foreign" : upstreamOwnership(p.remote, identity),
+			);
+			cacheChildren(projectName, marked);
 			const {childrenEmitter} = await import("./children-events.js");
-			childrenEmitter.emit("children", {project: projectName, children: results});
-			return results;
+			childrenEmitter.emit("children", {project: projectName, children: marked});
+			return marked;
 		}),
 	);
 

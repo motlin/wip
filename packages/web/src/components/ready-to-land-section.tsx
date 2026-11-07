@@ -279,7 +279,6 @@ interface LandControlProps {
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo | undefined;
-	blockedReason: string | null;
 	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
 	/** The row's latest landing outcome; the button waits while one is in progress. */
 	outcome?: ActionOutcome | undefined;
@@ -290,15 +289,7 @@ interface LandControlProps {
  * The landing button plus the overlay it opens (the confirm, then the outcome); nothing lands until
  * the user confirms.
  */
-function useLandControl({
-	item,
-	commit,
-	projectInfo,
-	blockedReason,
-	onLand,
-	outcome,
-	onDismissOutcome,
-}: LandControlProps): ReactNode {
+function useLandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome}: LandControlProps): ReactNode {
 	const running = outcome?.status === "running";
 	const [confirming, setConfirming] = useState(false);
 	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
@@ -306,8 +297,6 @@ function useLandControl({
 	const refusal =
 		landing?.kind === "open-pr" ? openPrRefusal(landing.branch, projectInfo?.upstreamBranch ?? "main") : null;
 	if (refusal !== null) return <span className="text-xs text-text-300">{refusal}</span>;
-	// A row that may not land (its project's upstream is red) offers no action, only the reason.
-	if (blockedReason !== null && !running) return <span className="text-xs text-text-300">{blockedReason}</span>;
 	if (landing === null) return null;
 	const confirm = confirming ? (
 		<div data-testid="land-confirm" className="flex flex-col gap-2">
@@ -317,7 +306,7 @@ function useLandControl({
 			<div className="flex justify-end gap-2">
 				<button
 					type="button"
-					disabled={blockedReason !== null || running}
+					disabled={running}
 					onClick={() => {
 						setConfirming(false);
 						onLand(item, commit);
@@ -350,8 +339,7 @@ function useLandControl({
 		>
 			<button
 				type="button"
-				disabled={blockedReason !== null || running}
-				title={blockedReason ?? undefined}
+				disabled={running}
 				aria-expanded={confirming}
 				onClick={() => {
 					setConfirming(true);
@@ -452,18 +440,16 @@ const REVIEW_CLASS =
 	"rounded-md border border-border-300 px-2.5 py-1 text-xs font-medium text-text-100 hover:bg-bg-200 hover:text-text-000";
 
 interface ReadyRowProps extends LandControlProps {
-	stoppedLine: boolean;
 	noTests: boolean;
 	age: string | null;
 }
 
-function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
+function ReadyRow({noTests, age, ...land}: ReadyRowProps) {
 	const {item, commit} = land;
 	const action = useLandControl(land);
 	const size = sizeText(commit);
 	const params = {project: item.project, sha: commit?.sha ?? item.sha};
 	const hasChips =
-		stoppedLine ||
 		noTests ||
 		commit?.localTestSkipped === true ||
 		commit?.considerSplitting === true ||
@@ -492,14 +478,6 @@ function ReadyRow({stoppedLine, noTests, age, ...land}: ReadyRowProps) {
 					</div>
 					{hasChips && (
 						<div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-							{stoppedLine && (
-								<span
-									data-testid="upstream-red-marker"
-									className={`${CHIP_CLASS} border-status-red/50 bg-status-red/10 text-status-red`}
-								>
-									upstream red
-								</span>
-							)}
 							{noTests && <span className={MARKER_CLASS}>no tests</span>}
 							{commit?.localTestSkipped === true && (
 								<span className={MARKER_CLASS}>local test skipped</span>
@@ -845,7 +823,6 @@ export function ReadyToLandSection({
 		return null;
 	}
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
-	const stopped = new Set(state.stoppedProjects);
 	const landable = landableCount(state, commits);
 
 	return (
@@ -896,8 +873,6 @@ export function ReadyToLandSection({
 							item={item}
 							commit={commit}
 							projectInfo={projectInfo}
-							blockedReason={stoppedLineRefusal(item.project, state.stoppedProjects)}
-							stoppedLine={stopped.has(item.project)}
 							noTests={projectInfo?.hasTestConfigured === false}
 							age={now === null || item.firstSeen === undefined ? null : wipAgeText(item.firstSeen, now)}
 							onLand={onLand}
@@ -967,7 +942,6 @@ export function ReadyLandPanel({
 			item={item}
 			commit={commit}
 			projectInfo={projectInfo}
-			blockedReason={stoppedLineRefusal(item.project, state.stoppedProjects)}
 			onLand={onLand}
 			outcome={outcome}
 			onDismissOutcome={onDismissOutcome}

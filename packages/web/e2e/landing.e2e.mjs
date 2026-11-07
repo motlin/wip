@@ -401,9 +401,23 @@ async function run() {
 			.waitFor();
 		assert.match(await review.getByTestId("auto-fix-diff").innerText(), /deleted file mode 100644/);
 		assert.match(await review.getByTestId("auto-fix-failure").innerText(), new RegExp(failure));
+		const flowCounts = async () => {
+			const text = await page.getByTestId("flow-strip").innerText();
+			const match = /\((\d+) commits .*· red (\d+)/.exec(text);
+			assert.ok(match, `flow strip: ${text}`);
+			return {commits: Number(match[1]), red: Number(match[2])};
+		};
+		const beforeAccept = await flowCounts();
 		await review.getByRole("button", {name: "Accept fix"}).click();
 		const fragileRow = readyRow(page, "Add the fragile feature");
 		await fragileRow.getByRole("button", {name: "Open PR"}).waitFor();
+		// The pre-squash commit is on no branch any more: its red card leaves at once, without a reload.
+		await fragileCard.waitFor({state: "detached", timeout: 3000});
+		assert.deepEqual(
+			await flowCounts(),
+			{commits: beforeAccept.commits, red: beforeAccept.red - 1},
+			"Accept replaces the red commit with its green squash in the flow strip",
+		);
 		const squashed = world.git(bolts.clone, "rev-parse", "refs/heads/fragile-feature");
 		const commitOf = (sha) => world.git(bolts.clone, "log", "-1", "--format=%P%n%an <%ae> %aI%n%B", sha);
 		assert.deepEqual(

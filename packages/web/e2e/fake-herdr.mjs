@@ -3,7 +3,9 @@
  * it through HERDR_SOCKET_PATH) answering the calls wip's herdr client makes. `tab.create` opens a
  * tab, `pane.send_text` types a command and `pane.send_keys` ["enter"] runs it with `sh -c` in the
  * tab's cwd and the given env (so the world's fake claude answers); when it exits the pane's agent
- * reports "done" to every `events.subscribe` on it, including one that subscribes after the exit.
+ * reports "done" to every `events.subscribe` on it, in real herdr's envelope
+ * (`pane.agent_status_changed`). Like real herdr it replays nothing to a later subscriber, which
+ * sees the finished agent through `pane.get`.
  * Every launch is recorded. It never starts the real herdr or the real claude.
  */
 import {spawn} from "node:child_process";
@@ -15,7 +17,7 @@ import {createServer} from "node:net";
  */
 
 function doneEvent(paneId) {
-	return `${JSON.stringify({event: "pane_agent_status_changed", data: {pane_id: paneId, agent_status: "done"}})}\n`;
+	return `${JSON.stringify({event: "pane.agent_status_changed", data: {pane_id: paneId, workspace_id: "w1", agent_status: "done"}})}\n`;
 }
 
 /** Records the command's exit and tells every subscriber to the pane that its agent is done. */
@@ -76,14 +78,27 @@ export async function startFakeHerdr({socketPath, env}) {
 				return;
 			}
 			case "events.subscribe": {
-				reply({subscribed: true});
+				reply({type: "subscription_started"});
 				for (const subscription of params.subscriptions ?? []) {
 					const pane = panes.get(subscription.pane_id);
 					if (!pane) continue;
 					pane.subscribers.add(socket);
 					socket.on("close", () => pane.subscribers.delete(socket));
-					if (pane.done) socket.write(doneEvent(subscription.pane_id));
 				}
+				return;
+			}
+			case "pane.get": {
+				const pane = panes.get(params.pane_id);
+				if (!pane) {
+					socket.write(
+						`${JSON.stringify({id: request.id, error: {code: "pane_not_found", message: "no such pane"}})}\n`,
+					);
+					return;
+				}
+				reply({
+					type: "pane_info",
+					pane: {pane_id: params.pane_id, workspace_id: "w1", agent_status: pane.done ? "done" : "working"},
+				});
 				return;
 			}
 			default:

@@ -47,13 +47,25 @@ async function listen(socketPath: string, onLine: (line: string, socket: net.Soc
 	});
 }
 
-function ack(line: string, socket: net.Socket): void {
-	const request = JSON.parse(line);
-	socket.write(`${JSON.stringify({id: request.id, result: {type: "subscription_started"}})}\n`);
+/** Answers like real herdr: `events.subscribe` starts a subscription, `pane.get` reports `currentStatus`. */
+function herdr(currentStatus: string, onSubscribed: (socket: net.Socket) => void = () => {}) {
+	return (line: string, socket: net.Socket): void => {
+		const request = JSON.parse(line);
+		if (request.method === "pane.get") {
+			socket.write(
+				`${JSON.stringify({id: request.id, result: {type: "pane_info", pane: {pane_id: request.params.pane_id, agent_status: currentStatus}}})}\n`,
+			);
+			return;
+		}
+		socket.write(`${JSON.stringify({id: request.id, result: {type: "subscription_started"}})}\n`);
+		onSubscribed(socket);
+	};
 }
 
-function statusEvent(paneId: string, status: string): string {
-	return `${JSON.stringify({event: "pane_agent_status_changed", data: {pane_id: paneId, agent_status: status}})}\n`;
+const ack = herdr("working");
+
+function statusEvent(paneId: string, status: string, event = "pane.agent_status_changed"): string {
+	return `${JSON.stringify({event, data: {pane_id: paneId, workspace_id: "w1", agent_status: status}})}\n`;
 }
 
 const closed = async (socket: net.Socket) =>
@@ -68,12 +80,14 @@ const closed = async (socket: net.Socket) =>
 describe("waitForHerdrAgent", () => {
 	it("resolves done when the pane agent finishes, ignoring other panes and working", async () => {
 		const socketPath = path.join(dir, "h.sock");
-		await listen(socketPath, (line, socket) => {
-			ack(line, socket);
-			socket.write(statusEvent("p9", "done"));
-			socket.write(statusEvent("p1", "working"));
-			socket.write(statusEvent("p1", "done"));
-		});
+		await listen(
+			socketPath,
+			herdr("working", (socket) => {
+				socket.write(statusEvent("p9", "done"));
+				socket.write(statusEvent("p1", "working"));
+				socket.write(statusEvent("p1", "done"));
+			}),
+		);
 		const result = await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath});
 		expect(result).toBe("done");
 		expect(JSON.parse(received[0] ?? "")).toEqual({
@@ -82,6 +96,46 @@ describe("waitForHerdrAgent", () => {
 			params: {subscriptions: [{type: "pane.agent_status_changed", pane_id: "p1"}]},
 		});
 		await closed(sockets[0]!);
+	});
+
+	it("accepts the underscore event name of older herdr", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		await listen(
+			socketPath,
+			herdr("working", (socket) => {
+				socket.write(statusEvent("p1", "done", "pane_agent_status_changed"));
+			}),
+		);
+		expect(await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath})).toBe("done");
+	});
+
+	it("resolves done when the agent already finished before the subscription started", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		await listen(socketPath, herdr("done"));
+		const result = await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath});
+		expect(result).toBe("done");
+		expect(received.map((line): unknown => JSON.parse(line))).toEqual([
+			{
+				id: expect.any(String),
+				method: "events.subscribe",
+				params: {subscriptions: [{type: "pane.agent_status_changed", pane_id: "p1"}]},
+			},
+			{id: expect.any(String), method: "pane.get", params: {pane_id: "p1"}},
+		]);
+	});
+
+	it("keeps waiting when the pane is idle when the subscription starts", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		await listen(socketPath, herdr("idle"));
+		expect(await waitForHerdrAgent("p1", {timeoutMs: 200, socketPath})).toBe("timeout");
+		expect(received.map((line): unknown => JSON.parse(line))).toEqual([
+			{
+				id: expect.any(String),
+				method: "events.subscribe",
+				params: {subscriptions: [{type: "pane.agent_status_changed", pane_id: "p1"}]},
+			},
+			{id: expect.any(String), method: "pane.get", params: {pane_id: "p1"}},
+		]);
 	});
 
 	it("resolves timeout and closes the connection", async () => {

@@ -2,10 +2,11 @@
  * A fake herdr for the landing end-to-end harness: a JSON-lines server on a Unix socket (wip finds
  * it through HERDR_SOCKET_PATH) answering the calls wip's herdr client makes. `tab.create` opens a
  * tab, `pane.send_text` types a command and `pane.send_keys` ["enter"] runs it with `sh -c` in the
- * tab's cwd and the given env (so the world's fake claude answers); when it exits the pane's agent
- * reports "done" to every `events.subscribe` on it, in real herdr's envelope
- * (`pane.agent_status_changed`). Like real herdr it replays nothing to a later subscriber, which
- * sees the finished agent through `pane.get`.
+ * tab's cwd and the given env (so the world's fake claude answers). Like real herdr with a freshly
+ * launched claude, the pane's agent first reports "idle" (startup, before it starts the prompt), then
+ * "working" when the command starts, then "done" when it exits, each to every `events.subscribe` on
+ * it, in real herdr's envelope (`pane.agent_status_changed`). Like real herdr it replays nothing to
+ * a later subscriber, which sees the current status through `pane.get`.
  * Every launch is recorded. It never starts the real herdr or the real claude.
  */
 import {spawn} from "node:child_process";
@@ -16,15 +17,20 @@ import {createServer} from "node:net";
  * @typedef {{cwd: string; label: string; focus: boolean; command?: string; exitCode?: number | null}} FakeLaunch
  */
 
-function doneEvent(paneId) {
-	return `${JSON.stringify({event: "pane.agent_status_changed", data: {pane_id: paneId, workspace_id: "w1", agent_status: "done"}})}\n`;
+/** How long the launched agent sits idle (startup) before it starts working, long enough for wip to subscribe. */
+const STARTUP_IDLE_MS = 300;
+
+/** Sets the pane's agent status and tells every subscriber to the pane. */
+function setStatus(pane, paneId, status) {
+	pane.status = status;
+	const event = `${JSON.stringify({event: "pane.agent_status_changed", data: {pane_id: paneId, workspace_id: "w1", agent_status: status}})}\n`;
+	for (const socket of pane.subscribers) if (!socket.destroyed) socket.write(event);
 }
 
 /** Records the command's exit and tells every subscriber to the pane that its agent is done. */
 function finish(pane, paneId, exitCode) {
 	pane.launch.exitCode = exitCode;
-	pane.done = true;
-	for (const socket of pane.subscribers) if (!socket.destroyed) socket.write(doneEvent(paneId));
+	setStatus(pane, paneId, "done");
 }
 
 /** @param {{socketPath: string; env: NodeJS.ProcessEnv}} options */
@@ -34,6 +40,7 @@ export async function startFakeHerdr({socketPath, env}) {
 	/** pane id -> {launch, done, subscribers} */
 	const panes = new Map();
 	const children = new Set();
+	const timers = new Set();
 	const sockets = new Set();
 
 	const handle = (socket, request) => {
@@ -46,7 +53,7 @@ export async function startFakeHerdr({socketPath, env}) {
 				const n = panes.size + 1;
 				const launch = {cwd: params.cwd, label: params.label, focus: params.focus};
 				launches.push(launch);
-				panes.set(`pane-${n}`, {launch, done: false, subscribers: new Set()});
+				panes.set(`pane-${n}`, {launch, status: "unknown", subscribers: new Set()});
 				reply({tab: {tab_id: `tab-${n}`}, root_pane: {pane_id: `pane-${n}`}});
 				return;
 			}
@@ -59,20 +66,27 @@ export async function startFakeHerdr({socketPath, env}) {
 			case "pane.send_keys": {
 				const pane = panes.get(params.pane_id);
 				if (pane && pane.launch.command !== undefined && params.keys?.includes("enter")) {
-					const child = spawn("sh", ["-c", pane.launch.command], {
-						cwd: pane.launch.cwd,
-						env,
-						stdio: "ignore",
-					});
-					children.add(child);
-					child.on("exit", (code) => {
-						children.delete(child);
-						finish(pane, params.pane_id, code);
-					});
-					child.on("error", () => {
-						children.delete(child);
-						finish(pane, params.pane_id, null);
-					});
+					const paneId = params.pane_id;
+					const command = pane.launch.command;
+					// Real herdr reports a just-launched claude idle before it starts the prompt.
+					setStatus(pane, paneId, "idle");
+					const startup = setTimeout(() => {
+						timers.delete(startup);
+						// Announce idle again for a subscriber that arrived after the launch, then start working.
+						setStatus(pane, paneId, "idle");
+						setStatus(pane, paneId, "working");
+						const child = spawn("sh", ["-c", command], {cwd: pane.launch.cwd, env, stdio: "ignore"});
+						children.add(child);
+						child.on("exit", (code) => {
+							children.delete(child);
+							finish(pane, paneId, code);
+						});
+						child.on("error", () => {
+							children.delete(child);
+							finish(pane, paneId, null);
+						});
+					}, STARTUP_IDLE_MS);
+					timers.add(startup);
 				}
 				reply({});
 				return;
@@ -97,7 +111,7 @@ export async function startFakeHerdr({socketPath, env}) {
 				}
 				reply({
 					type: "pane_info",
-					pane: {pane_id: params.pane_id, workspace_id: "w1", agent_status: pane.done ? "done" : "working"},
+					pane: {pane_id: params.pane_id, workspace_id: "w1", agent_status: pane.status},
 				});
 				return;
 			}
@@ -137,6 +151,7 @@ export async function startFakeHerdr({socketPath, env}) {
 		socketPath,
 		launches,
 		async close() {
+			for (const timer of timers) clearTimeout(timer);
 			for (const child of children) child.kill("SIGKILL");
 			for (const socket of sockets) socket.destroy();
 			await new Promise((resolve) => {

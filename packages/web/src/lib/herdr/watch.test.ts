@@ -109,6 +109,42 @@ describe("waitForHerdrAgent", () => {
 		expect(await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath})).toBe("done");
 	});
 
+	it("keeps waiting on an idle event before the agent has worked", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		await listen(
+			socketPath,
+			herdr("idle", (socket) => {
+				socket.write(statusEvent("p1", "idle"));
+			}),
+		);
+		expect(await waitForHerdrAgent("p1", {timeoutMs: 200, socketPath})).toBe("timeout");
+	});
+
+	it("resolves done on idle once the agent has worked", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		await listen(
+			socketPath,
+			herdr("idle", (socket) => {
+				socket.write(statusEvent("p1", "idle"));
+				socket.write(statusEvent("p1", "working"));
+				socket.write(statusEvent("p1", "idle"));
+			}),
+		);
+		expect(await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath})).toBe("done");
+	});
+
+	it("resolves done on a done event without any working event", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		await listen(
+			socketPath,
+			herdr("idle", (socket) => {
+				socket.write(statusEvent("p1", "idle"));
+				socket.write(statusEvent("p1", "done"));
+			}),
+		);
+		expect(await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath})).toBe("done");
+	});
+
 	it("resolves done when the agent already finished before the subscription started", async () => {
 		const socketPath = path.join(dir, "h.sock");
 		await listen(socketPath, herdr("done"));

@@ -337,26 +337,32 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		let slots = globalConcurrency - running.size;
 		if (slots <= 0) return;
 
-		// Resource gate only limits *additional* concurrency. When idle, still
-		// admit a single job so a permanently-loaded machine never deadlocks.
-		// While busy, only a buffer job may start, and only if no other buffer
-		// job runs, so the ready buffer keeps refilling at one job at a time.
+		// The resource gate limits only *additional background* concurrency: a user action (foreground)
+		// starts whenever a slot, its class cap and its resources allow, so load from a long background
+		// test never keeps a click waiting. Background jobs under a hot probe: when idle, still admit a
+		// single one so a permanently-loaded machine never deadlocks; while busy, only a buffer job may
+		// start, and only if no other buffer job runs, so the ready buffer keeps refilling one at a time.
+		let backgroundSlots = slots;
 		let bufferOnly = false;
 		if (!resourcesOk()) {
+			backgroundSlots = 1;
 			if (running.size > 0) {
-				if ([...running.values()].some((job) => job.buffer)) return;
+				if ([...running.values()].some((job) => job.buffer)) backgroundSlots = 0;
 				bufferOnly = true;
 			}
-			slots = 1;
 		}
 
 		let changed = false;
-		// Scan in order, skipping resource-blocked jobs so one busy repo never
+		// Scan in order, skipping blocked jobs so one busy repo or one capped class never
 		// stalls work for every other repo behind it.
 		for (let index = 0; index < queued.length && slots > 0;) {
 			const job = queued[index];
 			if (job === undefined) break;
-			if ((bufferOnly && !job.buffer) || (onBattery && job.pauseOnBattery)) {
+			const background = job.priority !== "foreground";
+			if (
+				(background && (backgroundSlots <= 0 || (bufferOnly && !job.buffer))) ||
+				(onBattery && job.pauseOnBattery)
+			) {
 				index += 1;
 				continue;
 			}
@@ -381,6 +387,7 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			running.set(job.id, job);
 			for (const resource of job.resources) heldResources.set(resource, (heldResources.get(resource) ?? 0) + 1);
 			slots -= 1;
+			if (background) backgroundSlots -= 1;
 			changed = true;
 
 			// The async wrapper turns a synchronous throw from run() into a rejection,

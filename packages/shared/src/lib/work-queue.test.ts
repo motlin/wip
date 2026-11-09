@@ -670,6 +670,139 @@ describe("resource probe", () => {
 	});
 });
 
+function longMainPushTest(gate: Deferred) {
+	const run = vi.fn<() => Promise<void>>(async () => gate.promise);
+	queue.enqueue(
+		job("main-push-test:alpha", run, {
+			kind: "main-push-test",
+			project: "alpha",
+			resources: ["test-worktree:alpha"],
+			costClass: "build",
+			priority: "background",
+			pauseOnBattery: true,
+			preemptible: true,
+		}),
+	);
+	return run;
+}
+
+function userAction(project: string) {
+	const gate = deferred();
+	const run = vi.fn<() => Promise<void>>(async () => gate.promise);
+	queue.enqueue(
+		job(`action:setUpPrRefs:${project}`, run, {
+			kind: "setUpPrRefs",
+			project,
+			laneKey: undefined,
+			resources: [`repo:${project}`],
+			costClass: "git-write",
+			priority: "foreground",
+		}),
+	);
+	return {gate, run};
+}
+
+describe("user actions beside long background work", () => {
+	it.each([
+		{name: "under a hot probe", probe: {loadPerCore: () => 5, freeMemRatio: () => 0.5}},
+		{name: "under low memory", probe: {loadPerCore: () => 0.5, freeMemRatio: () => 0.05}},
+		{name: "with a cool probe", probe: {loadPerCore: () => 0.5, freeMemRatio: () => 0.5}},
+	])("starts queued foreground git-writes on other repos at once $name", async ({probe}) => {
+		makeQueue({globalConcurrency: 4, probe, loadThreshold: 2, memFloor: 0.1});
+		const longGate = deferred();
+		const longRun = longMainPushTest(longGate);
+		await settle();
+		const beta = userAction("beta");
+		const gamma = userAction("gamma");
+		await settle();
+
+		expect({
+			long: longRun.mock.calls.length,
+			beta: beta.run.mock.calls.length,
+			gamma: gamma.run.mock.calls.length,
+			queued: queue.getState().queued,
+		}).toStrictEqual({long: 1, beta: 1, gamma: 1, queued: []});
+		beta.gate.resolve();
+		gamma.gate.resolve();
+		longGate.resolve();
+	});
+
+	it("starts a foreground action under a hot probe while a buffer job runs", async () => {
+		makeQueue({
+			globalConcurrency: 4,
+			probe: {loadPerCore: () => 5, freeMemRatio: () => 0.5},
+			loadThreshold: 2,
+			memFloor: 0.1,
+		});
+		const bufferGate = deferred();
+		const bufferRun = vi.fn<() => Promise<void>>(async () => bufferGate.promise);
+		queue.enqueue(job("ready-alpha", bufferRun, {costClass: "build", buffer: true}));
+		await settle();
+		const beta = userAction("beta");
+		await settle();
+
+		expect({buffer: bufferRun.mock.calls.length, beta: beta.run.mock.calls.length}).toStrictEqual({
+			buffer: 1,
+			beta: 1,
+		});
+		beta.gate.resolve();
+		bufferGate.resolve();
+	});
+
+	it("keeps holding background refreshes behind a hot probe while user actions start", async () => {
+		makeQueue({
+			globalConcurrency: 4,
+			probe: {loadPerCore: () => 5, freeMemRatio: () => 0.5},
+			loadThreshold: 2,
+			memFloor: 0.1,
+		});
+		const longGate = deferred();
+		const longRun = longMainPushTest(longGate);
+		await settle();
+		const refreshRun = vi.fn<() => Promise<void>>(async () => {});
+		queue.enqueue(job("refresh:delta", refreshRun, {kind: "merge-status-deferred", project: "delta"}));
+		const beta = userAction("beta");
+		await settle();
+
+		expect({
+			long: longRun.mock.calls.length,
+			beta: beta.run.mock.calls.length,
+			refresh: refreshRun.mock.calls.length,
+		}).toStrictEqual({long: 1, beta: 1, refresh: 0});
+		beta.gate.resolve();
+		longGate.resolve();
+		await settle();
+		expect(refreshRun).toHaveBeenCalledTimes(1);
+	});
+
+	it("never leaves a runnable job waiting while slots are idle", async () => {
+		makeQueue({globalConcurrency: 4, probe: {loadPerCore: () => 0.5, freeMemRatio: () => 0.5}});
+		const longGate = deferred();
+		const longRun = longMainPushTest(longGate);
+		await settle();
+		const beta = userAction("beta");
+		const gamma = userAction("gamma");
+		const refreshGate = deferred();
+		const refreshRun = vi.fn<() => Promise<void>>(async () => refreshGate.promise);
+		queue.enqueue(job("refresh:delta", refreshRun, {kind: "merge-status-deferred", project: "delta"}));
+		await settle();
+
+		expect({
+			running: queue.getState().running.map((j) => j.kind),
+			queued: queue.getState().queued,
+			long: longRun.mock.calls.length,
+		}).toStrictEqual({
+			running: ["main-push-test", "setUpPrRefs", "setUpPrRefs", "merge-status-deferred"],
+			queued: [],
+			long: 1,
+		});
+		beta.gate.resolve();
+		gamma.gate.resolve();
+		refreshGate.resolve();
+		longGate.resolve();
+	});
+});
+
 describe("state", () => {
 	it("reports running and queued jobs with slot capacity", async () => {
 		makeQueue({globalConcurrency: 2});

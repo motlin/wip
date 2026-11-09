@@ -1,4 +1,4 @@
-import {createFileRoute, Outlet, Link} from "@tanstack/react-router";
+import {createFileRoute, Outlet, Link, useMatchRoute} from "@tanstack/react-router";
 import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {ClipboardList} from "../../components/icons.js";
 import {useState, useMemo, useCallback, useEffect} from "react";
@@ -12,6 +12,7 @@ import {
 	systemStatusQueryOptions,
 } from "../../lib/queries";
 import {ReadyToLandSection} from "../../components/ready-to-land-section";
+import {QueueMain} from "../../components/queue-cards";
 import {
 	useActionsBlocked,
 	useLandByPushing,
@@ -46,6 +47,7 @@ function QueueLayout() {
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
 	const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+	const cardsView = Boolean(useMatchRoute()({to: "/queue"}));
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
@@ -357,20 +359,26 @@ function QueueLayout() {
 							/>
 						</div>
 					</div>
-					<ReadyToLandSection
-						state={readyToLand}
-						commits={workItems.gitChildren}
-						projects={projects}
-						now={now}
-						onLand={land}
-						mainPushes={mainPushes}
-						onPush={push}
-						actionsBlocked={actionsBlocked}
-						onLandByPushing={landByPushing}
-						outcomes={outcomes}
-						onDismissOutcome={dismissOutcome}
-					/>
-					<Outlet />
+					<QueueMain
+						cardsView={cardsView}
+						readyToLand={
+							<ReadyToLandSection
+								state={readyToLand}
+								commits={workItems.gitChildren}
+								projects={projects}
+								now={now}
+								onLand={land}
+								mainPushes={mainPushes}
+								onPush={push}
+								actionsBlocked={actionsBlocked}
+								onLandByPushing={landByPushing}
+								outcomes={outcomes}
+								onDismissOutcome={dismissOutcome}
+							/>
+						}
+					>
+						<Outlet />
+					</QueueMain>
 				</main>
 			</div>
 		</QueueContext.Provider>

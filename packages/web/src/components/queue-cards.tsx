@@ -19,6 +19,7 @@ import {PrRefsMissingCard, RemoteOnlyCard} from "./remote-only-card.js";
 import {QueueSection} from "./queue-section.js";
 import {useQueueContext} from "../lib/queue-context.js";
 import {bucketCount} from "../lib/grouping.js";
+import {BLOCKING_CATEGORIES} from "../lib/category-actions.js";
 import type {Category} from "@wip/shared";
 import type {ColumnItems} from "./kanban-column.js";
 
@@ -53,32 +54,57 @@ function sectionCards(items: ColumnItems, category: Category, finishFirst: boole
 	];
 }
 
-export function QueueCards() {
+/**
+ * The queue's category sections. `part="blocking"` renders only the cards that block others
+ * (Set Up PR Refs, Upstream Red), which /queue shows above Ready to land; the default renders
+ * the rest.
+ */
+export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
 	const {grouped, visibleCategories, filterByProject, commitsWaiting} = useQueueContext();
-	const showsTodos = visibleCategories.some(
-		(category) => (filterByProject(grouped[category]).todos?.length ?? 0) > 0,
-	);
+	const sections = visibleCategories
+		.filter((category) => BLOCKING_CATEGORIES.includes(category) === (part === "blocking"))
+		.map((category) => ({category, items: filterByProject(grouped[category])}))
+		.filter(({items}) => bucketCount(items) > 0);
+	if (part === "blocking" && sections.length === 0) return null;
+	const showsTodos = sections.some(({items}) => (items.todos?.length ?? 0) > 0);
 
 	return (
-		<div className="flex flex-col gap-6">
+		<div className={`flex flex-col gap-6${part === "blocking" ? " mb-6" : ""}`}>
 			{commitsWaiting && showsTodos && (
 				<p data-testid="finish-before-starting" className="text-[0.8125rem] text-text-400">
 					Commits are waiting: finish before starting a todo
 				</p>
 			)}
-			{visibleCategories.map((category) => {
-				const items = filterByProject(grouped[category]);
-				const count = bucketCount(items);
-				if (count === 0) return null;
-				return (
-					<QueueSection
-						key={category}
-						category={category}
-						count={count}
-						cards={() => sectionCards(items, category, commitsWaiting)}
-					/>
-				);
-			})}
+			{sections.map(({category, items}) => (
+				<QueueSection
+					key={category}
+					category={category}
+					count={bucketCount(items)}
+					cards={() => sectionCards(items, category, commitsWaiting)}
+				/>
+			))}
 		</div>
+	);
+}
+
+/**
+ * /queue's main column: blockers rank above what they block, so on the cards view the blocking
+ * cards come first, then Ready to land, then the route's own content (the other sections, or the table).
+ */
+export function QueueMain({
+	cardsView,
+	readyToLand,
+	children,
+}: {
+	cardsView: boolean;
+	readyToLand: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<>
+			{cardsView && <QueueCards part="blocking" />}
+			{readyToLand}
+			{children}
+		</>
 	);
 }

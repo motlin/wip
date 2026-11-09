@@ -25,10 +25,12 @@ export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
 // into lifecycle-phase columns. CategorySchema, the /states graph columns and the
 // queue's topological tie-break all derive from this.
 export const CATEGORY_COLUMNS = [
-	// Line stop: a red upstream outranks everything
+	// Blockers rank above what they block. Repo setup: a repo that cannot see PR heads hides other cards
+	["pr_refs_missing"],
+	// Line stop: a red upstream stops its repo's commits from landing
 	["upstream_red"],
-	// Repo setup and lost work: a repo that cannot see PR heads, a commit only a remote branch holds
-	["pr_refs_missing", "remote_only"],
+	// Lost work: a commit only a remote branch holds
+	["remote_only"],
 	// Overrides and ideas
 	["snoozed", "skippable", "untriaged", "triaged", "blocked"],
 	// Early local

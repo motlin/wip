@@ -77,8 +77,8 @@ describe("CATEGORIES", () => {
 		});
 	});
 
-	it("ranks upstream_red first", () => {
-		expect(CATEGORY_PRIORITY_REVERSED[0]).toBe("upstream_red");
+	it("ranks the blockers first: pr_refs_missing, then upstream_red", () => {
+		expect(CATEGORY_PRIORITY_REVERSED.slice(0, 2)).toStrictEqual(["pr_refs_missing", "upstream_red"]);
 	});
 });
 
@@ -227,14 +227,14 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(indexOf("checks_running")).toBeLessThan(indexOf("checks_passed"));
 	});
 
-	it("orders review flow last, followed only by terminal landed and the forced remote-only, PR refs and upstream_red", () => {
+	it("orders review flow last, followed only by terminal landed and the forced remote-only, upstream_red and PR refs", () => {
 		expect(indexOf("checks_passed")).toBeLessThan(indexOf("approved"));
 		expect(CATEGORY_PRIORITY.slice(-5)).toStrictEqual([
 			"approved",
 			"landed",
 			"remote_only",
-			"pr_refs_missing",
 			"upstream_red",
+			"pr_refs_missing",
 		]);
 	});
 

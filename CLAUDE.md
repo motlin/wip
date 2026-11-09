@@ -14,6 +14,7 @@
 - Ready to land = up to date with upstream + green, the "Ready to Push (tested + rebased)" state of the `docs/work-stages.md` state machine, where the rebase and test tracks converge. A commit behind upstream is Needs Rebase, on the item page, the kanban and Ready to land alike.
 - Keep 2-3 commits fully ready (the ready target) and advance lazily, by priority: after a restart or an upstream move, the ready count is recomputed from up-to-date green commits only, and the buffer rebases and retests the highest-priority candidates until the target is met again.
 - Never list or count a behind commit as ready.
+- Blockers rank above what they block: /queue opens with Set Up PR Refs, then Upstream Red, both above Ready to land (`docs/work-stages.md`).
 
 ## Build and Check Commands
 

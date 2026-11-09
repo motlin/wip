@@ -70,8 +70,8 @@ interface ReportJson {
 
 // Kanban left-to-right: full SDLC flow
 const CATEGORY_ORDER: Category[] = [
-	"upstream_red",
 	"pr_refs_missing",
+	"upstream_red",
 	"remote_only",
 	"snoozed",
 	"skippable",

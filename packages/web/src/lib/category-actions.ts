@@ -365,6 +365,13 @@ function columnIndex(cat: Category): number {
 
 // Derive category order from STATE_MACHINE topology using topological sort.
 // This ensures columns flow left-to-right following the SDLC progression.
+/**
+ * Categories whose cards block other cards, most urgent first: they rank above everything,
+ * Ready to land included. Without PR refs wip can't tell lost remote-only work from PR-covered
+ * commits, and a red upstream stops that repo's commits from landing.
+ */
+export const BLOCKING_CATEGORIES: readonly Category[] = ["pr_refs_missing", "upstream_red"];
+
 function deriveCategoryPriority(): Category[] {
 	const allStates = new Set<Category>();
 	for (const t of STATE_MACHINE) {
@@ -418,9 +425,10 @@ function deriveCategoryPriority(): Category[] {
 
 	// Place special orthogonal states at the front:
 	// - snoozed first, skippable second (both are "not actionable now" categories)
-	// upstream_red is forced last so the reversed (most urgent first) order starts with it, then a
-	// repo missing PR refs and remote-only lost work, both near the top.
-	const forcedLast: Category[] = ["remote_only", "pr_refs_missing", "upstream_red"];
+	// Blockers rank above what they block, so they are forced last and the reversed (most urgent
+	// first) order starts with them: a repo missing PR refs (it hides other cards), then a red
+	// upstream (it stops that repo's commits from landing), then remote-only lost work.
+	const forcedLast: Category[] = ["remote_only", "upstream_red", "pr_refs_missing"];
 	const rest = sorted.filter((s) => s !== "snoozed" && s !== "skippable" && !forcedLast.includes(s));
 	const result: Category[] = [
 		...(allStates.has("snoozed") ? ["snoozed" as Category] : []),

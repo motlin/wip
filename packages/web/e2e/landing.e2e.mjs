@@ -482,6 +482,16 @@ async function run() {
 			["vaults"],
 			"only vaults lacks the PR refspec",
 		);
+		assert.deepEqual(
+			await page.evaluate(() =>
+				[...document.querySelectorAll("main h2")]
+					.map((heading) => heading.textContent ?? "")
+					.filter((text) => /Set Up PR Refs|Upstream Red|Ready to land|Remote Only/.test(text))
+					.map((text) => (text.match(/Set Up PR Refs|Upstream Red|Ready to land|Remote Only/) ?? [""])[0]),
+			),
+			["Set Up PR Refs", "Upstream Red", "Ready to land", "Remote Only"],
+			"blockers rank above what they block: Set Up PR Refs, then Upstream Red, both above Ready to land",
+		);
 		await prRefsItem.filter({hasText: "vaults"}).getByRole("button", {name: "Set up PR refs"}).click();
 		await waitUntil(
 			() =>

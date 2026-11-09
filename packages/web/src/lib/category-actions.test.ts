@@ -227,9 +227,15 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(indexOf("checks_running")).toBeLessThan(indexOf("checks_passed"));
 	});
 
-	it("orders review flow last, followed only by terminal landed and the forced upstream_red", () => {
+	it("orders review flow last, followed only by terminal landed and the forced remote-only, PR refs and upstream_red", () => {
 		expect(indexOf("checks_passed")).toBeLessThan(indexOf("approved"));
-		expect(CATEGORY_PRIORITY.slice(-3)).toStrictEqual(["approved", "landed", "upstream_red"]);
+		expect(CATEGORY_PRIORITY.slice(-5)).toStrictEqual([
+			"approved",
+			"landed",
+			"remote_only",
+			"pr_refs_missing",
+			"upstream_red",
+		]);
 	});
 
 	it("places test_failed adjacent to test_running (not after push states)", () => {
@@ -253,6 +259,8 @@ describe("CATEGORY_PRIORITY", () => {
 describe("primaryAction", () => {
 	const expected: Record<Category, PrimaryAction | null> = {
 		upstream_red: "run_claude",
+		pr_refs_missing: "setup_pr_refs",
+		remote_only: "restore_branch",
 		landed: null,
 		approved: "merge",
 		changes_requested: "open_pr_link",

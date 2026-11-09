@@ -24,6 +24,9 @@ const ACTION_PHRASES: Record<string, string> = {
 	dropAutoFixBranch: "Dropping the fix",
 	createBranch: "Creating a branch",
 	deleteBranch: "Deleting the branch",
+	setUpPrRefs: "Setting up PR refs",
+	restoreRemoteBranch: "Restoring the branch",
+	deleteRemoteBranch: "Deleting the remote branch",
 	renameBranch: "Renaming the branch",
 	commitWorkingTree: "Committing your changes",
 };

@@ -328,6 +328,29 @@ describe("classifyGitChild", () => {
 		).toBe("upstream_red");
 	});
 
+	it("classifies a repo whose PR remote fetches no PR refs as pr_refs_missing", () => {
+		expect(
+			classifyGitChild(
+				makePR({kind: "pr_refs_missing", prRemote: "upstream", prUrl: undefined, prNumber: undefined}),
+				makeProject(),
+			),
+		).toBe("pr_refs_missing");
+	});
+
+	it("classifies a remote-only commit as remote_only, never ready, even when its test passed", () => {
+		const remoteOnly = {remote: "origin", branch: "vault-feature"};
+		expect([
+			classifyGitChild(
+				makePR({branch: undefined, prUrl: undefined, prNumber: undefined, testStatus: "passed", remoteOnly}),
+				makeProject(),
+			),
+			classifyGitChild(
+				makePR({branch: undefined, prUrl: undefined, prNumber: undefined, testStatus: "failed", remoteOnly}),
+				makeProject(),
+			),
+		]).toStrictEqual(["remote_only", "remote_only"]);
+	});
+
 	it("classifies an On hold or snoozed child as snoozed whatever its other state", () => {
 		expect([
 			classifyGitChild(makePR({onHold: true, checkStatus: "failed"}), makeProject()),
@@ -555,7 +578,8 @@ describe("State machine consistency", () => {
 
 	// Special states that are orthogonal/transient and not part of the formal state machine
 	// - skippable: derived from item.skippable flag, no transitions in/out (yet)
-	const specialStates = new Set(["skippable"]);
+	// - pr_refs_missing: a repo's condition, not a commit; it leaves the queue once Set up PR refs runs
+	const specialStates = new Set(["skippable", "pr_refs_missing"]);
 
 	it("every non-special category in schema appears in STATE_MACHINE as from or to state", () => {
 		const missingStates = validCategories.filter((cat) => !statesInMachine.has(cat) && !specialStates.has(cat));

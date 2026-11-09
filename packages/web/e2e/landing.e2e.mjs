@@ -446,6 +446,52 @@ async function run() {
 			"a red upstream stops its repo's line: Ready to land lists nothing in it, not even a commit green on the red tip",
 		);
 
+		step("Remote only: a fork branch with no local branch and no PR is listed as lost work, never ready");
+		const lostCard = page.getByTestId(`remote-only-card-${world.shas.lostSha}`);
+		await lostCard.waitFor();
+		assert.deepEqual(
+			{
+				state: await lostCard.getByTestId("remote-only-state").innerText(),
+				actions: await lostCard.getByRole("button").allInnerTexts(),
+				openPr: await lostCard.getByRole("link", {name: "Open PR"}).count(),
+				ready: await readyRow(page, "Add the lost feature").count(),
+			},
+			{
+				state: "Remote only: no local branch, no PR · origin/lost-feature",
+				actions: ["Restore branch", "Delete remote branch"],
+				openPr: 1,
+				ready: 0,
+			},
+			"widgets' lost-feature shows Remote only with its restore, open PR and delete actions, and is not in Ready to land",
+		);
+		assert.deepEqual(
+			{
+				cards: await page.locator(`[data-testid$="-${world.shas.coveredSha}"]`).count(),
+				ready: await readyRow(page, "Add the covered feature").count(),
+				listed: childrenListed(world, "widgets", world.shas.coveredSha),
+			},
+			{cards: 0, ready: 0, listed: false},
+			"widgets' covered-feature, which PR #90's head ref covers, is the PR's: no remote-only row and no card",
+		);
+
+		step("Set up PR refs: vaults' PR remote fetches no refs/pull/*, so it has one item until the user clicks it");
+		const prRefsItem = page.getByTestId("pr-refs-item");
+		await prRefsItem.filter({hasText: "vaults"}).waitFor();
+		assert.deepEqual(
+			await prRefsItem.getByTestId("pr-refs-project").allInnerTexts(),
+			["vaults"],
+			"only vaults lacks the PR refspec",
+		);
+		await prRefsItem.filter({hasText: "vaults"}).getByRole("button", {name: "Set up PR refs"}).click();
+		await waitUntil(
+			() =>
+				world
+					.git(vaults.clone, "config", "--get-all", "remote.upstream.fetch")
+					.includes("+refs/pull/*/head:refs/remotes/upstream/pr/*"),
+			"Set up PR refs added the refspec to vaults' upstream",
+		);
+		await prRefsItem.filter({hasText: "vaults"}).waitFor({state: "detached"});
+
 		step(
 			"Foreign red upstream is the baseline: a commit adding no new failure lines up, one adding a failure does not",
 		);

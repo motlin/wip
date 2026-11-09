@@ -76,6 +76,21 @@ describe("flowCounts", () => {
 		).toStrictEqual({wip: 5, commits: 2, todos: 3, red: 1, blocked: 1, ready: 0, slots: 3});
 	});
 
+	it("never counts a missing-PR-refs repo item as a commit, red or ready; a remote-only commit is WIP but not red", () => {
+		expect(
+			flowCounts({
+				projects: [project],
+				gitChildren: [
+					child("a", {kind: "pr_refs_missing", prRemote: "upstream"}),
+					child("b", {testStatus: "passed", remoteOnly: {remote: "origin", branch: "b"}}),
+				],
+				todos: [],
+				readyToLand: undefined,
+				slots: 3,
+			}),
+		).toStrictEqual({wip: 1, commits: 1, todos: 0, red: 0, blocked: 0, ready: 0, slots: 3});
+	});
+
 	it("counts red work: failed tests, failed checks, conflicts and a red upstream, never on-hold items", () => {
 		expect(
 			flowCounts({

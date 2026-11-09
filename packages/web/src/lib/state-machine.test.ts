@@ -41,7 +41,8 @@ describe("STATE_MACHINE", () => {
 	});
 
 	it("every non-terminal state has at least one outgoing transition", () => {
-		const terminal = new Set(["skippable", "landed"]);
+		// pr_refs_missing is a repo's condition, not a commit: it leaves the queue once its PR refs are set up.
+		const terminal = new Set(["skippable", "landed", "pr_refs_missing"]);
 		for (const cat of allCategories) {
 			if (terminal.has(cat)) continue;
 			const outgoing = getTransitionsFrom(cat);
@@ -96,7 +97,7 @@ describe("STATE_MACHINE", () => {
 	});
 
 	it("every non-terminal, non-snoozed state can be snoozed", () => {
-		const terminal = new Set(["skippable", "snoozed", "landed"]);
+		const terminal = new Set(["skippable", "snoozed", "landed", "pr_refs_missing"]);
 		for (const cat of allCategories) {
 			if (terminal.has(cat)) continue;
 			const transitions = getTransitionsFrom(cat);

@@ -5,6 +5,8 @@ import {
 	isGitChildBranch,
 	isGitChildCommit,
 	isGitChildUpstreamCi,
+	isGitChildPrRefsMissing,
+	isGitChildRemoteOnly,
 } from "@wip/shared/git-child-discriminators.js";
 import {CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions.js";
 import {CommitCard} from "./commit-card.js";
@@ -14,6 +16,7 @@ import {IssueCard} from "./issue-card.js";
 import {ProjectBoardItemCard} from "./project-board-item-card.js";
 import {TodoCard} from "./todo-card.js";
 import {UpstreamCiCard} from "./upstream-ci-card.js";
+import {PrRefsMissingCard, RemoteOnlyCard} from "./remote-only-card.js";
 import {limitVisibleItems, SECTION_PAGE_SIZE} from "../lib/visible-items.js";
 
 export interface ColumnItems {
@@ -36,12 +39,18 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 	const branches = items.gitChildren?.filter(isGitChildBranch) ?? [];
 	const commits = items.gitChildren?.filter(isGitChildCommit) ?? [];
 	const upstreamCiItems = items.gitChildren?.filter(isGitChildUpstreamCi) ?? [];
+	const prRefsItems = items.gitChildren?.filter(isGitChildPrRefsMissing) ?? [];
+	const remoteOnlyCommits = items.gitChildren?.filter(isGitChildRemoteOnly) ?? [];
 	const [expanded, setExpanded] = useState(false);
 
 	const cards: ReactNode[] = [
 		...upstreamCiItems.map((item) => (
 			<UpstreamCiCard key={`${item.remote}-${item.sha}`} item={item} category={category} />
 		)),
+		...prRefsItems.map((item) => (
+			<PrRefsMissingCard key={`pr-refs-${item.project}`} item={item} category={category} />
+		)),
+		...remoteOnlyCommits.map((c) => <RemoteOnlyCard key={c.sha} commit={c} category={category} />),
 		...pullRequests.map((pr) => <PullRequestCard key={pr.sha} pr={pr} category={category} />),
 		...branches
 			.filter((b) => b.commitsAhead === 1)

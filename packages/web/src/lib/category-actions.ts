@@ -23,7 +23,10 @@ export type Action =
 	| "abort_rebase"
 	| "merge"
 	| "create_branch"
-	| "split";
+	| "split"
+	| "restore_branch"
+	| "delete_remote_branch"
+	| "setup_pr_refs";
 
 /** The detour task an "Add a test" click queues for a commit in a repo with no test configured. */
 export function addTestCommand(sha: string): string {
@@ -41,6 +44,8 @@ export type PrimaryAction = Action | "run_claude" | "do_task";
 // The user's next step per state; every other action moves to More. Null where the next step is waiting or none.
 const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
 	upstream_red: "run_claude",
+	pr_refs_missing: "setup_pr_refs",
+	remote_only: "restore_branch",
 	landed: null,
 	approved: "merge",
 	changes_requested: "open_pr_link",
@@ -89,6 +94,7 @@ export const TRANSITION_TO_ACTION: Partial<Record<Transition, Action>> = {
 	merge: "merge",
 	create_branch: "create_branch",
 	split: "split",
+	restore_branch: "restore_branch",
 };
 
 // Derive user-triggerable actions from state machine transitions for a category.
@@ -105,6 +111,8 @@ export function getTransitionActions(category: Category): Action[] {
 // Non-state-changing actions that are added per category beyond what the state machine provides.
 export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>> = {
 	upstream_red: ["open_pr_link", "refresh"],
+	pr_refs_missing: ["setup_pr_refs"],
+	remote_only: ["delete_remote_branch"],
 	approved: ["open_pr_link", "refresh"],
 	changes_requested: ["open_pr_link", "refresh"],
 	review_comments: ["open_pr_link", "refresh"],
@@ -201,6 +209,16 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 		palette: "red",
 		actions: buildActions("upstream_red"),
 		llmCommand: "/github:gha",
+	},
+	pr_refs_missing: {
+		label: "Set Up PR Refs",
+		palette: "amber",
+		actions: buildActions("pr_refs_missing"),
+	},
+	remote_only: {
+		label: "Remote Only",
+		palette: "orange",
+		actions: buildActions("remote_only"),
 	},
 	landed: {label: "Landed", palette: "green", actions: buildActions("landed")},
 	approved: {label: "Approved", palette: "green", actions: buildActions("approved")},
@@ -400,13 +418,15 @@ function deriveCategoryPriority(): Category[] {
 
 	// Place special orthogonal states at the front:
 	// - snoozed first, skippable second (both are "not actionable now" categories)
-	// upstream_red is forced last so the reversed (most urgent first) order starts with it.
-	const rest = sorted.filter((s) => s !== "snoozed" && s !== "skippable" && s !== "upstream_red");
+	// upstream_red is forced last so the reversed (most urgent first) order starts with it, then a
+	// repo missing PR refs and remote-only lost work, both near the top.
+	const forcedLast: Category[] = ["remote_only", "pr_refs_missing", "upstream_red"];
+	const rest = sorted.filter((s) => s !== "snoozed" && s !== "skippable" && !forcedLast.includes(s));
 	const result: Category[] = [
 		...(allStates.has("snoozed") ? ["snoozed" as Category] : []),
 		...(allStates.has("skippable") ? ["skippable" as Category] : []),
 		...rest,
-		"upstream_red",
+		...forcedLast,
 	];
 
 	return result;

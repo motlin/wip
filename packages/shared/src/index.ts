@@ -31,6 +31,9 @@ export {
 	discoverAllProjects,
 	getChildren,
 	getChildCommits,
+	prRefsMissing,
+	prRefspec,
+	setUpPrRefs,
 	isDirty,
 	isDetachedHead,
 	hasUpstreamRef,
@@ -293,6 +296,12 @@ export {
 	type ProjectInfo,
 	ChildCommitSchema,
 	type ChildCommit,
+	RemoteOnlySchema,
+	type RemoteOnly,
+	RemoteBranchInputSchema,
+	type RemoteBranchInput,
+	SetUpPrRefsInputSchema,
+	type SetUpPrRefsInput,
 	GitChildResultSchema,
 	type GitChildResult,
 	RunClaudeCommandInputSchema,
@@ -376,6 +385,7 @@ export {
 } from "./lib/gha-gate.js";
 export {actionsBlockedByBilling, githubChecksSource} from "./lib/gha-checks.js";
 export {readDraftPrRepoFacts, resetDraftPrRepoFactsCache} from "./lib/draft-pr-facts.js";
+export {parseRemoteUrl} from "./lib/git-exec.js";
 export {getAutoMergeAllowed, prRepository, resetAutoMergeAllowedCache} from "./lib/github-auto-merge.js";
 export {
 	compareUrl,
@@ -436,6 +446,8 @@ export {getGitHubIdentity, resetGitHubIdentityForTests} from "./lib/github-ident
 export {replayBranchOnto} from "./lib/buffer-replay.js";
 export {
 	isGitChildUpstreamCi,
+	isGitChildPrRefsMissing,
+	isGitChildRemoteOnly,
 	isGitChildPullRequest,
 	isGitChildBranch,
 	isGitChildCommit,

@@ -3,7 +3,10 @@ import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminator
 
 export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {
 	if (child.kind === "upstream_ci") return "upstream_red";
+	if (child.kind === "pr_refs_missing") return "pr_refs_missing";
 	if (child.onHold) return "snoozed";
+	// Checked before every commit state: a green remote-only commit is lost work, never ready to push.
+	if (child.remoteOnly) return "remote_only";
 	if (isGitChildPullRequest(child)) return classifyPullRequest(child, project);
 	if (isGitChildBranch(child)) return classifyBranch(child, project);
 	return classifyCommit(child, project);

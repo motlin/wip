@@ -40,6 +40,8 @@ import {
 	getManagedFailedBaseBranches,
 	launchBackgroundEnqueue,
 	localBaselineRedChild,
+	prRefsMissingChild,
+	remoteOnlyCompareUrl,
 	seedProjectCache,
 	resetProjectCache,
 } from "./server-fns.impl.js";
@@ -215,6 +217,18 @@ async function createTestGitRepo(prefix = "wip-test-"): Promise<string> {
 async function markGitTest(dir: string, sha: string, good: boolean): Promise<void> {
 	await execa("git", ["-C", dir, "config", "test.default.command", good ? "true" : "false"]);
 	await execa("git", ["-C", dir, "test", "run", "--test", "default", sha], {reject: false});
+}
+
+/** Fetch origin's PR heads like the user's repos, so the repo gets no Set up PR refs item. */
+async function addPrRefspec(dir: string): Promise<void> {
+	await execa("git", [
+		"-C",
+		dir,
+		"config",
+		"--add",
+		"remote.origin.fetch",
+		"+refs/pull/*/head:refs/remotes/origin/pr/*",
+	]);
 }
 
 async function createBareRemote(prefix = "wip-remote-"): Promise<string> {
@@ -423,6 +437,138 @@ describe("localBaselineRedChild", () => {
 			localBaselineRedChild(project, sha, "passed", "2026-10-26"),
 			localBaselineRedChild(project, sha, undefined, "2026-10-26"),
 		]).toStrictEqual([undefined, undefined]);
+	});
+});
+
+describe("prRefsMissingChild and remoteOnlyCompareUrl", () => {
+	const project: ProjectInfo = {
+		name: "proj",
+		dir: "/tmp/proj",
+		remote: "acme/proj",
+		originRemote: "e2e-user/proj",
+		upstreamRemote: "upstream",
+		upstreamBranch: "main",
+		upstreamRef: "upstream/main",
+		dirty: false,
+		detachedHead: false,
+		branchCount: 1,
+		hasTestConfigured: true,
+		rebaseInProgress: false,
+	};
+	const sha = "cccccccccccccccccccccccccccccccccccccccc";
+
+	it("makes one pr_refs_missing item naming the PR remote, which is neither a commit nor red", () => {
+		const child = prRefsMissingChild(project, sha, "2026-11-09");
+		expect({child, category: classifyGitChild(child, project)}).toStrictEqual({
+			child: {
+				kind: "pr_refs_missing",
+				prRemote: "upstream",
+				project: "proj",
+				remote: "acme/proj",
+				originRemote: "e2e-user/proj",
+				sha,
+				shortSha: "ccccccc",
+				subject: "Set up PR refs on upstream",
+				date: "2026-11-09",
+				branch: "main",
+				testStatus: "unknown",
+				checkStatus: "none",
+				skippable: false,
+				pushedToRemote: true,
+				reviewStatus: "no_pr",
+			},
+			category: "pr_refs_missing",
+		});
+	});
+
+	it("points a remote-only fork branch's Open PR at GitHub's new-PR page against the PR repo", () => {
+		expect([
+			remoteOnlyCompareUrl(project, {remote: "origin", branch: "lost"}, "e2e-user/proj", "Add it"),
+			remoteOnlyCompareUrl(project, {remote: "upstream", branch: "lost"}, "acme/proj", "Add it"),
+		]).toStrictEqual([
+			"https://github.com/acme/proj/compare/main...e2e-user:lost?quick_pull=1&title=Add+it",
+			"https://github.com/acme/proj/compare/main...lost?quick_pull=1&title=Add+it",
+		]);
+	});
+});
+
+/** A clone of a bare remote whose `lost` branch exists only on the remote: no local branch, no PR. */
+async function remoteOnlyWorld(): Promise<{dir: string; bare: string; sha: string}> {
+	const bare = await createBareRemote();
+	const dir = await createTestGitRepo();
+	await execa("git", ["-C", dir, "remote", "add", "origin", bare]);
+	await execa("git", ["-C", dir, "push", "-q", "origin", "main"]);
+	await execa("git", ["-C", dir, "checkout", "-q", "-b", "lost"]);
+	await execa("git", ["-C", dir, "commit", "-q", "--allow-empty", "-m", "Lost work"]);
+	const sha = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout;
+	await execa("git", ["-C", dir, "push", "-q", "origin", "lost"]);
+	await execa("git", ["-C", dir, "checkout", "-q", "main"]);
+	await execa("git", ["-C", dir, "branch", "-q", "-D", "lost"]);
+	return {dir, bare, sha};
+}
+
+describe("remote-only and PR-refs actions", () => {
+	it("Set up PR refs adds the PR refspec to the PR remote and fetches its PR heads", async () => {
+		const {dir, bare, sha} = await remoteOnlyWorld();
+		await execa("git", ["-C", bare, "update-ref", "refs/pull/4/head", sha]);
+		seedProjectCache([makeProject({name: "pr-refs", dir})]);
+		const {setUpPrRefsHandler} = await import("./server-fns.impl.js");
+
+		const result = await setUpPrRefsHandler({project: "pr-refs"});
+
+		expect({
+			result,
+			fetch: (await execa("git", ["-C", dir, "config", "--get-all", "remote.origin.fetch"])).stdout.split("\n"),
+			prRef: (await execa("git", ["-C", dir, "rev-parse", "refs/remotes/origin/pr/4"])).stdout,
+		}).toStrictEqual({
+			result: {ok: true, message: "Set up PR refs on origin"},
+			fetch: ["+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/origin/pr/*"],
+			prRef: sha,
+		});
+	});
+
+	it("Restore branch creates the local branch at the remote branch's tip", async () => {
+		const {dir, sha} = await remoteOnlyWorld();
+		seedProjectCache([makeProject({name: "restore", dir})]);
+		const {restoreRemoteBranchHandler} = await import("./server-fns.impl.js");
+
+		const result = await restoreRemoteBranchHandler({project: "restore", remote: "origin", branch: "lost"});
+
+		expect({result, local: (await execa("git", ["-C", dir, "rev-parse", "refs/heads/lost"])).stdout}).toStrictEqual(
+			{
+				result: {ok: true, message: "Restored branch lost from origin/lost"},
+				local: sha,
+			},
+		);
+	});
+
+	it("Restore branch never overwrites a local branch of the same name", async () => {
+		const {dir} = await remoteOnlyWorld();
+		await execa("git", ["-C", dir, "branch", "lost", "main"]);
+		seedProjectCache([makeProject({name: "restore-taken", dir})]);
+		const {restoreRemoteBranchHandler} = await import("./server-fns.impl.js");
+
+		const result = await restoreRemoteBranchHandler({project: "restore-taken", remote: "origin", branch: "lost"});
+
+		expect(result).toStrictEqual({
+			ok: false,
+			message: "A local branch lost already exists",
+			actionId: expect.any(String),
+		});
+	});
+
+	it("Delete remote branch deletes it on the remote and its remote-tracking ref", async () => {
+		const {dir, bare} = await remoteOnlyWorld();
+		seedProjectCache([makeProject({name: "delete-remote", dir})]);
+		const {deleteRemoteBranchHandler} = await import("./server-fns.impl.js");
+
+		const result = await deleteRemoteBranchHandler({project: "delete-remote", remote: "origin", branch: "lost"});
+
+		expect({
+			result,
+			remote: (await execa("git", ["-C", bare, "branch", "--list", "lost"])).stdout,
+			tracking: (await execa("git", ["-C", dir, "branch", "-r", "--list", "origin/lost"])).stdout,
+		}).toStrictEqual({result: {ok: true, message: "Deleted origin/lost"}, remote: "", tracking: ""});
 	});
 });
 
@@ -2471,6 +2617,7 @@ async function repoWithFeatureBranch(branch: string): Promise<{dir: string; remo
 	const dir = await createTestGitRepo();
 	const remoteDir = await createBareRemote();
 	await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+	await addPrRefspec(dir);
 	await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
 	await execa("git", ["-C", dir, "checkout", "-b", branch]);
 	await execa("git", ["-C", dir, "commit", "--allow-empty", "-m", "Feature work"]);
@@ -2493,6 +2640,7 @@ async function behindFeatureBranch(
 	tmpDirs.push(cache);
 	vi.stubEnv("XDG_CACHE_HOME", cache);
 	await execa("git", ["-C", dir, "remote", "add", "origin", remoteDir]);
+	await addPrRefspec(dir);
 	await execa("git", ["-C", dir, "push", "-u", "origin", "main"]);
 	await execa("git", ["-C", dir, "checkout", "-b", branch]);
 	await commitNewFile(dir, "feature.txt");
@@ -4057,6 +4205,7 @@ async function repoWithRemote(): Promise<{dir: string; remote: string; base: str
 	const dir = await createTestGitRepo();
 	const remote = await createBareRemote();
 	await gitOut(dir, "remote", "add", "origin", remote);
+	await addPrRefspec(dir);
 	await gitOut(dir, "push", "origin", "main");
 	return {dir, remote, base: await gitOut(dir, "rev-parse", "main")};
 }

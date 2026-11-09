@@ -325,7 +325,9 @@ export function bufferRepoFromChildren(
 		};
 	};
 	// A commit already fast-forwarded onto local main waits for the user's push, not a landing. An
-	// empty commit (measured, zero files changed) carries no change to land.
+	// empty commit (measured, zero files changed) carries no change to land. Project-level items (a
+	// red upstream, missing PR refs) are not commits, and a remote-only commit is lost work the user
+	// restores or drops: never a candidate, never ready.
 	if (context.repoOwner !== undefined) {
 		return {
 			name: project.name,
@@ -339,7 +341,13 @@ export function bufferRepoFromChildren(
 	}
 	const work = rankGitChildren(
 		children
-			.filter((child) => child.kind !== "upstream_ci" && child.onLocalMain !== true && child.files !== 0)
+			.filter(
+				(child) =>
+					child.kind === undefined &&
+					child.remoteOnly === undefined &&
+					child.onLocalMain !== true &&
+					child.files !== 0,
+			)
 			.map(measured),
 	);
 	return {

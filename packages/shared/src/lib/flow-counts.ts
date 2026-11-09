@@ -35,7 +35,8 @@ export interface FlowCountsInput {
 
 /**
  * Plan step 40, pure and client-safe. WIP counts commits and todos, never on-hold or snoozed
- * items, skippable commits or upstream CI rows (those count only as red). Ready is the Ready to
+ * items, skippable commits or project-level rows (a red upstream counts only as red; missing PR refs not
+ * at all). A remote-only commit counts as WIP, never ready. Ready is the Ready to
  * land section's landable count (landableCount), so a green commit the buffer does not list as up
  * to date (behind upstream, held, or outside the buffer's repos) is never counted as ready.
  */
@@ -48,7 +49,8 @@ export function flowCounts({projects, gitChildren, todos, readyToLand, slots}: F
 		if (!project || child.onHold) continue;
 		const category = classifyGitChild(child, project);
 		if (RED_CATEGORIES.has(category)) red += 1;
-		if (child.kind === "upstream_ci" || child.skippable) continue;
+		// Project-level items (a red upstream, missing PR refs) are not commits.
+		if (child.kind !== undefined || child.skippable) continue;
 		commits += 1;
 	}
 	const active = todos.filter((t) => !t.onHold);

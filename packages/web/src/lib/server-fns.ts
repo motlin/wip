@@ -8,6 +8,8 @@ import {
 	CreateBranchInputSchema,
 	CreatePrInputSchema,
 	DeleteBranchInputSchema,
+	RemoteBranchInputSchema,
+	SetUpPrRefsInputSchema,
 	ForcePushInputSchema,
 	LandFastForwardInputSchema,
 	PushUpstreamBranchInputSchema,
@@ -273,6 +275,18 @@ export const suggestBranchName = createServerFn({method: "POST"})
 export const deleteBranch = createServerFn({method: "POST"})
 	.validator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).deleteBranchHandler(data));
+
+export const setUpPrRefs = createServerFn({method: "POST"})
+	.validator((input: unknown) => SetUpPrRefsInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).setUpPrRefsHandler(data));
+
+export const restoreRemoteBranch = createServerFn({method: "POST"})
+	.validator((input: unknown) => RemoteBranchInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).restoreRemoteBranchHandler(data));
+
+export const deleteRemoteBranch = createServerFn({method: "POST"})
+	.validator((input: unknown) => RemoteBranchInputSchema.parse(input))
+	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).deleteRemoteBranchHandler(data));
 
 export const forcePush = createServerFn({method: "POST"})
 	.validator((input: unknown) => ForcePushInputSchema.parse(input))

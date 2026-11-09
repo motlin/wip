@@ -163,7 +163,7 @@ export function createWorld() {
 	 * With `noFork`, the clone's only remote is origin = acme/<name> itself: branches push to the
 	 * upstream repo and PRs open from there, so the GitHub token needs WRITE on it to open them.
 	 */
-	const repo = (name, {owner = "acme", red = false, noFork = false, workflow, verify} = {}) => {
+	const repo = (name, {owner = "acme", red = false, noFork = false, workflow, verify, prRefs = true} = {}) => {
 		const upstreamBare = bare(owner, name);
 		const forkBare = noFork ? undefined : bare("e2e-user", name);
 		for (const dir of [upstreamBare, forkBare].filter((d) => d !== undefined)) {
@@ -185,6 +185,11 @@ export function createWorld() {
 		const clone = path.join(dirs.projects, name);
 		const upstreamRemote = noFork ? "origin" : "upstream";
 		git(dirs.projects, "clone", "--quiet", "--origin", upstreamRemote, upstreamBare, clone);
+		// Like the user's repos, the PR remote fetches GitHub's PR heads; without it the repo gets a Set up PR refs item.
+		if (prRefs) {
+			const spec = `+refs/pull/*/head:refs/remotes/${upstreamRemote}/pr/*`;
+			git(clone, "config", "--add", `remote.${upstreamRemote}.fetch`, spec);
+		}
 		if (forkBare !== undefined) {
 			git(clone, "remote", "add", "origin", forkBare);
 			git(clone, "fetch", "--quiet", "origin");
@@ -213,6 +218,17 @@ export function createWorld() {
 	const behindSha = widgets.branch("behind-feature", "behind.txt", "Add the behind feature");
 	const waitingSha = widgets.branch("waiting-feature", "waiting.txt", "Add the waiting feature");
 	git(widgets.clone, "push", "--quiet", "origin", "waiting-feature");
+	// Remote only: lost-feature was pushed to the fork and its local branch deleted, with no PR: lost work,
+	// listed as Remote only and never ready. covered-feature likewise, but PR #90's head is that commit
+	// (upstream's refs/pull/90/head, fetched into upstream/pr/90): the PR represents it, so it is not listed.
+	const lostSha = widgets.branch("lost-feature", "lost.txt", "Add the lost feature");
+	git(widgets.clone, "push", "--quiet", "origin", "lost-feature");
+	git(widgets.clone, "branch", "--quiet", "-D", "lost-feature");
+	const coveredSha = widgets.branch("covered-feature", "covered.txt", "Add the covered feature");
+	git(widgets.clone, "push", "--quiet", "origin", "covered-feature");
+	git(widgets.clone, "push", "--quiet", widgets.upstreamBare, `${coveredSha}:refs/pull/90/head`);
+	git(widgets.clone, "branch", "--quiet", "-D", "covered-feature");
+	git(widgets.clone, "fetch", "--quiet", "upstream");
 
 	// Fast-forward repo: a ready commit that lands by moving local main, then Push main.
 	const gadgets = repo("gadgets");
@@ -282,7 +298,8 @@ export function createWorld() {
 
 	// Private repo whose upstream check GitHub never started (Actions billing refused the job): no CI result,
 	// so its upstream is not red, and its commit lines up by its local test.
-	const vaults = repo("vaults");
+	// Its PR remote fetches no PR heads: one Set up PR refs item until the user clicks it.
+	const vaults = repo("vaults", {prRefs: false});
 	const vaultSha = vaults.branch("vault-feature", "vault.txt", "Add the vault feature");
 
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
@@ -341,6 +358,8 @@ export function createWorld() {
 			harmlessSha,
 			regressingSha,
 			vaultSha,
+			lostSha,
+			coveredSha,
 		},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
 		fakeRepos: [

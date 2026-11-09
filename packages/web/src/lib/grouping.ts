@@ -9,6 +9,8 @@ export type Grouped = Record<Category, ColumnItems>;
 export function emptyGrouped(): Grouped {
 	return {
 		upstream_red: {},
+		pr_refs_missing: {},
+		remote_only: {},
 		untriaged: {},
 		triaged: {},
 		blocked: {},

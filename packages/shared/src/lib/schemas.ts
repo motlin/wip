@@ -27,6 +27,8 @@ export type MergeStateStatus = z.infer<typeof MergeStateStatusSchema>;
 export const CATEGORY_COLUMNS = [
 	// Line stop: a red upstream outranks everything
 	["upstream_red"],
+	// Repo setup and lost work: a repo that cannot see PR heads, a commit only a remote branch holds
+	["pr_refs_missing", "remote_only"],
 	// Overrides and ideas
 	["snoozed", "skippable", "untriaged", "triaged", "blocked"],
 	// Early local
@@ -75,6 +77,7 @@ export const TransitionSchema = z.enum([
 	"dismiss_review",
 	"merge",
 	"push_complete",
+	"restore_branch",
 ]);
 export type Transition = z.infer<typeof TransitionSchema>;
 
@@ -115,12 +118,18 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "changes_requested", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "approved", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "upstream_red", transition: "snooze", to: "snoozed", kind: "active"},
+	{from: "remote_only", transition: "snooze", to: "snoozed", kind: "active"},
 
 	// Local development flow
 	{from: "triaged", transition: "create_branch", to: "ready_to_test", kind: "active"},
 	{from: "untriaged", transition: "create_branch", to: "ready_to_test", kind: "active"},
 	{from: "detached_head", transition: "create_branch", to: "ready_to_test", kind: "active"},
 	{from: "local_changes", transition: "commit", to: "ready_to_test", kind: "active"},
+
+	// Remote only: a commit no local branch and no PR holds. Restore a local branch from the remote
+	// one (`git branch <name> <remote>/<name>`) or open a PR from it; deleting the remote branch drops it.
+	{from: "remote_only", transition: "restore_branch", to: "ready_to_test", kind: "active"},
+	{from: "remote_only", transition: "create_pr", to: "checks_unknown", kind: "active"},
 
 	// Testing flow
 	{from: "no_test", transition: "run_test", to: "test_running", kind: "active"},
@@ -288,6 +297,18 @@ export const ProjectInfoSchema = z.object({
 });
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 
+/**
+ * A commit only a remote-tracking branch holds (no local branch, no worktree) and no pull request
+ * covers: effectively lost work, in its own state (`remote_only`), never ready.
+ */
+export const RemoteOnlySchema = z.object({
+	remote: z.string(),
+	branch: branchSchema,
+	/** GitHub's prefilled new-PR page from that branch into the project's PR repo (set by the server). */
+	compareUrl: z.url().optional(),
+});
+export type RemoteOnly = z.infer<typeof RemoteOnlySchema>;
+
 export const ChildCommitSchema = z.object({
 	sha: shaSchema,
 	shortSha: shortShaSchema,
@@ -317,6 +338,7 @@ export const ChildCommitSchema = z.object({
 	mergeStateStatus: MergeStateStatusSchema.optional(),
 	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
 	containingBranch: branchSchema.optional(),
+	remoteOnly: RemoteOnlySchema.optional(),
 });
 export type ChildCommit = z.infer<typeof ChildCommitSchema>;
 
@@ -325,6 +347,17 @@ export const DeleteBranchInputSchema = z.object({
 	branch: branchSchema,
 });
 export type DeleteBranchInput = z.infer<typeof DeleteBranchInputSchema>;
+
+/** Restore branch / Delete remote branch on a remote-only commit: the remote branch that holds it. */
+export const RemoteBranchInputSchema = z.object({
+	project: z.string(),
+	remote: z.string().regex(/^[a-zA-Z0-9._-]+$/),
+	branch: branchSchema,
+});
+export type RemoteBranchInput = z.infer<typeof RemoteBranchInputSchema>;
+
+export const SetUpPrRefsInputSchema = z.object({project: z.string()});
+export type SetUpPrRefsInput = z.infer<typeof SetUpPrRefsInputSchema>;
 
 export const ForcePushInputSchema = z.object({
 	project: z.string(),
@@ -357,7 +390,13 @@ export type RebaseLocalInput = z.infer<typeof RebaseLocalInputSchema>;
 // Flat git child result: all fields from ChildCommit (minus `behind`) plus server-computed fields.
 // Client discriminates by checking child.branch and child.prUrl.
 export const GitChildResultSchema = z.object({
-	kind: z.literal("upstream_ci").optional(),
+	/**
+	 * A project-level item, not a commit: upstream_ci is a red upstream; pr_refs_missing is a repo
+	 * whose PR remote (`prRemote`) fetches no `refs/pull/*` heads. Absent on every commit.
+	 */
+	kind: z.enum(["upstream_ci", "pr_refs_missing"]).optional(),
+	/** On a pr_refs_missing child: the git remote holding the PRs (upstream for a fork, origin otherwise). */
+	prRemote: z.string().optional(),
 	/** On an upstream_ci child: own stops the repo's line and gets a queue item; foreign is the baseline. */
 	ownership: z.enum(["own", "foreign"]).optional(),
 	/** The repo's own upstream is red: nothing in it lands until upstream is fixed. */
@@ -392,6 +431,7 @@ export const GitChildResultSchema = z.object({
 	mergeStateStatus: MergeStateStatusSchema.optional(),
 	alreadyOnRemote: z.object({branch: branchSchema}).optional(),
 	containingBranch: branchSchema.optional(),
+	remoteOnly: RemoteOnlySchema.optional(),
 	failureTail: z.string().optional(),
 	suggestedBranch: branchSchema.optional(),
 	blockReason: z.string().optional(),

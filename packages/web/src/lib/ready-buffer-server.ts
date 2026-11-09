@@ -94,7 +94,7 @@ async function snapshot(): Promise<BufferRepo[]> {
 		if (!children) continue;
 		const record = registry.get(p.dir);
 		const priority = record?.priority;
-		const needsBranches = children.some((c) => c.kind !== "upstream_ci" && c.branch !== undefined);
+		const needsBranches = children.some((c) => c.kind === undefined && c.branch !== undefined);
 		// Only a repo that opted in (and lands by pull request explicitly) asks GitHub about its PR target.
 		const facts =
 			record?.verify === "draft-pr" && pushesInBackground(record)

@@ -22,6 +22,7 @@ import {
 import {BranchActions, PullRequestActions} from "../components/commit-actions.js";
 import {CategoryBadge} from "../components/category-badge.js";
 import {UpstreamRedBlockedMarker} from "../components/upstream-ci-card.js";
+import {RemoteOnlyCard} from "../components/remote-only-card.js";
 import {AnsiText} from "../components/ansi-text.js";
 import {
 	projectChildrenQueryOptions,
@@ -402,7 +403,9 @@ function ItemDetail() {
 						{/* Action buttons */}
 						{category && (
 							<div className="mt-4 border-t border-border-300/20 pt-4">
-								{isPr ? (
+								{child.remoteOnly ? (
+									<RemoteOnlyCard commit={child} category={category} />
+								) : isPr ? (
 									<PullRequestActions item={child} category={category} layout="row" />
 								) : (
 									<BranchActions item={child} category={category} layout="row" />

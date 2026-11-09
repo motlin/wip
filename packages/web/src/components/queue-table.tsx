@@ -1,13 +1,18 @@
 import {useNavigate} from "@tanstack/react-router";
 import {useState, useMemo} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {isGitChildPullRequest, isGitChildBranch, isGitChildUpstreamCi} from "@wip/shared/git-child-discriminators.js";
+import {
+	isGitChildPullRequest,
+	isGitChildBranch,
+	isGitChildPrRefsMissing,
+	isGitChildUpstreamCi,
+} from "@wip/shared/git-child-discriminators.js";
 import {upstreamRedCommand} from "@wip/shared/upstream-red.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../lib/category-actions.js";
 import {useQueueContext} from "../lib/queue-context.js";
 import {bucketCount} from "../lib/grouping.js";
 
-type ItemType = "ci" | "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
+type ItemType = "ci" | "repo" | "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
 
 interface FlatRow {
 	key: string;
@@ -29,11 +34,13 @@ interface FlatRow {
 function gitChildToRow(child: GitChildResult, category: Category): FlatRow {
 	const type: ItemType = isGitChildUpstreamCi(child)
 		? "ci"
-		: isGitChildPullRequest(child)
-			? "pr"
-			: isGitChildBranch(child)
-				? "branch"
-				: "commit";
+		: isGitChildPrRefsMissing(child)
+			? "repo"
+			: isGitChildPullRequest(child)
+				? "pr"
+				: isGitChildBranch(child)
+					? "branch"
+					: "commit";
 	return {
 		key: `git-${child.sha}`,
 		type,
@@ -149,7 +156,7 @@ const HEADER_CLASS =
 	"border-b-2 border-border-300 px-3 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500";
 
 function itemLink(row: FlatRow): string | undefined {
-	if (row.type === "ci") return undefined;
+	if (row.type === "ci" || row.type === "repo") return undefined;
 	if (row.sha) return `/item/${row.project}/${row.sha}`;
 	if (row.issueNumber) return `/issue/${row.project}/${row.issueNumber}`;
 	return undefined;

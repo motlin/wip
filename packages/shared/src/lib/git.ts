@@ -14,7 +14,7 @@ import {inventoryExists, loadInventory, type Inventory} from "./inventory.js";
 import {gitTopLevelOf} from "./git-repo-owner.js";
 import {getCanonicalRepo, type PrStatuses} from "./github-pr-status.js";
 import {testWorktreeOf} from "./registry-review.js";
-import {type CheckStatus, type ChildCommit, type ProjectInfo, type ReviewStatus} from "./schemas.js";
+import {type CheckStatus, type ChildCommit, type ProjectInfo, type RemoteOnly, type ReviewStatus} from "./schemas.js";
 
 export {getMiseEnv};
 
@@ -446,6 +446,68 @@ async function notHeldLocally(dir: string, shas: readonly string[], upstreamRef:
 	return new Set(unheld.stdout.split("\n").filter(Boolean));
 }
 
+/**
+ * Which of the commits no local work holds are remote-only: a remote-tracking branch holds them
+ * (never `<remote>/HEAD`), no `refs/remotes/<remote>/pr/<n>` ref contains them and no open PR
+ * names a holding branch. A PR-covered commit is the PR item's; one only wip's worktrees hold is
+ * nobody's work. Both stay unlisted; a remote-only one names its first holding branch.
+ */
+async function remoteOnlyCommits(
+	dir: string,
+	unheld: ReadonlySet<string>,
+	prStatuses: PrStatuses | undefined,
+): Promise<Map<string, RemoteOnly>> {
+	const result = new Map<string, RemoteOnly>();
+	if (unheld.size === 0) return result;
+	// Longest first, so a remote named like another's prefix claims its own refs. A fresh array (es2022: no toSorted).
+	const names = (await git(dir, "remote")).split("\n").filter(Boolean);
+	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array
+	const remotes = names.sort((a, b) => b.length - a.length);
+	const prHeads = new Set(prStatuses?.headShas.values() ?? []);
+	for (const sha of unheld) {
+		if (prHeads.has(sha)) continue;
+		// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
+		const refs = (await git(dir, "for-each-ref", "--contains", sha, "--format=%(refname)", "refs/remotes/"))
+			.split("\n")
+			.filter(Boolean)
+			.flatMap((ref) => {
+				const remote = remotes.find((r) => ref.startsWith(`refs/remotes/${r}/`));
+				if (remote === undefined) return [];
+				const branch = ref.slice(`refs/remotes/${remote}/`.length);
+				return branch === "HEAD" ? [] : [{remote, branch}];
+			});
+		const prCovered =
+			refs.some((ref) => ref.branch.startsWith("pr/")) ||
+			refs.some((ref) => prStatuses?.urls.has(ref.branch) === true);
+		const holder = refs.find((ref) => !ref.branch.startsWith("pr/"));
+		if (!prCovered && holder !== undefined) result.set(sha, holder);
+	}
+	return result;
+}
+
+/** The fetch refspec that maps a GitHub remote's pull request heads to `refs/remotes/<remote>/pr/<n>`. */
+export function prRefspec(remote: string): string {
+	return `+refs/pull/*/head:refs/remotes/${remote}/pr/*`;
+}
+
+/**
+ * True when the repo has `remote` but fetches no `refs/pull/*` from it: wip cannot tell which
+ * remote-only commits a pull request covers. A remote the repo lacks is not missing anything.
+ */
+export async function prRefsMissing(dir: string, remote: string): Promise<boolean> {
+	if ((await git(dir, "config", "--get", `remote.${remote}.url`)) === "") return false;
+	const specs = await git(dir, "config", "--get-all", `remote.${remote}.fetch`);
+	return !specs.split("\n").some((spec) => spec.includes("refs/pull/"));
+}
+
+/** Set up PR refs (user-initiated only): add the PR refspec to `remote` once, then fetch it. */
+export async function setUpPrRefs(dir: string, remote: string): Promise<void> {
+	if (await prRefsMissing(dir, remote)) {
+		await tracedExeca("git", ["-C", dir, "config", "--add", `remote.${remote}.fetch`, prRefspec(remote)]);
+	}
+	await tracedExeca("git", ["-C", dir, "fetch", "--quiet", remote]);
+}
+
 /** The first parent from a `%P` field (space-separated parents); undefined for a root commit. */
 function firstParent(field: string | undefined): string | undefined {
 	const parent = field?.trim().split(" ")[0];
@@ -464,7 +526,8 @@ export async function getChildCommits(
 
 	const listed = childrenOutput.split("\n").filter(Boolean);
 	const unheld = await notHeldLocally(dir, listed, upstreamRef);
-	const shas = listed.filter((sha) => !unheld.has(sha));
+	const remoteOnly = await remoteOnlyCommits(dir, unheld, prStatuses);
+	const shas = listed.filter((sha) => !unheld.has(sha) || remoteOnly.has(sha));
 	if (shas.length === 0) return [];
 
 	const RS = "\x1e";
@@ -557,8 +620,11 @@ export async function getChildCommits(
 				if (matchedBranch) alreadyOnRemote = {branch: matchedBranch};
 			}
 		}
-		// eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
-		const containingBranch = branch ? undefined : await findContainingBranch(dir, sha, defaultBranch);
+		const containingBranch =
+			branch || remoteOnly.has(sha)
+				? undefined
+				: // eslint-disable-next-line no-await-in-loop -- sequential to bound concurrent git subprocesses
+					await findContainingBranch(dir, sha, defaultBranch);
 
 		children.push({
 			sha,
@@ -585,6 +651,7 @@ export async function getChildCommits(
 			mergeStateStatus,
 			alreadyOnRemote,
 			containingBranch,
+			remoteOnly: remoteOnly.get(sha),
 		});
 	}
 

@@ -15,6 +15,13 @@ import {
 	getAllSnoozedForDisplay,
 	getBranchNames,
 	getChildCommits,
+	compareUrl as githubCompareUrl,
+	parseRemoteUrl,
+	prRefsMissing,
+	setUpPrRefs,
+	type RemoteOnly,
+	type RemoteBranchInput,
+	type SetUpPrRefsInput,
 	getMiseEnv,
 	getPrStatuses,
 	prRepository,
@@ -197,6 +204,60 @@ export function localBaselineRedChild(
 		pushedToRemote: true,
 		reviewStatus: "no_pr",
 	};
+}
+
+/**
+ * The one queue item for a repo whose PR remote (`upstreamRemote`: upstream for a fork, origin
+ * otherwise) fetches no `refs/pull/*` heads: wip can't see which remote-only commits a PR covers.
+ * Its one action, Set up PR refs, adds the refspec and fetches; never automatic.
+ */
+export function prRefsMissingChild(p: ProjectInfo, upstreamSha: string, date: string): GitChildResult {
+	return {
+		kind: "pr_refs_missing",
+		prRemote: p.upstreamRemote,
+		project: p.name,
+		remote: p.remote,
+		originRemote: p.originRemote,
+		sha: upstreamSha,
+		shortSha: upstreamSha.slice(0, 7),
+		subject: `Set up PR refs on ${p.upstreamRemote}`,
+		date,
+		branch: p.upstreamBranch,
+		testStatus: "unknown",
+		checkStatus: "none",
+		skippable: false,
+		pushedToRemote: true,
+		reviewStatus: "no_pr",
+	};
+}
+
+async function readPrRefsMissingChild(p: ProjectInfo): Promise<GitChildResult | undefined> {
+	if (!(await prRefsMissing(p.dir, p.upstreamRemote))) return undefined;
+	const {stdout, exitCode} = await tracedExeca(
+		"git",
+		["-C", p.dir, "show", "-s", "--format=%H %cs", `${p.upstreamRef}^{commit}`],
+		{reject: false},
+	);
+	const [sha, date] = stdout.trim().split(" ");
+	if (exitCode !== 0 || sha === undefined || date === undefined) return undefined;
+	return prRefsMissingChild(p, sha, date);
+}
+
+/**
+ * GitHub's prefilled new-PR page for a remote-only branch: from the repo `remoteRepository` (its
+ * remote's `owner/name`) into the project's PR repo, so the user opens the PR in their own session.
+ */
+export function remoteOnlyCompareUrl(
+	p: Pick<ProjectInfo, "upstreamRemote" | "originRemote" | "remote" | "upstreamBranch">,
+	remoteOnly: RemoteOnly,
+	remoteRepository: string,
+	title: string,
+): string {
+	const repository = prRepository(p);
+	const [owner] = remoteRepository.split("/");
+	const headRefName =
+		remoteRepository === repository || owner === undefined ? remoteOnly.branch : `${owner}:${remoteOnly.branch}`;
+	return githubCompareUrl({repository, baseRefName: p.upstreamBranch, headRefName, title});
 }
 
 async function readLocalBaselineRedChild(p: ProjectInfo, upstreamSha: string): Promise<GitChildResult | undefined> {
@@ -424,6 +485,7 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 					mergeStateStatus: child.mergeStateStatus,
 					alreadyOnRemote: child.alreadyOnRemote,
 					containingBranch: child.containingBranch,
+					remoteOnly: child.remoteOnly,
 					failureTail,
 					suggestedBranch:
 						child.branch && !defaultBranchPattern.test(child.branch) ? undefined : suggestedBranch,
@@ -483,6 +545,29 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				if (baselineRed) results.push(baselineRed);
 			}
 
+			// A remote-only commit's Open PR goes to GitHub's new-PR page from its remote branch.
+			for (const child of results) {
+				if (child.remoteOnly === undefined) continue;
+				// eslint-disable-next-line no-await-in-loop -- rare (lost work only), sequential to bound git subprocesses
+				const url = await tracedExeca("git", ["-C", p.dir, "remote", "get-url", child.remoteOnly.remote], {
+					reject: false,
+				});
+				const parsed = parseRemoteUrl(url.stdout.trim());
+				if (parsed === undefined) continue;
+				child.remoteOnly = {
+					...child.remoteOnly,
+					compareUrl: remoteOnlyCompareUrl(
+						p,
+						child.remoteOnly,
+						`${parsed.owner}/${parsed.name}`,
+						child.subject,
+					),
+				};
+			}
+			// A repo whose PR remote fetches no PR heads gets one item: Set up PR refs.
+			const prRefsItem = await readPrRefsMissingChild(p);
+			if (prRefsItem) results.push(prRefsItem);
+
 			// The work-item ledger follows each change by patch-id; a departure is landed when
 			// upstream contains it (or landing detection names it), otherwise abandoned.
 			await reconcileWorkItemsWithUpstream(
@@ -491,14 +576,14 @@ export async function refreshProjectChildren(projectName: string): Promise<Proje
 				p.upstreamRef,
 				results.flatMap((child) => {
 					const patchId = commitFacts.get(child.sha)?.patchId;
-					if (child.kind === "upstream_ci" || !patchId) return [];
+					if (child.kind !== undefined || !patchId) return [];
 					return [{patchId, sha: child.sha, subject: child.subject, state: classifyGitChild(child, p)}];
 				}),
 			);
 			const firstSeen = new Map(loadWorkItems(p.name).map((item) => [item.patchId, item.firstSeen]));
 			for (const child of results) {
 				const childFirstSeen = firstSeen.get(commitFacts.get(child.sha)?.patchId ?? "");
-				if (child.kind !== "upstream_ci" && childFirstSeen !== undefined) child.firstSeen = childFirstSeen;
+				if (child.kind === undefined && childFirstSeen !== undefined) child.firstSeen = childFirstSeen;
 			}
 			// An own red upstream gets one queue item and blocks the repo's commits; a foreign one is the
 			// baseline. Ownership is the ready buffer's: the upstream owner against the user's login and orgs.
@@ -1513,6 +1598,68 @@ export async function deleteBranchHandler(data: DeleteBranchInput): Promise<Acti
 			}
 
 			return {ok: false, message: `Failed to delete branch: ${result.stderr}`};
+		});
+	});
+}
+
+/**
+ * Set up PR refs (user-initiated, one repo): add `+refs/pull/*\/head:refs/remotes/<remote>/pr/*` to
+ * the PR remote's fetch refspecs and fetch, so wip sees which remote-only commits a PR covers.
+ */
+export async function setUpPrRefsHandler(data: SetUpPrRefsInput): Promise<ActionResult> {
+	return tracedAction("setUpPrRefs", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, {label: "setUpPrRefs", target: p.upstreamRemote}, async () => {
+			try {
+				await setUpPrRefs(p.dir, p.upstreamRemote);
+			} catch (error: unknown) {
+				return {
+					ok: false,
+					message: `Failed to set up PR refs: ${error instanceof Error ? error.message : String(error)}`,
+				};
+			}
+			invalidatePrCache(data.project);
+			invalidateChildrenCache(data.project);
+			return {ok: true, message: `Set up PR refs on ${p.upstreamRemote}`};
+		});
+	});
+}
+
+/** Restore branch on a remote-only commit: `git branch <name> <remote>/<name>`, never over a local branch. */
+export async function restoreRemoteBranchHandler(data: RemoteBranchInput): Promise<ActionResult> {
+	return tracedAction("restoreRemoteBranch", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, {label: "restoreRemoteBranch", target: data.branch}, async () => {
+			const existing = await tracedExeca(
+				"git",
+				["-C", p.dir, "rev-parse", "--verify", "--quiet", `refs/heads/${data.branch}`],
+				{reject: false},
+			);
+			if (existing.exitCode === 0) return {ok: false, message: `A local branch ${data.branch} already exists`};
+			const result = await tracedExeca(
+				"git",
+				["-C", p.dir, "branch", "--no-track", data.branch, `refs/remotes/${data.remote}/${data.branch}`],
+				{reject: false},
+			);
+			if (result.exitCode !== 0) return {ok: false, message: `Failed to restore branch: ${result.stderr}`};
+			invalidateChildrenCache(data.project);
+			return {ok: true, message: `Restored branch ${data.branch} from ${data.remote}/${data.branch}`};
+		});
+	});
+}
+
+/** Delete remote branch on a remote-only commit (outward-facing: the card confirms first). */
+export async function deleteRemoteBranchHandler(data: RemoteBranchInput): Promise<ActionResult> {
+	return tracedAction("deleteRemoteBranch", async () => {
+		const p = await resolveProject(data.project);
+		return runQueuedAction(data.project, {label: "deleteRemoteBranch", target: data.branch}, async () => {
+			const result = await tracedExeca("git", ["-C", p.dir, "push", data.remote, "--delete", data.branch], {
+				reject: false,
+			});
+			if (result.exitCode !== 0) return {ok: false, message: `Failed to delete remote branch: ${result.stderr}`};
+			invalidatePrCache(data.project);
+			invalidateChildrenCache(data.project);
+			return {ok: true, message: `Deleted ${data.remote}/${data.branch}`};
 		});
 	});
 }

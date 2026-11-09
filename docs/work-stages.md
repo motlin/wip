@@ -15,6 +15,7 @@ flowchart TD
     %% Entry points
     IDEA["💡 Not Started\n(issues, project items, todos)"]
     COMMIT["📝 Detached HEAD\n(bare commit, no branch)"]
+    REMOTE_ONLY["🛰️ Remote Only\n(no local branch, no PR)"]
 
     %% Local development
     BRANCH["🌿 Local Branch\n(has branch name)"]
@@ -54,6 +55,7 @@ flowchart TD
 
     IDEA -->|"create branch"| BRANCH
     COMMIT -->|"name branch"| BRANCH
+    REMOTE_ONLY -->|"restore branch"| BRANCH
 
     BRANCH --> SKIP
     BRANCH --> SNOOZE
@@ -85,6 +87,7 @@ flowchart TD
 
     READY_PUSH -->|"git push"| PUSHED
     PUSHED -->|"gh pr create"| PR_CREATED
+    REMOTE_ONLY -->|"open PR"| PR_CREATED
 
     PR_CREATED --> CHECKS_UNKNOWN
     CHECKS_UNKNOWN --> CHECKS_RUNNING
@@ -133,8 +136,13 @@ These are properties of the project, not any individual item. They block or alte
 | **Test defined**     | `yes` / `no`                        | Does the project have `git test` configured                                                                                |
 | **Upstream fetched** | `fresh` / `stale`                   | Has upstream been fetched recently                                                                                         |
 | **Upstream red**     | `green` / `own red` / `foreign red` | Failed check runs on the upstream tip (a run GitHub never started is no result), or a failed local baseline `git test run` |
+| **PR refs**          | `fetched` / `missing`               | Does the PR remote fetch `+refs/pull/*/head:refs/remotes/<remote>/pr/*`                                                    |
 
 **Upstream red** is the first project-level property surfaced as a project-level item. An own red upstream (owner is the user's login or one of `ownership.orgs`) stops the repo's line: it becomes one `upstream_red` queue item per repo (`upstream_ci` child, ranked first on /queue and /kanban) naming the failing checks or "local baseline test failed", how long it has been red (the failing upstream commit's date), and one action (`/github:gha` for CI, `/build:fix` for a local baseline). The ready buffer pulls nothing in that repo, Ready to land lists none of its commits, and every commit card and item page in it shows "Blocked: `<repo>`'s upstream is red", linking to the item. A foreign red upstream gets no item and blocks nothing: it is the baseline, and a commit that adds no new failure to it is still ready. A check run GitHub never started (an Actions job that never got a runner, or one refused for billing: "The job was not started because recent account payments have failed or your spending limit needs to be increased") is no CI result, neither pass nor fail, so a repo whose only failing checks never started is red only if its local baseline fails, and its commits line up by local tests. The same holds wherever wip reads check conclusions: a PR row is not Checks Failed and draft-PR verification is not red for such a run. wip asks GitHub once per refresh for all failing check runs' steps and annotations (`notStartedCheckRuns` in `packages/shared/src/lib/gha-checks.ts`).
+
+**PR refs** is the second project-level item. The remote that holds the repo's PRs (`upstreamRemote`: upstream for a fork, origin for a repo without one) should fetch GitHub's PR heads with `+refs/pull/*/head:refs/remotes/<remote>/pr/*`. A repo whose PR remote has no `refs/pull/` fetch refspec gets one `pr_refs_missing` queue item (ranked right after Upstream Red on /queue and /kanban) naming the remote, with one action, Set up PR refs, which runs `git config --add remote.<remote>.fetch ...` and fetches that remote. wip never adds the refspec on its own and touches only the repo the user clicked. The item is not a commit: it counts toward no commit, WIP, red or ready count and never enters the ready buffer.
+
+**Remote only** (`remote_only`) is the state of a commit that only a remote-tracking branch holds: no local branch, no user worktree, and no pull request covering it (no `refs/remotes/<remote>/pr/<n>` ref contains it, and no open PR names the branch holding it), as when a branch pushed to the fork is deleted locally. That work is effectively lost, so it is listed (ranked after PR refs on /queue and /kanban) with "Remote only: no local branch, no PR · `<remote>/<branch>`" and three actions: Restore branch (`git branch <name> <remote>/<name>`, the primary; it never overwrites a local branch), Open PR (GitHub's prefilled new-PR page from that branch) and Delete remote branch (`git push <remote> --delete <name>`, outward-facing, so it asks first). On hold aside, it is checked before every commit state, so a green remote-only commit is never Ready to Push, never in the ready buffer and never counted ready; it does count toward WIP. A remote-only commit a PR covers is that PR's: it stays unlisted, as does a commit only wip's own worktrees hold. `<remote>/HEAD` never counts as a holding branch.
 
 ### Constraints (unreachable combinations)
 

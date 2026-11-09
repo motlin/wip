@@ -41,7 +41,7 @@ export function markUpstreamRed(children: GitChildResult[], ownership: UpstreamO
 	return children.map((child) =>
 		child.kind === "upstream_ci"
 			? {...child, ownership}
-			: ownership === "own"
+			: ownership === "own" && child.kind === undefined
 				? {...child, upstreamRedBlocked: true}
 				: child,
 	);

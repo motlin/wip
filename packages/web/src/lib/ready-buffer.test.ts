@@ -1368,6 +1368,33 @@ describe("bufferRepoFromChildren", () => {
 		});
 	});
 
+	it("never makes a missing-PR-refs item or a remote-only commit a candidate, and neither turns the repo red", () => {
+		const children = [
+			makeChild({sha: sha("b"), branch: "ready", commitsBehind: 0, testStatus: "passed", patchId: "pb"}),
+			makeChild({kind: "pr_refs_missing", prRemote: "upstream", sha: sha("f"), branch: undefined}),
+			makeChild({
+				sha: sha("r"),
+				branch: undefined,
+				commitsBehind: 0,
+				testStatus: "passed",
+				patchId: "pr",
+				remoteOnly: {remote: "origin", branch: "lost"},
+			}),
+		];
+
+		const mapped = bufferRepoFromChildren(project("motlin/wip"), children, {
+			identity,
+			checkedOutBranches: [],
+			onHold: () => false,
+			override: () => undefined,
+		});
+
+		expect({upstreamRed: mapped.upstreamRed, candidates: mapped.candidates}).toStrictEqual({
+			upstreamRed: false,
+			candidates: [{id: "pb", sha: sha("b"), branch: "ready", state: "ready", onHold: false, job: 0}],
+		});
+	});
+
 	it("carries each child's parent sha onto its candidate", () => {
 		const children = [
 			makeChild({sha: sha("a"), parentSha: sha("u"), commitsBehind: 0, patchId: "pa"}),

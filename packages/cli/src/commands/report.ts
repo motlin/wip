@@ -71,6 +71,8 @@ interface ReportJson {
 // Kanban left-to-right: full SDLC flow
 const CATEGORY_ORDER: Category[] = [
 	"upstream_red",
+	"pr_refs_missing",
+	"remote_only",
 	"snoozed",
 	"skippable",
 	"untriaged",
@@ -99,6 +101,8 @@ const CATEGORY_ORDER: Category[] = [
 
 const CATEGORY_LABELS: Record<Category, string> = {
 	upstream_red: "Upstream red",
+	pr_refs_missing: "Set up PR refs",
+	remote_only: "Remote only — no local branch, no PR",
 	snoozed: "On hold and Snoozed",
 	skippable: "Skippable",
 	untriaged: "Untriaged",
@@ -141,6 +145,7 @@ function categoryStyle(category: Category, text: string): string {
 		case "pushed_no_pr":
 			return chalk.blue(text);
 		case "upstream_red":
+		case "remote_only":
 		case "test_failed":
 		case "checks_failed":
 		case "rebase_conflicts":
@@ -163,6 +168,7 @@ function categoryStyle(category: Category, text: string): string {
 		case "untriaged":
 		case "triaged":
 		case "checks_unknown":
+		case "pr_refs_missing":
 			return chalk.dim(text);
 		default: {
 			const unreachable: never = category;
@@ -209,6 +215,8 @@ export default class Report extends Command {
 
 		const grouped: Record<Category, ClassifiedChild[]> = {
 			upstream_red: [],
+			pr_refs_missing: [],
+			remote_only: [],
 			snoozed: [],
 			skippable: [],
 			untriaged: [],

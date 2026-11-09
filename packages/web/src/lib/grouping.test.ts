@@ -51,4 +51,22 @@ describe("buildGrouped", () => {
 
 		expect(grouped).toStrictEqual({...emptyGrouped(), upstream_red: {gitChildren: [own]}});
 	});
+
+	it("gives a repo missing PR refs one pr_refs_missing item and a green remote-only commit remote_only, never ready", () => {
+		const prRefs = makeChild({kind: "pr_refs_missing", prRemote: "upstream", sha: "e".repeat(40)});
+		const lost = makeChild({
+			sha: "f".repeat(40),
+			branch: undefined,
+			testStatus: "passed",
+			remoteOnly: {remote: "origin", branch: "lost"},
+		});
+
+		const grouped = buildGrouped({gitChildren: [prRefs, lost], issues: [], todos: [], projectItems: []}, [project]);
+
+		expect(grouped).toStrictEqual({
+			...emptyGrouped(),
+			pr_refs_missing: {gitChildren: [prRefs]},
+			remote_only: {gitChildren: [lost]},
+		});
+	});
 });

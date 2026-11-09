@@ -7,8 +7,10 @@ interface CapturedJob {
 	run: () => Promise<void>;
 }
 
-const {jobs, refs, checkProject, checkDeferredMergeStatus, refreshProjectChildren} = vi.hoisted(() => ({
+const {jobs, refs, cache, checkProject, checkDeferredMergeStatus, refreshProjectChildren} = vi.hoisted(() => ({
 	jobs: [] as CapturedJob[],
+	// The children cache's freshness mark and the refs each project's last children refresh read (the DB).
+	cache: {fresh: false, recordedRefs: new Map<string, string>()},
 	// The repo's live ref state; tests move it to simulate a branch ref change.
 	refs: {value: "refs/heads/feature f7917ba"},
 	checkProject: vi.fn<(project: string) => Promise<void>>(),
@@ -38,7 +40,11 @@ vi.mock("./merge-queue.js", () => ({
 }));
 
 vi.mock("@wip/shared", () => ({
-	isCacheFresh: () => false,
+	isCacheFresh: () => cache.fresh,
+	recordChildrenRefs: (project: string, snapshot: string) => {
+		cache.recordedRefs.set(project, snapshot);
+	},
+	childrenRefsMatch: (project: string, snapshot: string) => cache.recordedRefs.get(project) === snapshot,
 	markCacheFresh: vi.fn<(key: string) => void>(),
 	pruneRemote: vi.fn<() => Promise<void>>(async () => Promise.resolve()),
 }));
@@ -69,6 +75,8 @@ describe("handleRepoChange", () => {
 	beforeEach(async () => {
 		jobs.length = 0;
 		refs.value = "refs/heads/feature f7917ba";
+		cache.fresh = false;
+		cache.recordedRefs.clear();
 		resetWatchGate();
 		checkProject.mockResolvedValue(undefined);
 		checkDeferredMergeStatus.mockResolvedValue(undefined);
@@ -132,5 +140,28 @@ describe("handleRepoChange", () => {
 		await runJob("children");
 
 		await expect(handleRepoChange("avalon-online")).resolves.toBe(true);
+	});
+
+	it("after a restart, rereads a fresh children cache whose branch was deleted while the server was down", async () => {
+		refreshProjectChildren.mockClear();
+		// Restart: the cache is still fresh, the in-memory gate is empty, and vault-feature is gone.
+		resetWatchGate();
+		cache.fresh = true;
+		refs.value = "";
+		enqueueProjectRefresh("avalon-online");
+		await runJob("children");
+
+		expect(refreshProjectChildren.mock.calls).toStrictEqual([["avalon-online"]]);
+	});
+
+	it("after a restart, keeps a fresh children cache whose refs are unchanged, and drops a fire on those refs", async () => {
+		refreshProjectChildren.mockClear();
+		resetWatchGate();
+		cache.fresh = true;
+		enqueueProjectRefresh("avalon-online");
+		await runJob("children");
+
+		expect(refreshProjectChildren.mock.calls).toStrictEqual([]);
+		await expect(handleRepoChange("avalon-online")).resolves.toBe(false);
 	});
 });

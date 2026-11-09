@@ -16,6 +16,7 @@ import {
 import {z} from "zod";
 import {drizzle, type BetterSQLite3Database} from "drizzle-orm/better-sqlite3";
 import type {SQLiteColumn, SQLiteTable} from "drizzle-orm/sqlite-core";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -33,6 +34,7 @@ import {
 	branchNames,
 	cacheFreshness,
 	childrenCache,
+	childrenRefs,
 	commitFacts,
 	FAR_FUTURE,
 	ghLoginCache,
@@ -457,6 +459,13 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 		CREATE TABLE IF NOT EXISTS cache_freshness (
 			cache_key TEXT NOT NULL PRIMARY KEY,
 			last_refreshed TEXT NOT NULL
+		)
+	`);
+
+	sqlite.exec(`
+		CREATE TABLE IF NOT EXISTS children_refs (
+			project TEXT NOT NULL PRIMARY KEY,
+			refs_hash TEXT NOT NULL
 		)
 	`);
 
@@ -1911,6 +1920,33 @@ export function cacheChildren(project: string, children: GitChildResult[]): void
 		newRow: {project, childrenJson: serialized},
 	});
 	markCacheFresh(`children:${project}`);
+}
+
+function refsHash(refs: string): string {
+	return crypto.createHash("sha256").update(refs).digest("hex");
+}
+
+/**
+ * Remembers the refs (HEAD plus every ref, as the watch gate snapshots them) a children refresh read,
+ * so a restarted server can tell a fresh-looking cache from one whose branches changed while it was down.
+ */
+export function recordChildrenRefs(project: string, refs: string): void {
+	const hash = refsHash(refs);
+	getDb()
+		.insert(childrenRefs)
+		.values({project, refsHash: hash})
+		.onConflictDoUpdate({target: childrenRefs.project, set: {refsHash: hash}})
+		.run();
+}
+
+/** Whether `refs` are the refs the project's last children refresh read; false when none was recorded. */
+export function childrenRefsMatch(project: string, refs: string): boolean {
+	const row = getDb()
+		.select({refsHash: childrenRefs.refsHash})
+		.from(childrenRefs)
+		.where(eq(childrenRefs.project, project))
+		.get();
+	return row?.refsHash === refsHash(refs);
 }
 
 /**

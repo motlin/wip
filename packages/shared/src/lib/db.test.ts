@@ -16,6 +16,8 @@ import {
 	getCachedPrStatuses,
 	isCacheFresh,
 	markCacheFresh,
+	recordChildrenRefs,
+	childrenRefsMatch,
 	getCacheFreshnessByPrefix,
 	invalidatePrCache,
 	cacheMergeStatus,
@@ -739,6 +741,28 @@ describe("Children cache", () => {
 		invalidateChildrenCache("test-project");
 		expect(getCachedChildren("test-project")).toBeNull();
 		expect(getCachedChildren("test-project")).toBeNull();
+	});
+
+	it("the refs recorded with a project's children match only those refs, so a restart can tell the cache is stale", () => {
+		// A branch deleted while the server is down leaves the children cache fresh; the refs it was read from
+		// are what tell a restarted server to reread it.
+		const read = "head-sha\nrefs/heads/vault-feature 1111111\nrefs/remotes/origin/vault-feature 1111111";
+		const deleted = "head-sha";
+		expect({
+			beforeAnyRecord: childrenRefsMatch("test-project", read),
+		}).toEqual({beforeAnyRecord: false});
+		recordChildrenRefs("test-project", read);
+		recordChildrenRefs("other-project", deleted);
+		expect({
+			same: childrenRefsMatch("test-project", read),
+			deleted: childrenRefsMatch("test-project", deleted),
+			other: childrenRefsMatch("other-project", read),
+		}).toEqual({same: true, deleted: false, other: false});
+		recordChildrenRefs("test-project", deleted);
+		expect({
+			old: childrenRefsMatch("test-project", read),
+			rerecorded: childrenRefsMatch("test-project", deleted),
+		}).toEqual({old: false, rerecorded: true});
 	});
 
 	it("an invalidated children cache is no longer fresh, so the next unforced refresh rereads it", () => {

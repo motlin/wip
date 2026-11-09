@@ -111,6 +111,8 @@ export {
 	getLastKnownChildren,
 	cacheChildren,
 	invalidateChildrenCache,
+	recordChildrenRefs,
+	childrenRefsMatch,
 	getCachedTodos,
 	cacheTodos,
 	invalidateTodosCache,

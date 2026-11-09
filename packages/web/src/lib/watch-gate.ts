@@ -28,6 +28,13 @@ export interface WatchGate {
 	 * writes (fetch) are absorbed only when nothing else is pending.
 	 */
 	absorbOwnWrites<T>(project: string, work: () => Promise<T>): Promise<T>;
+	/** Whether this process recorded what a children refresh read for the project. */
+	hasRecord(project: string): boolean;
+	/**
+	 * Take `snapshot` as what the children cache already holds (a restart found the refs unchanged
+	 * since the cache was read), without reporting it to `onRecord`.
+	 */
+	adopt(project: string, snapshot: string): void;
 	/** Test-only: clear recorded snapshots. */
 	reset(): void;
 }
@@ -46,8 +53,19 @@ export function onlyRemoteRefsChanged(before: string, after: string): boolean {
 	return changed.every((line) => line.startsWith("refs/remotes/"));
 }
 
-export function createWatchGate(getSnapshot: (project: string) => Promise<string>): WatchGate {
+/**
+ * `onRecord` hears every snapshot the gate records as read into the children cache, so it can outlive
+ * the process (the children refs fingerprint a restart compares against).
+ */
+export function createWatchGate(
+	getSnapshot: (project: string) => Promise<string>,
+	onRecord: (project: string, snapshot: string) => Promise<void> | void = () => {},
+): WatchGate {
 	const lastRefreshed = new Map<string, string>();
+	const record = async (project: string, snapshot: string): Promise<void> => {
+		lastRefreshed.set(project, snapshot);
+		await onRecord(project, snapshot);
+	};
 
 	return {
 		async shouldRefresh(project: string): Promise<boolean> {
@@ -60,7 +78,7 @@ export function createWatchGate(getSnapshot: (project: string) => Promise<string
 		async refreshing<T>(project: string, work: () => Promise<T>): Promise<T> {
 			const snapshot = await getSnapshot(project);
 			const result = await work();
-			if (snapshot !== "") lastRefreshed.set(project, snapshot);
+			if (snapshot !== "") await record(project, snapshot);
 			return result;
 		},
 		async absorbOwnWrites<T>(project: string, work: () => Promise<T>): Promise<T> {
@@ -73,9 +91,15 @@ export function createWatchGate(getSnapshot: (project: string) => Promise<string
 				lastRefreshed.get(project) === before &&
 				onlyRemoteRefsChanged(before, after)
 			) {
-				lastRefreshed.set(project, after);
+				await record(project, after);
 			}
 			return result;
+		},
+		hasRecord(project: string): boolean {
+			return lastRefreshed.has(project);
+		},
+		adopt(project: string, snapshot: string): void {
+			lastRefreshed.set(project, snapshot);
 		},
 		reset(): void {
 			lastRefreshed.clear();

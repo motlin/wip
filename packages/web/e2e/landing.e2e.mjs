@@ -672,18 +672,19 @@ async function run() {
 		step(
 			"Restart, then upstream moves past a green row: it leaves Ready to land, and the buffer rebases and retests it",
 		);
-		// vaults' green commit leaves while the server runs, so its children drop it: a restarted server reads
-		// the cached children of a repo nothing has changed in since, and would still count it ready.
-		// The buffer pushed it to its fork, and a pushed branch alone still lists it, so that goes too.
+		await stopProcessTree(server);
+		// vaults' green commit leaves while the server is down: its children cache still looks fresh, so the
+		// restart must see vaults' refs changed and reread it, or it counts the gone commit as ready (target 1
+		// met) and never re-advances sprockets. The buffer pushed it to its fork, and a commit only the fork
+		// holds is no local work, so that branch goes too.
 		world.git(vaults.clone, "branch", "--quiet", "-D", "vault-feature");
 		if (world.git(vaults.clone, "ls-remote", "--heads", "origin", "vault-feature") !== "") {
 			world.git(vaults.clone, "push", "--quiet", "origin", "--delete", "vault-feature");
 		}
-		await waitUntil(
-			() => !childrenListed(world, "vaults", world.shas.vaultSha),
-			"vaults' children drop the deleted vault-feature",
+		assert.ok(
+			childrenListed(world, "vaults", world.shas.vaultSha),
+			"vaults' cached children still list the deleted vault-feature before the restart",
 		);
-		await stopProcessTree(server);
 		// levers' commits leave too, so the restart's ready target of 1 still counts only sprockets.
 		world.git(levers.clone, "branch", "--quiet", "-D", "harmless-feature", "regressing-feature");
 		// After the restart the buffer remembers nothing. sprockets is high priority, so its stale row is the
@@ -693,6 +694,10 @@ async function run() {
 		assert.ok(childrenListed(world, "cogs", world.shas.steadySha), "cogs' children list the steady commit");
 		server = startServer();
 		await waitForServer(`${baseUrl}/`, server);
+		await waitUntil(
+			() => !childrenListed(world, "vaults", world.shas.vaultSha),
+			"the restarted server rereads vaults' fresh-looking children and drops the deleted vault-feature",
+		);
 		step(
 			"With no page open, the restarted server watches repos: landing cogs' steady commit refreshes its children",
 		);

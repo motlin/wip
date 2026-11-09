@@ -39,7 +39,27 @@ async function refSnapshot(project: string): Promise<string> {
 	return `${head.stdout}\n${refs.stdout}`;
 }
 
-const watchGate = createWatchGate(refSnapshot);
+// What the children refresh read outlives the process, so a restart can tell a fresh-looking cache
+// from one whose branches changed while the server was down.
+const watchGate = createWatchGate(refSnapshot, async (project, snapshot) => {
+	const {recordChildrenRefs} = await import("@wip/shared");
+	recordChildrenRefs(project, snapshot);
+});
+
+/**
+ * Whether a fresh children cache still describes the repo's refs. While the server runs, the watch
+ * gate's record stands for it: a ref change forces a refresh. A restarted server has no record, so it
+ * compares the refs with those the cache was read from (one cheap ref read), and a branch deleted or
+ * moved while it was down rereads the children instead of counting a gone commit as ready.
+ */
+async function cachedChildrenMatchRefs(project: string): Promise<boolean> {
+	if (watchGate.hasRecord(project)) return true;
+	const snapshot = await refSnapshot(project);
+	const {childrenRefsMatch} = await import("@wip/shared");
+	if (snapshot === "" || !childrenRefsMatch(project, snapshot)) return false;
+	watchGate.adopt(project, snapshot);
+	return true;
+}
 
 /**
  * Enqueue the full refresh set for one project. Each kind skips itself when
@@ -55,7 +75,13 @@ export function enqueueProjectRefresh(project: string, options: {force?: boolean
 		run: async () => {
 			const {isCacheFresh, markCacheFresh, pruneRemote} = await import("@wip/shared");
 			const {listProjects, refreshProjectChildren, CHILDREN_CACHE_TTL_MS} = await import("./server-fns.js");
-			if (!force && isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS)) return;
+			if (
+				!force &&
+				isCacheFresh(`children:${project}`, CHILDREN_CACHE_TTL_MS) &&
+				(await cachedChildrenMatchRefs(project))
+			) {
+				return;
+			}
 
 			// Prune stale remote tracking refs occasionally so deleted GitHub
 			// branches stop being reported as pushedToRemote. Lives here (not in
@@ -166,9 +192,10 @@ export function ensureBackgroundRefresh(): void {
 		cachedProjectNames = (await listProjects()).map((p) => p.name);
 
 		if (!sweeping) {
-			// One unforced pass at boot: fresh caches skip themselves, but one invalidated before a
-			// restart (Push main, Open PR) is reread now, not when the rotating sweep reaches it, so the
-			// ready buffer never counts a landed commit from the last known children as ready.
+			// One unforced pass at boot: a fresh cache whose refs are unchanged skips itself, but one
+			// invalidated before a restart (Push main, Open PR) or whose branches changed while the server
+			// was down is reread now, not when the rotating sweep reaches it, so the ready buffer never
+			// counts a landed or deleted commit from the last known children as ready.
 			for (const project of cachedProjectNames) enqueueProjectRefresh(project);
 			sweeping = true;
 			startPeriodicSweep({

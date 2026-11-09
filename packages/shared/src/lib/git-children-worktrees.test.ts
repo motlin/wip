@@ -106,3 +106,45 @@ describe("getChildCommits ignores commits only wip's own worktrees hold", () => 
 		expect(children.map((child) => [child.sha, child.branch])).toStrictEqual([[squashed, "feature"]]);
 	});
 });
+
+/**
+ * The ready buffer pushes a branch to the fork; once its local branch is deleted, only
+ * refs/remotes/origin/<branch> still holds the commit, and `git rev-list --all` still counts it.
+ * It is nobody's local work any more, so it is never listed (or counted ready).
+ */
+describe("getChildCommits ignores commits only a remote-tracking branch holds", () => {
+	let dir: string;
+	let base: string;
+	let pushed: string;
+
+	beforeEach(() => {
+		initDb(":memory:");
+		dir = createRepo();
+		base = commit(dir, "base.txt");
+		sh(dir, "git checkout -q -b vault-feature");
+		pushed = commit(dir, "vault.txt");
+		sh(dir, "git checkout -q main");
+		sh(dir, `git update-ref refs/remotes/origin/vault-feature ${pushed}`);
+	});
+
+	afterEach(() => {
+		resetDb();
+		rmSync(dir, {recursive: true, force: true});
+	});
+
+	it("drops a commit whose local branch was deleted but the fork's branch still holds", async () => {
+		sh(dir, "git branch -q -D vault-feature");
+
+		const children = await getChildCommits(dir, base, false);
+
+		expect(children.map((child) => child.sha)).toStrictEqual([]);
+	});
+
+	it("keeps a commit a local branch holds that the fork also holds", async () => {
+		const children = await getChildCommits(dir, base, false);
+
+		expect(children.map((child) => [child.sha, child.branch, child.pushedToRemote])).toStrictEqual([
+			[pushed, "vault-feature", true],
+		]);
+	});
+});

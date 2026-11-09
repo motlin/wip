@@ -298,6 +298,12 @@ export const cacheFreshness = sqliteTable("cache_freshness", {
 	lastRefreshed: text("last_refreshed").notNull(),
 });
 
+/** A hash of the refs (HEAD plus every ref) the last children refresh read, per project. */
+export const childrenRefs = sqliteTable("children_refs", {
+	project: text("project").notNull().primaryKey(),
+	refsHash: text("refs_hash").notNull(),
+});
+
 export const advanceConfig = sqliteTable(
 	"advance_config",
 	{

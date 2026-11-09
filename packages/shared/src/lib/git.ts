@@ -412,13 +412,15 @@ function pathForms(dir: string): string[] {
 }
 
 /**
- * Commits only wip's own worktrees hold: reachable from the detached HEAD of the repo's
- * `<repo>-test-worktree` (left on the last commit git test ran) or of a throwaway agent worktree
- * under the wip cache dir, and from no ref and no other worktree's HEAD. A branch rewrite (Accept
- * fix's squash, a rebase) leaves its old commit there, on no branch, and `git rev-list --all`
- * (behind `git children`) still counts every worktree's HEAD.
+ * The commits among `shas` no local work holds: reachable from no ref but remote-tracking ones and
+ * from no worktree HEAD but wip's own. `git rev-list --all` (behind `git children`) counts every ref and every
+ * worktree's HEAD, so it still lists a commit that only a remote-tracking branch holds (a branch
+ * pushed to the fork, then deleted locally) or only wip's own worktrees hold: the detached HEAD of the
+ * repo's `<repo>-test-worktree` (left on the last commit git test ran) or of a throwaway agent
+ * worktree under the wip cache dir, where a branch rewrite (Accept fix's squash, a rebase) leaves its
+ * old commit on no branch. One `git rev-list`, bounded by the upstream tip.
  */
-async function heldOnlyByWipWorktrees(dir: string): Promise<Set<string>> {
+async function notHeldLocally(dir: string, shas: readonly string[], upstreamRef: string): Promise<Set<string>> {
 	const list = await tracedExeca("git", ["-C", dir, "worktree", "list", "--porcelain"], {reject: false});
 	if (list.exitCode !== 0) return new Set();
 	const worktrees = list.stdout
@@ -435,15 +437,13 @@ async function heldOnlyByWipWorktrees(dir: string): Promise<Set<string>> {
 	const cacheRoots = pathForms(getCacheDir()).map((root) => root + path.sep);
 	const isWips = (w: {path: string; detached: boolean}) =>
 		w.detached && (w.path === testWorktree || cacheRoots.some((root) => w.path.startsWith(root)));
-	const wipHeads = worktrees.filter(isWips).map((w) => w.head);
-	if (wipHeads.length === 0) return new Set();
-	const otherHeads = worktrees.filter((w) => !isWips(w)).map((w) => w.head);
-	const held = await tracedExeca("git", ["-C", dir, "rev-list", "--stdin"], {
-		input: [...wipHeads, "--not", "--glob=refs/*", ...otherHeads].join("\n"),
+	const userHeads = worktrees.filter((w) => !isWips(w)).map((w) => w.head);
+	const unheld = await tracedExeca("git", ["-C", dir, "rev-list", "--stdin"], {
+		input: [...shas, "--not", "--exclude=refs/remotes/*", "--glob=refs/*", upstreamRef, ...userHeads].join("\n"),
 		reject: false,
 	});
-	if (held.exitCode !== 0) return new Set();
-	return new Set(held.stdout.split("\n").filter(Boolean));
+	if (unheld.exitCode !== 0) return new Set();
+	return new Set(unheld.stdout.split("\n").filter(Boolean));
 }
 
 /** The first parent from a `%P` field (space-separated parents); undefined for a root commit. */
@@ -462,11 +462,9 @@ export async function getChildCommits(
 	const childrenOutput = await git(dir, "children", upstreamRef);
 	if (!childrenOutput) return [];
 
-	const wipOnly = await heldOnlyByWipWorktrees(dir);
-	const shas = childrenOutput
-		.split("\n")
-		.filter(Boolean)
-		.filter((sha) => !wipOnly.has(sha));
+	const listed = childrenOutput.split("\n").filter(Boolean);
+	const unheld = await notHeldLocally(dir, listed, upstreamRef);
+	const shas = listed.filter((sha) => !unheld.has(sha));
 	if (shas.length === 0) return [];
 
 	const RS = "\x1e";

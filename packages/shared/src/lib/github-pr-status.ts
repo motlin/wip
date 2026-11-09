@@ -10,6 +10,7 @@ import {
 	getCachedGhLogin,
 	cacheGhLogin,
 } from "./db.js";
+import {notStartedCheckRuns} from "./gha-checks.js";
 import {git, parseRemoteUrl} from "./git-exec.js";
 import {cacheAutoMergeAllowed, prRepository} from "./github-auto-merge.js";
 import {isGitHubRateLimited, markGitHubRateLimited, detectRateLimitError} from "./rate-limit.js";
@@ -28,6 +29,7 @@ const inflightPrRequests = new Map<string, Promise<PrStatuses>>();
 
 const CheckRunContextSchema = z.object({
 	__typename: z.literal("CheckRun"),
+	id: z.string().optional(),
 	name: z.string(),
 	conclusion: z.string().nullable(),
 	detailsUrl: z.string().nullish(),
@@ -160,15 +162,45 @@ function withRepository<T extends object>(nodes: readonly T[], repository: strin
 	return out;
 }
 
+const FAILED_CONCLUSIONS = new Set(["FAILURE", "CANCELLED", "TIMED_OUT"]);
+
+function isFailedCheckRun(c: StatusCheckContext): c is CheckRunContext {
+	// eslint-disable-next-line no-underscore-dangle -- GraphQL's fixed discriminator field name
+	return c.__typename === "CheckRun" && c.conclusion !== null && FAILED_CONCLUSIONS.has(c.conclusion);
+}
+
+type Rollup = {state: string | null; contexts: {nodes: StatusCheckContext[]}} | null | undefined;
+
+/** The ids of a rollup's failed check runs: the only ones that might be runs GitHub never started. */
+function failedCheckRunIds(rollup: Rollup): string[] {
+	return (rollup?.contexts.nodes ?? []).flatMap((c) => (isFailedCheckRun(c) && c.id !== undefined ? [c.id] : []));
+}
+
+function isPendingContext(c: StatusCheckContext): boolean {
+	// eslint-disable-next-line no-underscore-dangle -- GraphQL's fixed discriminator field name
+	return c.__typename === "CheckRun" ? c.conclusion === null : c.state === "PENDING" || c.state === "EXPECTED";
+}
+
+/**
+ * A commit's check status and failed checks, with the check runs GitHub never started (billing, no
+ * runner) dropped: such a run is no CI result, neither pass nor fail, so the rest decide.
+ */
+function rollupChecks(
+	rollup: Rollup,
+	notStarted: ReadonlySet<string>,
+): {checkStatus: CheckStatus; failedChecks: Array<{name: string; url?: string}>} {
+	const all = rollup?.contexts.nodes ?? [];
+	const contexts = all.filter((c) => !(isFailedCheckRun(c) && c.id !== undefined && notStarted.has(c.id)));
+	const failedChecks = extractFailedChecks(contexts);
+	const aggregate = mapAggregateState(rollup?.state ?? null);
+	if (contexts.length === all.length || aggregate !== "failed") return {checkStatus: aggregate, failedChecks};
+	if (failedChecks.length > 0) return {checkStatus: "failed", failedChecks};
+	if (contexts.some(isPendingContext)) return {checkStatus: "running", failedChecks};
+	return {checkStatus: contexts.length === 0 ? "none" : "passed", failedChecks};
+}
+
 function extractFailedChecks(contexts: StatusCheckContext[]): Array<{name: string; url?: string}> {
-	const failedRuns = contexts
-		.filter(
-			(c): c is CheckRunContext =>
-				// eslint-disable-next-line no-underscore-dangle -- GraphQL's fixed discriminator field name
-				c.__typename === "CheckRun" &&
-				(c.conclusion === "FAILURE" || c.conclusion === "CANCELLED" || c.conclusion === "TIMED_OUT"),
-		)
-		.map((c) => ({name: c.name, url: c.detailsUrl ?? undefined}));
+	const failedRuns = contexts.filter(isFailedCheckRun).map((c) => ({name: c.name, url: c.detailsUrl ?? undefined}));
 	const failedStatuses = contexts
 		.filter(
 			(c): c is StatusContextItem =>
@@ -201,7 +233,7 @@ query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
             contexts(first: 100) {
               nodes {
                 __typename
-                ... on CheckRun { name conclusion detailsUrl }
+                ... on CheckRun { id name conclusion detailsUrl }
                 ... on StatusContext { context state targetUrl }
               }
             }
@@ -229,7 +261,7 @@ query($owner: String!, $name: String!, $qualifiedBaseRef: String!) {
                 contexts(first: 100) {
                   nodes {
                     __typename
-                    ... on CheckRun { name conclusion detailsUrl }
+                    ... on CheckRun { id name conclusion detailsUrl }
                     ... on StatusContext { context state targetUrl }
                   }
                 }
@@ -516,11 +548,11 @@ function getBaseBranchStatus(
 	repository: string,
 	branch: string,
 	authenticatedLogin: string,
+	notStarted: ReadonlySet<string>,
 ): BaseBranchStatus | undefined {
 	const repositoryData = response.data?.repository;
 	const target = repositoryData?.ref?.target;
 	if (!repositoryData?.url || !target) return undefined;
-	const rollup = target.statusCheckRollup;
 	return {
 		remote,
 		repository,
@@ -528,8 +560,7 @@ function getBaseBranchStatus(
 		branch,
 		sha: target.oid,
 		date: target.committedDate.slice(0, 10),
-		checkStatus: mapAggregateState(rollup?.state ?? null),
-		failedChecks: extractFailedChecks(rollup?.contexts.nodes ?? []),
+		...rollupChecks(target.statusCheckRollup, notStarted),
 		policy: resolveRepositoryPolicy(repository, repositoryData.viewerPermission, authenticatedLogin),
 	};
 }
@@ -547,7 +578,13 @@ async function fetchPrStatusesFromApi(
 	let allPrs: RepositoryPr[] = [];
 	const baseBranches: BaseBranchStatus[] = [];
 	let autoMergeAllowed = false;
+	let notStarted: ReadonlySet<string> = new Set();
 	try {
+		const baseResponses: Array<{
+			response: z.infer<typeof PrGraphQLResponseSchema>;
+			remote: string;
+			repository: string;
+		}> = [];
 		const canonical = await getCanonicalRepo(dir, upstreamRemote);
 		const client = getGitHubClient();
 
@@ -568,14 +605,7 @@ async function fetchPrStatusesFromApi(
 		};
 		recordAutoMergeAllowed(canonicalRepository, response.data?.repository.autoMergeAllowed);
 		allPrs = withRepository(response.data?.repository.pullRequests.nodes ?? [], canonicalRepository);
-		const canonicalBase = getBaseBranchStatus(
-			response,
-			upstreamRemote ?? "origin",
-			canonicalRepository,
-			upstreamBranch,
-			ghLogin,
-		);
-		if (canonicalBase) baseBranches.push(canonicalBase);
+		baseResponses.push({response, remote: upstreamRemote ?? "origin", repository: canonicalRepository});
 
 		// Also query origin repo if it differs from canonical (catches fork-only PRs)
 		const originUrl = await git(dir, "remote", "get-url", "origin");
@@ -594,14 +624,7 @@ async function fetchPrStatusesFromApi(
 					originResponse.data?.repository.pullRequests.nodes ?? [],
 					originRepository,
 				);
-				const originBase = getBaseBranchStatus(
-					originResponse,
-					"origin",
-					originRepository,
-					upstreamBranch,
-					ghLogin,
-				);
-				if (originBase) baseBranches.push(originBase);
+				baseResponses.push({response: originResponse, remote: "origin", repository: originRepository});
 				// Merge: upstream PRs take priority, add origin PRs for branches not already covered
 				const upstreamBranches = new Set(allPrs.map((pr) => pr.headRefName));
 				for (const pr of originPrs) {
@@ -623,6 +646,24 @@ async function fetchPrStatusesFromApi(
 			remote: canonicalRepository,
 		});
 		autoMergeAllowed = autoMergeAllowedByRepo.get(prRepo) === true;
+		// One lookup for every failed check run, to drop the ones GitHub never started (billing).
+		notStarted = await notStartedCheckRuns([
+			...baseResponses.flatMap((base) =>
+				failedCheckRunIds(base.response.data?.repository.ref?.target.statusCheckRollup),
+			),
+			...allPrs.flatMap((pr) => failedCheckRunIds(pr.commits.nodes[0]?.commit.statusCheckRollup)),
+		]);
+		for (const base of baseResponses) {
+			const status = getBaseBranchStatus(
+				base.response,
+				base.remote,
+				base.repository,
+				upstreamBranch,
+				ghLogin,
+				notStarted,
+			);
+			if (status) baseBranches.push(status);
+		}
 	} catch (error) {
 		const message = errorMessage(error);
 		// Detect rate limiting and activate cooldown to prevent further calls
@@ -683,13 +724,11 @@ async function fetchPrStatusesFromApi(
 		review.set(branch, reviewStatus);
 
 		// Check status from aggregate state
-		const rollup = pr.commits.nodes[0]?.commit.statusCheckRollup;
-		const checkStatus = mapAggregateState(rollup?.state ?? null);
+		const {checkStatus, failedChecks: failed} = rollupChecks(
+			pr.commits.nodes[0]?.commit.statusCheckRollup,
+			notStarted,
+		);
 		checks.set(branch, checkStatus);
-
-		// Failed checks from typed contexts
-		const contexts = rollup?.contexts.nodes ?? [];
-		const failed = extractFailedChecks(contexts);
 		if (failed.length > 0) failedChecks.set(branch, failed);
 
 		// PR URL

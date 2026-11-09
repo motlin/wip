@@ -280,6 +280,11 @@ export function createWorld() {
 	const harmlessSha = levers.branch("harmless-feature", "harmless.txt", "Add a feature on foreign red upstream");
 	const regressingSha = levers.branch("regressing-feature", "NEWRED", "Add a new failure on foreign red upstream");
 
+	// Private repo whose upstream check GitHub never started (Actions billing refused the job): no CI result,
+	// so its upstream is not red, and its commit lines up by its local test.
+	const vaults = repo("vaults");
+	const vaultSha = vaults.branch("vault-feature", "vault.txt", "Add the vault feature");
+
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
@@ -295,6 +300,7 @@ export function createWorld() {
 			[gears, "pull-request"],
 			[bolts, "pull-request"],
 			[levers, "pull-request"],
+			[vaults, "pull-request"],
 		].map(([r, landing]) => record(r, landing, priorities.get(r.name)));
 		fs.writeFileSync(path.join(wipConfig, "projects.json5"), `${JSON.stringify(records, null, "\t")}\n`);
 	};
@@ -320,7 +326,7 @@ export function createWorld() {
 		git,
 		setReadyTarget,
 		setPriority,
-		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers},
+		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults},
 		shas: {
 			readySha,
 			behindSha,
@@ -334,6 +340,7 @@ export function createWorld() {
 			fragileSha,
 			harmlessSha,
 			regressingSha,
+			vaultSha,
 		},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
 		fakeRepos: [
@@ -342,6 +349,8 @@ export function createWorld() {
 				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `${r.owner}/${r.name}`},
 			]),
 			{owner: "acme", name: gears.name, bareDir: gears.upstreamBare, viewerPermission: "READ"},
+			{owner: "acme", name: vaults.name, bareDir: vaults.upstreamBare, isPrivate: true, baseCheck: "NOT_STARTED"},
+			{owner: "e2e-user", name: vaults.name, bareDir: vaults.forkBare, isPrivate: true, parent: "acme/vaults"},
 		],
 		ghCalls() {
 			if (!fs.existsSync(ghLog)) return [];

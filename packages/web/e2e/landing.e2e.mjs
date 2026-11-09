@@ -16,7 +16,8 @@
  * for broken's own red upstream (its failed local baseline and /build:fix), broken's commits show blocked by
  * it and none lists in Ready to land, and levers' foreign red upstream gets no item and is a baseline: its
  * commit adding no failure lines up, its commit adding one does not, and the buffer pulled no commit in broken
- * (server.log's test runs).
+ * (server.log's test runs) Private vaults' upstream check GitHub never started (billing) is no CI result: it gets
+ * no item and its commit lines up by its local test.
  * The browser may only reach the wip server and the fake GitHub.
  *
  * Usage: just e2e-landing (or node packages/web/e2e/landing.e2e.mjs after `just build`).
@@ -90,12 +91,12 @@ async function waitForServer(url, server) {
 }
 
 /** Whether the world DB's current children cache for cogs lists a commit. Opens and closes the DB each call. */
-function cogsChildrenListed(world, sha) {
+function childrenListed(world, project, sha) {
 	const db = new Database(world.env.WIP_DB_PATH, {readonly: true, fileMustExist: true});
 	try {
 		const row = db
 			.prepare("SELECT children_json FROM children_cache WHERE project = ? ORDER BY system_from DESC LIMIT 1")
-			.get("cogs");
+			.get(project);
 		return row !== undefined && row.children_json.includes(sha);
 	} finally {
 		db.close();
@@ -276,7 +277,7 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers} = world.repos;
+	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults} = world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -391,6 +392,34 @@ async function run() {
 			},
 			{projects: ["broken"], failures: ["local baseline test failed"], actions: ["/build:fix"]},
 			"one upstream_red item, for broken alone: green and foreign red upstreams get none",
+		);
+
+		step(
+			"A check GitHub never started (billing) is no CI result: vaults' upstream is not red and its commit lines up",
+		);
+		// wip read vaults' failed upstream check and asked GitHub whether that run ever started.
+		await waitUntil(
+			() =>
+				gh.graphqlCalls.some(
+					(call) =>
+						call.kind === "checkRunStarts" &&
+						Array.isArray(call.variables.ids) &&
+						call.variables.ids.includes("CR_notstarted_acme/vaults"),
+				),
+			"wip asked whether vaults' failed upstream check run started",
+		);
+		await readyRow(page, "Add the vault feature").getByRole("button", {name: "Open PR"}).waitFor();
+		assert.deepEqual(
+			{
+				redProjects: await redItem.getByTestId("upstream-red-project").allInnerTexts(),
+				blocked: await page
+					.getByTestId(`branch-card-${world.shas.vaultSha}`)
+					.getByTestId("upstream-red-blocked")
+					.count(),
+				tested: world.git(vaults.clone, "test", "results", world.shas.vaultSha).split(" ")[0],
+			},
+			{redProjects: ["broken"], blocked: 0, tested: "good"},
+			"vaults gets no upstream_red item or Blocked marker, and its commit lines up by its local test",
 		);
 		// How long it has been red: the failing upstream commit's date, and its age once the client clock is read.
 		await redItem
@@ -643,14 +672,25 @@ async function run() {
 		step(
 			"Restart, then upstream moves past a green row: it leaves Ready to land, and the buffer rebases and retests it",
 		);
+		// vaults' green commit leaves while the server runs, so its children drop it: a restarted server reads
+		// the cached children of a repo nothing has changed in since, and would still count it ready.
+		// The buffer pushed it to its fork, and a pushed branch alone still lists it, so that goes too.
+		world.git(vaults.clone, "branch", "--quiet", "-D", "vault-feature");
+		if (world.git(vaults.clone, "ls-remote", "--heads", "origin", "vault-feature") !== "") {
+			world.git(vaults.clone, "push", "--quiet", "origin", "--delete", "vault-feature");
+		}
+		await waitUntil(
+			() => !childrenListed(world, "vaults", world.shas.vaultSha),
+			"vaults' children drop the deleted vault-feature",
+		);
 		await stopProcessTree(server);
-		// levers' commits leave, so the restart's ready target of 1 still counts only sprockets.
+		// levers' commits leave too, so the restart's ready target of 1 still counts only sprockets.
 		world.git(levers.clone, "branch", "--quiet", "-D", "harmless-feature", "regressing-feature");
 		// After the restart the buffer remembers nothing. sprockets is high priority, so its stale row is the
 		// candidate the buffer advances first once it falls behind.
 		world.setReadyTarget(1);
 		world.setPriority("sprockets", "high");
-		assert.ok(cogsChildrenListed(world, world.shas.steadySha), "cogs' children list the steady commit");
+		assert.ok(childrenListed(world, "cogs", world.shas.steadySha), "cogs' children list the steady commit");
 		server = startServer();
 		await waitForServer(`${baseUrl}/`, server);
 		step(
@@ -661,7 +701,7 @@ async function run() {
 		world.git(cogs.clone, "push", "--quiet", "upstream", `${world.shas.steadySha}:refs/heads/main`);
 		world.git(cogs.clone, "fetch", "--quiet", "upstream");
 		await waitUntil(
-			() => !cogsChildrenListed(world, world.shas.steadySha),
+			() => !childrenListed(world, "cogs", world.shas.steadySha),
 			"the background refresh drops cogs' landed steady commit from its children before a page connects",
 		);
 		await page.goto(`${baseUrl}/queue`);
@@ -720,7 +760,7 @@ async function run() {
 			[world.git(broken.upstreamBare, "rev-parse", "refs/heads/main")],
 			"the ready buffer pulled no commit in broken",
 		);
-		for (const name of ["widgets", "gadgets", "cogs", "sprockets", "bolts", "levers"]) {
+		for (const name of ["widgets", "gadgets", "cogs", "sprockets", "bolts", "levers", "vaults"]) {
 			assert.ok((testedByRepo.get(name)?.size ?? 0) > 0, `the ready buffer tested ${name}'s commits`);
 		}
 		assert.deepEqual(blocked, [], "the browser asked for nothing outside wip and the fake GitHub");

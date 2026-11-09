@@ -124,3 +124,57 @@ export async function actionsBlockedByBilling(repository: string, sha: string): 
 		),
 	);
 }
+
+const CHECK_RUN_STARTS_QUERY = `query($ids: [ID!]!) {
+	nodes(ids: $ids) {
+		... on CheckRun {
+			id
+			steps(first: 1) { totalCount }
+			checkSuite { app { slug } }
+			annotations(first: 5) { nodes { message } }
+		}
+	}
+}`;
+
+const CheckRunStartsResponseSchema = z.object({
+	data: z.object({
+		nodes: z.array(
+			z
+				.object({
+					id: z.string(),
+					steps: z.object({totalCount: z.number()}).nullable(),
+					checkSuite: z.object({app: z.object({slug: z.string()}).nullable()}).nullable(),
+					annotations: z.object({nodes: z.array(z.object({message: z.string()}))}).nullable(),
+				})
+				.nullable(),
+		),
+	}),
+});
+
+/** GitHub's node lookup takes at most 100 ids per request. */
+const NODE_IDS_PER_REQUEST = 100;
+
+/**
+ * The check runs among `ids` that GitHub never started: an Actions job that never got a runner (no
+ * steps), or one whose annotation says GitHub refused to start it (billing). Such a run is no CI
+ * result, neither pass nor fail. One request per 100 ids, none when `ids` is empty. Throws on a
+ * request error or an unexpected response.
+ */
+export async function notStartedCheckRuns(ids: readonly string[]): Promise<Set<string>> {
+	const unique = [...new Set(ids)];
+	const chunks: string[][] = [];
+	for (let start = 0; start < unique.length; start += NODE_IDS_PER_REQUEST) {
+		chunks.push(unique.slice(start, start + NODE_IDS_PER_REQUEST));
+	}
+	const answers = await Promise.all(
+		chunks.map(async (chunk) => getGitHubClient().graphql(CHECK_RUN_STARTS_QUERY, {ids: chunk})),
+	);
+	const notStarted = new Set<string>();
+	for (const run of answers.flatMap((raw) => CheckRunStartsResponseSchema.parse(raw).data.nodes)) {
+		if (run === null) continue;
+		const neverRan = run.checkSuite?.app?.slug === "github-actions" && run.steps?.totalCount === 0;
+		const refused = run.annotations?.nodes.some((annotation) => BILLING_REFUSAL.test(annotation.message));
+		if (neverRan || refused === true) notStarted.add(run.id);
+	}
+	return notStarted;
+}

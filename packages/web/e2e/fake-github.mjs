@@ -1,7 +1,7 @@
 /**
  * A fake GitHub for the landing end-to-end harness: answers the GraphQL queries wip sends (viewer,
  * fork parent, repository id, open PRs with checks, auto-merge setting, visibility and the token's
- * permission, merged PRs, create PR) from in-memory state plus the refs of the harness's local bare
+ * permission, merged PRs, create PR, which failed check runs GitHub never started) from in-memory state plus the refs of the harness's local bare
  * repos, and serves stand-in PR and new-PR (compare) pages so a browser tab sent to GitHub lands
  * somewhere local. A repo whose viewerPermission is READ refuses a PR from its own branch, like GitHub. Every request is recorded. It never talks to
  * the network.
@@ -12,7 +12,7 @@ import {createServer} from "node:http";
 const VIEWER_LOGIN = "e2e-user";
 
 /**
- * @typedef {{owner: string; name: string; bareDir: string; parent?: string; baseCheck?: "SUCCESS" | "FAILURE" | "PENDING"; viewerPermission?: "ADMIN" | "WRITE" | "READ"}} FakeRepo
+ * @typedef {{owner: string; name: string; bareDir: string; parent?: string; baseCheck?: "SUCCESS" | "FAILURE" | "PENDING" | "NOT_STARTED"; isPrivate?: boolean; viewerPermission?: "ADMIN" | "WRITE" | "READ"}} FakeRepo
  * @typedef {{number: number; repository: string; headRefName: string; baseRefName: string; title: string; draft: boolean; check: "SUCCESS" | "FAILURE" | "PENDING"; autoMerge: boolean; headOid?: string}} FakePr
  */
 
@@ -48,19 +48,40 @@ function commitOf(bareDir, ref) {
 	}
 }
 
-function rollup(state) {
+/** GitHub's annotation on an Actions job it refused to start for billing. */
+const BILLING_ANNOTATION =
+	"The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings";
+
+/**
+ * A rollup with one "build" check run. NOT_STARTED is a FAILURE whose run GitHub never started
+ * (billing): its id resolves through checkRunNode to no steps and the billing annotation.
+ */
+function rollup(state, idPrefix) {
+	const notStarted = state === "NOT_STARTED";
+	const failed = state === "FAILURE" || notStarted;
 	return {
-		state,
+		state: notStarted ? "FAILURE" : state,
 		contexts: {
 			nodes: [
 				{
 					__typename: "CheckRun",
+					id: `${notStarted ? "CR_notstarted" : "CR_build"}_${idPrefix}`,
 					name: "build",
-					conclusion: state === "SUCCESS" ? "SUCCESS" : state === "FAILURE" ? "FAILURE" : null,
+					conclusion: state === "SUCCESS" ? "SUCCESS" : failed ? "FAILURE" : null,
 					detailsUrl: null,
 				},
 			],
 		},
+	};
+}
+
+function checkRunNode(id) {
+	const notStarted = id.startsWith("CR_notstarted_");
+	return {
+		id,
+		steps: {totalCount: notStarted ? 0 : 3},
+		checkSuite: {app: {slug: "github-actions"}},
+		annotations: {nodes: notStarted ? [{message: BILLING_ANNOTATION}] : []},
 	};
 }
 
@@ -92,7 +113,7 @@ export async function startFakeGitHub(options) {
 			mergeStateStatus: pr.check === "PENDING" ? "BLOCKED" : pr.check === "FAILURE" ? "BLOCKED" : "CLEAN",
 			autoMergeRequest: pr.autoMerge ? {enabledAt: new Date().toISOString()} : null,
 			reviewThreads: {nodes: []},
-			commits: {nodes: [{commit: {statusCheckRollup: rollup(pr.check)}}]},
+			commits: {nodes: [{commit: {statusCheckRollup: rollup(pr.check, `${pr.repository}#${pr.number}`)}}]},
 		};
 	}
 
@@ -101,6 +122,10 @@ export async function startFakeGitHub(options) {
 		const repo = repos.get(key);
 		if (/\bviewer\s*\{\s*login/.test(query)) return {kind: "viewer", body: {data: {viewer: {login: VIEWER_LOGIN}}}};
 		if (/\bsearch\(query:/.test(query)) return {kind: "search", body: {data: {search: {nodes: []}}}};
+		if (/\bnodes\(ids: \$ids\)/.test(query)) {
+			const ids = Array.isArray(variables.ids) ? variables.ids.map(String) : [];
+			return {kind: "checkRunStarts", body: {data: {nodes: ids.map(checkRunNode)}}};
+		}
 		if (/viewer\s*\{\s*projectsV2/.test(query)) {
 			return {kind: "projects", body: {data: {viewer: {projectsV2: {nodes: []}}}}};
 		}
@@ -156,7 +181,12 @@ export async function startFakeGitHub(options) {
 							ref:
 								target === null
 									? null
-									: {target: {...target, statusCheckRollup: rollup(repo.baseCheck ?? "SUCCESS")}},
+									: {
+											target: {
+												...target,
+												statusCheckRollup: rollup(repo.baseCheck ?? "SUCCESS", key),
+											},
+										},
 							pullRequests: {nodes: prs.filter((pr) => pr.repository === key).map(prNode)},
 						},
 					},
@@ -175,7 +205,14 @@ export async function startFakeGitHub(options) {
 		if (/\bisPrivate\b/.test(query)) {
 			return {
 				kind: "repoFacts",
-				body: {data: {repository: {isPrivate: false, viewerPermission: repo.viewerPermission ?? "ADMIN"}}},
+				body: {
+					data: {
+						repository: {
+							isPrivate: repo.isPrivate === true,
+							viewerPermission: repo.viewerPermission ?? "ADMIN",
+						},
+					},
+				},
 			};
 		}
 		if (/\bviewerPermission\b/.test(query)) {

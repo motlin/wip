@@ -230,3 +230,191 @@ describe("getPrStatuses auto-merge in a fork whose PRs live in origin", () => {
 		}).toStrictEqual({allowed: false, forkLookup: true, parentLookup: false});
 	});
 });
+
+const BILLING_ANNOTATION =
+	"The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings";
+
+type FakeRun = {id: string; name: string; conclusion: string | null; steps: number; annotations: string[]};
+
+const notStartedRun = (id: string): FakeRun => ({
+	id,
+	name: "verify",
+	conclusion: "FAILURE",
+	steps: 0,
+	annotations: [BILLING_ANNOTATION],
+});
+const realFailureRun = (id: string): FakeRun => ({
+	id,
+	name: "test",
+	conclusion: "FAILURE",
+	steps: 4,
+	annotations: ["Process completed with exit code 1."],
+});
+const passedRun = (id: string): FakeRun => ({id, name: "lint", conclusion: "SUCCESS", steps: 3, annotations: []});
+
+function checksRollup(runs: FakeRun[]) {
+	const failing = runs.some((run) => run.conclusion === "FAILURE");
+	return {
+		state: failing ? "FAILURE" : runs.length === 0 ? null : "SUCCESS",
+		contexts: {
+			nodes: runs.map((run) => ({
+				__typename: "CheckRun",
+				id: run.id,
+				name: run.name,
+				conclusion: run.conclusion,
+				detailsUrl: `https://github.com/motlin/billing-repo/actions/runs/${run.id}`,
+			})),
+		},
+	};
+}
+
+/** A private repo's answers: the base ref and one PR carry `baseRuns` and `prRuns`; check runs resolve by id. */
+function checksAnswer(baseRuns: FakeRun[], prRuns: FakeRun[], nodeQueries: string[][]) {
+	const byId = new Map([...baseRuns, ...prRuns].map((run) => [run.id, run]));
+	const answer = (query: string, variables?: Record<string, unknown>): unknown => {
+		if (query.includes("{ viewer { login } }")) return {data: {viewer: {login: "motlin"}}};
+		if (query.includes("parent {")) return {data: {repository: {parent: null}}};
+		if (query.includes("nodes(ids:")) {
+			const ids = variables?.["ids"] as string[];
+			nodeQueries.push(ids);
+			return {
+				data: {
+					nodes: ids.map((id) => {
+						const run = byId.get(id)!;
+						return {
+							id,
+							steps: {totalCount: run.steps},
+							checkSuite: {app: {slug: "github-actions"}},
+							annotations: {nodes: run.annotations.map((message) => ({message}))},
+						};
+					}),
+				},
+			};
+		}
+		if (!query.includes("pullRequests")) return {data: {repository: {autoMergeAllowed: false}}};
+		return {
+			data: {
+				repository: {
+					url: "https://github.com/motlin/billing-repo",
+					viewerPermission: "ADMIN",
+					autoMergeAllowed: true,
+					ref: {
+						target: {
+							oid: "a".repeat(40),
+							committedDate: "2026-11-09T00:00:00Z",
+							statusCheckRollup: checksRollup(baseRuns),
+						},
+					},
+					pullRequests: {
+						nodes: [
+							{
+								...pr("feature", 7, null),
+								url: "https://github.com/motlin/billing-repo/pull/7",
+								commits: {nodes: [{commit: {statusCheckRollup: checksRollup(prRuns)}}]},
+							},
+						],
+					},
+				},
+			},
+		};
+	};
+	return async (query: string, variables?: Record<string, unknown>) => Promise.resolve(answer(query, variables));
+}
+
+function summary(statuses: Awaited<ReturnType<typeof getPrStatuses>>) {
+	return {
+		base: statuses.baseBranches.map(({checkStatus, failedChecks}) => ({checkStatus, failedChecks})),
+		prCheck: statuses.checks.get("feature"),
+		prFailed: statuses.failedChecks.get("feature"),
+	};
+}
+
+describe("getPrStatuses with check runs GitHub never started", () => {
+	let dir: string | undefined;
+
+	beforeEach(() => {
+		initDb(":memory:");
+		resetGitHubRateLimit();
+		resetGhLoginFailureForTests();
+		dir = mkdtempSync(join(tmpdir(), "wip-not-started-"));
+		execSync("git init -b main", {cwd: dir, stdio: "ignore"});
+		execSync("git remote add origin https://github.com/motlin/billing-repo.git", {cwd: dir, stdio: "ignore"});
+	});
+
+	afterEach(() => {
+		resetGitHubClient();
+		resetAutoMergeAllowedCache();
+		resetDb();
+		if (dir) rmSync(dir, {recursive: true, force: true});
+	});
+
+	it("counts a check run that never started (billing) as no CI result on the upstream tip and on a PR", async () => {
+		const nodeQueries: string[][] = [];
+		setGitHubClient({graphql: checksAnswer([notStartedRun("CR_base")], [notStartedRun("CR_pr")], nodeQueries)});
+
+		const fetched = await getPrStatuses(dir!, "billing-repo", "origin");
+
+		expect({...summary(fetched), nodeQueries}).toStrictEqual({
+			base: [{checkStatus: "none", failedChecks: []}],
+			prCheck: "none",
+			prFailed: undefined,
+			nodeQueries: [["CR_base", "CR_pr"]],
+		});
+	});
+
+	it("keeps a real check failure red", async () => {
+		setGitHubClient({graphql: checksAnswer([realFailureRun("CR_base")], [realFailureRun("CR_pr")], [])});
+
+		const fetched = await getPrStatuses(dir!, "billing-repo", "origin");
+
+		expect(summary(fetched)).toStrictEqual({
+			base: [
+				{
+					checkStatus: "failed",
+					failedChecks: [{name: "test", url: "https://github.com/motlin/billing-repo/actions/runs/CR_base"}],
+				},
+			],
+			prCheck: "failed",
+			prFailed: [{name: "test", url: "https://github.com/motlin/billing-repo/actions/runs/CR_pr"}],
+		});
+	});
+
+	it("lets a real failure win over a not-started run, and a passed run stand when the rest never started", async () => {
+		setGitHubClient({
+			graphql: checksAnswer(
+				[notStartedRun("CR_base_billing"), realFailureRun("CR_base_real")],
+				[notStartedRun("CR_pr_billing"), passedRun("CR_pr_lint")],
+				[],
+			),
+		});
+
+		const fetched = await getPrStatuses(dir!, "billing-repo", "origin");
+
+		expect(summary(fetched)).toStrictEqual({
+			base: [
+				{
+					checkStatus: "failed",
+					failedChecks: [
+						{name: "test", url: "https://github.com/motlin/billing-repo/actions/runs/CR_base_real"},
+					],
+				},
+			],
+			prCheck: "passed",
+			prFailed: undefined,
+		});
+	});
+
+	it("asks nothing more when no check run failed", async () => {
+		const nodeQueries: string[][] = [];
+		setGitHubClient({graphql: checksAnswer([passedRun("CR_base")], [passedRun("CR_pr")], nodeQueries)});
+
+		const fetched = await getPrStatuses(dir!, "billing-repo", "origin");
+
+		expect({...summary(fetched), nodeQueries}).toStrictEqual({
+			base: [{checkStatus: "passed", failedChecks: []}],
+			prCheck: "passed",
+			prFailed: undefined,
+			nodeQueries: [],
+		});
+	});
+});

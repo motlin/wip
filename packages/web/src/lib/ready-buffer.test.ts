@@ -1326,6 +1326,29 @@ describe("bufferRepoFromChildren", () => {
 	const identity = {login: "motlin", orgs: ["liftwizard"]};
 	const upstreamCi = makeChild({kind: "upstream_ci", sha: sha("f"), checkStatus: "failed", testStatus: "unknown"});
 
+	/** A two-commit stack whose base test has the given status, as the buffer maps it. */
+	const stackCandidates = (baseStatus: "passed" | "failed") =>
+		bufferRepoFromChildren(
+			project("motlin/wip"),
+			[
+				makeChild({
+					sha: sha("b"),
+					parentSha: sha("a"),
+					commitsBehind: 0,
+					testStatus: "unknown",
+					patchId: "pb",
+				}),
+				makeChild({
+					sha: sha("a"),
+					parentSha: sha("u"),
+					commitsBehind: 0,
+					testStatus: baseStatus,
+					patchId: "pa",
+				}),
+			],
+			{identity, checkedOutBranches: [], onHold: () => false, override: () => undefined},
+		).candidates.map((c) => ({id: c.id, state: c.state}));
+
 	it("maps children to ranked candidates keyed by patch-id, with readiness, hold and override", () => {
 		const children = [
 			makeChild({sha: sha("a"), branch: "big", commitsBehind: 1, insertions: 500, patchId: "pa"}),
@@ -1412,6 +1435,16 @@ describe("bufferRepoFromChildren", () => {
 			{id: "pa", parentSha: sha("u")},
 			{id: "pb", parentSha: sha("a")},
 		]);
+	});
+
+	it("pulls a stacked commit only once its parent is ready, ranking it after the parent", () => {
+		expect({unreadyParent: stackCandidates("failed"), readyParent: stackCandidates("passed")}).toStrictEqual({
+			unreadyParent: [{id: "pa", state: "unready"}],
+			readyParent: [
+				{id: "pa", state: "ready"},
+				{id: "pb", state: "unready"},
+			],
+		});
 	});
 
 	it("keeps one candidate per patch-id, preferring the stack base, then a branch, and carrying the other branch names", () => {

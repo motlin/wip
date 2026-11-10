@@ -7,7 +7,7 @@ import type {
 	Priority,
 	ProjectInfo,
 } from "@wip/shared";
-import {gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
+import {dropStackedOnUnready, gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {withinBaseline} from "@wip/shared/baseline-failures.js";
 import {isGreen} from "@wip/shared/readiness.js";
 import {DEFAULT_PRIORITY, effectivePriority} from "@wip/shared/priority.js";
@@ -362,48 +362,51 @@ export function bufferRepoFromChildren(
 		...(context.backgroundPush === true ? {backgroundPush: true} : {}),
 		...(context.verifyByDraftPr === true ? {verifyByDraftPr: true} : {}),
 		...(context.verifyNotice === undefined ? {} : {verifyNotice: context.verifyNotice}),
-		candidates: onePerPatchId(
-			work.map((child) => {
-				const override = child.patchId === undefined ? undefined : context.override(child.patchId);
-				// A draft PR the buffer published for verification, or any PR whose head is this exact sha (an
-				// amend pushed by hand, or a restart that dropped the in-memory marker): its checks stand in for
-				// the local test, so it shows as awaiting or failed checks below instead of dropping out.
-				const verifiedByPr =
-					context.verifyByDraftPr === true &&
-					child.prNumber !== undefined &&
-					(child.localTestSkipped === true || child.prHeadSha === child.sha);
-				const green =
-					verifiedByPr ||
-					isGreen({
-						parentSha: "",
-						testStatus: child.testStatus,
-						hasTestConfigured: project.hasTestConfigured,
-						onHold: false,
-						...(child.localTestSkipped === true
-							? {localTestSkipped: true, checkStatus: child.checkStatus}
-							: {}),
-					});
-				const candidate: BufferCandidate = {
-					id: child.patchId ?? child.sha,
-					sha: child.sha,
-					// Unknown merge status is not ready: the advance job finds out cheaply.
-					state: child.commitsBehind === 0 && child.needsRebase !== true && green ? "ready" : "unready",
-					onHold: context.onHold(child),
-					job: gitChildJob(child),
-				};
-				if ((child.commitsBehind ?? 0) > 0 || child.needsRebase === true) candidate.behind = true;
-				if (child.branch !== undefined) candidate.branch = child.branch;
-				if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
-				if (override !== undefined) candidate.override = override;
-				if (child.autoFixed !== undefined) candidate.autoFixed = true;
-				// Green and not behind, merge status known or not: the buffer may already hold an unmeasured
-				// commit ready from its own advance (Open PR rebases to a new sha the refresh hasn't measured).
-				if (green && candidate.behind !== true && context.landing === "pull-request") {
-					if (prChecksFailed(child)) candidate.checksFailed = true;
-					else if (prChecksPending(child)) candidate.checksPending = true;
-				}
-				return candidate;
-			}),
+		// A stacked commit becomes a candidate once its parent is ready.
+		candidates: dropStackedOnUnready(
+			onePerPatchId(
+				work.map((child) => {
+					const override = child.patchId === undefined ? undefined : context.override(child.patchId);
+					// A draft PR the buffer published for verification, or any PR whose head is this exact sha (an
+					// amend pushed by hand, or a restart that dropped the in-memory marker): its checks stand in for
+					// the local test, so it shows as awaiting or failed checks below instead of dropping out.
+					const verifiedByPr =
+						context.verifyByDraftPr === true &&
+						child.prNumber !== undefined &&
+						(child.localTestSkipped === true || child.prHeadSha === child.sha);
+					const green =
+						verifiedByPr ||
+						isGreen({
+							parentSha: "",
+							testStatus: child.testStatus,
+							hasTestConfigured: project.hasTestConfigured,
+							onHold: false,
+							...(child.localTestSkipped === true
+								? {localTestSkipped: true, checkStatus: child.checkStatus}
+								: {}),
+						});
+					const candidate: BufferCandidate = {
+						id: child.patchId ?? child.sha,
+						sha: child.sha,
+						// Unknown merge status is not ready: the advance job finds out cheaply.
+						state: child.commitsBehind === 0 && child.needsRebase !== true && green ? "ready" : "unready",
+						onHold: context.onHold(child),
+						job: gitChildJob(child),
+					};
+					if ((child.commitsBehind ?? 0) > 0 || child.needsRebase === true) candidate.behind = true;
+					if (child.branch !== undefined) candidate.branch = child.branch;
+					if (child.parentSha !== undefined) candidate.parentSha = child.parentSha;
+					if (override !== undefined) candidate.override = override;
+					if (child.autoFixed !== undefined) candidate.autoFixed = true;
+					// Green and not behind, merge status known or not: the buffer may already hold an unmeasured
+					// commit ready from its own advance (Open PR rebases to a new sha the refresh hasn't measured).
+					if (green && candidate.behind !== true && context.landing === "pull-request") {
+						if (prChecksFailed(child)) candidate.checksFailed = true;
+						else if (prChecksPending(child)) candidate.checksPending = true;
+					}
+					return candidate;
+				}),
+			),
 		),
 	};
 }

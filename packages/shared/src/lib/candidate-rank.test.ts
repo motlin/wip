@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vite-plus/test";
 import {
 	considerSplitting,
+	gitChildJob,
 	rankCandidates,
 	rankGitChildren,
 	remainingJob,
@@ -167,6 +168,37 @@ describe("rankGitChildren", () => {
 			"conflict",
 			"dirty",
 		]);
+	});
+
+	it("breaks equal-job ties by first-seen time before commit date; an item the ledger has not seen sorts after", () => {
+		const items = [
+			child("unseen", {date: "2026-08-01"}),
+			child("seen-later", {date: "2026-09-01", firstSeen: "2026-10-05 12:00:00"}),
+			child("seen-earlier", {date: "2026-10-20", firstSeen: "2026-10-01 12:00:00"}),
+		];
+		expect(rankGitChildren(items).map((c) => c.subject)).toStrictEqual(["seen-earlier", "seen-later", "unseen"]);
+	});
+
+	it("scores a landable child (on upstream, test passed) zero, ahead of a smaller unlandable one", () => {
+		const items = [
+			child("tiny-untested", {commitsBehind: 0, insertions: 1}),
+			child("large-landable", {commitsBehind: 0, testStatus: "passed", insertions: 1000}),
+			child("behind-passed", {commitsBehind: 1, testStatus: "passed", insertions: 1}),
+		];
+		expect(rankGitChildren(items).map((c) => ({subject: c.subject, job: gitChildJob(c)}))).toStrictEqual([
+			{subject: "large-landable", job: 0},
+			{subject: "tiny-untested", job: 1},
+			{subject: "behind-passed", job: 2},
+		]);
+	});
+
+	it("keeps a stacked child after its parent, its job never smaller than the parent's", () => {
+		const items = [
+			child("stacked-small", {parentSha: "base".padEnd(40, "0"), date: "2026-09-01"}),
+			child("other", {insertions: 3, date: "2026-09-02"}),
+			child("base", {insertions: 1000, date: "2026-10-01"}),
+		];
+		expect(rankGitChildren(items).map((c) => c.subject)).toStrictEqual(["other", "base", "stacked-small"]);
 	});
 
 	it("ranks smaller commits first by log2(1 + insertions + deletions), size never outranking a penalty", () => {

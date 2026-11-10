@@ -88,10 +88,18 @@ export function rankCandidates(chains: Chain[]): RankedCandidate[] {
 	return keyed.sort(compareKeyed).map(({project, sha, job, depth}) => ({project, sha, job, depth}));
 }
 
+/**
+ * Landable: known to be directly on upstream with a passing test, the Ready to land condition the
+ * remaining-job estimate scores 0.
+ */
+function gitChildLandable(child: GitChildResult): boolean {
+	return child.commitsBehind === 0 && child.needsRebase !== true && child.testStatus === "passed";
+}
+
 /** Rank facts a queue item carries; an item without size facts ranks as zero lines. */
 function gitChildFacts(child: GitChildResult): RankFacts {
 	return {
-		landable: false,
+		landable: gitChildLandable(child),
 		needsReplay: child.needsRebase === true || (child.commitsBehind ?? 0) > 0,
 		predictedConflicts: child.rebaseable === false || child.mergeStateStatus === "DIRTY",
 		testBad: child.testStatus === "failed",
@@ -104,25 +112,71 @@ export function gitChildJob(child: GitChildResult): number {
 	return remainingJob(gitChildFacts(child));
 }
 
+/** Items the work-item ledger has not seen sort after every item it has. */
+const NOT_SEEN = "\uffff";
+
+const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+interface StackKey<T> {
+	child: T;
+	/** Never smaller than the parent's, so a stack keeps its order. */
+	job: number;
+	/** The stack base (the first item in the list on the child's parent chain). */
+	root: GitChildResult;
+	depth: number;
+}
+
 /**
- * Orders queue items within a category: shortest remaining job, then commit date, then project/sha.
- * First-seen time (the ledger, lean plan step 23) replaces commit date as the first tie-break once
- * queue items carry it, matching rankCandidates.
+ * Orders queue items within a category, as rankCandidates orders chains: shortest remaining job,
+ * then first-seen time (an unseen item last, then commit date), then project/sha, of the stack base.
+ * An item stacked on another item in the list (by parentSha) keeps a job at least its parent's and
+ * ranks after it.
  */
 export function rankGitChildren<T extends GitChildResult>(children: readonly T[]): T[] {
+	const bySha = new Map(children.map((child) => [`${child.project}:${child.sha}`, child]));
+	const keys = new Map<T, StackKey<T>>();
+	const keyOf = (child: T, visiting: Set<T>): StackKey<T> => {
+		const known = keys.get(child);
+		if (known !== undefined) return known;
+		visiting.add(child);
+		const parent = child.parentSha === undefined ? undefined : bySha.get(`${child.project}:${child.parentSha}`);
+		const own = gitChildJob(child);
+		const key: StackKey<T> =
+			parent === undefined || visiting.has(parent)
+				? {child, job: own, root: child, depth: 0}
+				: (() => {
+						const up = keyOf(parent, visiting);
+						return {child, job: Math.max(own, up.job), root: up.root, depth: up.depth + 1};
+					})();
+		keys.set(child, key);
+		return key;
+	};
 	return (
 		children
-			.map((child) => ({child, job: gitChildJob(child)}))
+			.map((child) => keyOf(child, new Set()))
 			// eslint-disable-next-line unicorn/no-array-sort -- sorts the fresh array produced by map
 			.sort(
 				(a, b) =>
 					a.job - b.job ||
-					a.child.date.localeCompare(b.child.date) ||
-					a.child.project.localeCompare(b.child.project) ||
-					a.child.sha.localeCompare(b.child.sha),
+					compareText(a.root.firstSeen ?? NOT_SEEN, b.root.firstSeen ?? NOT_SEEN) ||
+					compareText(a.root.date, b.root.date) ||
+					compareText(a.root.project, b.root.project) ||
+					compareText(a.root.sha, b.root.sha) ||
+					a.depth - b.depth,
 			)
 			.map(({child}) => child)
 	);
+}
+
+/**
+ * Stacked children the ready buffer may not pull yet: an unready commit whose parent is itself an
+ * unready commit in the list becomes a candidate only once its parent is ready (lean plan step 19).
+ */
+export function dropStackedOnUnready<T extends {sha: string; parentSha?: string; state: string}>(
+	candidates: readonly T[],
+): T[] {
+	const unready = new Set(candidates.filter((c) => c.state !== "ready").map((c) => c.sha));
+	return candidates.filter((c) => !(c.state !== "ready" && c.parentSha !== undefined && unready.has(c.parentSha)));
 }
 
 /** Size marks a commit "consider splitting" above the threshold; it adds a split transition and never gates or unranks. */

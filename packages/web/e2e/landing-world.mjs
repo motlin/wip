@@ -302,6 +302,12 @@ export function createWorld() {
 	const vaults = repo("vaults", {prRefs: false});
 	const vaultSha = vaults.branch("vault-feature", "vault.txt", "Add the vault feature");
 
+	// GitHub Actions gate: pulleys and winches share the owner acme, cranks belongs to other-org. They start with
+	// no branches; the harness adds one at a time so it controls which background push goes first.
+	const pulleys = repo("pulleys");
+	const winches = repo("winches");
+	const cranks = repo("cranks", {owner: "other-org"});
+
 	// A ready target above the number of commits here, so the buffer readies every one of them; acme is
 	// the user's own org, so broken's red upstream stops its line.
 	const wipConfig = path.join(dirs.config, "wip");
@@ -318,6 +324,9 @@ export function createWorld() {
 			[bolts, "pull-request"],
 			[levers, "pull-request"],
 			[vaults, "pull-request"],
+			[pulleys, "pull-request"],
+			[winches, "pull-request"],
+			[cranks, "pull-request"],
 		].map(([r, landing]) => record(r, landing, priorities.get(r.name)));
 		fs.writeFileSync(path.join(wipConfig, "projects.json5"), `${JSON.stringify(records, null, "\t")}\n`);
 	};
@@ -343,7 +352,7 @@ export function createWorld() {
 		git,
 		setReadyTarget,
 		setPriority,
-		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults},
+		repos: {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults, pulleys, winches, cranks},
 		shas: {
 			readySha,
 			behindSha,
@@ -363,7 +372,7 @@ export function createWorld() {
 		},
 		/** Bare repos the fake GitHub knows, keyed owner/name. */
 		fakeRepos: [
-			...[widgets, gadgets, broken, cogs, sprockets, bolts, levers].flatMap((r) => [
+			...[widgets, gadgets, broken, cogs, sprockets, bolts, levers, pulleys, winches, cranks].flatMap((r) => [
 				{owner: r.owner, name: r.name, bareDir: r.upstreamBare},
 				{owner: "e2e-user", name: r.name, bareDir: r.forkBare, parent: `${r.owner}/${r.name}`},
 			]),

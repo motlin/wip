@@ -6,7 +6,8 @@
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
  * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Open PR where
  * the GitHub token is read-only on the PR repo (git pushes, the tab goes to GitHub's new-PR page),
- * Fast-forward main, Push main, and a restart (with no page open, the restarted server must refresh cogs'
+ * Fast-forward main, Push main, the GitHub Actions gate (a queued check on one acme background push holds the next
+ * acme push until it completes, not an other-org push), and a restart (with no page open, the restarted server must refresh cogs'
  * children when its upstream moves, read from the world DB) after which upstream moves past the one green row: it leaves
  * Ready to land and the buffer rebases and retests it until the ready target is met again, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. Before those, the auto-fix flow: bolts' commit fails its test, the buffer's test-fix agent
@@ -128,6 +129,28 @@ function testRunsByRepo(serverLog) {
 		byRepo.set(repo, shas);
 	}
 	return byRepo;
+}
+
+/** server.log's "Ready-buffer push" entries for a project: each background push's outcome. */
+function backgroundPushes(serverLog, project) {
+	return fs
+		.readFileSync(serverLog, "utf8")
+		.split("\n")
+		.filter((line) => line.startsWith("{"))
+		.flatMap((line) => {
+			try {
+				return [JSON.parse(line)];
+			} catch {
+				return [];
+			}
+		})
+		.filter((entry) => entry.msg === "Ready-buffer push" && entry.project === project)
+		.map(({branch, sha, push}) => ({branch, sha, push}));
+}
+
+/** The sha a bare repo's branch points at, or "" when it has no such branch. */
+function bareBranch(world, bareDir, branch) {
+	return world.git(bareDir, "for-each-ref", "--format=%(objectname)", `refs/heads/${branch}`);
 }
 
 async function waitUntil(condition, what) {
@@ -277,7 +300,8 @@ async function run() {
 	step("Building the temp world");
 	const world = createWorld();
 	console.log(`  world: ${world.dirs.root}`);
-	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults} = world.repos;
+	const {widgets, gadgets, broken, cogs, sprockets, gears, bolts, levers, vaults, pulleys, winches, cranks} =
+		world.repos;
 	const gh = await startFakeGitHub({
 		repos: world.fakeRepos,
 		prs: [
@@ -724,6 +748,59 @@ async function run() {
 		// The outcome overlays the rows below it; dismiss it so the later clicks reach their rows.
 		await gearOutcome.getByRole("button", {name: "Dismiss"}).click();
 		await gearOutcome.waitFor({state: "detached"});
+
+		step("GitHub Actions gate: a queued check on one acme push holds the next acme push, not other-org's");
+		// Room for the three new commits whatever else is ready, so the buffer readies each one at once.
+		world.setReadyTarget(20);
+		const pulleySha = pulleys.branch("pulley-feature", "pulley.txt", "Add the pulley feature");
+		gh.setCheckRuns("acme/pulleys", pulleySha, ["QUEUED"]);
+		await waitUntil(
+			() => bareBranch(world, pulleys.forkBare, "pulley-feature") === pulleySha,
+			"the buffer force-pushed pulleys' ready commit to its fork",
+		);
+		const winchSha = winches.branch("winch-feature", "winch.txt", "Add the winch feature");
+		const queuedReason = `GitHub Actions queued on acme/pulleys@${pulleySha}`;
+		await waitUntil(
+			() => backgroundPushes(serverLog, "winches").length > 0,
+			"the buffer readied winches' commit and tried its background push",
+		);
+		assert.deepEqual(
+			backgroundPushes(serverLog, "winches"),
+			[{branch: "winch-feature", sha: winchSha, push: {status: "held", reason: queuedReason}}],
+			"winches' push waits on the queued check of the last acme push",
+		);
+		// GitHub's concurrent-job limit is per account: other-org's push is not held by acme's queued check.
+		const crankSha = cranks.branch("crank-feature", "crank.txt", "Add the crank feature");
+		await waitUntil(
+			() => bareBranch(world, cranks.forkBare, "crank-feature") === crankSha,
+			"the buffer force-pushed other-org's cranks commit while acme's check was queued",
+		);
+		assert.deepEqual(
+			{
+				cranks: backgroundPushes(serverLog, "cranks"),
+				winches: bareBranch(world, winches.forkBare, "winch-feature"),
+			},
+			{
+				cranks: [{branch: "crank-feature", sha: crankSha, push: {status: "pushed"}}],
+				winches: "",
+			},
+			"cranks pushed at once, and winches' held push has not reached its fork",
+		);
+		// The check starts running: the held push goes on the pusher's next retry (children refresh or safety tick).
+		gh.setCheckRuns("acme/pulleys", pulleySha, ["COMPLETED"]);
+		await waitUntil(
+			() => bareBranch(world, winches.forkBare, "winch-feature") === winchSha,
+			"winches' held push reached its fork once acme's queued check completed",
+		);
+		// Out of the way before the restart, whose ready target of 1 counts only sprockets.
+		for (const [r, branch] of [
+			[pulleys, "pulley-feature"],
+			[winches, "winch-feature"],
+			[cranks, "crank-feature"],
+		]) {
+			world.git(r.clone, "branch", "--quiet", "-D", branch);
+			world.git(r.clone, "push", "--quiet", "origin", "--delete", branch);
+		}
 
 		step(
 			"Restart, then upstream moves past a green row: it leaves Ready to land, and the buffer rebases and retests it",

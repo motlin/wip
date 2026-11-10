@@ -1,7 +1,8 @@
 /**
  * A fake GitHub for the landing end-to-end harness: answers the GraphQL queries wip sends (viewer,
  * fork parent, repository id, open PRs with checks, auto-merge setting, visibility and the token's
- * permission, merged PRs, create PR, which failed check runs GitHub never started) from in-memory state plus the refs of the harness's local bare
+ * permission, merged PRs, create PR, which failed check runs GitHub never started, the check run statuses on a
+ * pushed commit the GitHub Actions gate asks for) from in-memory state plus the refs of the harness's local bare
  * repos, and serves stand-in PR and new-PR (compare) pages so a browser tab sent to GitHub lands
  * somewhere local. A repo whose viewerPermission is READ refuses a PR from its own branch, like GitHub. Every request is recorded. It never talks to
  * the network.
@@ -96,6 +97,12 @@ export async function startFakeGitHub(options) {
 	const prs = (options.prs ?? []).map((pr) =>
 		Object.assign({title: pr.headRefName, draft: false, autoMerge: false}, pr),
 	);
+	/**
+	 * Check run statuses (GraphQL's QUEUED, COMPLETED, ...) on a pushed commit, keyed owner/name@sha, as the GitHub
+	 * Actions gate asks for them; a commit with none set has no check runs.
+	 * @type {Map<string, string[]>}
+	 */
+	const checkRuns = new Map();
 	/** @type {Array<{query: string; variables: Record<string, unknown>; kind: string}>} */
 	const graphqlCalls = [];
 	let baseUrl = "";
@@ -193,6 +200,12 @@ export async function startFakeGitHub(options) {
 				},
 			};
 		}
+		// The GitHub Actions gate's question: the status of every check run on a pushed commit.
+		if (/checkRuns\(first: 100\) \{ nodes \{ status \} \}/.test(query)) {
+			const statuses = checkRuns.get(`${key}@${String(variables.oid)}`) ?? [];
+			const checkSuites = {nodes: [{checkRuns: {nodes: statuses.map((status) => ({status}))}}]};
+			return {kind: "checkRuns", body: {data: {repository: {object: {checkSuites}}}}};
+		}
 		if (/checkSuites\(/.test(query)) {
 			return {kind: "checkSuites", body: {data: {repository: {object: {checkSuites: {nodes: []}}}}}};
 		}
@@ -288,6 +301,10 @@ export async function startFakeGitHub(options) {
 		graphqlUrl: `${baseUrl}/graphql`,
 		prs,
 		graphqlCalls,
+		/** Sets the check run statuses (QUEUED, IN_PROGRESS, COMPLETED, ...) GitHub reports on `repository`@`sha`. */
+		setCheckRuns(repository, sha, statuses) {
+			checkRuns.set(`${repository}@${sha}`, statuses);
+		},
 		async close() {
 			server.closeAllConnections();
 			await new Promise((resolve) => {

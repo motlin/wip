@@ -24,7 +24,7 @@
 	"devDependencies": {
 		"@vitest/coverage-v8": "^5.1.0",
 		"eslint-plugin-storybook": "^10.6.5",
-		"fallow": "^3.37.0",
+		"fallow": "^3.38.1",
 		"markdownlint-cli2": "^0.24.0",
 		"typescript": "^7.0.2",
 		"vite": "catalog:",

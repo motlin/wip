@@ -1326,8 +1326,8 @@ describe("bufferRepoFromChildren", () => {
 	const identity = {login: "motlin", orgs: ["liftwizard"]};
 	const upstreamCi = makeChild({kind: "upstream_ci", sha: sha("f"), checkStatus: "failed", testStatus: "unknown"});
 
-	/** A two-commit stack whose base test has the given status, as the buffer maps it. */
-	const stackCandidates = (baseStatus: "passed" | "failed") =>
+	/** A two-commit stack whose base and tip tests have the given statuses, as the buffer maps it. */
+	const stackCandidates = (baseStatus: "passed" | "failed", tipStatus: "passed" | "unknown" = "unknown") =>
 		bufferRepoFromChildren(
 			project("motlin/wip"),
 			[
@@ -1335,7 +1335,7 @@ describe("bufferRepoFromChildren", () => {
 					sha: sha("b"),
 					parentSha: sha("a"),
 					commitsBehind: 0,
-					testStatus: "unknown",
+					testStatus: tipStatus,
 					patchId: "pb",
 				}),
 				makeChild({
@@ -1438,11 +1438,22 @@ describe("bufferRepoFromChildren", () => {
 	});
 
 	it("pulls a stacked commit only once its parent is ready, ranking it after the parent", () => {
-		expect({unreadyParent: stackCandidates("failed"), readyParent: stackCandidates("passed")}).toStrictEqual({
+		expect({
+			unreadyParent: stackCandidates("failed"),
+			readyParent: stackCandidates("passed"),
+			// Green on an up-to-date red parent is not ready (readinessOf): it never fills the ready target.
+			greenOnRedParent: stackCandidates("failed", "passed"),
+			greenOnGreenParent: stackCandidates("passed", "passed"),
+		}).toStrictEqual({
 			unreadyParent: [{id: "pa", state: "unready"}],
 			readyParent: [
 				{id: "pa", state: "ready"},
 				{id: "pb", state: "unready"},
+			],
+			greenOnRedParent: [{id: "pa", state: "unready"}],
+			greenOnGreenParent: [
+				{id: "pa", state: "ready"},
+				{id: "pb", state: "ready"},
 			],
 		});
 	});

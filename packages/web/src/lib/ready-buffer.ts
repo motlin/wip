@@ -9,7 +9,7 @@ import type {
 } from "@wip/shared";
 import {dropStackedOnUnready, gitChildJob, rankGitChildren} from "@wip/shared/candidate-rank.js";
 import {withinBaseline} from "@wip/shared/baseline-failures.js";
-import {isGreen} from "@wip/shared/readiness.js";
+import {isGreen, readinessOf, type ReadinessCommit} from "@wip/shared/readiness.js";
 import {DEFAULT_PRIORITY, effectivePriority} from "@wip/shared/priority.js";
 import {orderReadyQueue, planReadyPulls, type ReadyQueueItem} from "@wip/shared/ready-queue.js";
 import {
@@ -350,6 +350,44 @@ export function bufferRepoFromChildren(
 			)
 			.map(measured),
 	);
+	// A draft PR the buffer published for verification, or any PR whose head is this exact sha (an amend
+	// pushed by hand, or a restart that dropped the in-memory marker): its checks stand in for the local
+	// test, so it shows as awaiting or failed checks below instead of dropping out.
+	const greenOf = (child: GitChildResult): boolean =>
+		(context.verifyByDraftPr === true &&
+			child.prNumber !== undefined &&
+			(child.localTestSkipped === true || child.prHeadSha === child.sha)) ||
+		isGreen({
+			parentSha: "",
+			testStatus: child.testStatus,
+			hasTestConfigured: project.hasTestConfigured,
+			onHold: false,
+			...(child.localTestSkipped === true ? {localTestSkipped: true, checkStatus: child.checkStatus} : {}),
+		});
+	// Ready comes from the one predicate (readinessOf): landable = directly on the upstream tip and green,
+	// ready-stacked = green on a ready parent. The children carry no upstream sha, so a commit known to be
+	// up to date (unknown merge status is not: the advance job finds out cheaply) whose parent is not
+	// another candidate sits on the tip; a behind one keeps its real parent and is never ready. Holds
+	// stay the buffer's own concern (candidate.onHold), not readiness.
+	const shas = new Set(work.map((child) => child.sha));
+	const readiness = readinessOf(
+		new Map(
+			work.map((child): [string, ReadinessCommit] => {
+				const parentSha = child.parentSha ?? "";
+				return [
+					child.sha,
+					{
+						parentSha: upToDate(child) && !shas.has(parentSha) ? UPSTREAM_TIP : parentSha,
+						// Green already folds in PR verification, which readiness has no fact for.
+						testStatus: greenOf(child) ? "passed" : "failed",
+						hasTestConfigured: true,
+						onHold: false,
+					},
+				];
+			}),
+		),
+		UPSTREAM_TIP,
+	);
 	return {
 		name: project.name,
 		...(context.priority === undefined ? {} : {priority: context.priority}),
@@ -367,29 +405,12 @@ export function bufferRepoFromChildren(
 			onePerPatchId(
 				work.map((child) => {
 					const override = child.patchId === undefined ? undefined : context.override(child.patchId);
-					// A draft PR the buffer published for verification, or any PR whose head is this exact sha (an
-					// amend pushed by hand, or a restart that dropped the in-memory marker): its checks stand in for
-					// the local test, so it shows as awaiting or failed checks below instead of dropping out.
-					const verifiedByPr =
-						context.verifyByDraftPr === true &&
-						child.prNumber !== undefined &&
-						(child.localTestSkipped === true || child.prHeadSha === child.sha);
-					const green =
-						verifiedByPr ||
-						isGreen({
-							parentSha: "",
-							testStatus: child.testStatus,
-							hasTestConfigured: project.hasTestConfigured,
-							onHold: false,
-							...(child.localTestSkipped === true
-								? {localTestSkipped: true, checkStatus: child.checkStatus}
-								: {}),
-						});
+					const green = greenOf(child);
 					const candidate: BufferCandidate = {
 						id: child.patchId ?? child.sha,
 						sha: child.sha,
-						// Unknown merge status is not ready: the advance job finds out cheaply.
-						state: child.commitsBehind === 0 && child.needsRebase !== true && green ? "ready" : "unready",
+						// Never ready while behind, even on a ready parent.
+						state: upToDate(child) && readiness.get(child.sha) !== "not_ready" ? "ready" : "unready",
 						onHold: context.onHold(child),
 						job: gitChildJob(child),
 					};
@@ -410,6 +431,12 @@ export function bufferRepoFromChildren(
 		),
 	};
 }
+
+/** Stands in for the upstream tip sha, which the children do not carry. */
+const UPSTREAM_TIP = "upstream-tip";
+
+/** Known to be up to date with upstream: unknown merge status is not. */
+const upToDate = (child: GitChildResult): boolean => child.commitsBehind === 0 && child.needsRebase !== true;
 
 /**
  * One candidate per change: the same patch-id can sit at several shas (an unnamed stack base and a

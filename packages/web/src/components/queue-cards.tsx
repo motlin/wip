@@ -17,6 +17,7 @@ import {TodoCard} from "./todo-card.js";
 import {UpstreamCiCard} from "./upstream-ci-card.js";
 import {PrRefsMissingCard, RemoteOnlyCard} from "./remote-only-card.js";
 import {QueueSection} from "./queue-section.js";
+import {QueueTable} from "./queue-table.js";
 import {useQueueContext} from "../lib/queue-context.js";
 import {bucketCount} from "../lib/grouping.js";
 import {BLOCKING_CATEGORIES} from "../lib/category-actions.js";
@@ -88,8 +89,9 @@ export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
 }
 
 /**
- * /queue's main column: blockers rank above what they block, so on the cards view the blocking
- * cards come first, then Ready to land, then the route's own content (the other sections, or the table).
+ * /queue's main column: blockers rank above what they block, so on either view the blocking cards
+ * (or table rows) come first, then Ready to land, then the route's own content (the other sections,
+ * or the table of the other rows).
  */
 export function QueueMain({
 	cardsView,
@@ -102,7 +104,7 @@ export function QueueMain({
 }) {
 	return (
 		<>
-			{cardsView && <QueueCards part="blocking" />}
+			{cardsView ? <QueueCards part="blocking" /> : <QueueTable part="blocking" />}
 			{readyToLand}
 			{children}
 		</>

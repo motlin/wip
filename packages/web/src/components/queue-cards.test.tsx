@@ -8,6 +8,7 @@ import {emptyGrouped} from "../lib/grouping.js";
 import {QueueContext, type QueueContextValue} from "../lib/queue-context.js";
 import {makeChild} from "../lib/test-factories.js";
 import {QueueCards, QueueMain} from "./queue-cards.js";
+import {QueueTable} from "./queue-table.js";
 
 function stubCard({item, commit, branch}: {item?: GitChildResult; commit?: GitChildResult; branch?: GitChildResult}) {
 	return <div>{(item ?? commit ?? branch)?.subject}</div>;
@@ -16,6 +17,7 @@ vi.mock("./upstream-ci-card.js", () => ({UpstreamCiCard: stubCard}));
 vi.mock("./remote-only-card.js", () => ({PrRefsMissingCard: stubCard, RemoteOnlyCard: stubCard}));
 vi.mock("./commit-card.js", () => ({CommitCard: stubCard}));
 vi.mock("./branch-card.js", () => ({BranchCard: stubCard}));
+vi.mock("@tanstack/react-router", () => ({useNavigate: () => vi.fn<() => Promise<void>>()}));
 
 function queueContext(): QueueContextValue {
 	const grouped = emptyGrouped();
@@ -41,14 +43,16 @@ function queueContext(): QueueContextValue {
 
 function renderQueue(cardsView: boolean): string[] {
 	const context = queueContext();
-	render(
+	const {container} = render(
 		<QueueContext.Provider value={context}>
 			<QueueMain cardsView={cardsView} readyToLand={<h2>Ready to land</h2>}>
-				{cardsView ? <QueueCards /> : <h2>Table</h2>}
+				{cardsView ? <QueueCards /> : <QueueTable />}
 			</QueueMain>
 		</QueueContext.Provider>,
 	);
-	return screen.getAllByRole("heading").map((heading) => heading.textContent);
+	if (cardsView) return screen.getAllByRole("heading").map((heading) => heading.textContent);
+	// The table view's sections are its category group rows.
+	return [...container.querySelectorAll("h2, td[colspan]")].map((element) => element.textContent);
 }
 
 describe("QueueMain", () => {
@@ -66,7 +70,13 @@ describe("QueueMain", () => {
 		]);
 	});
 
-	it("leaves the table view's rows to the table", () => {
-		expect(renderQueue(false)).toStrictEqual(["Ready to land", "Table"]);
+	it("ranks the blocking rows first on the table view too: their own table above Ready to land, the other rows below", () => {
+		expect(renderQueue(false)).toStrictEqual([
+			`${CATEGORY_PRIORITY.length} \u00b7 Set Up PR Refs \u2014 1`,
+			`${CATEGORY_PRIORITY.length - 1} \u00b7 Upstream Red \u2014 1`,
+			"Ready to land",
+			`${CATEGORY_PRIORITY.length - 2} \u00b7 Remote Only \u2014 1`,
+			`${CATEGORY_PRIORITY.indexOf("ready_to_test") + 1} \u00b7 Ready to Test \u2014 1`,
+		]);
 	});
 });

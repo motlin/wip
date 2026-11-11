@@ -8,7 +8,13 @@ import {
 	isGitChildUpstreamCi,
 } from "@wip/shared/git-child-discriminators.js";
 import {upstreamRedCommand} from "@wip/shared/upstream-red.js";
-import {CATEGORIES, CATEGORY_PRIORITY, categoryDotClass, categoryTextClass} from "../lib/category-actions.js";
+import {
+	BLOCKING_CATEGORIES,
+	CATEGORIES,
+	CATEGORY_PRIORITY,
+	categoryDotClass,
+	categoryTextClass,
+} from "../lib/category-actions.js";
 import {useQueueContext} from "../lib/queue-context.js";
 import {bucketCount} from "../lib/grouping.js";
 
@@ -162,7 +168,12 @@ function itemLink(row: FlatRow): string | undefined {
 	return undefined;
 }
 
-export function QueueTable() {
+/**
+ * The queue's table view. `part="blocking"` renders only the rows that block others (Set Up PR Refs,
+ * Upstream Red) as their own table, which /queue/table shows above Ready to land; the default renders
+ * the rest, with the search and type filters.
+ */
+export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 	const {grouped, visibleCategories, filterByProject, selectedCategory} = useQueueContext();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -180,6 +191,7 @@ export function QueueTable() {
 		};
 
 		for (const category of visibleCategories) {
+			if (BLOCKING_CATEGORIES.includes(category) !== (part === "blocking")) continue;
 			const rawItems = grouped[category];
 			const items = filterByProject(rawItems);
 			if (bucketCount(items) === 0) continue;
@@ -220,7 +232,7 @@ export function QueueTable() {
 		}
 
 		return {rowsByCategory: result, typeCounts: counts};
-	}, [grouped, visibleCategories, filterByProject]);
+	}, [grouped, visibleCategories, filterByProject, part]);
 
 	const filteredGroups = useMemo(() => {
 		const lowerQuery = searchQuery.toLowerCase();
@@ -242,6 +254,15 @@ export function QueueTable() {
 			})
 			.filter(({rows}) => rows.length > 0);
 	}, [rowsByCategory, searchQuery, typeFilter]);
+
+	if (part === "blocking") {
+		if (rowsByCategory.length === 0) return null;
+		return (
+			<div className="mb-6">
+				<RowsTable groups={rowsByCategory} />
+			</div>
+		);
+	}
 
 	return (
 		<div>
@@ -281,29 +302,34 @@ export function QueueTable() {
 				</div>
 			</div>
 
-			{/* Table */}
-			<table className="w-full border-collapse text-[0.8125rem]">
-				<thead>
-					<tr>
-						<th className={`w-[3%] ${HEADER_CLASS}`}>
-							<span className="sr-only">State</span>
-						</th>
-						<th className={`w-[28%] ${HEADER_CLASS}`}>Subject</th>
-						<th className={`w-[14%] ${HEADER_CLASS}`}>Repository</th>
-						<th className={`w-[16%] ${HEADER_CLASS}`}>Branch</th>
-						<th className={`w-[10%] ${HEADER_CLASS}`}>Status</th>
-						<th className={`w-[7%] ${HEADER_CLASS}`}>PR</th>
-						<th className={`w-[8%] ${HEADER_CLASS}`}>Date</th>
-						<th className={`w-[14%] ${HEADER_CLASS}`}>Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{filteredGroups.map(({category, rows}) => (
-						<CategoryGroup key={category} category={category} rows={rows} />
-					))}
-				</tbody>
-			</table>
+			<RowsTable groups={filteredGroups} />
 		</div>
+	);
+}
+
+function RowsTable({groups}: {groups: {category: Category; rows: FlatRow[]}[]}) {
+	return (
+		<table className="w-full border-collapse text-[0.8125rem]">
+			<thead>
+				<tr>
+					<th className={`w-[3%] ${HEADER_CLASS}`}>
+						<span className="sr-only">State</span>
+					</th>
+					<th className={`w-[28%] ${HEADER_CLASS}`}>Subject</th>
+					<th className={`w-[14%] ${HEADER_CLASS}`}>Repository</th>
+					<th className={`w-[16%] ${HEADER_CLASS}`}>Branch</th>
+					<th className={`w-[10%] ${HEADER_CLASS}`}>Status</th>
+					<th className={`w-[7%] ${HEADER_CLASS}`}>PR</th>
+					<th className={`w-[8%] ${HEADER_CLASS}`}>Date</th>
+					<th className={`w-[14%] ${HEADER_CLASS}`}>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				{groups.map(({category, rows}) => (
+					<CategoryGroup key={category} category={category} rows={rows} />
+				))}
+			</tbody>
+		</table>
 	);
 }
 

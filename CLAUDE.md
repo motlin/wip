@@ -40,7 +40,7 @@
 
 ### Patterns
 
-- **Git environment**: `git-env-setup.ts` (every package's vitest setup) runs `sanitizeGitEnv`: inherited `GIT_*` variables are dropped, global/system git config is hidden, and `core.fsmonitor=false` is pinned via `GIT_CONFIG_COUNT`, so no temp repo starts a git fsmonitor daemon (leaked daemons exhaust macOS FSEvents). It also points `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and `CLAUDE_CONFIG_DIR` into a temp dir, so no test reads or writes `~/.config/wip`, `~/.local/share/wip`, `~/.cache/wip` or `~/.claude.json`.
+- **Git environment**: `git-env-setup.ts` (every package's vitest setup) runs `sanitizeGitEnv`: inherited `GIT_*` variables are dropped, global/system git config is hidden, and `core.fsmonitor=false` is pinned via `GIT_CONFIG_COUNT`, so no temp repo starts a git fsmonitor daemon (leaked daemons exhaust macOS FSEvents). It also points `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` and `CLAUDE_CONFIG_DIR` into a temp dir, so no test reads or writes `~/.config/wip`, `~/.local/share/wip`, `~/.cache/wip` or `~/.claude.json`. It also blocks `fetch` to any non-loopback host (unless `POLLY_RECORD=true`): a GitHub call without a Polly recording rejects at once instead of reaching the real network, whose stalls used to hang a test and its teardown.
 - **In-memory SQLite**: Call `initDb(":memory:")` in `beforeEach` and `resetDb()` in `afterEach`. Each test gets a fresh database with no disk I/O.
 - **File-based debug DB**: Set `TEST_DB_FILE` to persist the database to a file for inspection:
     ```

@@ -7,6 +7,7 @@ import {refreshAll} from "../../lib/server-fns.js";
 import {projectsQueryOptions, readyToLandQueryOptions} from "../../lib/queries.js";
 import {useWorkItems} from "../../lib/use-work-items.js";
 import {buildGrouped, bucketCount} from "../../lib/grouping.js";
+import {usePinnedLandings} from "../../lib/pinned-landings.js";
 import {runPendingAction} from "../../lib/pending-action.js";
 import {CATEGORY_PRIORITY} from "../../lib/category-actions.js";
 import {LandContext} from "../../lib/land-context.js";
@@ -25,7 +26,7 @@ function Kanban() {
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
 	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
-	const {grouped, totalCount} = useMemo(() => {
+	const {grouped: builtGrouped, totalCount} = useMemo(() => {
 		const g = buildGrouped(workItems, projects, readyToLand);
 		let total = 0;
 		for (const cat of CATEGORY_PRIORITY) total += bucketCount(g[cat]);
@@ -33,6 +34,8 @@ function Kanban() {
 	}, [workItems, projects, readyToLand]);
 
 	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects);
+	// A card whose land action runs stays in its column until the outcome settles.
+	const grouped = usePinnedLandings(builtGrouped, landContext.outcomes);
 
 	const handleRefreshAll = async () => {
 		await runPendingAction("Refresh all", setRefreshingAll, async () => {

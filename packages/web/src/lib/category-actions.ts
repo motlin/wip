@@ -394,6 +394,15 @@ function columnIndex(cat: Category): number {
  */
 export const BLOCKING_CATEGORIES: readonly Category[] = ["pr_refs_missing", "upstream_red"];
 
+/** The last state-machine columns before landing, ordered by the ready buffer's stable row order. */
+export const LANDING_CATEGORIES: readonly Category[] = [
+	"ready_to_push",
+	"checks_running",
+	"checks_failed",
+	"checks_passed",
+	"approved",
+];
+
 function deriveCategoryPriority(): Category[] {
 	const allStates = new Set<Category>();
 	for (const t of STATE_MACHINE) {

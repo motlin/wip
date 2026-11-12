@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
+import {useMemo} from "react";
 import {cleanup, render, screen} from "@testing-library/react";
 import type {GitChildResult} from "@wip/shared";
+import {readyIndex, type ReadyToLandItem} from "@wip/shared/ready-to-land.js";
 
 import {CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED} from "../lib/category-actions.js";
-import {emptyGrouped} from "../lib/grouping.js";
+import {emptyGrouped, type Grouped} from "../lib/grouping.js";
+import type {ActionOutcomes} from "../lib/action-outcomes.js";
+import {LandContext, type LandContextValue} from "../lib/land-context.js";
+import {usePinnedLandings} from "../lib/pinned-landings.js";
 import {QueueContext, type QueueContextValue} from "../lib/queue-context.js";
 import {makeChild} from "../lib/test-factories.js";
 import {QueueCards, QueueMain} from "./queue-cards.js";
@@ -78,5 +83,84 @@ describe("QueueMain", () => {
 			`${CATEGORY_PRIORITY.length - 2} \u00b7 Remote Only \u2014 1`,
 			`${CATEGORY_PRIORITY.indexOf("ready_to_test") + 1} \u00b7 Ready to Test \u2014 1`,
 		]);
+	});
+});
+
+const OLDER_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const NEWER_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+function readyItem(sha: string, overrides: Partial<ReadyToLandItem> = {}): ReadyToLandItem {
+	return {project: "test", id: sha, sha, ...overrides};
+}
+
+function landContext(ready: ReadyToLandItem[], outcomes: ActionOutcomes): LandContextValue {
+	return {
+		readyItemOf: readyIndex({slots: 2, ready, inFlight: [], next: [], stoppedProjects: []}),
+		projects: [],
+		onLand: vi.fn<LandContextValue["onLand"]>(),
+		outcomes,
+		onDismissOutcome: vi.fn<LandContextValue["onDismissOutcome"]>(),
+		actionsBlocked: new Set(),
+		onLandByPushing: vi.fn<LandContextValue["onLandByPushing"]>(),
+	};
+}
+
+function PinnedQueue({grouped, land}: {grouped: Grouped; land: LandContextValue}) {
+	const pinned = usePinnedLandings(grouped, land.outcomes);
+	const queue = useMemo(() => ({...queueContext(), grouped: pinned}), [pinned]);
+	return (
+		<LandContext.Provider value={land}>
+			<QueueContext.Provider value={queue}>
+				<QueueCards />
+			</QueueContext.Provider>
+		</LandContext.Provider>
+	);
+}
+
+function landingGrouped(category: "ready_to_push" | "checks_running"): Grouped {
+	const grouped = emptyGrouped();
+	grouped[category].gitChildren = [
+		makeChild({sha: OLDER_SHA, subject: "Older commit"}),
+		makeChild({sha: NEWER_SHA, subject: "High priority commit"}),
+	];
+	return grouped;
+}
+
+function sections(): string[] {
+	return [...document.querySelectorAll("section")].map((section) => section.textContent);
+}
+
+const READY = `${CATEGORY_PRIORITY.indexOf("ready_to_push") + 1} Ready to Land`;
+const CHECKS_RUNNING = `${CATEGORY_PRIORITY.indexOf("checks_running") + 1} Checks Running`;
+
+describe("QueueCards landing columns", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("orders landing cards by the ready buffer's stable row order: priority first, whatever the queue rank", () => {
+		const ready = [readyItem(OLDER_SHA), readyItem(NEWER_SHA, {priority: "high"})];
+		render(<PinnedQueue grouped={landingGrouped("ready_to_push")} land={landContext(ready, {})} />);
+		expect(sections()).toStrictEqual([`${READY}2High priority commitOlder commit`]);
+	});
+
+	it("keeps a card in its column while its land action runs, and moves it once the action settles", () => {
+		const ready = [readyItem(OLDER_SHA), readyItem(NEWER_SHA, {priority: "high"})];
+		const runningKey = `land:test:${NEWER_SHA}`;
+		const running: ActionOutcomes = {[runningKey]: {status: "running", message: "Opening PR"}};
+		const {rerender} = render(
+			<PinnedQueue grouped={landingGrouped("ready_to_push")} land={landContext(ready, running)} />,
+		);
+		const moved = emptyGrouped();
+		moved.ready_to_push.gitChildren = [makeChild({sha: OLDER_SHA, subject: "Older commit"})];
+		moved.checks_running.gitChildren = [makeChild({sha: NEWER_SHA, subject: "High priority commit"})];
+		rerender(<PinnedQueue grouped={moved} land={landContext(ready, running)} />);
+		const whileRunning = sections();
+		const settled: ActionOutcomes = {[runningKey]: {status: "success", message: "Opened PR"}};
+		rerender(<PinnedQueue grouped={moved} land={landContext(ready, settled)} />);
+		expect({whileRunning, settled: sections()}).toStrictEqual({
+			whileRunning: [`${READY}2High priority commitOlder commit`],
+			settled: [`${CHECKS_RUNNING}1High priority commit`, `${READY}1Older commit`],
+		});
 	});
 });

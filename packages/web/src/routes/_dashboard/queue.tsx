@@ -19,6 +19,7 @@ import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, type QueueContextValue} from "../../lib/queue-context";
 import {buildGrouped, bucketCount} from "../../lib/grouping";
+import {usePinnedLandings} from "../../lib/pinned-landings";
 import {SystemStatus} from "../../components/system-status";
 import {FlowStrip} from "../../components/flow-strip";
 import {FlowMetricsStrip} from "../../components/flow-metrics-strip";
@@ -46,7 +47,12 @@ function QueueLayout() {
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
 	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
-	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
+	const {
+		grouped: builtGrouped,
+		totalCount,
+		readyToTestCount,
+		needsRebaseCount,
+	} = useMemo(() => {
 		const g = buildGrouped(workItems, projects, readyToLand);
 
 		// On hold and snoozed items are not WIP.
@@ -79,6 +85,8 @@ function QueueLayout() {
 	}, []);
 	const push = usePushUpstreamBranch();
 	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects);
+	// A card whose land action runs stays in its column until the outcome settles.
+	const grouped = usePinnedLandings(builtGrouped, landContext.outcomes);
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
 		() =>

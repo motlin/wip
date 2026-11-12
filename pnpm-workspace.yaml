@@ -14,6 +14,16 @@ overrides:
   vitest: "catalog:"
   # Older postcss reads arbitrary .map files from an attacker-controlled sourceMappingURL (GHSA-6g55-p6wh-862q).
   postcss: ">=8.5.23"
+  # Older proxy-addr trusts spoofed IPs via IPv4-mapped IPv6 trust subnets (GHSA-jqcg-44mw-7w3h).
+  proxy-addr: ">=2.0.8"
+  # Older body-parser hangs on trailing bytes after a compressed body (GHSA-27r3-jxmh-p828); stays on 1.x for express 4.
+  body-parser: "^1.20.9"
+  # Older qs has DoS and array-limit bypass bugs (GHSA-4mjr-xmp4-gh2g, GHSA-x5fp-wj9c-mxmx, GHSA-6pq8-jhm2-2vcw).
+  qs: "^6.16.1"
+  # Older morgan allows log forging and injection (GHSA-9f6g-j8ch-79g4, GHSA-jxfw-x594-9x9m).
+  morgan: "^1.12.1"
+  # Older re2js has quadratic-time lookbehind matching (GHSA-gg6h-894w-4m9c).
+  re2js: "^2.8.7"
 peerDependencyRules:
   allowAny:
     - vite

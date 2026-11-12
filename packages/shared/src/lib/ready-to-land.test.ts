@@ -199,6 +199,12 @@ describe("landableCount", () => {
 			landableCount(undefined, []),
 		]).toStrictEqual([2, 0, 0]);
 	});
+
+	it("never counts a row whose commit is behind upstream: it is Needs Rebase, not ready", () => {
+		const state = {ready: [prItem("u1"), prItem("b1")]};
+		const commits = [landingChild("u1", {commitsBehind: 0}), landingChild("b1", {commitsBehind: 2})];
+		expect(landableCount(state, commits)).toBe(1);
+	});
 });
 
 describe("prChecksFailed", () => {

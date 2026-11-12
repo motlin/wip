@@ -54,6 +54,7 @@ import {
 	CATEGORIES,
 	SPLIT_BRANCH_COMMAND,
 	addTestCommand,
+	LANDING_CATEGORIES,
 	landFallback,
 	primaryAction,
 	type PrimaryAction,
@@ -221,8 +222,9 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const land = useLandContext();
 	// Only the card at the buffer row's sha lands; another sha with the same change says so instead.
 	const landEntry = land?.readyItemOf(item);
-	const landHere = landEntry?.item.sha === item.sha ? landEntry : undefined;
-	const sameChangeAs = landEntry !== undefined && landHere === undefined ? landEntry.item.sha : undefined;
+	// Only a landing column's card lands: a listed commit behind upstream is Needs Rebase, one pushing is mid-push.
+	const landHere = landEntry?.item.sha === item.sha && LANDING_CATEGORIES.includes(category) ? landEntry : undefined;
+	const sameChangeAs = landEntry !== undefined && landEntry.item.sha !== item.sha ? landEntry.item.sha : undefined;
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;

@@ -205,7 +205,7 @@ export function readyIndex(
 
 /**
  * The one "ready" count (up to date with upstream + green, as the buffer lists it): the Ready to land
- * rows whose view is "land". Both that section's heading and the queue header use it; zero while the
+ * rows whose view is "land" and whose commit is not behind upstream (that is Needs Rebase). Both that section's heading and the queue header use it; zero while the
  * buffer reports no state.
  */
 export function landableCount(
@@ -214,9 +214,10 @@ export function landableCount(
 ): number {
 	if (state === null || state === undefined) return 0;
 	const commitOf = commitLookup(commits);
-	return [...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])].filter(
-		(item) => readyRowView(item, commitOf(item)) === "land",
-	).length;
+	return [...state.ready, ...(state.awaitingChecks ?? []), ...(state.checksFailed ?? [])].filter((item) => {
+		const commit = commitOf(item);
+		return (commit?.commitsBehind ?? 0) === 0 && readyRowView(item, commit) === "land";
+	}).length;
 }
 
 /**

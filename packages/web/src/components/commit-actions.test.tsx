@@ -756,6 +756,27 @@ describe("land action from the ready buffer", () => {
 		}).toStrictEqual({push: null, beforeConfirm: [], calls: [[item, commit]]});
 	});
 
+	it("offers no land action on a listed card outside the landing columns: behind upstream or pushing", () => {
+		const shown = (["needs_rebase", "pushing"] as const).map((category) => {
+			renderLanding(
+				branchItem({testStatus: "passed", patchId: "patch-1", commitsBehind: 2}),
+				category,
+				landContext({ready: [readyItem()]}),
+			);
+			const shownHere = {
+				openPr: screen.queryByRole("button", {name: "Open PR"}),
+				sameChange: screen.queryByTestId("same-change-marker"),
+			};
+			cleanup();
+			return shownHere;
+		});
+
+		expect(shown).toStrictEqual([
+			{openPr: null, sameChange: null},
+			{openPr: null, sameChange: null},
+		]);
+	});
+
 	it("offers no land action on a card with the same change at another sha", () => {
 		renderLanding(
 			branchItem({sha: "def456", testStatus: "passed", patchId: "patch-1"}),

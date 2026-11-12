@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useMemo, useState} from "react";
 import type {Category} from "@wip/shared";
 import {emptyGrouped, type Grouped} from "./grouping.js";
 import {CATEGORY_PRIORITY} from "./category-actions.js";
@@ -33,19 +33,20 @@ function pinRunningLandings(
 	return {grouped: pinned, shown: nowShown};
 }
 
+function sameColumns(a: ReadonlyMap<string, Category>, b: ReadonlyMap<string, Category>): boolean {
+	return a.size === b.size && [...a].every(([key, category]) => b.get(key) === category);
+}
+
 /**
  * {@link pinRunningLandings} across renders: the grouping /queue and /kanban show. The columns shown
  * last are state updated while rendering (React's "store information from previous renders"), so a
- * new grouping or outcome repins against what the user saw.
+ * new grouping or outcome repins against what the user saw. The state changes only when a card's
+ * column does: /queue builds a new grouping on every render (useSuspenseQueries returns a new
+ * array), and setting state on that alone re-renders forever (React error #301).
  */
 export function usePinnedLandings(grouped: Grouped, outcomes: ActionOutcomes): Grouped {
-	const [last, setLast] = useState(() => ({
-		grouped,
-		outcomes,
-		pinned: pinRunningLandings(grouped, outcomes, new Map()),
-	}));
-	if (last.grouped === grouped && last.outcomes === outcomes) return last.pinned.grouped;
-	const pinned = pinRunningLandings(grouped, outcomes, last.pinned.shown);
-	setLast({grouped, outcomes, pinned});
+	const [shown, setShown] = useState<ReadonlyMap<string, Category>>(() => new Map());
+	const pinned = useMemo(() => pinRunningLandings(grouped, outcomes, shown), [grouped, outcomes, shown]);
+	if (!sameColumns(pinned.shown, shown)) setShown(pinned.shown);
 	return pinned.grouped;
 }

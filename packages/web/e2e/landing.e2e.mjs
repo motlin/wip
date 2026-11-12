@@ -361,7 +361,18 @@ async function run() {
 			return route.abort();
 		});
 		context.on("page", (page) => {
-			page.on("pageerror", (error) => pageErrors.push(String(error)));
+			// Printed as they happen, so a render error that empties the page names itself before a wait times out.
+			page.on("pageerror", (error) => {
+				pageErrors.push(String(error));
+				console.error(
+					`\n✗ Uncaught page error on ${page.url()} during "${currentStep}": ${error.stack ?? error}`,
+				);
+			});
+			page.on("console", (message) => {
+				if (message.type() === "error") {
+					console.error(`  console.error on ${page.url()} during "${currentStep}": ${message.text()}`);
+				}
+			});
 			// Playwright only says "Target crashed" on the next call: record which page crashed, where and when.
 			page.on("crash", () => {
 				crashes.push({url: page.url(), step: currentStep, at: new Date().toISOString()});

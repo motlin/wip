@@ -162,6 +162,18 @@ describe("QueueCards landing columns", () => {
 		expect(sections()).toStrictEqual([`${READY}22 ready (target 2) · 0 readyingHigh priority commitOlder commit`]);
 	});
 
+	it("renders when every render builds a new grouping, as /queue's does (useSuspenseQueries returns a new array)", () => {
+		const ready = [readyItem(OLDER_SHA), readyItem(NEWER_SHA, {priority: "high"})];
+		const land = landContext(ready, {});
+		function FreshGroupingQueue() {
+			const pinned = usePinnedLandings(landingGrouped("ready_to_push"), land.outcomes);
+			return <PinnedQueue grouped={pinned} land={land} />;
+		}
+		const {rerender} = render(<FreshGroupingQueue />);
+		rerender(<FreshGroupingQueue />);
+		expect(sections()).toStrictEqual([`${READY}22 ready (target 2) · 0 readyingHigh priority commitOlder commit`]);
+	});
+
 	it("keeps a card in its column while its land action runs, and moves it once the action settles", () => {
 		const ready = [readyItem(OLDER_SHA), readyItem(NEWER_SHA, {priority: "high"})];
 		const runningKey = `land:test:${NEWER_SHA}`;

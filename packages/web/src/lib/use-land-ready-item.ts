@@ -254,7 +254,7 @@ const NO_PUSHES: readonly MainPush[] = [];
 
 /**
  * The land context /queue and /kanban provide, so each landing card offers its own land action;
- * `mainPushes` (only /queue reads them) become the Push main cards heading Ready to Land.
+ * `mainPushes` become the Push main cards heading Ready to Land.
  */
 export function useLandContextValue(
 	state: ReadyToLandState | null | undefined,

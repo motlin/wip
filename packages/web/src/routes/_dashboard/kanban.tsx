@@ -4,7 +4,7 @@ import {RefreshCw} from "../../components/icons.js";
 import {useState, useMemo} from "react";
 import {KanbanColumn} from "../../components/kanban-column.js";
 import {refreshAll} from "../../lib/server-fns.js";
-import {projectsQueryOptions, readyToLandQueryOptions} from "../../lib/queries.js";
+import {mainPushesQueryOptions, projectsQueryOptions, readyToLandQueryOptions} from "../../lib/queries.js";
 import {useWorkItems} from "../../lib/use-work-items.js";
 import {buildGrouped, bucketCount} from "../../lib/grouping.js";
 import {usePinnedLandings} from "../../lib/pinned-landings.js";
@@ -33,7 +33,8 @@ function Kanban() {
 		return {grouped: g, totalCount: total};
 	}, [workItems, projects, readyToLand]);
 
-	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects);
+	const {data: mainPushes} = useQuery(mainPushesQueryOptions());
+	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects, mainPushes);
 	// A card whose land action runs stays in its column until the outcome settles.
 	const grouped = usePinnedLandings(builtGrouped, landContext.outcomes);
 
@@ -69,7 +70,8 @@ function Kanban() {
 					{CATEGORY_PRIORITY.map((category) => {
 						const items = grouped[category];
 						const count = bucketCount(items);
-						if (count === 0) return null;
+						// Ready to Land opens with the buffer's counts and Push main cards, so it shows even empty.
+						if (count === 0 && !(category === "ready_to_push" && readyToLand != null)) return null;
 						return <KanbanColumn key={category} category={category} items={items} count={count} />;
 					})}
 				</div>

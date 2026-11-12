@@ -12,6 +12,7 @@ import {CATEGORIES, LANDING_CATEGORIES, categoryTextClass, categoryColumnClass} 
 import {useLandContext} from "../lib/land-context.js";
 import {orderedGitChildren} from "../lib/landing-order.js";
 import {gitChildCard} from "./git-child-card.js";
+import {ReadyToLandLead} from "./ready-to-land-lead.js";
 import {CommitCard} from "./commit-card.js";
 import {BranchCard} from "./branch-card.js";
 import {PullRequestCard} from "./pull-request-card.js";
@@ -90,6 +91,7 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 				</span>
 			</div>
 			<div className="flex flex-col gap-2 overflow-y-auto">
+				{land !== null && category === "ready_to_push" && <ReadyToLandLead land={land} project={null} />}
 				{shown}
 				{hidden > 0 && (
 					<button

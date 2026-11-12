@@ -64,6 +64,8 @@ const state: ReadyToLandState = {
 };
 /** Only readyItemOf is read by the landing order. */
 const land = {readyItemOf: readyIndex(state)} as LandContextValue;
+/** What the Ready to Land column's lead reads: the buffer's counts, no Push main cards. */
+const heading = {...land, state, landable: 0, mainPushes: [], outcomes: {}} as LandContextValue;
 
 describe("KanbanColumn landing columns", () => {
 	it("orders landing cards by the ready buffer's stable row order, as /queue's cards do: priority first", () => {
@@ -77,5 +79,16 @@ describe("KanbanColumn landing columns", () => {
 			"High priority commit",
 			"Older commit",
 		]);
+	});
+
+	it("opens the Ready to Land column, even empty, with the buffer's counts, as /queue's column does", () => {
+		const markup = renderToStaticMarkup(
+			<LandContext.Provider value={heading}>
+				<KanbanColumn category="ready_to_push" items={{}} count={0} />
+			</LandContext.Provider>,
+		);
+
+		expect(markup).toContain('data-testid="ready-to-land-heading"');
+		expect(markup).toContain("0 ready (target 2) · 0 readying");
 	});
 });

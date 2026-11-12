@@ -29,7 +29,7 @@ export function QueueSection({
 	const shown = limitVisibleItems(all, SECTION_PAGE_SIZE, expanded);
 	const hidden = all.length - shown.length;
 	return (
-		<section>
+		<section data-testid={`queue-section-${category}`}>
 			<h2 className={`mb-2 text-sm font-semibold ${categoryTextClass(category)}`}>
 				<span className="font-mono text-xs text-text-500">{CATEGORY_PRIORITY.indexOf(category) + 1}</span>{" "}
 				{CATEGORIES[category].label}

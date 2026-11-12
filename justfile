@@ -122,7 +122,7 @@ dev_db := env("XDG_DATA_HOME", env("HOME", "") / ".local/share") / "wip/wip-dev.
 dev *args: build-shared
     WIP_DB_PATH="{{ dev_db }}" WIP_READY_BUFFER=false vp exec pnpm --filter @wip/web dev {{ args }}
 
-# Click through Ready to land in headless Chromium against temp repos, a fake gh and a fake GitHub
+# Click through the landing cards in headless Chromium against temp repos, a fake gh and a fake GitHub
 [group('test')]
 e2e-landing: build
     node packages/web/e2e/landing.e2e.mjs

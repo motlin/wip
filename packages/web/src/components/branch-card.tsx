@@ -17,6 +17,7 @@ import type {GitChildResult} from "@wip/shared";
 import {applyTransition, type Category} from "@wip/shared/schemas.js";
 import {cancelTestFn} from "../lib/server-fns.js";
 import {useLadderResults} from "../lib/ladder-results-context.js";
+import {useLandContext} from "../lib/land-context.js";
 import {ladderStateForBranch} from "../lib/ladder-card-state.js";
 import {LadderCardState} from "./ladder-card-state.js";
 import {useMergeStatus, useTestJob} from "../lib/server-events-context.js";
@@ -66,9 +67,11 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 
 	const ladderState = ladderStateForBranch(useLadderResults(), branch.project, branch.branch ?? "");
 	// The action panel carries ~30 pieces of state per card; mount it only
-	// once the card is hovered or focused, or a test job has status to show.
+	// once the card is hovered or focused, a test job has status to show, or
+	// the ready buffer lists it, so its land action shows unhovered.
 	const [actionsActivated, setActionsActivated] = useState(false);
-	const showActions = actionsActivated || testJob !== undefined;
+	const listedReady = useLandContext()?.readyItemOf(branch) !== undefined;
+	const showActions = actionsActivated || testJob !== undefined || listedReady;
 	const activateActions = () => {
 		setActionsActivated(true);
 	};

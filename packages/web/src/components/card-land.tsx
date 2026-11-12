@@ -44,6 +44,7 @@ export function CardLand({commit, entry, land}: {commit: GitChildResult; entry: 
 					onLand={land.onLand}
 					outcome={outcome}
 					onDismissOutcome={dismiss}
+					align="start"
 				/>
 			)}
 			{view === "waiting" && (
@@ -51,7 +52,7 @@ export function CardLand({commit, entry, land}: {commit: GitChildResult; entry: 
 					<span data-testid="land-waiting-chip" className={CHIP_CLASS}>
 						waiting for checks
 					</span>
-					<ActionSlot outcome={outcome} onDismissOutcome={dismiss} />
+					<ActionSlot outcome={outcome} onDismissOutcome={dismiss} align="start" />
 				</>
 			)}
 			{view === "checks-failed" && (
@@ -70,7 +71,7 @@ export function CardLand({commit, entry, land}: {commit: GitChildResult; entry: 
 							checks failed
 						</a>
 					)}
-					<ActionSlot outcome={outcome} onDismissOutcome={dismiss} />
+					<ActionSlot outcome={outcome} onDismissOutcome={dismiss} align="start" />
 				</>
 			)}
 			{view === "checks-failed" && land.actionsBlocked.has(`${item.project}:${item.sha}`) && (

@@ -24,6 +24,13 @@ vi.mock("./commit-actions.js", () => ({
 
 import {BranchCard} from "./branch-card.js";
 import {LadderResultsProvider} from "../lib/ladder-results-context.js";
+import {LandContext, type LandContextValue} from "../lib/land-context.js";
+
+/** Only readyItemOf is read by the card: the buffer lists sha-a. */
+const land = {
+	readyItemOf: (child: Pick<GitChildResult, "sha">) =>
+		child.sha === "sha-a" ? {item: {project: "beta", id: "a", sha: "sha-a"}, list: "ready"} : undefined,
+} as LandContextValue;
 
 function branch(name: string): GitChildResult {
 	return {
@@ -80,5 +87,28 @@ describe("BranchCard per-card client work", () => {
 		renderCards(["a"]);
 		fireEvent.focus(screen.getByRole("button", {name: "Show actions"}));
 		expect(screen.queryByTestId("actions-sha-a")).not.toBeNull();
+	});
+});
+
+describe("BranchCard on a landing card", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("mounts the action panel at once on a card the ready buffer lists, so its land action shows unhovered", () => {
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<LadderResultsProvider>
+					<LandContext.Provider value={land}>
+						<BranchCard branch={branch("a")} category="ready_to_push" />
+						<BranchCard branch={branch("b")} category="ready_to_push" />
+					</LandContext.Provider>
+				</LadderResultsProvider>
+			</QueryClientProvider>,
+		);
+		expect({a: screen.queryByTestId("actions-sha-a") !== null, b: screen.queryByTestId("actions-sha-b")}).toEqual({
+			a: true,
+			b: null,
+		});
 	});
 });

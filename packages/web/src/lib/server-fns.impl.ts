@@ -2703,7 +2703,7 @@ export async function getFlowHistoryHandler(): Promise<FlowHistory> {
 	return Promise.resolve(flowHistory(loadAllWorkItemHistory(), Date.now()));
 }
 
-/** The ready buffer's state for the Ready to land section; null when this process runs no buffer. */
+/** The ready buffer's state for the landing columns; null when this process runs no buffer. */
 export async function getReadyToLandHandler(): Promise<ReadyToLandState | null> {
 	return Promise.resolve(currentReadyBuffer()?.state() ?? null);
 }

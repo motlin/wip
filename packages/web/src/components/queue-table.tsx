@@ -12,10 +12,13 @@ import {
 	BLOCKING_CATEGORIES,
 	CATEGORIES,
 	CATEGORY_PRIORITY,
+	LANDING_CATEGORIES,
 	categoryDotClass,
 	categoryTextClass,
 } from "../lib/category-actions.js";
 import {useQueueContext} from "../lib/queue-context.js";
+import {useLandContext} from "../lib/land-context.js";
+import {orderedGitChildren} from "../lib/landing-order.js";
 import {bucketCount} from "../lib/grouping.js";
 
 type ItemType = "ci" | "repo" | "pr" | "branch" | "commit" | "issue" | "project_item" | "todo";
@@ -177,6 +180,7 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 	const {grouped, visibleCategories, filterByProject, selectedCategory} = useQueueContext();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+	const land = useLandContext();
 
 	const {rowsByCategory, typeCounts} = useMemo(() => {
 		const result: {category: Category; rows: FlatRow[]}[] = [];
@@ -198,7 +202,12 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 
 			const rows: FlatRow[] = [];
 
-			for (const child of items.gitChildren ?? []) {
+			// Landing rows keep the ready buffer's stable row order, as /queue's cards do.
+			const children =
+				land !== null && LANDING_CATEGORIES.includes(category)
+					? orderedGitChildren(items.gitChildren ?? [], category, land)
+					: (items.gitChildren ?? []);
+			for (const child of children) {
 				const row = gitChildToRow(child, category);
 				rows.push(row);
 				counts.all++;
@@ -232,7 +241,7 @@ export function QueueTable({part = "rest"}: {part?: "blocking" | "rest"}) {
 		}
 
 		return {rowsByCategory: result, typeCounts: counts};
-	}, [grouped, visibleCategories, filterByProject, part]);
+	}, [grouped, visibleCategories, filterByProject, part, land]);
 
 	const filteredGroups = useMemo(() => {
 		const lowerQuery = searchQuery.toLowerCase();

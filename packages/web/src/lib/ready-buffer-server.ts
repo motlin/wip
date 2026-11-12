@@ -551,7 +551,7 @@ export async function startReadyBuffer(
 	setReadyBuffer(started);
 
 	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
-	// The Ready to land section reads this over the SSE stream.
+	// The landing columns read this over the SSE stream.
 	started.onStateChange((state) => {
 		readyBufferEmitter.emit("state", state);
 	});

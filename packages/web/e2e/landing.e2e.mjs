@@ -1,21 +1,21 @@
 /**
- * Landing end-to-end harness: clicks through Ready to land in headless Chromium against a real wip
+ * Landing end-to-end harness: clicks through the landing cards on /queue in headless Chromium against a real wip
  * server, so landing flows are tested by a script instead of by hand.
  *
  * It builds a throwaway world (landing-world.mjs), starts a fake GitHub (fake-github.mjs) and the
  * production server (serve.mjs, which needs `just build`) with the ready buffer on, then drives
- * /queue: Open PR on a ready row, Open PR on a row upstream moved past in the same repo, Open PR where
+ * /queue: Open PR on a Ready to Land card, Open PR on a card upstream moved past in the same repo, Open PR where
  * the GitHub token is read-only on the PR repo (git pushes, the tab goes to GitHub's new-PR page),
  * Fast-forward main, Push main, the GitHub Actions gate (a queued check on one acme background push holds the next
  * acme push until it completes, not an other-org push), and a restart (with no page open, the restarted server must refresh cogs'
- * children when its upstream moves, read from the world DB) after which upstream moves past the one green row: it leaves
- * Ready to land and the buffer rebases and retests it until the ready target is met again, checking each Open PR leaves every repo's other rows on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
+ * children when its upstream moves, read from the world DB) after which upstream moves past the one green card: it leaves
+ * Ready to Land (Needs Rebase) and the buffer rebases and retests it until the ready target is met again, checking each Open PR leaves every repo's other cards on the page, and asserting on the git refs in the bare "GitHub" repos, the fake GitHub's PRs, and the
  * recorded gh calls. Before those, the auto-fix flow: bolts' commit fails its test, the buffer's test-fix agent
  * (the fake claude, launched through the fake herdr in fake-herdr.mjs) commits a separate fixup, the
  * card shows "auto-fixed: <failure>" and its review the fixup's diff, and Accept squashes it into one
- * green commit that lists in Ready to land. First of all, upstream red: /queue shows one upstream_red item,
+ * green commit that lists in Ready to Land. First of all, upstream red: /queue shows one upstream_red item,
  * for broken's own red upstream (its failed local baseline and /build:fix), broken's commits show blocked by
- * it and none lists in Ready to land, and levers' foreign red upstream gets no item and is a baseline: its
+ * it and none lists in Ready to Land, and levers' foreign red upstream gets no item and is a baseline: its
  * commit adding no failure lines up, its commit adding one does not, and the buffer pulled no commit in broken
  * (server.log's test runs) Private vaults' upstream check GitHub never started (billing) is no CI result: it gets
  * no item and its commit lines up by its local test.
@@ -164,20 +164,33 @@ async function waitUntil(condition, what) {
 	}
 }
 
-const ROW_SELECTOR = ["ready-to-land-row", "waiting-row", "checks-failed-row"]
-	.map((id) => `[data-testid="${id}"]`)
-	.join(", ");
+/** The landing columns, as /queue's card sections, in no particular order. */
+const LANDING_SECTIONS = ["ready_to_push", "checks_running", "checks_failed", "checks_passed", "approved"];
+const CARD_PREFIXES = ["commit-card-", "branch-card-", "pull-request-card-"];
+
+/** The cards in the given /queue sections (categories). */
+function cardSelector(sections) {
+	return [sections]
+		.flat()
+		.flatMap((section) =>
+			CARD_PREFIXES.map((prefix) => `[data-testid="queue-section-${section}"] [data-testid^="${prefix}"]`),
+		)
+		.join(", ");
+}
+
+const ROW_SELECTOR = cardSelector(LANDING_SECTIONS);
 
 /**
- * Every Ready to land row as its kind and subject with its box in page coordinates (Playwright
+ * Every landing card as its column and subject with its box in page coordinates (Playwright
  * scrolling a button into view is not a layout shift), in page order.
  */
 async function rowBoxes(page) {
 	return page.locator(ROW_SELECTOR).evaluateAll((rows) =>
 		rows.map((element) => {
 			const box = element.getBoundingClientRect();
+			const section = element.closest('[data-testid^="queue-section-"]')?.dataset.testid ?? "?";
 			return {
-				row: `${element.dataset.testid}: ${element.querySelector('a[href^="/item/"]')?.textContent ?? "?"}`,
+				row: `${section.replace("queue-section-", "")}: ${element.querySelector('a[href^="/item/"]')?.textContent ?? "?"}`,
 				box: {x: box.x + window.scrollX, y: box.y + window.scrollY, width: box.width, height: box.height},
 			};
 		}),
@@ -199,13 +212,14 @@ async function stableRowBoxes(page) {
 		if (JSON.stringify(current) === JSON.stringify(previous)) return current;
 		previous = current;
 	}
-	throw new Error("the Ready to land rows never stopped moving");
+	throw new Error("the landing cards never stopped moving");
 }
 
 /**
- * The confirm and the outcome are overlays, and server updates never reorder rows: no Ready to land
- * row may move or resize. Rows keep their order; once the clicked row's own action changes it (it
- * leaves, or becomes a waiting row), only the rows above it must keep their boxes.
+ * The confirm and the outcome are overlays, a card stays in its column while its land action runs,
+ * and server updates never reorder cards: no landing card may move or resize. Cards keep their
+ * order; once the clicked card's own action changes it (it leaves, or moves to Checks Running), only
+ * the cards above it must keep their boxes.
  */
 async function assertNoLayoutShift(page, before, what) {
 	const after = await rowBoxes(page);
@@ -221,24 +235,31 @@ async function assertNoLayoutShift(page, before, what) {
 	assert.deepEqual(after.slice(0, unchanged), before.slice(0, unchanged), `${what}: a row moved or resized`);
 }
 
+/** The card in Ready to Land with this subject. */
 function readyRow(page, subject) {
-	return page.getByTestId("ready-to-land-row").filter({hasText: subject});
+	return page.locator(cardSelector("ready_to_push")).filter({hasText: subject});
 }
 
-/** The first of the rows ([testId or testIds, subject]) missing from the page, or undefined. */
+/** The card in Checks Running with this subject, waiting for its PR checks. */
+function waitingRow(page, subject) {
+	return page
+		.locator(cardSelector("checks_running"))
+		.filter({hasText: subject})
+		.filter({has: page.getByTestId("land-waiting-chip")});
+}
+
+/** The first of the cards ([column or columns, subject]) missing from the page, or undefined. */
 async function missingRow(page, rows) {
-	for (const [testIds, subject] of rows) {
-		const selector = [testIds]
-			.flat()
-			.map((id) => `[data-testid="${id}"]`)
-			.join(", ");
-		// eslint-disable-next-line no-await-in-loop -- checks every row in one sample
-		if ((await page.locator(selector).filter({hasText: subject}).count()) === 0) return `${testIds} "${subject}"`;
+	for (const [sections, subject] of rows) {
+		// eslint-disable-next-line no-await-in-loop -- checks every card in one sample
+		if ((await page.locator(cardSelector(sections)).filter({hasText: subject}).count()) === 0) {
+			return `${sections} "${subject}"`;
+		}
 	}
 	return undefined;
 }
 
-/** The rows labelled only by a short sha: the client found no commit for them, so no subject. */
+/** The cards labelled only by a short sha: the client found no commit for them, so no subject. */
 async function subjectlessRows(page) {
 	return (await rowBoxes(page)).map(({row}) => row).filter((row) => /: [0-9a-f]{7}$/.test(row));
 }
@@ -266,9 +287,9 @@ async function assertRowsStay(page, rows, what) {
 }
 
 /**
- * Clicks Open PR on the row and confirms. Returns the tab the confirm opened, once it reaches the PR
- * the fake GitHub opened, after checking the confirm and the running outcome never moved a row and
- * the `stay` rows never left the page while it ran.
+ * Clicks Open PR on the card and confirms. Returns the tab the confirm opened, once it reaches the PR
+ * the fake GitHub opened, after checking the confirm and starting the action never moved a card
+ * and the `stay` cards never left the page while it ran.
  */
 async function openPr(page, subject, expectedPrUrl, stay = [], landingTestId = "fake-pr") {
 	const row = readyRow(page, subject);
@@ -277,11 +298,14 @@ async function openPr(page, subject, expectedPrUrl, stay = [], landingTestId = "
 	await page.getByTestId("land-confirm").waitFor();
 	await assertNoLayoutShift(page, before, `${subject}: opening the confirm`);
 	const popupPromise = page.context().waitForEvent("page");
+	// Handled here too, so a failed check below reports itself, not this wait's later timeout.
+	popupPromise.catch(() => undefined);
 	await page.getByTestId("land-confirm").getByRole("button", {name: "Confirm"}).click();
+	// Measured at once, while Open PR runs: the card stays in its column until the outcome settles.
+	await assertNoLayoutShift(page, before, `${subject}: running Open PR`);
 	const tab = await popupPromise;
 	const firstUrl = tab.url();
 	await page.getByRole("dialog", {name: "Action result"}).waitFor();
-	await assertNoLayoutShift(page, before, `${subject}: running Open PR`);
 	// The tab's own poll and the opener both send it to the PR, so a navigation can abort another: poll the URL.
 	const deadline = Date.now() + WAIT_MS;
 	while (tab.url() !== expectedPrUrl) {
@@ -341,6 +365,7 @@ async function run() {
 	const crashes = [];
 	const startedAt = Date.now();
 	let ok = false;
+	let debugPage;
 	try {
 		browser = await chromium.launch({
 			headless: process.env.WIP_E2E_HEADED !== "true",
@@ -380,6 +405,7 @@ async function run() {
 			});
 		});
 		const page = await context.newPage();
+		debugPage = page;
 		const cdp = await context.newCDPSession(page);
 		await cdp.send("Performance.enable");
 		sampleMemory = async () => {
@@ -395,14 +421,14 @@ async function run() {
 		};
 		await page.goto(`${baseUrl}/queue`);
 
-		step("Waiting for the ready buffer to test and ready every row");
+		step("Waiting for the ready buffer to test and ready every card");
 		page.setDefaultTimeout(WAIT_MS);
 		await readyRow(page, "Add the ready feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the behind feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the fast-forward feature").getByRole("button", {name: "Fast-forward main"}).waitFor();
 		await readyRow(page, "Add the steady feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await readyRow(page, "Add the stale feature").getByRole("button", {name: "Open PR"}).waitFor();
-		await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).waitFor();
+		await waitingRow(page, "Add the waiting feature").waitFor();
 		await readyRow(page, "Add the gear feature").getByRole("button", {name: "Open PR"}).waitFor();
 		await page
 			.getByTestId("ready-to-land-verify-notice")
@@ -411,9 +437,15 @@ async function run() {
 					"gears: your GitHub token has read-only access to acme/gears; grant it access to open PRs; testing locally",
 			})
 			.waitFor();
-		assert.match(
-			await page.getByTestId("waiting-row").filter({hasText: "Add the waiting feature"}).innerText(),
-			/PR #1 · waiting for checks, merges itself when they pass/,
+		const waitingFeature = waitingRow(page, "Add the waiting feature");
+		assert.deepEqual(
+			{
+				waiting: await waitingFeature.getByTestId("land-waiting-chip").count(),
+				autoMerge: await waitingFeature.getByTestId("land-auto-merge-chip").count(),
+				land: await waitingFeature.getByRole("button", {name: /Open PR|Merge PR/}).count(),
+			},
+			{waiting: 1, autoMerge: 1, land: 0},
+			"PR #1 waits for its checks in Checks Running with auto-merge on, and offers no land button",
 		);
 
 		step("Upstream red: one queue item for broken, naming its failed baseline, and broken's commits show blocked");
@@ -478,7 +510,7 @@ async function run() {
 				blocked: await readyRow(page, "Add a feature on red upstream").count(),
 			},
 			{fix: 0, blocked: 0},
-			"a red upstream stops its repo's line: Ready to land lists nothing in it, not even a commit green on the red tip",
+			"a red upstream stops its repo's line: Ready to Land holds nothing in it, not even a commit green on the red tip",
 		);
 
 		step("Remote only: a fork branch with no local branch and no PR is listed as lost work, never ready");
@@ -497,7 +529,7 @@ async function run() {
 				openPr: 1,
 				ready: 0,
 			},
-			"widgets' lost-feature shows Remote only with its restore, open PR and delete actions, and is not in Ready to land",
+			"widgets' lost-feature shows Remote only with its restore, open PR and delete actions, and is not in Ready to Land",
 		);
 		assert.deepEqual(
 			{
@@ -518,14 +550,15 @@ async function run() {
 			"only vaults lacks the PR refspec",
 		);
 		assert.deepEqual(
-			await page.evaluate(() =>
-				[...document.querySelectorAll("main h2")]
+			await page.evaluate(() => {
+				const names = /Set Up PR Refs|Upstream Red|Remote Only|Checks Running|Ready to Land/;
+				return [...document.querySelectorAll("main h2")]
 					.map((heading) => heading.textContent ?? "")
-					.filter((text) => /Set Up PR Refs|Upstream Red|Ready to land|Remote Only/.test(text))
-					.map((text) => (text.match(/Set Up PR Refs|Upstream Red|Ready to land|Remote Only/) ?? [""])[0]),
-			),
-			["Set Up PR Refs", "Upstream Red", "Ready to land", "Remote Only"],
-			"blockers rank above what they block: Set Up PR Refs, then Upstream Red, both above Ready to land",
+					.filter((text) => names.test(text))
+					.map((text) => (names.exec(text) ?? [""])[0]);
+			}),
+			["Set Up PR Refs", "Upstream Red", "Remote Only", "Checks Running", "Ready to Land"],
+			"blockers rank above what they block: Set Up PR Refs, then Upstream Red, then Remote Only, then the landing columns",
 		);
 		await prRefsItem.filter({hasText: "vaults"}).getByRole("button", {name: "Set up PR refs"}).click();
 		await waitUntil(
@@ -548,7 +581,7 @@ async function run() {
 			"a foreign red upstream blocks nothing: no blocked marker on its commit",
 		);
 		// The regressing commit fails a test upstream passes: its test fix is skipped (Claude doesn't trust levers),
-		// which is how Ready to land learns it failed.
+		// which is how the ready buffer learns it failed.
 		await page.getByTestId("ready-to-land-verify-notice").filter({hasText: "levers: trust"}).waitFor();
 		assert.equal(
 			await readyRow(page, "Add a new failure on foreign red upstream").count(),
@@ -640,7 +673,7 @@ async function run() {
 		world.git(bolts.clone, "fetch", "--quiet", "upstream");
 		await fragileRow.waitFor({state: "detached"});
 
-		step("Open PR on a ready row");
+		step("Open PR on a Ready to Land card");
 		const ready = await openPr(page, "Add the ready feature", `${gh.url}/acme/widgets/pull/2`);
 		assert.match(
 			ready.firstUrl,
@@ -648,18 +681,14 @@ async function run() {
 			"the confirm opens /opening/<id>",
 		);
 		await ready.tab.close();
-		await page
-			.getByTestId("waiting-row")
-			.filter({hasText: "Add the ready feature"})
-			.filter({hasText: "PR #2 · waiting for checks"})
-			.waitFor();
+		await waitingRow(page, "Add the ready feature").waitFor();
 		await assertRowsStay(
 			page,
 			[
-				["waiting-row", "Add the ready feature"],
-				["ready-to-land-row", "Add the behind feature"],
-				["waiting-row", "Add the waiting feature"],
-				["ready-to-land-row", "Add the fast-forward feature"],
+				["checks_running", "Add the ready feature"],
+				["ready_to_push", "Add the behind feature"],
+				["checks_running", "Add the waiting feature"],
+				["ready_to_push", "Add the fast-forward feature"],
 			],
 			"after Open PR on widgets",
 		);
@@ -679,16 +708,17 @@ async function run() {
 			},
 		);
 
-		step("Open PR on a row whose upstream moved on (rebased and retested before pushing)");
-		// The first Open PR's outcome sits above the behind row; dismiss it so the second click is measured alone.
+		step("Open PR on a card whose upstream moved on (rebased and retested before pushing)");
+		// The first Open PR's outcome shows once, on its card; dismiss it so the second click is measured alone.
 		const firstOutcome = page.getByTestId("action-outcome").filter({hasText: "Opened PR #2"});
+		assert.equal(await firstOutcome.count(), 1, "the land outcome renders once on /queue, on its card");
 		await firstOutcome.getByRole("button", {name: "Dismiss"}).click();
 		await firstOutcome.waitFor({state: "detached"});
 		const movedUpstream = widgets.landUpstream("upstream.txt", "Land someone else's change");
 		// Open PR invalidates widgets' children before its retest; the repo keeps its rows meanwhile.
 		const behind = await openPr(page, "Add the behind feature", `${gh.url}/acme/widgets/pull/3`, [
-			[["ready-to-land-row", "waiting-row"], "Add the behind feature"],
-			["ready-to-land-row", "Add the fast-forward feature"],
+			[["ready_to_push", "checks_running"], "Add the behind feature"],
+			["ready_to_push", "Add the fast-forward feature"],
 		]);
 		await behind.tab.close();
 		const pushedBehind = world.git(widgets.forkBare, "rev-parse", "refs/heads/behind-feature");
@@ -700,18 +730,14 @@ async function run() {
 			gh.prs.find((pr) => pr.repository === "acme/widgets" && pr.number === 3)?.headRefName,
 			"behind-feature",
 		);
-		await page
-			.getByTestId("waiting-row")
-			.filter({hasText: "Add the behind feature"})
-			.filter({hasText: "PR #3 · waiting for checks"})
-			.waitFor();
+		await waitingRow(page, "Add the behind feature").waitFor();
 		// widgets' other rows legitimately change once upstream moves past them; the opened row and the
 		// other repos' rows must not.
 		await assertRowsStay(
 			page,
 			[
-				["waiting-row", "Add the behind feature"],
-				["ready-to-land-row", "Add the fast-forward feature"],
+				["checks_running", "Add the behind feature"],
+				["ready_to_push", "Add the fast-forward feature"],
 			],
 			"after the second Open PR on widgets",
 		);
@@ -814,7 +840,7 @@ async function run() {
 		}
 
 		step(
-			"Restart, then upstream moves past a green row: it leaves Ready to land, and the buffer rebases and retests it",
+			"Restart, then upstream moves past a green card: it leaves Ready to Land, and the buffer rebases and retests it",
 		);
 		await stopProcessTree(server);
 		// vaults' green commit leaves while the server is down: its children cache still looks fresh, so the
@@ -863,7 +889,7 @@ async function run() {
 		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
 		const movedPast = sprockets.landUpstream("other.txt", "Land someone else's sprockets change");
 		world.git(sprockets.clone, "fetch", "--quiet", "upstream");
-		// Behind upstream it is Needs Rebase, never ready: it leaves Ready to land, and the ready count drops
+		// Behind upstream it is Needs Rebase, never ready: it leaves Ready to Land, and the ready count drops
 		// below the target, so the buffer rebases and retests it.
 		await staleRow.waitFor({state: "detached"});
 		await staleRow.getByRole("button", {name: "Open PR"}).waitFor();
@@ -873,7 +899,7 @@ async function run() {
 		// Listed at its up-to-date tip once the children refresh catches up with the replay.
 		await staleRow.locator(`a[href="/item/sprockets/${advancedStale}"]`).waitFor();
 		const stale = await openPr(page, "Add the stale feature", `${gh.url}/acme/sprockets/pull/1`, [
-			[["ready-to-land-row", "waiting-row"], "Add the stale feature"],
+			[["ready_to_push", "checks_running"], "Add the stale feature"],
 		]);
 		await stale.tab.close();
 		assert.equal(
@@ -881,12 +907,12 @@ async function run() {
 			advancedStale,
 			"the PR opened on the tip the buffer rebased and retested",
 		);
-		await page
-			.getByTestId("waiting-row")
-			.filter({hasText: "Add the stale feature"})
-			.filter({hasText: "PR #1 · waiting for checks"})
-			.waitFor({timeout: 30_000});
-		await assertRowsStay(page, [["waiting-row", "Add the stale feature"]], "after Open PR on the re-advanced row");
+		await waitingRow(page, "Add the stale feature").waitFor({timeout: 30_000});
+		await assertRowsStay(
+			page,
+			[["checks_running", "Add the stale feature"]],
+			"after Open PR on the re-advanced row",
+		);
 
 		step("Checking what reached gh and GitHub");
 		assert.deepEqual(
@@ -918,6 +944,13 @@ async function run() {
 		ok = true;
 		console.log("\n✓ landing flows passed");
 	} finally {
+		if (!ok && debugPage !== undefined) {
+			const text = await debugPage
+				.locator("main")
+				.innerText()
+				.catch((error) => String(error));
+			fs.writeFileSync(path.join(world.dirs.root, "queue-page.txt"), text);
+		}
 		sampleMemory = async () => {};
 		const reports = await waitForChromiumCrashReports(startedAt, {crashSeen: crashes.length > 0});
 		if (crashes.length > 0 || reports.length > 0) {

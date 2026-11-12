@@ -4,7 +4,7 @@ import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import "@git-diff-view/react/styles/diff-view.css";
 import {BranchActions, PullRequestActions} from "../components/commit-actions";
 import {FileDiffSection, DiffToolbar} from "../components/diff-section";
-import {ReadyLandPanel} from "../components/ready-to-land-section";
+import {ReadyLandPanel} from "../components/land-control";
 import {
 	diffQueryOptions,
 	projectChildrenQueryOptions,

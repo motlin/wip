@@ -90,7 +90,7 @@ const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 const tierOf = (item: ReadyToLandItem): number => PRIORITY_RANK[item.priority ?? DEFAULT_PRIORITY];
 
 /**
- * The Ready to land section's row order, the same whatever order the server lists items in and
+ * The landing columns' card order, the same whatever order the server lists items in and
  * whichever list (ready, awaiting checks, checks failed) each sits in: effective priority first
  * ("priority is ordering", as in orderReadyQueue), then oldest first seen, then project, then
  * patch-id, with stack prefixes pulled before the commits stacked on them. A row that changes state

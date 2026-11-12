@@ -114,7 +114,7 @@ describe("flowCounts", () => {
 		).toStrictEqual({wip: 3, commits: 3, todos: 0, red: 4, blocked: 0, ready: 0, slots: 3});
 	});
 
-	it("counts ready as the Ready to land section's landable rows, never a green commit the buffer does not list", () => {
+	it("counts ready as the landable cards in the landing columns, never a green commit the buffer does not list", () => {
 		expect(
 			flowCounts({
 				projects: [project],

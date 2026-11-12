@@ -3,17 +3,17 @@ import type {ReactNode} from "react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 import {act, cleanup, fireEvent, render, screen, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider, skipToken, useQuery} from "@tanstack/react-query";
-import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import {readyIndex, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {ActionResult} from "@wip/shared/schemas.js";
 import type {MainPush, ProjectInfo} from "@wip/shared";
 
 import {PushMainCards} from "../components/push-main-card";
-import {ReadyToLandSection} from "../components/ready-to-land-section";
+import {CardLand} from "../components/card-land";
 import {Toaster} from "../components/toaster";
 import {useActionOutcomes, useDismissActionOutcome} from "./action-outcomes";
 import {makeChild} from "./test-factories";
 import {clearToasts} from "./toast-store";
-import {useLandReadyItem, usePushUpstreamBranch} from "./use-land-ready-item";
+import {useLandContextValue, usePushUpstreamBranch} from "./use-land-ready-item";
 
 const serverFns = vi.hoisted(() => ({
 	createPr: vi.fn<(...args: unknown[]) => Promise<ActionResult>>(),
@@ -77,21 +77,19 @@ function useCommits(fromCache: boolean) {
 
 function Harness({fromCache = false}: {fromCache?: boolean}) {
 	const commits = useCommits(fromCache);
-	const land = useLandReadyItem();
+	const land = useLandContextValue(state, commits, [plain]);
 	const pushMain = usePushUpstreamBranch();
 	const outcomes = useActionOutcomes();
 	const dismiss = useDismissActionOutcome();
+	const card = commits.find((c) => c.sha === SHA);
+	const entry = card === undefined ? undefined : readyIndex(state)(card);
 	return (
 		<>
-			<ReadyToLandSection
-				state={state}
-				commits={commits}
-				projects={[plain]}
-				now={null}
-				onLand={land}
-				outcomes={outcomes}
-				onDismissOutcome={dismiss}
-			/>
+			{card !== undefined && entry !== undefined && (
+				<div data-testid="card">
+					<CardLand commit={card} entry={entry} land={land} />
+				</div>
+			)}
 			<PushMainCards
 				pushes={[push]}
 				project={null}
@@ -163,7 +161,7 @@ describe("landing outcomes outlive their toasts", () => {
 		act(() => {
 			vi.advanceTimersByTime(30_000);
 		});
-		const row = screen.getByTestId("ready-to-land-row");
+		const row = screen.getByTestId("card");
 
 		expect({
 			running,
@@ -184,7 +182,7 @@ describe("landing outcomes outlive their toasts", () => {
 		});
 	});
 
-	it("turns the row into a waiting row linking to the new PR while its checks run in a repo without auto-merge", async () => {
+	it("turns the card's land action into waiting for checks on the new PR in a repo without auto-merge", async () => {
 		serverFns.createPr.mockResolvedValue({
 			ok: true,
 			message: "Opened PR #12",
@@ -201,19 +199,16 @@ describe("landing outcomes outlive their toasts", () => {
 		act(() => {
 			vi.advanceTimersByTime(30_000);
 		});
-		const waiting = screen.getByTestId("waiting-row");
 
 		expect({
 			toast: toastText(),
-			rows: screen.queryAllByTestId("ready-to-land-row").length,
-			waiting: waiting.textContent,
-			link: within(waiting).getByRole("link", {name: "PR #12"}).getAttribute("href"),
+			openPr: screen.queryAllByRole("button", {name: "Open PR"}).length,
+			card: screen.getByTestId("card").textContent,
 			outcome: outcomeText(),
 		}).toStrictEqual({
 			toast: null,
-			rows: 0,
-			waiting: "Add parser · plain · PR #12 · waiting for checksOpened PR #12View on GitHubDismiss",
-			link: "https://github.com/motlin/plain/pull/12",
+			openPr: 0,
+			card: "waiting for checksOpened PR #12View on GitHubDismiss",
 			outcome: "Opened PR #12View on GitHubDismiss",
 		});
 	});

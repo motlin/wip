@@ -1,7 +1,7 @@
 import {createFileRoute, Outlet, Link, useMatchRoute} from "@tanstack/react-router";
 import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {ClipboardList} from "../../components/icons.js";
-import {useState, useMemo, useCallback, useEffect} from "react";
+import {useState, useMemo, useCallback} from "react";
 import {runEscapeHatch, topUpReadyBuffer} from "../../lib/server-fns";
 import {BulkActions} from "../../components/bulk-actions";
 import {
@@ -11,7 +11,6 @@ import {
 	readyToLandQueryOptions,
 	systemStatusQueryOptions,
 } from "../../lib/queries";
-import {ReadyToLandSection} from "../../components/ready-to-land-section";
 import {QueueMain} from "../../components/queue-cards";
 import {useLandContextValue} from "../../lib/use-land-ready-item";
 import {LandContext} from "../../lib/land-context";
@@ -70,19 +69,6 @@ function QueueLayout() {
 	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
 	const {data: flowMetrics} = useQuery(flowMetricsQueryOptions());
 	const {data: mainPushes} = useQuery(mainPushesQueryOptions());
-	// Ages come from the client clock, set after mount so hydration matches the server render.
-	const [now, setNow] = useState<number | null>(null);
-	useEffect(() => {
-		const tick = () => {
-			setNow(Date.now());
-		};
-		const first = setTimeout(tick, 0);
-		const timer = setInterval(tick, 60_000);
-		return () => {
-			clearTimeout(first);
-			clearInterval(timer);
-		};
-	}, []);
 	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects, mainPushes);
 	// A card whose land action runs stays in its column until the outcome settles.
 	const grouped = usePinnedLandings(builtGrouped, landContext.outcomes);
@@ -358,22 +344,7 @@ function QueueLayout() {
 								/>
 							</div>
 						</div>
-						<QueueMain
-							cardsView={cardsView}
-							readyToLand={
-								<ReadyToLandSection
-									state={readyToLand}
-									commits={workItems.gitChildren}
-									projects={projects}
-									now={now}
-									onLand={landContext.onLand}
-									actionsBlocked={landContext.actionsBlocked}
-									onLandByPushing={landContext.onLandByPushing}
-									outcomes={landContext.outcomes}
-									onDismissOutcome={landContext.onDismissOutcome}
-								/>
-							}
-						>
+						<QueueMain cardsView={cardsView}>
 							<Outlet />
 						</QueueMain>
 					</main>

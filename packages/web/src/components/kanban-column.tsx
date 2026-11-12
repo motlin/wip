@@ -8,7 +8,10 @@ import {
 	isGitChildPrRefsMissing,
 	isGitChildRemoteOnly,
 } from "@wip/shared/git-child-discriminators.js";
-import {CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions.js";
+import {CATEGORIES, LANDING_CATEGORIES, categoryTextClass, categoryColumnClass} from "../lib/category-actions.js";
+import {useLandContext} from "../lib/land-context.js";
+import {orderedGitChildren} from "../lib/landing-order.js";
+import {gitChildCard} from "./git-child-card.js";
 import {CommitCard} from "./commit-card.js";
 import {BranchCard} from "./branch-card.js";
 import {PullRequestCard} from "./pull-request-card.js";
@@ -42,23 +45,31 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 	const prRefsItems = items.gitChildren?.filter(isGitChildPrRefsMissing) ?? [];
 	const remoteOnlyCommits = items.gitChildren?.filter(isGitChildRemoteOnly) ?? [];
 	const [expanded, setExpanded] = useState(false);
+	const land = useLandContext();
+	// Landing columns keep the ready buffer's stable row order, as /queue's cards do.
+	const landingOrder = land !== null && LANDING_CATEGORIES.includes(category);
 
+	const gitChildCards: ReactNode[] = landingOrder
+		? orderedGitChildren(items.gitChildren ?? [], category, land).map((child) => gitChildCard(child, category))
+		: [
+				...upstreamCiItems.map((item) => (
+					<UpstreamCiCard key={`${item.remote}-${item.sha}`} item={item} category={category} />
+				)),
+				...prRefsItems.map((item) => (
+					<PrRefsMissingCard key={`pr-refs-${item.project}`} item={item} category={category} />
+				)),
+				...remoteOnlyCommits.map((c) => <RemoteOnlyCard key={c.sha} commit={c} category={category} />),
+				...pullRequests.map((pr) => <PullRequestCard key={pr.sha} pr={pr} category={category} />),
+				...branches
+					.filter((b) => b.commitsAhead === 1)
+					.map((b) => <BranchCard key={b.sha} branch={b} category={category} />),
+				...commits.map((c) => <CommitCard key={c.sha} commit={c} category={category} />),
+				...branches
+					.filter((b) => b.commitsAhead !== 1)
+					.map((b) => <BranchCard key={b.sha} branch={b} category={category} />),
+			];
 	const cards: ReactNode[] = [
-		...upstreamCiItems.map((item) => (
-			<UpstreamCiCard key={`${item.remote}-${item.sha}`} item={item} category={category} />
-		)),
-		...prRefsItems.map((item) => (
-			<PrRefsMissingCard key={`pr-refs-${item.project}`} item={item} category={category} />
-		)),
-		...remoteOnlyCommits.map((c) => <RemoteOnlyCard key={c.sha} commit={c} category={category} />),
-		...pullRequests.map((pr) => <PullRequestCard key={pr.sha} pr={pr} category={category} />),
-		...branches
-			.filter((b) => b.commitsAhead === 1)
-			.map((b) => <BranchCard key={b.sha} branch={b} category={category} />),
-		...commits.map((c) => <CommitCard key={c.sha} commit={c} category={category} />),
-		...branches
-			.filter((b) => b.commitsAhead !== 1)
-			.map((b) => <BranchCard key={b.sha} branch={b} category={category} />),
+		...gitChildCards,
 		...(items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} />) ?? []),
 		...(items.projectItems?.map((p) => (
 			<ProjectBoardItemCard key={`project-${p.project}-${p.number ?? p.title}`} item={p} />

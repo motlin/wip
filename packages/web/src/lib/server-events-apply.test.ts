@@ -301,7 +301,7 @@ describe("other channels", () => {
 		expect(queryClient.getQueryData(["projects"])).toStrictEqual([]);
 	});
 
-	it("writes the ready buffer's state into the cache for the Ready to land section", () => {
+	it("writes the ready buffer's state into the cache for the landing columns", () => {
 		const state = {
 			slots: 2,
 			ready: [{project: "a", id: "p1", sha: "1".repeat(40)}],

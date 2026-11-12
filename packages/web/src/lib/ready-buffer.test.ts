@@ -666,7 +666,7 @@ describe("createReadyBuffer", () => {
 		});
 	});
 
-	it("exposes slots, ready, in-flight, next and stopped projects for the Ready to land section, listing nothing in a stopped repo", async () => {
+	it("exposes slots, ready, in-flight, next and stopped projects for the landing columns, listing nothing in a stopped repo", async () => {
 		const repos = [
 			repo("red", {upstreamRed: true, candidates: candidates(1, {c1: {state: "ready", branch: "red-fix"}})}),
 			repo("a", {landing: "fast-forward"}),

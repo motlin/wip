@@ -6,7 +6,7 @@ import type {ActionOutcomes} from "./action-outcomes";
 
 /**
  * What a card needs to land from /queue, /queue/table or /kanban: the ready buffer's row for a
- * child (`readyItemOf`, the only gate on ready) and the landing handlers the Ready to land section uses,
+ * child (`readyItemOf`, the only gate on ready) and the landing handlers,
  * plus what heads the Ready to Land column: the buffer's counts and notices and the Push main cards.
  * Pages without it (item, diff) keep each state's own next step.
  */

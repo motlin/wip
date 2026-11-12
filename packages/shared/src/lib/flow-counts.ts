@@ -27,7 +27,7 @@ export interface FlowCountsInput {
 	projects: readonly ProjectInfo[];
 	gitChildren: readonly GitChildResult[];
 	todos: readonly TodoItem[];
-	/** The ready buffer's state; ready counts its landable rows, the Ready to land section's own count. */
+	/** The ready buffer's state; ready counts its landable rows, the Ready to Land column header's own count. */
 	readyToLand: ReadyToLandState | null | undefined;
 	/** How many commits the ready buffer keeps ready (readyBuffer.size). */
 	slots: number | undefined;

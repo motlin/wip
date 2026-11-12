@@ -5,6 +5,7 @@ import {
 	openPrRefusal,
 	prChecksFailed,
 	prChecksPending,
+	readyRowView,
 	type ReadyToLandItem,
 	type ReadyToLandState,
 } from "@wip/shared/ready-to-land.js";
@@ -13,7 +14,7 @@ import {Loader2} from "./icons.js";
 
 export const CANCEL_CLASS = "rounded-md border border-border-300 px-2.5 py-1 font-medium text-text-300 hover:bg-bg-200";
 
-export const REVIEW_CLASS =
+const REVIEW_CLASS =
 	"rounded-md border border-border-300 px-2.5 py-1 text-xs font-medium text-text-100 hover:bg-bg-200 hover:text-text-000";
 
 /**
@@ -178,13 +179,20 @@ export function ActionOutcomeLine({
  * and its result never change the row's height or move the page). Escape closes it when `onClose`
  * is set; a click outside closes it too when `closeOnOutside` is set.
  */
+/** "end": the overlay's right edge lines up with its button's (rows, whose button sits at their right); "start": its left edge. */
+export type PopoverAlign = "start" | "end";
+
+const ALIGN_CLASS: Record<PopoverAlign, string> = {start: "left-0 right-auto", end: "left-auto right-0"};
+
 function ActionPopover({
 	label,
 	onClose,
 	closeOnOutside = false,
+	align = "end",
 	children,
 }: {
 	label: string;
+	align?: PopoverAlign | undefined;
 	onClose?: (() => void) | undefined;
 	closeOnOutside?: boolean;
 	children: ReactNode;
@@ -212,7 +220,7 @@ function ActionPopover({
 			ref={ref}
 			open
 			aria-label={label}
-			className="absolute left-auto right-0 top-full z-20 m-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border-300 bg-bg-000 px-3 py-2 text-left text-xs font-normal text-text-100 shadow-lg"
+			className={`absolute ${ALIGN_CLASS[align]} top-full z-20 m-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-border-300 bg-bg-000 px-3 py-2 text-left text-xs font-normal text-text-100 shadow-lg`}
 		>
 			{children}
 		</dialog>
@@ -231,8 +239,10 @@ export function ActionSlot({
 	onCancel,
 	outcome,
 	onDismissOutcome,
+	align,
 }: {
 	children?: ReactNode;
+	align?: PopoverAlign | undefined;
 	confirm?: ReactNode;
 	confirmLabel?: string;
 	onCancel?: () => void;
@@ -243,13 +253,14 @@ export function ActionSlot({
 		<div className="relative flex shrink-0 items-center">
 			{children}
 			{confirm !== undefined && confirm !== null ? (
-				<ActionPopover label={confirmLabel ?? "Confirm"} onClose={onCancel} closeOnOutside>
+				<ActionPopover label={confirmLabel ?? "Confirm"} onClose={onCancel} closeOnOutside align={align}>
 					{confirm}
 				</ActionPopover>
 			) : (
 				outcome !== undefined && (
 					<ActionPopover
 						label="Action result"
+						align={align}
 						onClose={outcome.status === "success" ? onDismissOutcome : undefined}
 						closeOnOutside={outcome.status === "success"}
 					>
@@ -269,13 +280,15 @@ export interface LandControlProps {
 	/** The row's latest landing outcome; the button waits while one is in progress. */
 	outcome?: ActionOutcome | undefined;
 	onDismissOutcome?: (() => void) | undefined;
+	/** Which edge of the button its overlays line up with: "start" on a card, whose button sits at its left. */
+	align?: PopoverAlign | undefined;
 }
 
 /**
  * The landing button plus the overlay it opens (the confirm, then the outcome); nothing lands until
  * the user confirms.
  */
-export function LandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome}: LandControlProps) {
+export function LandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome, align}: LandControlProps) {
 	const running = outcome?.status === "running";
 	const [confirming, setConfirming] = useState(false);
 	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
@@ -322,6 +335,7 @@ export function LandControl({item, commit, projectInfo, onLand, outcome, onDismi
 			}}
 			outcome={outcome}
 			onDismissOutcome={onDismissOutcome}
+			align={align}
 		>
 			<button
 				type="button"
@@ -418,6 +432,54 @@ export function LandByPushing({
 					</div>
 				</div>
 			)}
+		</div>
+	);
+}
+
+export interface ReadyLandPanelProps {
+	state: ReadyToLandState | null | undefined;
+	sha: string;
+	commit: GitChildResult | undefined;
+	projectInfo: ProjectInfo;
+	onLand: (item: ReadyToLandItem, commit: GitChildResult | undefined) => void;
+	/** The commit's latest landing outcome, kept on the panel until its next action. */
+	outcome?: ActionOutcome | undefined;
+	onDismissOutcome?: (() => void) | undefined;
+}
+
+/** The diff page's landing action, so the flow is review then land; only for a ready commit. */
+export function ReadyLandPanel({
+	state,
+	sha,
+	commit,
+	projectInfo,
+	onLand,
+	outcome,
+	onDismissOutcome,
+}: ReadyLandPanelProps) {
+	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? []), ...(state?.checksFailed ?? [])].find(
+		(r) => r.project === projectInfo.name && r.sha === sha,
+	);
+	if (!state || item === undefined || readyRowView(item, commit) !== "land") return null;
+	return (
+		<ReadyLandPanelBody
+			item={item}
+			commit={commit}
+			projectInfo={projectInfo}
+			onLand={onLand}
+			outcome={outcome}
+			onDismissOutcome={onDismissOutcome}
+		/>
+	);
+}
+
+function ReadyLandPanelBody(props: LandControlProps) {
+	return (
+		<div className="mb-4 rounded-lg border border-status-green/40 bg-bg-100 px-4 py-2.5">
+			<div className="flex items-center justify-between gap-3">
+				<span className="text-sm font-medium text-text-100">Ready to land</span>
+				<LandControl {...props} />
+			</div>
 		</div>
 	);
 }

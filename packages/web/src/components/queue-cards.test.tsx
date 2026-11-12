@@ -31,10 +31,11 @@ function queueContext(): QueueContextValue {
 	];
 	grouped.upstream_red.gitChildren = [makeChild({kind: "upstream_ci", subject: "Fix failing CI"})];
 	grouped.remote_only.gitChildren = [makeChild({subject: "Lost commit"})];
+	grouped.ready_to_push.gitChildren = [makeChild({subject: "Ready commit"})];
 	grouped.ready_to_test.gitChildren = [makeChild({subject: "Untested commit"})];
 	return {
 		grouped,
-		totalCount: 4,
+		totalCount: 5,
 		readyToTestCount: 1,
 		needsRebaseCount: 0,
 		projectCount: 1,
@@ -50,9 +51,7 @@ function renderQueue(cardsView: boolean): string[] {
 	const context = queueContext();
 	const {container} = render(
 		<QueueContext.Provider value={context}>
-			<QueueMain cardsView={cardsView} readyToLand={<h2>Ready to land</h2>}>
-				{cardsView ? <QueueCards /> : <QueueTable />}
-			</QueueMain>
+			<QueueMain cardsView={cardsView}>{cardsView ? <QueueCards /> : <QueueTable />}</QueueMain>
 		</QueueContext.Provider>,
 	);
 	if (cardsView) return screen.getAllByRole("heading").map((heading) => heading.textContent);
@@ -65,22 +64,22 @@ describe("QueueMain", () => {
 		cleanup();
 	});
 
-	it("ranks the blocking cards first: Set Up PR Refs, then Upstream Red, both above Ready to land, then the commit categories", () => {
+	it("ranks the blocking cards first: Set Up PR Refs, then Upstream Red, then Remote Only, then the landing columns and commit categories", () => {
 		expect(renderQueue(true)).toStrictEqual([
 			`${CATEGORY_PRIORITY.length} Set Up PR Refs1`,
 			`${CATEGORY_PRIORITY.length - 1} Upstream Red1`,
-			"Ready to land",
 			`${CATEGORY_PRIORITY.length - 2} Remote Only1`,
+			`${CATEGORY_PRIORITY.indexOf("ready_to_push") + 1} Ready to Land1`,
 			`${CATEGORY_PRIORITY.indexOf("ready_to_test") + 1} Ready to Test1`,
 		]);
 	});
 
-	it("ranks the blocking rows first on the table view too: their own table above Ready to land, the other rows below", () => {
+	it("ranks the blocking rows first on the table view too: their own table above the other rows", () => {
 		expect(renderQueue(false)).toStrictEqual([
 			`${CATEGORY_PRIORITY.length} \u00b7 Set Up PR Refs \u2014 1`,
 			`${CATEGORY_PRIORITY.length - 1} \u00b7 Upstream Red \u2014 1`,
-			"Ready to land",
 			`${CATEGORY_PRIORITY.length - 2} \u00b7 Remote Only \u2014 1`,
+			`${CATEGORY_PRIORITY.indexOf("ready_to_push") + 1} \u00b7 Ready to Land \u2014 1`,
 			`${CATEGORY_PRIORITY.indexOf("ready_to_test") + 1} \u00b7 Ready to Test \u2014 1`,
 		]);
 	});

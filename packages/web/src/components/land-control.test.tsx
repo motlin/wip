@@ -4,7 +4,7 @@ import {cleanup, fireEvent, render, screen, within} from "@testing-library/react
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {makeChild} from "../lib/test-factories";
-import {billingCheckCandidates, LandByPushing, LandControl} from "./land-control";
+import {billingCheckCandidates, LandByPushing, LandControl, ReadyLandPanel} from "./land-control";
 import type {ActionOutcome} from "../lib/action-outcomes";
 
 function links(root: HTMLElement): [string, string | null][] {
@@ -80,7 +80,34 @@ function renderControl(
 	);
 }
 
+/** The confirm overlay's horizontal anchor classes for a land control with this alignment. */
+function dialogClass(align: "start" | undefined): string[] {
+	render(
+		<LandControl
+			item={openItem}
+			commit={noTests}
+			projectInfo={project("plain")}
+			onLand={() => undefined}
+			align={align}
+		/>,
+	);
+	fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+	const classes = screen
+		.getByRole("dialog")
+		.className.split(" ")
+		.filter((c) => /^(left|right)-/.test(c));
+	cleanup();
+	return classes;
+}
+
 describe("LandControl", () => {
+	it("opens its confirm toward the card on a card (align start), and lines up with a row's right edge by default", () => {
+		expect({card: dialogClass("start"), row: dialogClass(undefined)}).toStrictEqual({
+			card: ["left-0", "right-auto"],
+			row: ["left-auto", "right-0"],
+		});
+	});
+
 	afterEach(() => {
 		cleanup();
 	});
@@ -402,5 +429,76 @@ describe("when PR checks can't run", () => {
 			switchedBeforeConfirm: [],
 			switched: [["secret"]],
 		});
+	});
+});
+
+describe("ReadyLandPanel", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	const panelState: ReadyToLandState = {
+		slots: 3,
+		ready: [fastForwardItem, openItem],
+		inFlight: [],
+		next: [],
+		stoppedProjects: [],
+	};
+
+	it("offers the diff page's commit the same confirmed landing action when it is ready", () => {
+		const onLand = vi.fn<OnLand>();
+		render(
+			<ReadyLandPanel
+				state={panelState}
+				sha={sha("a1")}
+				commit={addParser}
+				projectInfo={project("a")}
+				onLand={onLand}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", {name: "Fast-forward main"}));
+		const prompt = screen.getByTestId("land-confirm").textContent;
+		const landedBeforeConfirm = [...onLand.mock.calls];
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+
+		expect({prompt, landedBeforeConfirm, landed: onLand.mock.calls}).toStrictEqual({
+			prompt: 'Fast-forward main in a to "Add parser" (a100000). Local main moves to a100000. Nothing is pushed.ConfirmCancel',
+			landedBeforeConfirm: [],
+			landed: [[fastForwardItem, addParser]],
+		});
+	});
+
+	it("renders nothing for a commit that is not ready to land", () => {
+		const {container} = render(
+			<ReadyLandPanel
+				state={panelState}
+				sha={sha("zz")}
+				commit={undefined}
+				projectInfo={project("a")}
+				onLand={() => undefined}
+			/>,
+		);
+
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("keeps the outcome on the diff page's land panel", () => {
+		render(
+			<ReadyLandPanel
+				state={panelState}
+				sha={sha("p1")}
+				commit={noTests}
+				projectInfo={project("plain")}
+				onLand={() => undefined}
+				outcome={{
+					status: "failure",
+					message: "Open PR failed",
+					link: {href: "/debug/logs", label: "See the log"},
+				}}
+			/>,
+		);
+
+		expect(links(screen.getByTestId("action-outcome"))).toStrictEqual([["See the log", "/debug/logs"]]);
 	});
 });

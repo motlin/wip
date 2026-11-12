@@ -1,18 +1,21 @@
 import {trace, type Tracer} from "@opentelemetry/api";
 import type {SpanExporter} from "@opentelemetry/sdk-trace";
 
-declare global {
+declare global
+{
 	// eslint-disable-next-line no-var
 	var wipOtelInitialized: boolean | undefined;
 }
 
 const DEFAULT_TRACES_URL = "http://127.0.0.1:4318/v1/traces";
 
-function isTracingEnabled(): boolean {
+function isTracingEnabled(): boolean
+{
 	return process.env["WIP_TRACING"] === "true";
 }
 
-export interface Tracing {
+export interface Tracing
+{
 	flush(): Promise<void>;
 	shutdown(): Promise<void>;
 }
@@ -21,7 +24,8 @@ export interface Tracing {
 // every export fail, and forceFlush/shutdown reject with that error; callers that
 // `void` those promises turn it into a fatal unhandled rejection. Every export
 // path below reports failure through warnOnce instead.
-export async function startTracing(url: string): Promise<Tracing> {
+export async function startTracing(url: string): Promise<Tracing>
+{
 	const {NodeSDK} = await import("@opentelemetry/sdk-node");
 	const {ExportResultCode} = await import("@opentelemetry/core");
 	const {BatchSpanProcessor} = await import("@opentelemetry/sdk-trace");
@@ -29,18 +33,27 @@ export async function startTracing(url: string): Promise<Tracing> {
 	const {HttpInstrumentation} = await import("@opentelemetry/instrumentation-http");
 
 	let warned = false;
-	const warnOnce = (error: unknown): void => {
+	const warnOnce = (error: unknown): void =>
+	{
 		if (warned) return;
 		warned = true;
 		const reason = error instanceof Error ? error.message : String(error);
 		console.warn(`[wip] trace export to ${url} failed; tracing continues without a collector: ${reason}`);
 	};
 
-	const otlp = new OTLPTraceExporter({url});
-	const exporter: SpanExporter = {
-		export: (spans, resultCallback) => {
-			otlp.export(spans, (result) => {
-				if (result.code !== ExportResultCode.SUCCESS) {
+	const otlp = new OTLPTraceExporter(
+		{
+			url,
+		},
+	);
+	const exporter: SpanExporter =
+	{
+		export: (spans, resultCallback) =>
+		{
+			otlp.export(spans, (result) =>
+			{
+				if (result.code !== ExportResultCode.SUCCESS)
+				{
 					warnOnce(result.error);
 				}
 				resultCallback(result);
@@ -49,12 +62,18 @@ export async function startTracing(url: string): Promise<Tracing> {
 		shutdown: async () => otlp.shutdown(),
 		forceFlush: async () => otlp.forceFlush(),
 	};
-	const processor = new BatchSpanProcessor({exporter});
-	const sdk = new NodeSDK({
-		serviceName: "wip",
-		spanProcessors: [processor],
-		instrumentations: [new HttpInstrumentation()],
-	});
+	const processor = new BatchSpanProcessor(
+		{
+			exporter,
+		},
+	);
+	const sdk = new NodeSDK(
+		{
+			serviceName: "wip",
+			spanProcessors: [processor],
+			instrumentations: [new HttpInstrumentation()],
+		},
+	);
 
 	sdk.start();
 
@@ -64,12 +83,15 @@ export async function startTracing(url: string): Promise<Tracing> {
 	};
 }
 
-async function initTracing(): Promise<void> {
-	if (!isTracingEnabled()) {
+async function initTracing(): Promise<void>
+{
+	if (!isTracingEnabled())
+	{
 		return;
 	}
 
-	if (globalThis.wipOtelInitialized) {
+	if (globalThis.wipOtelInitialized)
+	{
 		return;
 	}
 	globalThis.wipOtelInitialized = true;
@@ -79,34 +101,46 @@ async function initTracing(): Promise<void> {
 }
 
 const SHUTDOWN_TIMEOUT_MS = 2000;
-const SIGNAL_NUMBERS = {SIGINT: 2, SIGTERM: 15} as const;
+const SIGNAL_NUMBERS =
+{
+	SIGINT: 2,
+	SIGTERM: 15,
+} as const;
 
 // Listening for a signal disables Node's default exit on it, so this handler
 // must exit itself: flush spans for at most SHUTDOWN_TIMEOUT_MS, then exit with
 // the conventional 128+signal code. When another listener owns the signal it
 // is responsible for exiting, so this one only flushes.
-function exitAfterShutdownOnSignals(tracing: Tracing): void {
-	for (const [signal, number] of Object.entries(SIGNAL_NUMBERS)) {
-		process.once(signal, () => {
+function exitAfterShutdownOnSignals(tracing: Tracing): void
+{
+	for (const [signal, number] of Object.entries(SIGNAL_NUMBERS))
+	{
+		process.once(signal, () =>
+		{
 			void shutdownThenExit(tracing, process.listenerCount(signal) === 0 ? 128 + number : undefined);
 		});
 	}
 }
 
-async function shutdownThenExit(tracing: Tracing, exitCode: number | undefined): Promise<void> {
-	const timeout = new Promise<void>((resolve) => {
+async function shutdownThenExit(tracing: Tracing, exitCode: number | undefined): Promise<void>
+{
+	const timeout = new Promise<void>((resolve) =>
+	{
 		setTimeout(resolve, SHUTDOWN_TIMEOUT_MS).unref();
 	});
 	await Promise.race([tracing.shutdown(), timeout]);
-	if (exitCode !== undefined) {
+	if (exitCode !== undefined)
+	{
 		process.exit(exitCode);
 	}
 }
 
-void initTracing().catch((error: unknown) => {
+void initTracing().catch((error: unknown) =>
+{
 	console.warn("[wip] tracing failed to start:", error);
 });
 
-export function getTracer(name = "wip"): Tracer {
+export function getTracer(name = "wip"): Tracer
+{
 	return trace.getTracer(name);
 }

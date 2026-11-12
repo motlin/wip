@@ -4,7 +4,8 @@ import {focusHerdrPaneFn} from "../lib/server-fns.js";
 import {runPendingAction} from "../lib/pending-action.js";
 
 /** The ladder's result for one branch, shown on its card. */
-export function LadderCardState({state}: {state: LadderBranchState}) {
+export function LadderCardState({state}: {state: LadderBranchState})
+{
 	const {paneId, needsAiCommand} = state;
 	return (
 		<div
@@ -43,7 +44,8 @@ export function LadderCardState({state}: {state: LadderBranchState}) {
 						type="button"
 						title="Copy command"
 						aria-label="Copy ladder command"
-						onClick={() => {
+						onClick={() =>
+						{
 							void runPendingAction("Copy command", undefined, async () =>
 								navigator.clipboard.writeText(needsAiCommand),
 							);
@@ -57,8 +59,18 @@ export function LadderCardState({state}: {state: LadderBranchState}) {
 			{paneId && (
 				<button
 					type="button"
-					onClick={() => {
-						void runPendingAction("Focus pane", undefined, async () => focusHerdrPaneFn({data: {paneId}}));
+					onClick={() =>
+					{
+						void runPendingAction("Focus pane", undefined, async () =>
+							focusHerdrPaneFn(
+								{
+									data:
+									{
+										paneId,
+									},
+								},
+							),
+						);
 					}}
 					className="mt-1 inline-flex items-center gap-1 rounded border border-border-300/50 px-1.5 py-0.5 hover:bg-bg-200"
 				>

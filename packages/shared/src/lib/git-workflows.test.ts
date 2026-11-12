@@ -7,43 +7,89 @@ import {join} from "node:path";
 import {applyFixesToBranch, rebaseBranchOntoUpstream} from "./git-workflows.js";
 import {cacheUpstreamSha, getCachedMergeStatuses, initDb, resetDb} from "./db.js";
 
-function git(dir: string, ...args: string[]): string {
-	return execFileSync("git", ["-C", dir, ...args], {encoding: "utf-8"}).trim();
+function git(dir: string, ...args: string[]): string
+{
+	return execFileSync(
+		"git",
+		["-C", dir, ...args],
+		{
+			encoding: "utf-8",
+		},
+	).trim();
 }
 
-function commitFile(dir: string, name: string, content: string, message: string): void {
+function commitFile(dir: string, name: string, content: string, message: string): void
+{
 	writeFileSync(join(dir, name), content);
 	git(dir, "add", ".");
 	git(dir, "commit", "--message", message);
 }
 
-function createRepoWithBareRemote(): {dir: string; remoteDir: string} {
+function createRepoWithBareRemote():
+{
+	dir: string;
+	remoteDir: string;
+}
+{
 	const remoteDir = mkdtempSync(join(tmpdir(), "wip-workflows-remote-"));
-	execFileSync("git", ["init", "--bare"], {cwd: remoteDir, stdio: "ignore"});
+	execFileSync(
+		"git",
+		["init", "--bare"],
+		{
+			cwd: remoteDir,
+			stdio: "ignore",
+		},
+	);
 
 	const dir = mkdtempSync(join(tmpdir(), "wip-workflows-"));
-	execFileSync("git", ["init", "-b", "main"], {cwd: dir, stdio: "ignore"});
+	execFileSync(
+		"git",
+		["init", "-b", "main"],
+		{
+			cwd: dir,
+			stdio: "ignore",
+		},
+	);
 	git(dir, "config", "user.email", "test@test.com");
 	git(dir, "config", "user.name", "Test");
 	git(dir, "remote", "add", "origin", remoteDir);
-	return {dir, remoteDir};
+	return {
+		dir,
+		remoteDir,
+	};
 }
 
 let dir: string | undefined;
 let remoteDir: string | undefined;
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	initDb(":memory:");
 });
 
-afterEach(() => {
+afterEach(() =>
+{
 	resetDb();
-	if (dir) {
-		rmSync(dir, {recursive: true, force: true});
+	if (dir)
+	{
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 		dir = undefined;
 	}
-	if (remoteDir) {
-		rmSync(remoteDir, {recursive: true, force: true});
+	if (remoteDir)
+	{
+		rmSync(
+			remoteDir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 		remoteDir = undefined;
 	}
 });
@@ -53,230 +99,341 @@ afterEach(() => {
 // has exceeded 30s, so allow a wide margin; a genuine hang still fails.
 const GIT_SUBPROCESS_TIMEOUT = 120_000;
 
-describe("rebaseBranchOntoUpstream", {timeout: GIT_SUBPROCESS_TIMEOUT}, () => {
-	it("runs no git step and reports cancelled when the signal is already aborted", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
-		git(dir, "checkout", "-b", "feature");
-		commitFile(dir, "feature.txt", "feature", "feature commit");
-		git(dir, "checkout", "main");
-		const featureBefore = git(dir, "rev-parse", "feature");
+describe(
+	"rebaseBranchOntoUpstream",
+	{
+		timeout: GIT_SUBPROCESS_TIMEOUT,
+	},
+	() =>
+	{
+		it("runs no git step and reports cancelled when the signal is already aborted", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
+			git(dir, "checkout", "-b", "feature");
+			commitFile(dir, "feature.txt", "feature", "feature commit");
+			git(dir, "checkout", "main");
+			const featureBefore = git(dir, "rev-parse", "feature");
 
-		const controller = new AbortController();
-		controller.abort();
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "feature",
-			project: "workflows-cancelled",
-			upstreamRef: "main",
-			rebaseMerges: true,
-			restoreBranch: "main",
-			signal: controller.signal,
+			const controller = new AbortController();
+			controller.abort();
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "feature",
+					project: "workflows-cancelled",
+					upstreamRef: "main",
+					rebaseMerges: true,
+					restoreBranch: "main",
+					signal: controller.signal,
+				},
+			);
+
+			expect(result).toStrictEqual(
+				{
+					ok: false,
+					stage: "cancelled",
+					stderr: "",
+				},
+			);
+			expect(git(dir, "rev-parse", "feature")).toBe(featureBefore);
+			expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
 		});
 
-		expect(result).toStrictEqual({ok: false, stage: "cancelled", stderr: ""});
-		expect(git(dir, "rev-parse", "feature")).toBe(featureBefore);
-		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
-	});
+		it("flags a cancel that interrupts the push step as possibly landed", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
+			git(dir, "push", "origin", "main");
+			git(dir, "checkout", "-b", "feature");
+			commitFile(dir, "feature.txt", "feature", "feature commit");
+			git(dir, "push", "origin", "feature");
+			git(dir, "checkout", "main");
+			commitFile(dir, "main-update.txt", "updated", "main moves forward");
 
-	it("flags a cancel that interrupts the push step as possibly landed", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
-		git(dir, "push", "origin", "main");
-		git(dir, "checkout", "-b", "feature");
-		commitFile(dir, "feature.txt", "feature", "feature commit");
-		git(dir, "push", "origin", "feature");
-		git(dir, "checkout", "main");
-		commitFile(dir, "main-update.txt", "updated", "main moves forward");
+			const controller = new AbortController();
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "feature",
+					project: "workflows-cancel-push",
+					upstreamRef: "main",
+					rebaseMerges: true,
+					restoreBranch: "main",
+					signal: controller.signal,
+					// The push is the only step that prints the remote URL.
+					onOutput: (chunk) =>
+					{
+						if (chunk.includes(remoteDir!)) controller.abort();
+					},
+				},
+			);
 
-		const controller = new AbortController();
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "feature",
-			project: "workflows-cancel-push",
-			upstreamRef: "main",
-			rebaseMerges: true,
-			restoreBranch: "main",
-			signal: controller.signal,
-			// The push is the only step that prints the remote URL.
-			onOutput: (chunk) => {
-				if (chunk.includes(remoteDir!)) controller.abort();
-			},
+			expect(result).toStrictEqual(
+				{
+					ok: false,
+					stage: "cancelled",
+					stderr: "",
+					pushMayHaveLanded: true,
+				},
+			);
 		});
 
-		expect(result).toStrictEqual({ok: false, stage: "cancelled", stderr: "", pushMayHaveLanded: true});
-	});
+		it("rebases a branch behind a moved main and pushes to the configured remote", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
+			git(dir, "push", "origin", "main");
 
-	it("rebases a branch behind a moved main and pushes to the configured remote", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
-		git(dir, "push", "origin", "main");
+			git(dir, "checkout", "-b", "feature");
+			commitFile(dir, "feature.txt", "feature", "feature commit");
+			git(dir, "push", "origin", "feature");
 
-		git(dir, "checkout", "-b", "feature");
-		commitFile(dir, "feature.txt", "feature", "feature commit");
-		git(dir, "push", "origin", "feature");
+			git(dir, "checkout", "main");
+			commitFile(dir, "main-update.txt", "updated", "main moves forward");
 
-		git(dir, "checkout", "main");
-		commitFile(dir, "main-update.txt", "updated", "main moves forward");
+			const chunks: string[] = [];
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "feature",
+					project: "workflows-happy",
+					upstreamRef: "main",
+					rebaseMerges: true,
+					restoreBranch: "main",
+					onOutput: (chunk) => chunks.push(chunk),
+				},
+			);
 
-		const chunks: string[] = [];
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "feature",
-			project: "workflows-happy",
-			upstreamRef: "main",
-			rebaseMerges: true,
-			restoreBranch: "main",
-			onOutput: (chunk) => chunks.push(chunk),
+			expect(result).toStrictEqual(
+				{
+					ok: true,
+					message: "Rebased feature onto main",
+				},
+			);
+
+			// main is now an ancestor of feature (throws on failure)
+			git(dir, "merge-base", "--is-ancestor", "main", "feature");
+
+			// Pushed to the branch-config fallback remote ("origin")
+			const remoteSha = execFileSync(
+				"git",
+				["rev-parse", "feature"],
+				{
+					cwd: remoteDir,
+					encoding: "utf-8",
+				},
+			).trim();
+			expect(remoteSha).toBe(git(dir, "rev-parse", "feature"));
+
+			// Restored to the requested branch afterward
+			expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+
+			expect(chunks.length).toBeGreaterThan(0);
 		});
 
-		expect(result).toStrictEqual({ok: true, message: "Rebased feature onto main"});
+		it("restores the previously checked-out branch when no restoreBranch is given", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
+			git(dir, "push", "origin", "main");
 
-		// main is now an ancestor of feature (throws on failure)
-		git(dir, "merge-base", "--is-ancestor", "main", "feature");
+			git(dir, "checkout", "-b", "feature");
+			commitFile(dir, "feature.txt", "feature", "feature commit");
+			git(dir, "push", "origin", "feature");
 
-		// Pushed to the branch-config fallback remote ("origin")
-		const remoteSha = execFileSync("git", ["rev-parse", "feature"], {
-			cwd: remoteDir,
-			encoding: "utf-8",
-		}).trim();
-		expect(remoteSha).toBe(git(dir, "rev-parse", "feature"));
+			git(dir, "checkout", "main");
+			commitFile(dir, "main-update.txt", "updated", "main moves forward");
+			git(dir, "checkout", "-b", "feature-x");
 
-		// Restored to the requested branch afterward
-		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "feature",
+					project: "workflows-previous-branch",
+					upstreamRef: "main",
+					rebaseMerges: true,
+				},
+			);
 
-		expect(chunks.length).toBeGreaterThan(0);
-	});
-
-	it("restores the previously checked-out branch when no restoreBranch is given", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
-		git(dir, "push", "origin", "main");
-
-		git(dir, "checkout", "-b", "feature");
-		commitFile(dir, "feature.txt", "feature", "feature commit");
-		git(dir, "push", "origin", "feature");
-
-		git(dir, "checkout", "main");
-		commitFile(dir, "main-update.txt", "updated", "main moves forward");
-		git(dir, "checkout", "-b", "feature-x");
-
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "feature",
-			project: "workflows-previous-branch",
-			upstreamRef: "main",
-			rebaseMerges: true,
+			expect(result).toStrictEqual(
+				{
+					ok: true,
+					message: "Rebased feature onto main",
+				},
+			);
+			expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("feature-x");
 		});
 
-		expect(result).toStrictEqual({ok: true, message: "Rebased feature onto main"});
-		expect(git(dir, "rev-parse", "--abbrev-ref", "HEAD")).toBe("feature-x");
-	});
+		it("aborts on conflict, caches merge status, and leaves the branch intact", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "original", "initial");
 
-	it("aborts on conflict, caches merge status, and leaves the branch intact", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "original", "initial");
+			git(dir, "checkout", "-b", "feature");
+			commitFile(dir, "file.txt", "feature change", "feature change");
 
-		git(dir, "checkout", "-b", "feature");
-		commitFile(dir, "file.txt", "feature change", "feature change");
+			git(dir, "checkout", "main");
+			commitFile(dir, "file.txt", "main change", "main change");
 
-		git(dir, "checkout", "main");
-		commitFile(dir, "file.txt", "main change", "main change");
+			const branchSha = git(dir, "rev-parse", "feature");
+			const upstreamSha = git(dir, "rev-parse", "main");
+			cacheUpstreamSha("workflows-conflict", "main", upstreamSha);
 
-		const branchSha = git(dir, "rev-parse", "feature");
-		const upstreamSha = git(dir, "rev-parse", "main");
-		cacheUpstreamSha("workflows-conflict", "main", upstreamSha);
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "feature",
+					project: "workflows-conflict",
+					upstreamRef: "main",
+				},
+			);
 
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "feature",
-			project: "workflows-conflict",
-			upstreamRef: "main",
+			expect(result.ok).toBe(false);
+			if (result.ok) throw new Error("expected failure");
+			expect(result.stage).toBe("rebase");
+
+			// The rebase was aborted: no rebase in progress, branch sha unchanged
+			expect(existsSync(join(dir, ".git", "rebase-merge"))).toBe(false);
+			expect(existsSync(join(dir, ".git", "rebase-apply"))).toBe(false);
+			expect(git(dir, "rev-parse", "feature")).toBe(branchSha);
+
+			const statuses = getCachedMergeStatuses("workflows-conflict", upstreamSha);
+			expect(statuses).toStrictEqual([
+				{
+					sha: branchSha,
+					upstreamSha,
+					commitsAhead: 0,
+					commitsBehind: 1,
+					rebaseable: false,
+				},
+			]);
 		});
 
-		expect(result.ok).toBe(false);
-		if (result.ok) throw new Error("expected failure");
-		expect(result.stage).toBe("rebase");
+		it("refuses to force-push over remote commits that the whole-remote fetch just pulled into the tracking ref", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
+			git(dir, "push", "origin", "main");
+			git(dir, "checkout", "-b", "feature");
+			commitFile(dir, "feature.txt", "feature", "feature commit");
+			git(dir, "push", "origin", "feature");
+			git(dir, "checkout", "main");
 
-		// The rebase was aborted: no rebase in progress, branch sha unchanged
-		expect(existsSync(join(dir, ".git", "rebase-merge"))).toBe(false);
-		expect(existsSync(join(dir, ".git", "rebase-apply"))).toBe(false);
-		expect(git(dir, "rev-parse", "feature")).toBe(branchSha);
-
-		const statuses = getCachedMergeStatuses("workflows-conflict", upstreamSha);
-		expect(statuses).toStrictEqual([
+			// Another machine moves main and adds a commit to feature on the shared remote.
+			const otherDir = mkdtempSync(join(tmpdir(), "wip-workflows-other-"));
+			try
 			{
-				sha: branchSha,
-				upstreamSha,
-				commitsAhead: 0,
-				commitsBehind: 1,
-				rebaseable: false,
-			},
-		]);
-	});
+				execFileSync(
+					"git",
+					["clone", "--branch", "main", remoteDir, otherDir],
+					{
+						stdio: "ignore",
+					},
+				);
+				git(otherDir, "config", "user.email", "other@test.com");
+				git(otherDir, "config", "user.name", "Other");
+				commitFile(otherDir, "main-update.txt", "updated", "main moves forward");
+				git(otherDir, "push", "origin", "main");
+				git(otherDir, "checkout", "feature");
+				commitFile(otherDir, "other.txt", "other", "commit from another machine");
+				git(otherDir, "push", "origin", "feature");
+			}
+			finally
+			{
+				rmSync(
+					otherDir,
+					{
+						recursive: true,
+						force: true,
+					},
+				);
+			}
+			const remoteFeature = execFileSync(
+				"git",
+				["rev-parse", "feature"],
+				{
+					cwd: remoteDir,
+					encoding: "utf-8",
+				},
+			).trim();
 
-	it("refuses to force-push over remote commits that the whole-remote fetch just pulled into the tracking ref", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
-		git(dir, "push", "origin", "main");
-		git(dir, "checkout", "-b", "feature");
-		commitFile(dir, "feature.txt", "feature", "feature commit");
-		git(dir, "push", "origin", "feature");
-		git(dir, "checkout", "main");
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "feature",
+					project: "workflows-lease",
+					upstreamRef: "origin/main",
+					upstreamRemote: "origin",
+					rebaseMerges: true,
+					restoreBranch: "main",
+				},
+			);
 
-		// Another machine moves main and adds a commit to feature on the shared remote.
-		const otherDir = mkdtempSync(join(tmpdir(), "wip-workflows-other-"));
-		try {
-			execFileSync("git", ["clone", "--branch", "main", remoteDir, otherDir], {stdio: "ignore"});
-			git(otherDir, "config", "user.email", "other@test.com");
-			git(otherDir, "config", "user.name", "Other");
-			commitFile(otherDir, "main-update.txt", "updated", "main moves forward");
-			git(otherDir, "push", "origin", "main");
-			git(otherDir, "checkout", "feature");
-			commitFile(otherDir, "other.txt", "other", "commit from another machine");
-			git(otherDir, "push", "origin", "feature");
-		} finally {
-			rmSync(otherDir, {recursive: true, force: true});
-		}
-		const remoteFeature = execFileSync("git", ["rev-parse", "feature"], {cwd: remoteDir, encoding: "utf-8"}).trim();
-
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "feature",
-			project: "workflows-lease",
-			upstreamRef: "origin/main",
-			upstreamRemote: "origin",
-			rebaseMerges: true,
-			restoreBranch: "main",
+			expect(result.ok).toBe(false);
+			if (result.ok) throw new Error("expected failure");
+			expect(result.stage).toBe("push");
+			expect(
+				execFileSync(
+					"git",
+					["rev-parse", "feature"],
+					{
+						cwd: remoteDir,
+						encoding: "utf-8",
+					},
+				).trim(),
+			).toBe(remoteFeature);
 		});
 
-		expect(result.ok).toBe(false);
-		if (result.ok) throw new Error("expected failure");
-		expect(result.stage).toBe("push");
-		expect(execFileSync("git", ["rev-parse", "feature"], {cwd: remoteDir, encoding: "utf-8"}).trim()).toBe(
-			remoteFeature,
-		);
-	});
+		it("fails at checkout for a nonexistent branch", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
 
-	it("fails at checkout for a nonexistent branch", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
+			const result = await rebaseBranchOntoUpstream(
+				dir,
+				{
+					branch: "no-such-branch",
+					project: "workflows-checkout",
+					upstreamRef: "main",
+				},
+			);
 
-		const result = await rebaseBranchOntoUpstream(dir, {
-			branch: "no-such-branch",
-			project: "workflows-checkout",
-			upstreamRef: "main",
+			expect(result.ok).toBe(false);
+			if (result.ok) throw new Error("expected failure");
+			expect(result.stage).toBe("checkout");
+			expect(result.stderr).toContain("no-such-branch");
 		});
+	},
+);
 
-		expect(result.ok).toBe(false);
-		if (result.ok) throw new Error("expected failure");
-		expect(result.stage).toBe("checkout");
-		expect(result.stderr).toContain("no-such-branch");
-	});
-});
+describe(
+	"applyFixesToBranch",
+	{
+		timeout: GIT_SUBPROCESS_TIMEOUT,
+	},
+	() =>
+	{
+		it("returns the exact message when no fix branches exist", async () =>
+		{
+			({dir, remoteDir} = createRepoWithBareRemote());
+			commitFile(dir, "file.txt", "hello", "initial");
+			git(dir, "push", "origin", "main");
 
-describe("applyFixesToBranch", {timeout: GIT_SUBPROCESS_TIMEOUT}, () => {
-	it("returns the exact message when no fix branches exist", async () => {
-		({dir, remoteDir} = createRepoWithBareRemote());
-		commitFile(dir, "file.txt", "hello", "initial");
-		git(dir, "push", "origin", "main");
+			const result = await applyFixesToBranch(
+				dir,
+				{
+					branch: "main",
+					prNumber: 42,
+				},
+			);
 
-		const result = await applyFixesToBranch(dir, {branch: "main", prNumber: 42});
-
-		expect(result).toStrictEqual({ok: false, message: "No fix branches found for PR #42"});
-	});
-});
+			expect(result).toStrictEqual(
+				{
+					ok: false,
+					message: "No fix branches found for PR #42",
+				},
+			);
+		});
+	},
+);

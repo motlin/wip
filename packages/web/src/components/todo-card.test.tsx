@@ -7,7 +7,8 @@ import type {TodoItem} from "@wip/shared";
 import {TodoCard} from "./todo-card.js";
 import {clearToasts, getToasts} from "../lib/toast-store.js";
 
-const serverFns = vi.hoisted(() => ({
+const serverFns = vi.hoisted(() => (
+{
 	runTodoTask: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	snoozeTodoFn: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	unsnoozeTodoFn: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -15,15 +16,21 @@ const serverFns = vi.hoisted(() => ({
 
 vi.mock("../lib/server-fns", () => serverFns);
 
-const todo: TodoItem = {
+const todo: TodoItem =
+{
 	project: "wip",
 	title: "Write the docs",
 	sourceFile: "/repo/wip/.llm/todo.md",
 	sourceLabel: ".llm/todo.md",
 };
-const other: TodoItem = {...todo, title: "Another task"};
+const other: TodoItem =
+{
+	...todo,
+	title: "Another task",
+};
 
-function renderTodo(item: TodoItem) {
+function renderTodo(item: TodoItem)
+{
 	const queryClient = new QueryClient();
 	queryClient.setQueryData(["todos", "wip"], [item, other]);
 	render(
@@ -36,19 +43,32 @@ function renderTodo(item: TodoItem) {
 
 const primaryButtons = () => screen.getAllByRole("button").filter((button) => button.hasAttribute("data-primary"));
 
-describe("TodoCard actions", () => {
-	afterEach(() => {
+describe("TodoCard actions", () =>
+{
+	afterEach(() =>
+	{
 		cleanup();
 		clearToasts();
 		for (const fn of Object.values(serverFns)) fn.mockReset();
 	});
 
-	it("renders Do this task as its one primary action, naming the todo, and queues that todo", async () => {
-		serverFns.runTodoTask.mockResolvedValue({id: "t1", status: "queued", message: "queued"});
+	it("renders Do this task as its one primary action, naming the todo, and queues that todo", async () =>
+	{
+		serverFns.runTodoTask.mockResolvedValue(
+			{
+				id: "t1",
+				status: "queued",
+				message: "queued",
+			},
+		);
 		renderTodo(todo);
 
 		expect(
-			primaryButtons().map((button) => ({label: button.textContent, title: button.getAttribute("title")})),
+			primaryButtons().map((button) => (
+			{
+				label: button.textContent,
+				title: button.getAttribute("title"),
+			})),
 		).toStrictEqual([
 			{
 				label: "Do this task",
@@ -57,54 +77,160 @@ describe("TodoCard actions", () => {
 		]);
 		fireEvent.click(primaryButtons()[0]!);
 
-		await waitFor(() => {
+		await waitFor(() =>
+		{
 			expect(serverFns.runTodoTask.mock.calls).toStrictEqual([
-				[{data: {project: "wip", sourceFile: "/repo/wip/.llm/todo.md", title: "Write the docs"}}],
+				[
+					{
+						data:
+						{
+							project: "wip",
+							sourceFile: "/repo/wip/.llm/todo.md",
+							title: "Write the docs",
+						},
+					},
+				],
 			]);
 		});
 	});
 
-	it("says in plain words that it is working on the todo", async () => {
-		serverFns.runTodoTask.mockResolvedValue({id: "t1", status: "queued", message: 'Queued after "Other"'});
+	it("says in plain words that it is working on the todo", async () =>
+	{
+		serverFns.runTodoTask.mockResolvedValue(
+			{
+				id: "t1",
+				status: "queued",
+				message: 'Queued after "Other"',
+			},
+		);
 		renderTodo(todo);
 
 		fireEvent.click(primaryButtons()[0]!);
 
-		await waitFor(() => {
-			expect(getToasts().map(({level, message, detail}) => ({level, message, detail}))).toStrictEqual([
-				{level: "info", message: 'Working on "Write the docs"…', detail: 'Queued after "Other"'},
+		await waitFor(() =>
+		{
+			expect(
+				getToasts().map(({level, message, detail}) => (
+				{
+					level,
+					message,
+					detail,
+				})),
+			).toStrictEqual([
+				{
+					level: "info",
+					message: 'Working on "Write the docs"…',
+					detail: 'Queued after "Other"',
+				},
 			]);
 		});
 	});
 
-	it("puts the todo On hold from More and writes the hold into the todos cache", async () => {
-		serverFns.snoozeTodoFn.mockResolvedValue({ok: true, message: "On hold"});
+	it("puts the todo On hold from More and writes the hold into the todos cache", async () =>
+	{
+		serverFns.snoozeTodoFn.mockResolvedValue(
+			{
+				ok: true,
+				message: "On hold",
+			},
+		);
 		const queryClient = renderTodo(todo);
 
-		fireEvent.click(screen.getByRole("button", {name: "More"}));
-		fireEvent.click(screen.getByRole("button", {name: "On hold"}));
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "More",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "On hold",
+				},
+			),
+		);
 
-		await waitFor(() => {
-			expect(queryClient.getQueryData(["todos", "wip"])).toStrictEqual([{...todo, onHold: true}, other]);
+		await waitFor(() =>
+		{
+			expect(queryClient.getQueryData(["todos", "wip"])).toStrictEqual([
+				{
+					...todo,
+					onHold: true,
+				},
+				other,
+			]);
 		});
 		expect(serverFns.snoozeTodoFn.mock.calls).toStrictEqual([
-			[{data: {project: "wip", sourceFile: "/repo/wip/.llm/todo.md", title: "Write the docs", until: null}}],
+			[
+				{
+					data:
+					{
+						project: "wip",
+						sourceFile: "/repo/wip/.llm/todo.md",
+						title: "Write the docs",
+						until: null,
+					},
+				},
+			],
 		]);
 	});
 
-	it("offers Unsnooze on a todo on hold and clears the hold in the cache", async () => {
-		serverFns.unsnoozeTodoFn.mockResolvedValue({ok: true, message: "Unsnoozed"});
-		const held = {...todo, onHold: true};
+	it("offers Unsnooze on a todo on hold and clears the hold in the cache", async () =>
+	{
+		serverFns.unsnoozeTodoFn.mockResolvedValue(
+			{
+				ok: true,
+				message: "Unsnoozed",
+			},
+		);
+		const held =
+		{
+			...todo,
+			onHold: true,
+		};
 		const queryClient = renderTodo(held);
 
-		fireEvent.click(screen.getByRole("button", {name: "More"}));
-		fireEvent.click(screen.getByRole("button", {name: "Unsnooze"}));
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "More",
+				},
+			),
+		);
+		fireEvent.click(
+			screen.getByRole(
+				"button",
+				{
+					name: "Unsnooze",
+				},
+			),
+		);
 
-		await waitFor(() => {
-			expect(queryClient.getQueryData(["todos", "wip"])).toStrictEqual([{...todo, onHold: false}, other]);
+		await waitFor(() =>
+		{
+			expect(queryClient.getQueryData(["todos", "wip"])).toStrictEqual([
+				{
+					...todo,
+					onHold: false,
+				},
+				other,
+			]);
 		});
 		expect(serverFns.unsnoozeTodoFn.mock.calls).toStrictEqual([
-			[{data: {project: "wip", sourceFile: "/repo/wip/.llm/todo.md", title: "Write the docs"}}],
+			[
+				{
+					data:
+					{
+						project: "wip",
+						sourceFile: "/repo/wip/.llm/todo.md",
+						title: "Write the docs",
+					},
+				},
+			],
 		]);
 	});
 });

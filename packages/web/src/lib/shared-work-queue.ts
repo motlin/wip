@@ -14,4 +14,8 @@ import {createWorkQueue} from "./work-queue.js";
  */
 const GLOBAL_CONCURRENCY = 4;
 
-export const workQueue = createWorkQueue({globalConcurrency: GLOBAL_CONCURRENCY});
+export const workQueue = createWorkQueue(
+	{
+		globalConcurrency: GLOBAL_CONCURRENCY,
+	},
+);

@@ -14,28 +14,49 @@ const recordingsDir = resolve(currentDir, "..", "__recordings__");
 
 const isRecordMode = process.env["POLLY_RECORD"] === "true";
 
-interface RecordingEntry {
-	request?: {headers?: Array<{name: string; value: string}>};
+interface RecordingEntry
+{
+	request?:
+	{
+		headers?: Array<
+		{
+			name: string;
+			value: string;
+		}>;
+	};
 }
 
-export function setupPolly(context: {name: string}): {
+export function setupPolly(context: {name: string}):
+{
 	polly: Polly;
 	stop: () => Promise<void>;
-} {
-	const config: PollyConfig = {
+}
+{
+	const config: PollyConfig =
+	{
 		mode: isRecordMode ? "record" : "replay",
 		adapters: ["fetch"],
-		adapterOptions: {
-			fetch: {context: globalThis},
+		adapterOptions:
+		{
+			fetch:
+			{
+				context: globalThis,
+			},
 		},
 		persister: "fs",
-		persisterOptions: {
-			fs: {recordingsDir},
+		persisterOptions:
+		{
+			fs:
+			{
+				recordingsDir,
+			},
 		},
 		recordIfMissing: isRecordMode,
 		recordFailedRequests: true,
-		matchRequestsBy: {
-			headers: {
+		matchRequestsBy:
+		{
+			headers:
+			{
 				exclude: ["authorization", "user-agent"],
 			},
 		},
@@ -45,9 +66,12 @@ export function setupPolly(context: {name: string}): {
 	const polly = new Polly(context.name, config);
 
 	// Sanitize auth tokens from recordings before persisting
-	polly.server.any().on("beforePersist", (_req, recording: RecordingEntry) => {
-		for (const header of recording.request?.headers ?? []) {
-			if (header.name.toLowerCase() === "authorization") {
+	polly.server.any().on("beforePersist", (_req, recording: RecordingEntry) =>
+	{
+		for (const header of recording.request?.headers ?? [])
+		{
+			if (header.name.toLowerCase() === "authorization")
+			{
 				header.value = "bearer [REDACTED]";
 			}
 		}

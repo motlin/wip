@@ -1,6 +1,7 @@
 {
 	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-	"workspaces": {
+	"workspaces":
+	{
 		"patterns": ["packages/*"],
 	},
 	// src/stories/**/*.mdx mirrors the Storybook stories glob in
@@ -22,7 +23,8 @@
 		"packages/shared/src/test/test-diagnostics.ts",
 	],
 	"ignorePatterns": ["**/dist/**", "**/.output/**", "**/node_modules/**", "packages/web/.storybook/**"],
-	"rules": {
+	"rules":
+	{
 		"unused-dependencies": "error",
 	},
 	// Per-project: deps fallow can't see statically because they load via config

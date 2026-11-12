@@ -7,7 +7,8 @@
 import * as os from "node:os";
 import type {WorkResourceProbe} from "./work-queue.js";
 
-export function createSystemProbe(): WorkResourceProbe {
+export function createSystemProbe(): WorkResourceProbe
+{
 	return {
 		loadPerCore: () => (os.loadavg()[0] ?? 0) / Math.max(1, os.cpus().length),
 		freeMemRatio: () => os.freemem() / Math.max(1, os.totalmem()),

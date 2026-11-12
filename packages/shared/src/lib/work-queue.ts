@@ -21,7 +21,8 @@
 
 import {log} from "../services/logger-pino.js";
 
-export interface WorkResourceProbe {
+export interface WorkResourceProbe
+{
 	/** 1-minute load average divided by core count. */
 	loadPerCore(): number;
 	/** Free memory as a fraction of total (0..1). */
@@ -33,7 +34,13 @@ export type WorkPriority = "foreground" | "background";
 /** Coarse cost of a job; each class has its own concurrency cap. */
 export type CostClass = "cheap" | "git-write" | "build" | "ai";
 
-export const DEFAULT_CLASS_CAPS: Record<CostClass, number> = {cheap: 3, "git-write": 2, build: 2, ai: 1};
+export const DEFAULT_CLASS_CAPS: Record<CostClass, number> =
+{
+	cheap: 3,
+	"git-write": 2,
+	build: 2,
+	ai: 1,
+};
 
 /**
  * Optional cross-process lock for a resource key. Resolves to a release function once the lock is
@@ -49,7 +56,8 @@ export type ResourceLock = (resource: string, signal: AbortSignal) => Promise<()
  */
 export const MACHINE_BUILD_RESOURCE = "machine:build";
 
-export interface WorkJobSummary {
+export interface WorkJobSummary
+{
 	/** Unique per enqueued job; distinct jobs can share a kind and project (e.g. branch-name per sha). */
 	id: string;
 	kind: string;
@@ -57,20 +65,23 @@ export interface WorkJobSummary {
 	costClass: CostClass;
 }
 
-export interface WorkQueueState {
+export interface WorkQueueState
+{
 	slots: number;
 	running: WorkJobSummary[];
 	queued: WorkJobSummary[];
 	runningByClass: Record<CostClass, number>;
 }
 
-export interface WorkJobErrorEvent {
+export interface WorkJobErrorEvent
+{
 	kind: string;
 	project: string;
 	message: string;
 }
 
-export interface JobHandle {
+export interface JobHandle
+{
 	id: string;
 	coalesced: boolean;
 	/** Resolves when the job leaves the queue (finished, errored, or cancelled). Never rejects. */
@@ -79,7 +90,8 @@ export interface JobHandle {
 	cancel: () => boolean;
 }
 
-export interface EnqueueOptions {
+export interface EnqueueOptions
+{
 	coalesceKey: string;
 	/** Shorthand for a single exclusive resource. */
 	laneKey?: string;
@@ -105,7 +117,8 @@ export interface EnqueueOptions {
 	run: (signal: AbortSignal) => Promise<void>;
 }
 
-export interface WorkQueueOptions {
+export interface WorkQueueOptions
+{
 	globalConcurrency: number;
 	/** Per-class concurrency caps, merged over the defaults. All are bounded by globalConcurrency. */
 	classCaps?: Partial<Record<CostClass, number>>;
@@ -125,7 +138,8 @@ export interface WorkQueueOptions {
 	agingMsPerRank?: number;
 }
 
-export interface WorkQueue {
+export interface WorkQueue
+{
 	enqueue(options: EnqueueOptions): JobHandle;
 	cancel(id: string): boolean;
 	/** Install (or replace) the resource probe after creation — the shared instance is created in client-safe code, but createSystemProbe needs node:os, so the server bootstrap injects it late. */
@@ -148,7 +162,8 @@ export interface WorkQueue {
 	reset(): Promise<void>;
 }
 
-interface Job {
+interface Job
+{
 	id: string;
 	coalesceKey: string;
 	resources: string[];
@@ -187,9 +202,14 @@ const DEFAULT_AGING_MS_PER_RANK = 10_000;
 /** Background jobs start this many rank units behind foreground ones, until aging closes the gap. */
 const BACKGROUND_RANK_PENALTY = 100;
 
-export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
+export function createWorkQueue(options: WorkQueueOptions): WorkQueue
+{
 	const globalConcurrency = options.globalConcurrency;
-	let classCaps: Record<CostClass, number> = {...DEFAULT_CLASS_CAPS, ...options.classCaps};
+	let classCaps: Record<CostClass, number> =
+	{
+		...DEFAULT_CLASS_CAPS,
+		...options.classCaps,
+	};
 	let probe = options.probe ?? null;
 	let resourceLock = options.resourceLock ?? null;
 	let buildLock = options.buildLock ?? null;
@@ -215,25 +235,36 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	const stateListeners = new Set<(state: WorkQueueState) => void>();
 	const errorListeners = new Set<(event: WorkJobErrorEvent) => void>();
 
-	function runningInClass(costClass: CostClass): number {
+	function runningInClass(costClass: CostClass): number
+	{
 		let count = 0;
-		for (const job of running.values()) {
+		for (const job of running.values())
+		{
 			if (job.costClass === costClass) count += 1;
 		}
 		return count;
 	}
 
-	function getState(): WorkQueueState {
+	function getState(): WorkQueueState
+	{
 		return {
 			slots: globalConcurrency,
-			running: [...running.values()].map((job) => ({
+			running: [...running.values()].map((job) => (
+			{
 				id: job.id,
 				kind: job.kind,
 				project: job.project,
 				costClass: job.costClass,
 			})),
-			queued: queued.map((job) => ({id: job.id, kind: job.kind, project: job.project, costClass: job.costClass})),
-			runningByClass: {
+			queued: queued.map((job) => (
+			{
+				id: job.id,
+				kind: job.kind,
+				project: job.project,
+				costClass: job.costClass,
+			})),
+			runningByClass:
+			{
 				cheap: runningInClass("cheap"),
 				"git-write": runningInClass("git-write"),
 				build: runningInClass("build"),
@@ -247,52 +278,62 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	let stateEmitPending = false;
 	let lastEmittedState = "";
 
-	function emitState(): void {
+	function emitState(): void
+	{
 		if (stateListeners.size === 0) return;
 		if (stateEmitPending) return;
 		stateEmitPending = true;
-		setTimeout(() => {
+		setTimeout(() =>
+		{
 			stateEmitPending = false;
 			if (stateListeners.size === 0) return;
 			const state = getState();
 			const serialized = JSON.stringify(state);
 			if (serialized === lastEmittedState) return;
 			lastEmittedState = serialized;
-			for (const listener of stateListeners) {
+			for (const listener of stateListeners)
+			{
 				listener(state);
 			}
 		}, stateCoalesceMs);
 	}
 
-	function resourcesOk(): boolean {
+	function resourcesOk(): boolean
+	{
 		if (!probe) return true;
 		return probe.loadPerCore() < loadThreshold && probe.freeMemRatio() > memFloor;
 	}
 
-	function resourceFull(resource: string): boolean {
+	function resourceFull(resource: string): boolean
+	{
 		return (heldResources.get(resource) ?? 0) >= Math.max(1, resourceCapacity(resource));
 	}
 
-	function releaseResource(resource: string): void {
+	function releaseResource(resource: string): void
+	{
 		const held = (heldResources.get(resource) ?? 0) - 1;
 		if (held > 0) heldResources.set(resource, held);
 		else heldResources.delete(resource);
 	}
 
-	function remove(job: Job): void {
+	function remove(job: Job): void
+	{
 		byId.delete(job.id);
-		if (byCoalesceKey.get(job.coalesceKey) === job) {
+		if (byCoalesceKey.get(job.coalesceKey) === job)
+		{
 			byCoalesceKey.delete(job.coalesceKey);
 		}
 	}
 
-	function effectiveRank(job: Job, at: number): number {
+	function effectiveRank(job: Job, at: number): number
+	{
 		const tierPenalty = job.priority === "background" ? BACKGROUND_RANK_PENALTY : 0;
 		return job.rank + tierPenalty - (at - job.enqueuedAt) / agingMsPerRank;
 	}
 
 	// Order by (tier + rank, improved by waiting time), then enqueue order.
-	function sortQueued(): void {
+	function sortQueued(): void
+	{
 		const at = now();
 		queued.sort((a, b) => effectiveRank(a, at) - effectiveRank(b, at) || a.seq - b.seq);
 	}
@@ -301,16 +342,22 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	 * A queued foreground job blocked only by running preemptible jobs aborts them; they release the
 	 * resources when their runs return, and the foreground job starts on the next pump.
 	 */
-	function preemptFor(job: Job): void {
+	function preemptFor(job: Job): void
+	{
 		if (job.priority !== "foreground") return;
 		const holders = [...running.values()].filter((r) => r.resources.some((res) => job.resources.includes(res)));
 		if (holders.length === 0 || !holders.every((r) => r.preemptible && !r.cancelled)) return;
-		for (const holder of holders) {
+		for (const holder of holders)
+		{
 			if (holder.preempted) continue;
 			holder.preempted = true;
 			holder.preemptedBy = job;
 			log.general.info(
-				{kind: holder.kind, project: holder.project, by: job.kind},
+				{
+					kind: holder.kind,
+					project: holder.project,
+					by: job.kind,
+				},
 				"Preempting background job for a user action",
 			);
 			holder.controller.abort();
@@ -318,7 +365,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	}
 
 	/** A preempted job whose run returned goes back in the queue under its original handle. */
-	function requeue(job: Job): void {
+	function requeue(job: Job): void
+	{
 		job.preempted = false;
 		job.parkedFor = job.preemptedBy;
 		job.preemptedBy = null;
@@ -327,11 +375,13 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		queued.push(job);
 	}
 
-	function pump(): void {
+	function pump(): void
+	{
 		sortQueued();
 		// Before any gate, so a hot probe, the buffer-only rule, or a full slot count never keeps a
 		// user action waiting behind preemptible background work.
-		for (const job of queued) {
+		for (const job of queued)
+		{
 			if (job.resources.some((resource) => resourceFull(resource))) preemptFor(job);
 		}
 		let slots = globalConcurrency - running.size;
@@ -344,9 +394,11 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		// start, and only if no other buffer job runs, so the ready buffer keeps refilling one at a time.
 		let backgroundSlots = slots;
 		let bufferOnly = false;
-		if (!resourcesOk()) {
+		if (!resourcesOk())
+		{
 			backgroundSlots = 1;
-			if (running.size > 0) {
+			if (running.size > 0)
+			{
 				if ([...running.values()].some((job) => job.buffer)) backgroundSlots = 0;
 				bufferOnly = true;
 			}
@@ -355,30 +407,36 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		let changed = false;
 		// Scan in order, skipping blocked jobs so one busy repo or one capped class never
 		// stalls work for every other repo behind it.
-		for (let index = 0; index < queued.length && slots > 0;) {
+		for (let index = 0; index < queued.length && slots > 0;)
+		{
 			const job = queued[index];
 			if (job === undefined) break;
 			const background = job.priority !== "foreground";
 			if (
 				(background && (backgroundSlots <= 0 || (bufferOnly && !job.buffer))) ||
 				(onBattery && job.pauseOnBattery)
-			) {
+			)
+			{
 				index += 1;
 				continue;
 			}
-			if (job.parkedFor !== null) {
-				if (queued.includes(job.parkedFor)) {
+			if (job.parkedFor !== null)
+			{
+				if (queued.includes(job.parkedFor))
+				{
 					index += 1;
 					continue;
 				}
 				job.parkedFor = null;
 			}
-			if (job.resources.some((resource) => resourceFull(resource))) {
+			if (job.resources.some((resource) => resourceFull(resource)))
+			{
 				index += 1;
 				continue;
 			}
 
-			if (runningInClass(job.costClass) >= Math.min(classCaps[job.costClass], globalConcurrency)) {
+			if (runningInClass(job.costClass) >= Math.min(classCaps[job.costClass], globalConcurrency))
+			{
 				index += 1;
 				continue;
 			}
@@ -394,37 +452,60 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			// so it reaches the catch/finally release path instead of escaping pump().
 			const lock = resourceLock;
 			const machineLock = job.costClass === "build" ? buildLock : null;
-			const promise = (async () => {
+			const promise = (async () =>
+			{
 				const releases: Array<() => void> = [];
-				try {
+				try
+				{
 					if (machineLock) releases.push(await machineLock(MACHINE_BUILD_RESOURCE, job.controller.signal));
-					if (lock) {
+					if (lock)
+					{
 						// Sorted so two processes acquiring overlapping sets cannot deadlock.
 						// oxlint-disable-next-line unicorn/no-array-sort -- toSorted is not in the build lib target
-						for (const resource of [...job.resources].sort()) {
+						for (const resource of [...job.resources].sort())
+						{
 							// eslint-disable-next-line no-await-in-loop
 							releases.push(await lock(resource, job.controller.signal));
 						}
 					}
 					await job.run(job.controller.signal);
-				} finally {
+				}
+				finally
+				{
 					// oxlint-disable-next-line unicorn/no-array-reverse -- toReversed is not in the build lib target
 					for (const release of releases.reverse()) release();
 				}
 			})()
-				.catch((error: unknown) => {
+				.catch((error: unknown) =>
+				{
 					if (job.preempted && !job.cancelled) return;
 					const message = error instanceof Error ? error.message : String(error);
-					log.general.error({kind: job.kind, project: job.project, error}, "Background job failed");
-					for (const listener of errorListeners) {
-						listener({kind: job.kind, project: job.project, message});
+					log.general.error(
+						{
+							kind: job.kind,
+							project: job.project,
+							error,
+						},
+						"Background job failed",
+					);
+					for (const listener of errorListeners)
+					{
+						listener(
+							{
+								kind: job.kind,
+								project: job.project,
+								message,
+							},
+						);
 					}
 				})
-				.finally(() => {
+				.finally(() =>
+				{
 					running.delete(job.id);
 					for (const resource of job.resources) releaseResource(resource);
 					inFlight.delete(promise);
-					if (job.preempted && !job.cancelled && !resetting) {
+					if (job.preempted && !job.cancelled && !resetting)
+					{
 						requeue(job);
 						emitState();
 						pump();
@@ -440,11 +521,13 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		if (changed) emitState();
 	}
 
-	function enqueue(enqueueOptions: EnqueueOptions): JobHandle {
+	function enqueue(enqueueOptions: EnqueueOptions): JobHandle
+	{
 		const existing = byCoalesceKey.get(enqueueOptions.coalesceKey);
 		// A cancelled job keeps its coalesce key until its run settles; it must
 		// not absorb a fresh request, or that request is silently dropped.
-		if (existing && !existing.cancelled) {
+		if (existing && !existing.cancelled)
+		{
 			return {
 				id: existing.id,
 				coalesced: true,
@@ -454,10 +537,12 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		}
 
 		let settle!: () => void;
-		const settled = new Promise<void>((resolve) => {
+		const settled = new Promise<void>((resolve) =>
+		{
 			settle = resolve;
 		});
-		const job: Job = {
+		const job: Job =
+		{
 			id: String(nextId++),
 			coalesceKey: enqueueOptions.coalesceKey,
 			resources: [
@@ -493,15 +578,22 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		emitState();
 		queueMicrotask(pump);
 
-		return {id: job.id, coalesced: false, settled, cancel: () => cancel(job.id)};
+		return {
+			id: job.id,
+			coalesced: false,
+			settled,
+			cancel: () => cancel(job.id),
+		};
 	}
 
-	function cancel(id: string): boolean {
+	function cancel(id: string): boolean
+	{
 		const job = byId.get(id);
 		if (!job) return false;
 
 		const queuedIndex = queued.indexOf(job);
-		if (queuedIndex !== -1) {
+		if (queuedIndex !== -1)
+		{
 			queued.splice(queuedIndex, 1);
 			remove(job);
 			job.settle();
@@ -510,7 +602,8 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 			return true;
 		}
 
-		if (running.has(id)) {
+		if (running.has(id))
+		{
 			job.cancelled = true;
 			job.controller.abort();
 			return true;
@@ -518,14 +611,17 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 		return false;
 	}
 
-	async function reset(): Promise<void> {
+	async function reset(): Promise<void>
+	{
 		resetting = true;
-		for (const job of queued) {
+		for (const job of queued)
+		{
 			remove(job);
 			job.settle();
 		}
 		queued.length = 0;
-		while (inFlight.size > 0) {
+		while (inFlight.size > 0)
+		{
 			// Sequential on purpose: inFlight shrinks as jobs settle, so re-check after each wait
 			// eslint-disable-next-line no-await-in-loop
 			await Promise.allSettled(inFlight);
@@ -543,33 +639,45 @@ export function createWorkQueue(options: WorkQueueOptions): WorkQueue {
 	return {
 		enqueue,
 		cancel,
-		setClassCaps: (caps) => {
-			classCaps = {...classCaps, ...caps};
+		setClassCaps: (caps) =>
+		{
+			classCaps =
+			{
+				...classCaps,
+				...caps,
+			};
 			pump();
 		},
-		setOnBattery: (next) => {
+		setOnBattery: (next) =>
+		{
 			onBattery = next;
 			pump();
 		},
-		setProbe: (nextProbe) => {
+		setProbe: (nextProbe) =>
+		{
 			probe = nextProbe;
 		},
-		setResourceLock: (nextLock) => {
+		setResourceLock: (nextLock) =>
+		{
 			resourceLock = nextLock;
 		},
-		setBuildLock: (nextLock) => {
+		setBuildLock: (nextLock) =>
+		{
 			buildLock = nextLock;
 		},
 		getState,
-		onStateChange: (listener) => {
+		onStateChange: (listener) =>
+		{
 			stateListeners.add(listener);
 			return () => stateListeners.delete(listener);
 		},
-		onJobError: (listener) => {
+		onJobError: (listener) =>
+		{
 			errorListeners.add(listener);
 			return () => errorListeners.delete(listener);
 		},
-		reportJobError: (event) => {
+		reportJobError: (event) =>
+		{
 			for (const listener of errorListeners) listener(event);
 		},
 		runningCount: () => running.size,

@@ -5,7 +5,8 @@ import {log} from "./logger-pino.js";
 import {withSubprocessSlot} from "./subprocess-gate.js";
 import {getTracer} from "./telemetry.js";
 
-export interface ExecaResult {
+export interface ExecaResult
+{
 	stdout: string;
 	stderr: string;
 	exitCode: number;
@@ -14,7 +15,8 @@ export interface ExecaResult {
 }
 
 /** A subprocess that exited non-zero (or never started), as a failed action's log shows it. */
-export interface SubprocessFailure {
+export interface SubprocessFailure
+{
 	command: string;
 	exitCode: number;
 	stderr: string;
@@ -24,37 +26,55 @@ type SubprocessFailureListener = (failure: SubprocessFailure) => void;
 const failureListeners = new Set<SubprocessFailureListener>();
 
 /** Hears every failing subprocess, whether or not logging is on, so an action keeps the command that failed it. */
-export function subscribeSubprocessFailures(listener: SubprocessFailureListener): void {
+export function subscribeSubprocessFailures(listener: SubprocessFailureListener): void
+{
 	failureListeners.add(listener);
 }
 
-export function unsubscribeSubprocessFailures(listener: SubprocessFailureListener): void {
+export function unsubscribeSubprocessFailures(listener: SubprocessFailureListener): void
+{
 	failureListeners.delete(listener);
 }
 
 /** The git subcommand and its own args, past global options such as `-C dir` and `-c key=value`. */
-function gitSubcommand(args: readonly string[]): {name: string; rest: readonly string[]} | undefined {
+function gitSubcommand(args: readonly string[]):
+	|
+	  {
+			name: string;
+			rest: readonly string[];
+	  }
+	| undefined
+{
 	let i = 0;
-	while (i < args.length) {
+	while (i < args.length)
+	{
 		const arg = args[i];
 		if (arg === "-C" || arg === "-c") i += 2;
 		else if (arg?.startsWith("-") === true) i += 1;
 		else break;
 	}
 	const name = args[i];
-	return name === undefined ? undefined : {name, rest: args.slice(i + 1)};
+	return name === undefined
+		? undefined
+		:
+			{
+				name,
+				rest: args.slice(i + 1),
+			};
 }
 
 /**
  * True when a git probe exited with the code that answers its question ("not an ancestor", "no such
  * ref", "differs", "conflicts"): the caller handles that exit, so it is not the command that failed an action.
  */
-export function isExpectedProbeExit(command: string, args: readonly string[], exitCode: number): boolean {
+export function isExpectedProbeExit(command: string, args: readonly string[], exitCode: number): boolean
+{
 	if (command !== "git") return false;
 	const sub = gitSubcommand(args);
 	if (sub === undefined) return false;
 	const has = (...flags: string[]): boolean => flags.some((flag) => sub.rest.includes(flag));
-	switch (sub.name) {
+	switch (sub.name)
+	{
 		case "merge-base":
 			return has("--is-ancestor") && exitCode === 1;
 		case "rev-parse":
@@ -79,11 +99,16 @@ export function isExpectedProbeExit(command: string, args: readonly string[], ex
 	}
 }
 
-function reportFailure(failure: SubprocessFailure): void {
-	for (const listener of failureListeners) {
-		try {
+function reportFailure(failure: SubprocessFailure): void
+{
+	for (const listener of failureListeners)
+	{
+		try
+		{
 			listener(failure);
-		} catch {
+		}
+		catch
+		{
 			// a failing listener must not break the subprocess call
 		}
 	}
@@ -100,22 +125,55 @@ function logSubprocess(
 	command: string,
 	args: string[],
 	options: Options | undefined,
-	outcome: {exitCode: number; stderr: string; duration: number},
-): void {
+	outcome:
+	{
+		exitCode: number;
+		stderr: string;
+		duration: number;
+	},
+): void
+{
 	const shown = [command, ...args]
 		.map((arg) => (arg.length > MESSAGE_ARG_MAX ? `${arg.slice(0, MESSAGE_ARG_MAX)}…` : arg))
 		.join(" ");
-	const cwd = options?.cwd === undefined ? {} : {cwd: String(options.cwd)};
+	const cwd =
+		options?.cwd === undefined
+			? {}
+			:
+				{
+					cwd: String(options.cwd),
+				};
 	const {exitCode, stderr, duration} = outcome;
-	if (exitCode === 0) {
-		log.subprocess.debug({cmd: command, args, ...cwd, exitCode, duration}, shown);
+	if (exitCode === 0)
+	{
+		log.subprocess.debug(
+			{
+				cmd: command,
+				args,
+				...cwd,
+				exitCode,
+				duration,
+			},
+			shown,
+		);
 		return;
 	}
 	const level = isExpectedProbeExit(command, args, exitCode) ? "debug" : "info";
-	log.subprocess[level]({cmd: command, args, ...cwd, exitCode, stderr, duration}, `${shown} exited ${exitCode}`);
+	log.subprocess[level](
+		{
+			cmd: command,
+			args,
+			...cwd,
+			exitCode,
+			stderr,
+			duration,
+		},
+		`${shown} exited ${exitCode}`,
+	);
 }
 
-export interface TreeKillOptions {
+export interface TreeKillOptions
+{
 	/**
 	 * Aborting it kills the subprocess and everything it started: the child runs as its own process
 	 * group leader and the whole group gets SIGTERM (a `git test run` spawns test runners and workers).
@@ -128,15 +186,20 @@ export async function tracedExeca(
 	args: string[],
 	options?: Options,
 	tree?: TreeKillOptions,
-): Promise<ExecaResult> {
+): Promise<ExecaResult>
+{
 	// The slot is taken before the span starts, so subprocess.duration_ms measures the run, not the wait.
 	return withSubprocessSlot(async () => runTraced(command, args, options, tree?.killTreeOn));
 }
 
-function killGroup(pid: number): void {
-	try {
+function killGroup(pid: number): void
+{
+	try
+	{
 		process.kill(-pid, "SIGTERM");
-	} catch {
+	}
+	catch
+	{
 		// The group already exited.
 	}
 }
@@ -146,22 +209,30 @@ function killGroup(pid: number): void {
  * manager stopping the server never reaches it and execa's cleanup skips it; the server kills them itself.
  */
 const liveGroups = new Set<number>();
-const SHUTDOWN_SIGNALS = {SIGINT: 2, SIGTERM: 15} as const;
+const SHUTDOWN_SIGNALS =
+{
+	SIGINT: 2,
+	SIGTERM: 15,
+} as const;
 let shutdownHooksInstalled = false;
 
-function killLiveGroups(): void {
+function killLiveGroups(): void
+{
 	for (const pid of liveGroups) killGroup(pid);
 	liveGroups.clear();
 }
 
 // Listening for a signal disables Node's default exit on it. The handler is prepended so it runs
 // before any other listener (telemetry's flush), and exits only when no other listener remains to do so.
-function installShutdownHooks(): void {
+function installShutdownHooks(): void
+{
 	if (shutdownHooksInstalled) return;
 	shutdownHooksInstalled = true;
 	process.once("exit", killLiveGroups);
-	for (const [signal, number] of Object.entries(SHUTDOWN_SIGNALS)) {
-		process.prependOnceListener(signal, () => {
+	for (const [signal, number] of Object.entries(SHUTDOWN_SIGNALS))
+	{
+		process.prependOnceListener(signal, () =>
+		{
 			killLiveGroups();
 			if (process.listenerCount(signal) === 0) process.exit(128 + number);
 		});
@@ -177,25 +248,54 @@ export function execaTree<O extends Options>(
 	args: string[],
 	options: O,
 	killTreeOn: AbortSignal,
-): {subprocess: ReturnType<typeof execa<O & {detached: true}>>} {
+):
+{
+	subprocess: ReturnType<
+		typeof execa<
+			O &
+			{
+				detached: true;
+			}
+		>
+	>;
+}
+{
 	installShutdownHooks();
-	const subprocess = execa(command, args, {...options, detached: true});
+	const subprocess = execa(
+		command,
+		args,
+		{
+			...options,
+			detached: true,
+		},
+	);
 	const {pid} = subprocess;
-	const killTree = (): void => {
+	const killTree = (): void =>
+	{
 		if (pid !== undefined) killGroup(pid);
 	};
 	if (pid !== undefined) liveGroups.add(pid);
 	if (killTreeOn.aborted) killTree();
-	killTreeOn.addEventListener("abort", killTree, {once: true});
-	const release = (): void => {
+	killTreeOn.addEventListener(
+		"abort",
+		killTree,
+		{
+			once: true,
+		},
+	);
+	const release = (): void =>
+	{
 		killTreeOn.removeEventListener("abort", killTree);
 		if (pid !== undefined) liveGroups.delete(pid);
 	};
 	void subprocess.then(release, release);
-	return {subprocess};
+	return {
+		subprocess,
+	};
 }
 
-async function runSubprocess(command: string, args: string[], options: Options | undefined, killTreeOn?: AbortSignal) {
+async function runSubprocess(command: string, args: string[], options: Options | undefined, killTreeOn?: AbortSignal)
+{
 	if (killTreeOn === undefined) return execa(command, args, options);
 	return execaTree(command, args, options ?? {}, killTreeOn).subprocess;
 }
@@ -205,57 +305,98 @@ async function runTraced(
 	args: string[],
 	options?: Options,
 	killTreeOn?: AbortSignal,
-): Promise<ExecaResult> {
+): Promise<ExecaResult>
+{
 	const tracer = getTracer();
-	return tracer.startActiveSpan(`subprocess: ${command}`, async (span) => {
-		span.setAttributes({
-			"subprocess.command": command,
-			"subprocess.args": args.join(" "),
-		});
+	return tracer.startActiveSpan(`subprocess: ${command}`, async (span) =>
+	{
+		span.setAttributes(
+			{
+				"subprocess.command": command,
+				"subprocess.args": args.join(" "),
+			},
+		);
 
 		const start = performance.now();
-		try {
+		try
+		{
 			const result = await runSubprocess(command, args, options, killTreeOn);
 			const duration = Math.round(performance.now() - start);
-			span.setAttributes({
-				"subprocess.exit_code": result.exitCode,
-				"subprocess.duration_ms": duration,
-			});
-			const finished = {
+			span.setAttributes(
+				{
+					"subprocess.exit_code": result.exitCode,
+					"subprocess.duration_ms": duration,
+				},
+			);
+			const finished =
+			{
 				stdout: String(result.stdout ?? ""),
 				stderr: String(result.stderr ?? ""),
 				exitCode: result.exitCode ?? 1,
 				failed: result.failed,
 				command: result.command,
 			};
-			logSubprocess(command, args, options, {...finished, duration});
-			if (finished.exitCode !== 0 && !isExpectedProbeExit(command, args, finished.exitCode)) {
-				reportFailure({command: result.escapedCommand, exitCode: finished.exitCode, stderr: finished.stderr});
+			logSubprocess(
+				command,
+				args,
+				options,
+				{
+					...finished,
+					duration,
+				},
+			);
+			if (finished.exitCode !== 0 && !isExpectedProbeExit(command, args, finished.exitCode))
+			{
+				reportFailure(
+					{
+						command: result.escapedCommand,
+						exitCode: finished.exitCode,
+						stderr: finished.stderr,
+					},
+				);
 			}
 			return finished;
-		} catch (error) {
+		}
+		catch (error)
+		{
 			const duration = Math.round(performance.now() - start);
 			const exitCode = error instanceof ExecaError ? error.exitCode : undefined;
 			const message = error instanceof Error ? error.message : String(error);
-			span.setAttributes({
-				"subprocess.exit_code": exitCode ?? -1,
-				"subprocess.duration_ms": duration,
-			});
-			span.setStatus({code: SpanStatusCode.ERROR, message});
+			span.setAttributes(
+				{
+					"subprocess.exit_code": exitCode ?? -1,
+					"subprocess.duration_ms": duration,
+				},
+			);
+			span.setStatus(
+				{
+					code: SpanStatusCode.ERROR,
+					message,
+				},
+			);
 			const stderr: unknown = error instanceof ExecaError ? error.stderr : undefined;
-			logSubprocess(command, args, options, {
-				exitCode: exitCode ?? -1,
-				stderr: typeof stderr === "string" ? stderr : message,
-				duration,
-			});
-			if (exitCode === undefined || !isExpectedProbeExit(command, args, exitCode))
-				reportFailure({
-					command: error instanceof ExecaError ? error.escapedCommand : [command, ...args].join(" "),
+			logSubprocess(
+				command,
+				args,
+				options,
+				{
 					exitCode: exitCode ?? -1,
 					stderr: typeof stderr === "string" ? stderr : message,
-				});
+					duration,
+				},
+			);
+			if (exitCode === undefined || !isExpectedProbeExit(command, args, exitCode))
+				reportFailure(
+					{
+						command: error instanceof ExecaError ? error.escapedCommand : [command, ...args].join(" "),
+						exitCode: exitCode ?? -1,
+						stderr: typeof stderr === "string" ? stderr : message,
+					},
+				);
 			throw error;
-		} finally {
+		}
+		finally
+		{
 			span.end();
 		}
 	});

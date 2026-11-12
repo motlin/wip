@@ -19,7 +19,8 @@ import {isOnHold} from "./snooze-identity.js";
  * old sha); unnamed tips touch no ref.
  */
 
-export interface LandingSuspect {
+export interface LandingSuspect
+{
 	sha: string;
 	branch?: string;
 	prMerged?: boolean;
@@ -28,21 +29,42 @@ export interface LandingSuspect {
 /** Flags suspects whose branch has a MERGED PR whose head is exactly the suspect's tip. */
 export function markMergedPrs(
 	suspects: readonly LandingSuspect[],
-	merged: ReadonlyArray<{branch: string; headOid: string}>,
-): LandingSuspect[] {
+	merged: ReadonlyArray<
+	{
+		branch: string;
+		headOid: string;
+	}>,
+): LandingSuspect[]
+{
 	const mergedHeads = new Set(merged.map((pr) => `${pr.branch}\u0000${pr.headOid}`));
 	return suspects.map((suspect) =>
 		suspect.branch !== undefined && mergedHeads.has(`${suspect.branch}\u0000${suspect.sha}`)
-			? {...suspect, prMerged: true}
+			?
+				{
+					...suspect,
+					prMerged: true,
+				}
 			: suspect,
 	);
 }
 
 export type LandingOutcome =
-	| {sha: string; branch?: string; outcome: "landed" | "remaining"; newTip: string}
-	| {sha: string; branch?: string; outcome: "conflict"};
+	|
+	  {
+			sha: string;
+			branch?: string;
+			outcome: "landed" | "remaining";
+			newTip: string;
+	  }
+	|
+	  {
+			sha: string;
+			branch?: string;
+			outcome: "conflict";
+	  };
 
-export interface DetectLandingsInput {
+export interface DetectLandingsInput
+{
 	dir: string;
 	project: string;
 	/** The previous upstream tip, or null when unknown. */
@@ -51,22 +73,32 @@ export interface DetectLandingsInput {
 	suspects: LandingSuspect[];
 }
 
-function lines(output: string): string[] {
+function lines(output: string): string[]
+{
 	return output.split("\n").filter(Boolean);
 }
 
 /** Branches checked out in any worktree of `dir`. */
-export async function checkedOutBranches(dir: string): Promise<Set<string>> {
+export async function checkedOutBranches(dir: string): Promise<Set<string>>
+{
 	const output = await git(dir, "worktree", "list", "--porcelain");
 	const branches = new Set<string>();
-	for (const line of lines(output)) {
+	for (const line of lines(output))
+	{
 		if (line.startsWith("branch refs/heads/")) branches.add(line.slice("branch refs/heads/".length));
 	}
 	return branches;
 }
 
-async function isAncestor(dir: string, sha: string, of: string): Promise<boolean> {
-	const result = await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", sha, of], {reject: false});
+async function isAncestor(dir: string, sha: string, of: string): Promise<boolean>
+{
+	const result = await tracedExeca(
+		"git",
+		["-C", dir, "merge-base", "--is-ancestor", sha, of],
+		{
+			reject: false,
+		},
+	);
 	return result.exitCode === 0;
 }
 
@@ -77,13 +109,15 @@ async function hasPatchIdEvidence(
 	tip: string,
 	from: string | null,
 	to: string,
-): Promise<boolean> {
+): Promise<boolean>
+{
 	const own = lines(await git(dir, "rev-list", "--no-merges", `${from ?? to}..${tip}`));
 	const upstream = lines(await git(dir, "rev-list", "--no-merges", from ? `${from}..${to}` : `${tip}..${to}`));
 	if (own.length === 0 || upstream.length === 0) return false;
 	const facts = await getCommitFacts(dir, project, [...own, ...upstream]);
 	const upstreamIds = new Set(upstream.map((sha) => facts.get(sha)?.patchId).filter(Boolean));
-	return own.some((sha) => {
+	return own.some((sha) =>
+	{
 		const patchId = facts.get(sha)?.patchId;
 		return patchId !== undefined && patchId !== "" && upstreamIds.has(patchId);
 	});
@@ -100,7 +134,8 @@ export async function landedPatchIds(
 	from: string | null,
 	to: string,
 	outcome: LandingOutcome,
-): Promise<string[]> {
+): Promise<string[]>
+{
 	const own = lines(await git(dir, "rev-list", "--reverse", "--no-merges", `${from ?? to}..${outcome.sha}`));
 	if (own.length === 0) return [];
 	const upstream =
@@ -117,11 +152,14 @@ export async function landedPatchIds(
 const PROBE_REF = "refs/wip/landing-probe";
 
 /** Replays `to..tip` onto `to` without updating any ref; returns the new tip, or null on conflict. */
-export async function replayOnto(dir: string, tip: string, to: string): Promise<string | null> {
+export async function replayOnto(dir: string, tip: string, to: string): Promise<string | null>
+{
 	const result = await tracedExeca(
 		"git",
 		["-C", dir, "replay", "--ref-action=print", `--ref=${PROBE_REF}`, `--onto=${to}`, `${to}..${tip}`],
-		{reject: false},
+		{
+			reject: false,
+		},
 	);
 	if (result.exitCode !== 0) return null;
 	const update = lines(result.stdout).find((line) => line.startsWith(`update ${PROBE_REF} `));
@@ -132,32 +170,72 @@ async function detectOne(
 	input: DetectLandingsInput,
 	suspect: LandingSuspect,
 	checkedOut: Set<string>,
-): Promise<LandingOutcome | undefined> {
+): Promise<LandingOutcome | undefined>
+{
 	const {dir, project, from, to} = input;
 	const {sha, branch} = suspect;
-	const named = branch === undefined ? {} : {branch};
+	const named =
+		branch === undefined
+			? {}
+			:
+				{
+					branch,
+				};
 
 	if (branch !== undefined && checkedOut.has(branch)) return undefined;
 	const patchId = (await getCommitFacts(dir, project, [sha])).get(sha)?.patchId;
-	if (isOnHold(project, {sha, patchId: patchId === "" ? undefined : patchId})) return undefined;
+	if (
+		isOnHold(
+			project,
+			{
+				sha,
+				patchId: patchId === "" ? undefined : patchId,
+			},
+		)
+	)
+		return undefined;
 
-	if (suspect.prMerged) return {sha, ...named, outcome: "landed", newTip: sha};
-	if (await isAncestor(dir, sha, to)) return {sha, ...named, outcome: "landed", newTip: sha};
+	if (suspect.prMerged)
+		return {
+			sha,
+			...named,
+			outcome: "landed",
+			newTip: sha,
+		};
+	if (await isAncestor(dir, sha, to))
+		return {
+			sha,
+			...named,
+			outcome: "landed",
+			newTip: sha,
+		};
 	if (!(await hasPatchIdEvidence(dir, project, sha, from, to))) return undefined;
 
 	const newTip = await replayOnto(dir, sha, to);
-	if (newTip === null) return {sha, ...named, outcome: "conflict"};
+	if (newTip === null)
+		return {
+			sha,
+			...named,
+			outcome: "conflict",
+		};
 	if (branch !== undefined) await git(dir, "update-ref", `refs/heads/${branch}`, newTip, sha);
-	return {sha, ...named, outcome: newTip === to ? "landed" : "remaining", newTip};
+	return {
+		sha,
+		...named,
+		outcome: newTip === to ? "landed" : "remaining",
+		newTip,
+	};
 }
 
 /** Outcomes for the suspects that had a reason to check; suspects with no evidence are left out. */
-export async function detectLandings(input: DetectLandingsInput): Promise<LandingOutcome[]> {
+export async function detectLandings(input: DetectLandingsInput): Promise<LandingOutcome[]>
+{
 	const checkedOut = input.suspects.some((s) => s.branch !== undefined)
 		? await checkedOutBranches(input.dir)
 		: new Set<string>();
 	const outcomes: LandingOutcome[] = [];
-	for (const suspect of input.suspects) {
+	for (const suspect of input.suspects)
+	{
 		// Sequential on purpose: each check spawns git subprocesses under the shared gate.
 		// eslint-disable-next-line no-await-in-loop
 		const outcome = await detectOne(input, suspect, checkedOut);
@@ -171,15 +249,22 @@ export async function detectLandings(input: DetectLandingsInput): Promise<Landin
  * branch (other than main/master) that does not contain `to`, plus children of
  * `from` that are on no branch and not on upstream (unnamed work).
  */
-export async function findLandingSuspects(dir: string, from: string | null, to: string): Promise<LandingSuspect[]> {
+export async function findLandingSuspects(dir: string, from: string | null, to: string): Promise<LandingSuspect[]>
+{
 	const suspects: LandingSuspect[] = [];
 	const refs = lines(
 		await git(dir, "for-each-ref", "--format=%(objectname) %(refname:short)", `--no-contains=${to}`, "refs/heads/"),
 	);
-	for (const line of refs) {
+	for (const line of refs)
+	{
 		const [sha, branch] = line.split(" ");
 		if (!sha || !branch || branch === "main" || branch === "master") continue;
-		suspects.push({sha, branch});
+		suspects.push(
+			{
+				sha,
+				branch,
+			},
+		);
 	}
 	if (!from) return suspects;
 
@@ -191,6 +276,12 @@ export async function findLandingSuspects(dir: string, from: string | null, to: 
 
 	const heads = lines(await git(dir, "for-each-ref", "--format=%(objectname)", "refs/heads/"));
 	const covered = new Set(lines(await git(dir, "rev-list", to, ...heads, `^${from}`)));
-	for (const sha of children) if (!covered.has(sha)) suspects.push({sha});
+	for (const sha of children)
+		if (!covered.has(sha))
+			suspects.push(
+				{
+					sha,
+				},
+			);
 	return suspects;
 }

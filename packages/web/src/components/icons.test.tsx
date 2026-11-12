@@ -6,12 +6,15 @@ import {cleanup, render} from "@testing-library/react";
 import * as Icons from "./icons.js";
 import {GitBranch, GitHubIcon, IconSprite, Loader2} from "./icons.js";
 
-afterEach(() => {
+afterEach(() =>
+{
 	cleanup();
 });
 
-describe("sprite icons", () => {
-	it("render a reference into the shared sprite instead of inline icon geometry", () => {
+describe("sprite icons", () =>
+{
+	it("render a reference into the shared sprite instead of inline icon geometry", () =>
+	{
 		const {container} = render(
 			<>
 				<GitBranch className="h-4 w-4" />
@@ -25,7 +28,8 @@ describe("sprite icons", () => {
 		);
 	});
 
-	it("renders the GitHub mark as a sprite reference too", () => {
+	it("renders the GitHub mark as a sprite reference too", () =>
+	{
 		const {container} = render(<GitHubIcon className="h-3.5 w-3.5" />);
 
 		expect(container.innerHTML).toBe(
@@ -33,7 +37,8 @@ describe("sprite icons", () => {
 		);
 	});
 
-	it("the sprite defines every icon exactly once, each with geometry", () => {
+	it("the sprite defines every icon exactly once, each with geometry", () =>
+	{
 		const {container} = render(<IconSprite />);
 
 		const symbols = [...container.querySelectorAll("symbol")];
@@ -42,7 +47,8 @@ describe("sprite icons", () => {
 		expect(symbols.filter((s) => s.querySelector("path, circle, line, rect, polyline") === null)).toStrictEqual([]);
 	});
 
-	it("every exported icon references a symbol the sprite defines", () => {
+	it("every exported icon references a symbol the sprite defines", () =>
+	{
 		const {container} = render(
 			<>
 				<IconSprite />
@@ -61,13 +67,19 @@ describe("sprite icons", () => {
 		expect(defined.size).toBe(41);
 	});
 
-	it("many cards' icons add no geometry beyond the sprite's single definition", () => {
+	it("many cards' icons add no geometry beyond the sprite's single definition", () =>
+	{
 		const {container} = render(
 			<>
 				<IconSprite />
-				{Array.from({length: 50}, (_, i) => (
-					<GitBranch key={i} className="h-4 w-4" />
-				))}
+				{Array.from(
+					{
+						length: 50,
+					},
+					(_, i) => (
+						<GitBranch key={i} className="h-4 w-4" />
+					),
+				)}
 			</>,
 		);
 
@@ -78,12 +90,21 @@ describe("sprite icons", () => {
 	});
 });
 
-describe("icon imports", () => {
-	it("only icons.tsx imports lucide-react, so every icon goes through the sprite", () => {
+describe("icon imports", () =>
+{
+	it("only icons.tsx imports lucide-react, so every icon goes through the sprite", () =>
+	{
 		const srcDir = path.resolve(__dirname, "..");
 		const files: string[] = [];
-		const walk = (dir: string) => {
-			for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+		const walk = (dir: string) =>
+		{
+			for (const entry of fs.readdirSync(
+				dir,
+				{
+					withFileTypes: true,
+				},
+			))
+			{
 				const full = path.join(dir, entry.name);
 				if (entry.isDirectory()) walk(full);
 				else if (/\.tsx?$/.test(entry.name) && !entry.name.includes(".test.")) files.push(full);

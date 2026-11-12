@@ -3,7 +3,8 @@ import {EventEmitter} from "node:events";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {initDb, resetDb, loadRecentTaskRecords, upsertTaskRecord} from "@wip/shared";
-import {
+import
+{
 	cancelTest,
 	enqueuePush,
 	enqueueRebase,
@@ -17,33 +18,58 @@ import {
 import {enqueueRefresh, resetScheduler} from "./refresh-scheduler.js";
 import type {Task, TaskStatus} from "./task-queue.js";
 
-const shared = vi.hoisted(() => ({
-	rebaseBranchOntoUpstream: vi.fn<(dir: string, options: {signal: AbortSignal}) => Promise<unknown>>(),
+const shared = vi.hoisted(() => (
+{
+	rebaseBranchOntoUpstream: vi.fn<
+		(
+			dir: string,
+			options:
+			{
+				signal: AbortSignal;
+			},
+		) => Promise<unknown>
+	>(),
 }));
 
-const execaMock = vi.hoisted(() => ({fn: vi.fn<(cmd: string, args: string[]) => unknown>()}));
+const execaMock = vi.hoisted(() => (
+{
+	fn: vi.fn<(cmd: string, args: string[]) => unknown>(),
+}));
 
-vi.mock("execa", () => ({execa: execaMock.fn}));
+vi.mock("execa", () => (
+{
+	execa: execaMock.fn,
+}));
 
-vi.mock("@wip/shared", async (importOriginal) => ({
+vi.mock("@wip/shared", async (importOriginal) => (
+{
 	...(await importOriginal<typeof import("@wip/shared")>()),
 	rebaseBranchOntoUpstream: shared.rebaseBranchOntoUpstream,
 	getMiseEnv: async () => Promise.resolve({}),
 	getCacheDir: () => join(tmpdir(), "wip-task-queue-test-cache"),
-	invalidatePrCache: () => {},
-	invalidateChildrenCache: () => {},
-	invalidateMergeStatus: () => {},
+	invalidatePrCache: () =>
+	{
+	},
+	invalidateChildrenCache: () =>
+	{
+	},
+	invalidateMergeStatus: () =>
+	{
+	},
 }));
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	initDb(":memory:");
 });
 
-afterEach(() => {
+afterEach(() =>
+{
 	resetDb();
 });
 
-function makeTask(id: string, status: TaskStatus, finishedAt?: number): Task {
+function makeTask(id: string, status: TaskStatus, finishedAt?: number): Task
+{
 	return {
 		id,
 		taskType: "test",
@@ -58,87 +84,113 @@ function makeTask(id: string, status: TaskStatus, finishedAt?: number): Task {
 	};
 }
 
-describe("statusToTransition", () => {
-	it("maps queued to run_test for test tasks", () => {
+describe("statusToTransition", () =>
+{
+	it("maps queued to run_test for test tasks", () =>
+	{
 		expect(statusToTransition("queued", "test")).toBe("run_test");
 	});
 
-	it("maps running to run_test for test tasks", () => {
+	it("maps running to run_test for test tasks", () =>
+	{
 		expect(statusToTransition("running", "test")).toBe("run_test");
 	});
 
-	it("maps passed to test_pass for test tasks", () => {
+	it("maps passed to test_pass for test tasks", () =>
+	{
 		expect(statusToTransition("passed", "test")).toBe("test_pass");
 	});
 
-	it("maps failed to test_fail for test tasks", () => {
+	it("maps failed to test_fail for test tasks", () =>
+	{
 		expect(statusToTransition("failed", "test")).toBe("test_fail");
 	});
 
-	it("maps cancelled to cancel_test for test tasks", () => {
+	it("maps cancelled to cancel_test for test tasks", () =>
+	{
 		expect(statusToTransition("cancelled", "test")).toBe("cancel_test");
 	});
 
-	it("covers all TaskStatus values for test tasks", () => {
+	it("covers all TaskStatus values for test tasks", () =>
+	{
 		const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
-		for (const status of allStatuses) {
+		for (const status of allStatuses)
+		{
 			expect(statusToTransition(status, "test")).toBeDefined();
 		}
 	});
 
-	it("returns undefined for claude task types", () => {
+	it("returns undefined for claude task types", () =>
+	{
 		const allStatuses: TaskStatus[] = ["queued", "running", "passed", "failed", "cancelled"];
-		for (const status of allStatuses) {
+		for (const status of allStatuses)
+		{
 			expect(statusToTransition(status, "claude")).toBeUndefined();
 		}
 	});
 
-	it("maps queued and running to rebase for rebase tasks", () => {
+	it("maps queued and running to rebase for rebase tasks", () =>
+	{
 		expect(statusToTransition("queued", "rebase")).toBe("rebase");
 		expect(statusToTransition("running", "rebase")).toBe("rebase");
 	});
 
-	it("returns undefined for terminal rebase statuses", () => {
+	it("returns undefined for terminal rebase statuses", () =>
+	{
 		expect(statusToTransition("passed", "rebase")).toBeUndefined();
 		expect(statusToTransition("failed", "rebase")).toBeUndefined();
 		expect(statusToTransition("cancelled", "rebase")).toBeUndefined();
 	});
 
-	it("maps a failed rebase with conflicts outcome to rebase", () => {
+	it("maps a failed rebase with conflicts outcome to rebase", () =>
+	{
 		expect(statusToTransition("failed", "rebase", "conflicts")).toBe("rebase");
 	});
 
-	it("defaults to test task type when not specified", () => {
+	it("defaults to test task type when not specified", () =>
+	{
 		expect(statusToTransition("passed")).toBe("test_pass");
 	});
 });
 
-describe("cancelling a running rebase", () => {
-	it("passes an abort signal to the rebase and keeps the task cancelled when the rebase returns", async () => {
+describe("cancelling a running rebase", () =>
+{
+	it("passes an abort signal to the rebase and keeps the task cancelled when the rebase returns", async () =>
+	{
 		let releaseRebase: (() => void) | undefined;
 		shared.rebaseBranchOntoUpstream.mockImplementation(
 			async () =>
-				new Promise((resolve) => {
-					releaseRebase = () => {
-						resolve({ok: true, message: "Rebased feature onto upstream/main"});
+				new Promise((resolve) =>
+				{
+					releaseRebase = () =>
+					{
+						resolve(
+							{
+								ok: true,
+								message: "Rebased feature onto upstream/main",
+							},
+						);
 					};
 				}),
 		);
 
-		const task = enqueueRebase({
-			project: "wip",
-			projectDir: "/tmp/wip",
-			sha: "a".repeat(40),
-			shortSha: "aaaaaaa",
-			subject: "Rebase feature",
-			branch: "feature",
-			upstreamRemote: "upstream",
-			upstreamRef: "upstream/main",
-			upstreamBranch: "main",
-			remote: "owner/wip",
-		});
+		const task = enqueueRebase(
+			{
+				project: "wip",
+				projectDir: "/tmp/wip",
+				sha: "a".repeat(40),
+				shortSha: "aaaaaaa",
+				subject: "Rebase feature",
+				branch: "feature",
+				upstreamRemote: "upstream",
+				upstreamRef: "upstream/main",
+				upstreamBranch: "main",
+				remote: "owner/wip",
+			},
+		);
 
-		await vi.waitFor(() => {
+		await vi.waitFor(() =>
+		{
 			expect(shared.rebaseBranchOntoUpstream).toHaveBeenCalledTimes(1);
 		});
 		const signal = shared.rebaseBranchOntoUpstream.mock.calls[0]?.[1].signal;
@@ -148,7 +200,8 @@ describe("cancelling a running rebase", () => {
 		expect(signal?.aborted).toBe(true);
 
 		releaseRebase?.();
-		await new Promise((resolve) => {
+		await new Promise((resolve) =>
+		{
 			setTimeout(resolve, 20);
 		});
 
@@ -157,8 +210,10 @@ describe("cancelling a running rebase", () => {
 	});
 });
 
-describe("pruneTerminalTasks", () => {
-	it("keeps all tasks while under the limit", () => {
+describe("pruneTerminalTasks", () =>
+{
+	it("keeps all tasks while under the limit", () =>
+	{
 		const tasks = new Map<string, Task>([
 			["1", makeTask("1", "passed", 100)],
 			["2", makeTask("2", "failed", 200)],
@@ -167,7 +222,8 @@ describe("pruneTerminalTasks", () => {
 		expect([...tasks.keys()]).toStrictEqual(["1", "2"]);
 	});
 
-	it("drops the oldest-finished terminal tasks beyond the limit", () => {
+	it("drops the oldest-finished terminal tasks beyond the limit", () =>
+	{
 		const tasks = new Map<string, Task>([
 			["1", makeTask("1", "passed", 300)],
 			["2", makeTask("2", "failed", 100)],
@@ -177,7 +233,8 @@ describe("pruneTerminalTasks", () => {
 		expect(new Set(tasks.keys())).toStrictEqual(new Set(["1", "3"]));
 	});
 
-	it("never drops queued or running tasks", () => {
+	it("never drops queued or running tasks", () =>
+	{
 		const tasks = new Map<string, Task>([
 			["1", makeTask("1", "queued")],
 			["2", makeTask("2", "running")],
@@ -189,13 +246,16 @@ describe("pruneTerminalTasks", () => {
 	});
 });
 
-async function tick(): Promise<void> {
-	await new Promise((resolve) => {
+async function tick(): Promise<void>
+{
+	await new Promise((resolve) =>
+	{
 		setTimeout(resolve, 0);
 	});
 }
 
-function rebaseOptions(project: string) {
+function rebaseOptions(project: string)
+{
 	return {
 		project,
 		projectDir: `/tmp/${project}`,
@@ -210,14 +270,22 @@ function rebaseOptions(project: string) {
 	};
 }
 
-describe("repo resource sharing", () => {
-	it("serializes a refresh and a rebase for one project but overlaps different projects", async () => {
+describe("repo resource sharing", () =>
+{
+	it("serializes a refresh and a rebase for one project but overlaps different projects", async () =>
+	{
 		let releaseRebase!: () => void;
 		shared.rebaseBranchOntoUpstream.mockImplementation(
 			async () =>
-				new Promise((resolve) => {
-					releaseRebase = () => {
-						resolve({status: "rebased"});
+				new Promise((resolve) =>
+				{
+					releaseRebase = () =>
+					{
+						resolve(
+							{
+								status: "rebased",
+							},
+						);
 					};
 				}),
 		);
@@ -230,8 +298,20 @@ describe("repo resource sharing", () => {
 
 		const sameProject = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const otherProject = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-		enqueueRefresh({kind: "children", project: "alpha", run: sameProject});
-		enqueueRefresh({kind: "merge-status", project: "beta", run: otherProject});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run: sameProject,
+			},
+		);
+		enqueueRefresh(
+			{
+				kind: "merge-status",
+				project: "beta",
+				run: otherProject,
+			},
+		);
 		await tick();
 
 		expect(sameProject).not.toHaveBeenCalled();
@@ -247,7 +327,8 @@ describe("repo resource sharing", () => {
 	});
 });
 
-function pushOptions(project: string) {
+function pushOptions(project: string)
+{
 	return {
 		project,
 		projectDir: `/tmp/${project}`,
@@ -261,23 +342,42 @@ function pushOptions(project: string) {
 	};
 }
 
-describe("push tasks hold the repo resource", () => {
-	it("never overlaps a push with a rebase on the same project and still coalesces the push", async () => {
+describe("push tasks hold the repo resource", () =>
+{
+	it("never overlaps a push with a rebase on the same project and still coalesces the push", async () =>
+	{
 		let releaseRebase!: () => void;
 		shared.rebaseBranchOntoUpstream.mockImplementation(
 			async () =>
-				new Promise((resolve) => {
-					releaseRebase = () => {
-						resolve({status: "rebased"});
+				new Promise((resolve) =>
+				{
+					releaseRebase = () =>
+					{
+						resolve(
+							{
+								status: "rebased",
+							},
+						);
 					};
 				}),
 		);
 		execaMock.fn.mockReturnValue(
-			Object.assign(Promise.resolve({exitCode: 0, stdout: "", stderr: ""}), {
-				stdout: new EventEmitter(),
-				stderr: new EventEmitter(),
-				kill: () => {},
-			}),
+			Object.assign(
+				Promise.resolve(
+					{
+						exitCode: 0,
+						stdout: "",
+						stderr: "",
+					},
+				),
+				{
+					stdout: new EventEmitter(),
+					stderr: new EventEmitter(),
+					kill: () =>
+					{
+					},
+				},
+			),
 		);
 		await resetScheduler();
 		await resetQueue();
@@ -294,7 +394,8 @@ describe("push tasks hold the repo resource", () => {
 		expect(first.status).toBe("queued");
 
 		releaseRebase();
-		await vi.waitFor(() => {
+		await vi.waitFor(() =>
+		{
 			expect(first.status).toBe("passed");
 		});
 		expect(execaMock.fn).toHaveBeenCalledTimes(1);
@@ -303,45 +404,70 @@ describe("push tasks hold the repo resource", () => {
 	});
 });
 
-describe("deduping against an older finished task", () => {
-	it("returns the active task, not a ghost that coalesces onto its job, when a finished task for the same commit exists", async () => {
+describe("deduping against an older finished task", () =>
+{
+	it("returns the active task, not a ghost that coalesces onto its job, when a finished task for the same commit exists", async () =>
+	{
 		await resetScheduler();
 		await resetQueue();
-		shared.rebaseBranchOntoUpstream.mockResolvedValueOnce({ok: true, message: "rebased ok"});
+		shared.rebaseBranchOntoUpstream.mockResolvedValueOnce(
+			{
+				ok: true,
+				message: "rebased ok",
+			},
+		);
 		const finished = enqueueRebase(rebaseOptions("alpha"));
-		await vi.waitFor(() => {
+		await vi.waitFor(() =>
+		{
 			expect(finished.status).toBe("passed");
 		});
 
 		let releaseRebase!: () => void;
 		shared.rebaseBranchOntoUpstream.mockImplementation(
 			async () =>
-				new Promise((resolve) => {
-					releaseRebase = () => {
-						resolve({ok: true, message: "rebased again"});
+				new Promise((resolve) =>
+				{
+					releaseRebase = () =>
+					{
+						resolve(
+							{
+								ok: true,
+								message: "rebased again",
+							},
+						);
 					};
 				}),
 		);
 		const running = enqueueRebase(rebaseOptions("alpha"));
-		await vi.waitFor(() => {
+		await vi.waitFor(() =>
+		{
 			expect(running.status).toBe("running");
 		});
 		const again = enqueueRebase(rebaseOptions("alpha"));
 
 		releaseRebase();
-		await vi.waitFor(() => {
+		await vi.waitFor(() =>
+		{
 			expect(running.status).toBe("passed");
 		});
-		expect({
-			againIsRunning: again === running,
-			active: [...getAllTasks().values()].filter((t) => t.status === "queued" || t.status === "running"),
-		}).toStrictEqual({againIsRunning: true, active: []});
+		expect(
+			{
+				againIsRunning: again === running,
+				active: [...getAllTasks().values()].filter((t) => t.status === "queued" || t.status === "running"),
+			},
+		).toStrictEqual(
+			{
+				againIsRunning: true,
+				active: [],
+			},
+		);
 		await resetScheduler();
 		await resetQueue();
 	});
 });
 
-function todoOptions(title: string) {
+function todoOptions(title: string)
+{
 	return {
 		project: "alpha",
 		projectDir: "/tmp/alpha",
@@ -354,14 +480,22 @@ function todoOptions(title: string) {
 	};
 }
 
-describe("todo tasks", () => {
-	it("dedupes the same todo but queues a different todo behind the first and says so", async () => {
+describe("todo tasks", () =>
+{
+	it("dedupes the same todo but queues a different todo behind the first and says so", async () =>
+	{
 		let releaseRebase!: () => void;
 		shared.rebaseBranchOntoUpstream.mockImplementation(
 			async () =>
-				new Promise((resolve) => {
-					releaseRebase = () => {
-						resolve({status: "rebased"});
+				new Promise((resolve) =>
+				{
+					releaseRebase = () =>
+					{
+						resolve(
+							{
+								status: "rebased",
+							},
+						);
 					};
 				}),
 		);
@@ -376,22 +510,45 @@ describe("todo tasks", () => {
 		const again = enqueueTodoTask(todoOptions("First task"));
 		const second = enqueueTodoTask(todoOptions("Second task"));
 
-		expect({
-			againIsFirst: again === first,
-			secondIsFirst: second === first,
-			first: {status: first.status, subject: first.subject, command: first.command, message: first.message},
-			second: {status: second.status, subject: second.subject, command: second.command, message: second.message},
-		}).toStrictEqual({
-			againIsFirst: true,
-			secondIsFirst: false,
-			first: {status: "queued", subject: "First task", command: "do First task", message: "Queued"},
-			second: {
-				status: "queued",
-				subject: "Second task",
-				command: "do Second task",
-				message: 'Queued after "First task"',
+		expect(
+			{
+				againIsFirst: again === first,
+				secondIsFirst: second === first,
+				first:
+				{
+					status: first.status,
+					subject: first.subject,
+					command: first.command,
+					message: first.message,
+				},
+				second:
+				{
+					status: second.status,
+					subject: second.subject,
+					command: second.command,
+					message: second.message,
+				},
 			},
-		});
+		).toStrictEqual(
+			{
+				againIsFirst: true,
+				secondIsFirst: false,
+				first:
+				{
+					status: "queued",
+					subject: "First task",
+					command: "do First task",
+					message: "Queued",
+				},
+				second:
+				{
+					status: "queued",
+					subject: "Second task",
+					command: "do Second task",
+					message: 'Queued after "First task"',
+				},
+			},
+		);
 
 		cancelTest(first.id);
 		cancelTest(second.id);
@@ -401,17 +558,26 @@ describe("todo tasks", () => {
 	});
 });
 
-describe("task persistence", () => {
-	beforeEach(async () => {
+describe("task persistence", () =>
+{
+	beforeEach(async () =>
+	{
 		await resetQueue();
 	});
 
-	afterEach(async () => {
+	afterEach(async () =>
+	{
 		await resetQueue();
 	});
 
-	it("persists a task when it finishes and a reload sees it", async () => {
-		shared.rebaseBranchOntoUpstream.mockResolvedValue({ok: true, message: "rebased ok"});
+	it("persists a task when it finishes and a reload sees it", async () =>
+	{
+		shared.rebaseBranchOntoUpstream.mockResolvedValue(
+			{
+				ok: true,
+				message: "rebased ok",
+			},
+		);
 		const task = enqueueRebase(rebaseOptions("alpha"));
 		await tick();
 		await tick();
@@ -419,39 +585,83 @@ describe("task persistence", () => {
 		expect(task.status).toBe("passed");
 		const records = loadRecentTaskRecords();
 		expect(
-			records.map((r) => ({id: r.id, kind: r.kind, project: r.project, status: r.status, error: r.error})),
-		).toStrictEqual([{id: task.id, kind: "rebase", project: "alpha", status: "passed", error: "rebased ok"}]);
+			records.map((r) => (
+			{
+				id: r.id,
+				kind: r.kind,
+				project: r.project,
+				status: r.status,
+				error: r.error,
+			})),
+		).toStrictEqual([
+			{
+				id: task.id,
+				kind: "rebase",
+				project: "alpha",
+				status: "passed",
+				error: "rebased ok",
+			},
+		]);
 
 		reloadTasksFromDb();
 		const reloaded = getAllTasks().get(task.id);
-		expect({
-			taskType: reloaded?.taskType,
-			project: reloaded?.project,
-			sha: reloaded?.sha,
-			status: reloaded?.status,
-			message: reloaded?.message,
-			queuedAt: reloaded?.queuedAt,
-		}).toStrictEqual({
-			taskType: "rebase",
-			project: "alpha",
-			sha: task.sha,
-			status: "passed",
-			message: "rebased ok",
-			queuedAt: task.queuedAt,
-		});
+		expect(
+			{
+				taskType: reloaded?.taskType,
+				project: reloaded?.project,
+				sha: reloaded?.sha,
+				status: reloaded?.status,
+				message: reloaded?.message,
+				queuedAt: reloaded?.queuedAt,
+			},
+		).toStrictEqual(
+			{
+				taskType: "rebase",
+				project: "alpha",
+				sha: task.sha,
+				status: "passed",
+				message: "rebased ok",
+				queuedAt: task.queuedAt,
+			},
+		);
 	});
 
-	it("loads tasks that were queued or running as cancelled and continues ids after history", () => {
-		const base = {kind: "test", project: "wip", sha: "b".repeat(40), outcome: null, finishedAt: null, error: null};
-		upsertTaskRecord({...base, id: "7", status: "running", createdAt: new Date(1000).toISOString()});
-		upsertTaskRecord({...base, id: "8", status: "queued", createdAt: new Date(2000).toISOString()});
-		upsertTaskRecord({
-			...base,
-			id: "9",
-			status: "passed",
-			createdAt: new Date(3000).toISOString(),
-			finishedAt: new Date(3500).toISOString(),
-		});
+	it("loads tasks that were queued or running as cancelled and continues ids after history", () =>
+	{
+		const base =
+		{
+			kind: "test",
+			project: "wip",
+			sha: "b".repeat(40),
+			outcome: null,
+			finishedAt: null,
+			error: null,
+		};
+		upsertTaskRecord(
+			{
+				...base,
+				id: "7",
+				status: "running",
+				createdAt: new Date(1000).toISOString(),
+			},
+		);
+		upsertTaskRecord(
+			{
+				...base,
+				id: "8",
+				status: "queued",
+				createdAt: new Date(2000).toISOString(),
+			},
+		);
+		upsertTaskRecord(
+			{
+				...base,
+				id: "9",
+				status: "passed",
+				createdAt: new Date(3000).toISOString(),
+				finishedAt: new Date(3500).toISOString(),
+			},
+		);
 
 		reloadTasksFromDb();
 
@@ -473,7 +683,12 @@ describe("task persistence", () => {
 			["9", "passed"],
 		]);
 
-		shared.rebaseBranchOntoUpstream.mockResolvedValue({ok: true, message: "ok"});
+		shared.rebaseBranchOntoUpstream.mockResolvedValue(
+			{
+				ok: true,
+				message: "ok",
+			},
+		);
 		expect(enqueueRebase(rebaseOptions("gamma")).id).toBe("10");
 	});
 });

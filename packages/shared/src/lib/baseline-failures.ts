@@ -27,13 +27,17 @@ const PATTERNS: readonly RegExp[] = [
 ];
 
 /** The failing tests the log names; null when it names none. */
-export function parseFailedTests(log: string): ReadonlySet<string> | null {
+export function parseFailedTests(log: string): ReadonlySet<string> | null
+{
 	const failed = new Set<string>();
-	for (const raw of log.split("\n")) {
+	for (const raw of log.split("\n"))
+	{
 		const line = raw.replace(ANSI_RE, "").trim();
-		for (const pattern of PATTERNS) {
+		for (const pattern of PATTERNS)
+		{
 			const name = pattern.exec(line)?.[1]?.trim();
-			if (name) {
+			if (name)
+			{
 				failed.add(name);
 				break;
 			}
@@ -43,7 +47,8 @@ export function parseFailedTests(log: string): ReadonlySet<string> | null {
 }
 
 /** True when every failure is a baseline failure; unknown failures on either side never are. */
-export function withinBaseline(baseline: ReadonlySet<string> | null, failures: ReadonlySet<string> | null): boolean {
+export function withinBaseline(baseline: ReadonlySet<string> | null, failures: ReadonlySet<string> | null): boolean
+{
 	if (baseline === null || failures === null) return false;
 	return [...failures].every((name) => baseline.has(name));
 }

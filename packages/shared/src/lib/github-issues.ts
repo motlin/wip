@@ -6,7 +6,8 @@ import {getCachedIssues, cacheIssues, isCacheFresh, invalidateIssuesCacheDb} fro
 import {detectRateLimitError, isGitHubRateLimited, markGitHubRateLimited} from "./rate-limit.js";
 import {GitHubIssueSchema, IssueResultSchema, LabelSchema, type GitHubIssue, type IssueResult} from "./schemas.js";
 
-export {
+export
+{
 	LabelSchema as GitHubIssueLabelSchema,
 	GitHubIssueSchema,
 	IssueResultSchema,
@@ -18,18 +19,22 @@ const ISSUES_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 let inflightIssuesRequest: Promise<GitHubIssue[]> | null = null;
 
-export function invalidateIssuesCache(): void {
+export function invalidateIssuesCache(): void
+{
 	invalidateIssuesCacheDb();
 }
 
-export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
-	if (isCacheFresh("github-issues", ISSUES_CACHE_TTL_MS)) {
+export async function fetchAssignedIssues(): Promise<GitHubIssue[]>
+{
+	if (isCacheFresh("github-issues", ISSUES_CACHE_TTL_MS))
+	{
 		const cached = getCachedIssues();
 		if (cached) return cached;
 	}
 
 	// If rate limited, return cached data rather than calling API
-	if (isGitHubRateLimited()) {
+	if (isGitHubRateLimited())
+	{
 		return getCachedIssues() ?? [];
 	}
 
@@ -38,9 +43,12 @@ export async function fetchAssignedIssues(): Promise<GitHubIssue[]> {
 
 	const promise = fetchIssuesFromApi();
 	inflightIssuesRequest = promise;
-	try {
+	try
+	{
 		return await promise;
-	} finally {
+	}
+	finally
+	{
 		inflightIssuesRequest = null;
 	}
 }
@@ -69,38 +77,53 @@ const SEARCH_ISSUES_QUERY = `
   }
 `;
 
-const SearchIssueNodeSchema = z.object({
-	number: z.number().int().positive(),
-	title: z.string().min(1),
-	url: z.url(),
-	labels: z.object({
-		nodes: z.array(LabelSchema),
-	}),
-	repository: z.object({
-		name: z.string().min(1),
-		nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
-	}),
-});
+const SearchIssueNodeSchema = z.object(
+	{
+		number: z.number().int().positive(),
+		title: z.string().min(1),
+		url: z.url(),
+		labels: z.object(
+			{
+				nodes: z.array(LabelSchema),
+			},
+		),
+		repository: z.object(
+			{
+				name: z.string().min(1),
+				nameWithOwner: z.string().regex(/^[^/]+\/[^/]+$/),
+			},
+		),
+	},
+);
 
 // A search hit that is not an Issue (e.g. a pull request) matches no fragment and arrives as {}.
 const NonIssueSearchNodeSchema = z.object({}).strict();
 
-const SearchIssuesResponseSchema = z.object({
-	data: z.object({
-		search: z.object({
-			nodes: z.array(z.union([SearchIssueNodeSchema, NonIssueSearchNodeSchema])),
-		}),
-	}),
-});
+const SearchIssuesResponseSchema = z.object(
+	{
+		data: z.object(
+			{
+				search: z.object(
+					{
+						nodes: z.array(z.union([SearchIssueNodeSchema, NonIssueSearchNodeSchema])),
+					},
+				),
+			},
+		),
+	},
+);
 
-async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
-	try {
+async function fetchIssuesFromApi(): Promise<GitHubIssue[]>
+{
+	try
+	{
 		const raw = await getGitHubClient().graphql(SEARCH_ISSUES_QUERY);
 		const response = SearchIssuesResponseSchema.parse(raw);
 
 		const issues: GitHubIssue[] = response.data.search.nodes
 			.filter((node) => "number" in node)
-			.map((node) => ({
+			.map((node) => (
+			{
 				number: node.number,
 				title: node.title,
 				url: node.url,
@@ -110,11 +133,19 @@ async function fetchIssuesFromApi(): Promise<GitHubIssue[]> {
 
 		cacheIssues(issues);
 		return issues;
-	} catch (error) {
+	}
+	catch (error)
+	{
 		const message = error instanceof Error ? error.message : String(error);
-		log.subprocess.warn({error: message}, "GitHub issues GraphQL request failed");
+		log.subprocess.warn(
+			{
+				error: message,
+			},
+			"GitHub issues GraphQL request failed",
+		);
 
-		if (detectRateLimitError(message)) {
+		if (detectRateLimitError(message))
+		{
 			markGitHubRateLimited();
 		}
 

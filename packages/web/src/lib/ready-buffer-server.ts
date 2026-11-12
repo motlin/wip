@@ -1,7 +1,8 @@
 import type {GitHubActionsGate} from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 import {openPrRefusal} from "@wip/shared/ready-to-land.js";
-import {
+import
+{
 	bufferRepoFromChildren,
 	createReadyBuffer,
 	readyBufferEnabled,
@@ -11,7 +12,8 @@ import {
 	type BufferRepo,
 } from "./ready-buffer.js";
 import type {OnHoldSignal} from "./ready-buffer-events.js";
-import {
+import
+{
 	createBackgroundPusher,
 	publishAfterAdvance,
 	type BackgroundPusher,
@@ -38,20 +40,35 @@ const SAFETY_TICK_MS = 45_000;
 const POWER_CHECK_MS = 30_000;
 const CHECKED_OUT_TTL_MS = 60_000;
 
-const checkedOutCache = new Map<string, {at: number; branches: string[]}>();
+const checkedOutCache = new Map<
+	string,
+	{
+		at: number;
+		branches: string[];
+	}
+>();
 
 /** Worktree branches, cached briefly: every pull reads them, and the advance job re-checks live. */
-async function checkedOut(dir: string): Promise<string[]> {
+async function checkedOut(dir: string): Promise<string[]>
+{
 	const hit = checkedOutCache.get(dir);
 	if (hit && Date.now() - hit.at < CHECKED_OUT_TTL_MS) return hit.branches;
 	const {checkedOutBranches} = await import("@wip/shared");
 	const branches = [...(await checkedOutBranches(dir))];
-	checkedOutCache.set(dir, {at: Date.now(), branches});
+	checkedOutCache.set(
+		dir,
+		{
+			at: Date.now(),
+			branches,
+		},
+	);
 	return branches;
 }
 
-async function snapshot(): Promise<BufferRepo[]> {
-	const {
+async function snapshot(): Promise<BufferRepo[]>
+{
+	const
+	{
 		draftPrVerification,
 		getCachedMergeStatuses,
 		getCachedUpstreamSha,
@@ -74,17 +91,23 @@ async function snapshot(): Promise<BufferRepo[]> {
 	const projects = await listProjects();
 	// Once per git repo: a project nested in another listed project's repo is never advanced here.
 	const owners = sharedRepoOwners(projects);
-	for (const p of projects) {
+	for (const p of projects)
+	{
 		const repoOwner = owners.get(p.name);
-		if (repoOwner !== undefined) {
+		if (repoOwner !== undefined)
+		{
 			repos.push(
-				bufferRepoFromChildren(p, [], {
-					identity,
-					checkedOutBranches: [],
-					onHold: () => false,
-					override: () => undefined,
-					repoOwner,
-				}),
+				bufferRepoFromChildren(
+					p,
+					[],
+					{
+						identity,
+						checkedOutBranches: [],
+						onHold: () => false,
+						override: () => undefined,
+						repoOwner,
+					},
+				),
 			);
 			continue;
 		}
@@ -110,28 +133,62 @@ async function snapshot(): Promise<BufferRepo[]> {
 			(upstreamSha ? getCachedMergeStatuses(p.name, upstreamSha) : []).map((ms) => [ms.sha, ms]),
 		);
 		repos.push(
-			bufferRepoFromChildren(p, children, {
-				identity,
-				...(priority === undefined ? {} : {priority}),
-				// Sequential on purpose: one cheap git call per project, cached
-				// eslint-disable-next-line no-await-in-loop
-				checkedOutBranches: needsBranches && !p.dirty ? await checkedOut(p.dir) : [],
-				onHold: (child) => isOnHold(p.name, {sha: child.sha, patchId: child.patchId}),
-				override: (patchId) => getPriorityOverride(p.name, {kind: "commit", key: patchId}),
-				trustPatchIdGreen: record !== undefined && trustsPatchIdGreen(record),
-				...(record === undefined ? {} : {landing: landingMode(record)}),
-				backgroundPush: pushesInBackground(record),
-				verifyByDraftPr: verification?.active === true,
-				...(verification?.active === false ? {verifyNotice: verification.reason} : {}),
-				mergeStatus: (sha) => mergeStatuses.get(sha),
-			}),
+			bufferRepoFromChildren(
+				p,
+				children,
+				{
+					identity,
+					...(priority === undefined
+						? {}
+						:
+							{
+								priority,
+							}),
+					// Sequential on purpose: one cheap git call per project, cached
+					// eslint-disable-next-line no-await-in-loop
+					checkedOutBranches: needsBranches && !p.dirty ? await checkedOut(p.dir) : [],
+					onHold: (child) =>
+						isOnHold(
+							p.name,
+							{
+								sha: child.sha,
+								patchId: child.patchId,
+							},
+						),
+					override: (patchId) =>
+						getPriorityOverride(
+							p.name,
+							{
+								kind: "commit",
+								key: patchId,
+							},
+						),
+					trustPatchIdGreen: record !== undefined && trustsPatchIdGreen(record),
+					...(record === undefined
+						? {}
+						:
+							{
+								landing: landingMode(record),
+							}),
+					backgroundPush: pushesInBackground(record),
+					verifyByDraftPr: verification?.active === true,
+					...(verification?.active === false
+						?
+							{
+								verifyNotice: verification.reason,
+							}
+						: {}),
+					mergeStatus: (sha) => mergeStatuses.get(sha),
+				},
+			),
 		);
 	}
 	return repos;
 }
 
 /** Whether a user action preempted the job; a call, so it is re-read after each await. */
-function preempted(signal: AbortSignal): boolean {
+function preempted(signal: AbortSignal): boolean
+{
 	return signal.aborted;
 }
 
@@ -141,10 +198,12 @@ export async function advance(
 	candidate: BufferCandidate,
 	signal: AbortSignal,
 	onReplayed: (sha: string) => void,
-): Promise<AdvanceOutcome> {
+): Promise<AdvanceOutcome>
+{
 	const fs = await import("node:fs");
 	const path = await import("node:path");
-	const {
+	const
+	{
 		checkedOutBranches,
 		DEFAULT_GIT_TEST,
 		getAutoFixes,
@@ -161,19 +220,32 @@ export async function advance(
 	const p = (await listProjects()).find((proj) => proj.name === repo.name);
 	if (!p || p.dirty) return "skipped";
 	const upstream = (
-		await tracedExeca("git", ["-C", p.dir, "rev-parse", p.upstreamRef], {reject: false})
+		await tracedExeca(
+			"git",
+			["-C", p.dir, "rev-parse", p.upstreamRef],
+			{
+				reject: false,
+			},
+		)
 	).stdout.trim();
 	if (upstream === "") return "skipped";
 	const logDir = getTestLogDir(p.name);
 	// Background work: low priority and capped test workers, unlike a user-initiated test.
-	const background = {workers: getBackgroundTestWorkers()};
+	const background =
+	{
+		workers: getBackgroundTestWorkers(),
+	};
 	// The project's mise tools and [env], as every user-initiated test run gets them.
 	const env = await getMiseEnv(p.dir);
 
-	const failedTests = async (s: string): Promise<ReadonlySet<string> | null> => {
-		try {
+	const failedTests = async (s: string): Promise<ReadonlySet<string> | null> =>
+	{
+		try
+		{
 			return parseFailedTests(await fs.promises.readFile(path.join(logDir, `${s}.log`), "utf8"));
-		} catch {
+		}
+		catch
+		{
 			return null;
 		}
 	};
@@ -183,19 +255,43 @@ export async function advance(
 	// whose log names its failing tests becomes the bar instead (step 35): no new failures.
 	let baselineFailures: ReadonlySet<string> | undefined;
 	// Draft-PR verification never tests locally, the baseline included: upstream's own checks report it.
-	if (p.hasTestConfigured && repo.verifyByDraftPr !== true) {
+	if (p.hasTestConfigured && repo.verifyByDraftPr !== true)
+	{
 		const baseline = (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [upstream])).get(upstream);
 		const red =
 			baseline === "bad" ||
 			(baseline !== "good" &&
-				(await gitTestRun(p.dir, upstream, {logDir, background, env, signal})).exitCode !== 0);
+				(
+					await gitTestRun(
+						p.dir,
+						upstream,
+						{
+							logDir,
+							background,
+							env,
+							signal,
+						},
+					)
+				).exitCode !== 0);
 		// A preempted run was killed, not failed; the job reruns after the user's action.
 		if (signal.aborted) return "skipped";
-		if (red) {
+		if (red)
+		{
 			if (repo.ownership === "own") return "skipped";
 			// A cached bad with no log left: rerun once so the log names the failures.
-			if (!fs.existsSync(path.join(logDir, `${upstream}.log`))) {
-				await gitTestRun(p.dir, upstream, {logDir, retest: true, background, env, signal});
+			if (!fs.existsSync(path.join(logDir, `${upstream}.log`)))
+			{
+				await gitTestRun(
+					p.dir,
+					upstream,
+					{
+						logDir,
+						retest: true,
+						background,
+						env,
+						signal,
+					},
+				);
 			}
 			const failures = await failedTests(upstream);
 			if (failures === null) return "skipped";
@@ -208,13 +304,22 @@ export async function advance(
 	// the tip its earlier run replayed the branch to, which the branch now points at.
 	let sha = candidate.replayedSha ?? candidate.sha;
 	const onUpstream =
-		(await tracedExeca("git", ["-C", p.dir, "merge-base", "--is-ancestor", upstream, sha], {reject: false}))
-			.exitCode === 0;
-	if (!onUpstream) {
+		(
+			await tracedExeca(
+				"git",
+				["-C", p.dir, "merge-base", "--is-ancestor", upstream, sha],
+				{
+					reject: false,
+				},
+			)
+		).exitCode === 0;
+	if (!onUpstream)
+	{
 		if (candidate.branch === undefined) return "skipped";
 		if ((await checkedOutBranches(p.dir)).has(candidate.branch)) return "skipped";
 		const replayed = await replayBranchOnto(p.dir, candidate.branch, sha, upstream);
-		if (replayed === null) {
+		if (replayed === null)
+		{
 			// The branch no longer points at the snapshot's sha (Open PR rebased it meanwhile): the
 			// snapshot was stale, not the replay in conflict.
 			const tip = await tracedExeca(
@@ -238,7 +343,16 @@ export async function advance(
 	const {branch} = candidate;
 	const autoFixed = candidate.autoFixed === true || getAutoFixes(p.name).has(candidate.id);
 	const pushRequest = (s: string): PushRequest | null =>
-		branch === undefined ? null : {project: p.name, dir: p.dir, repository: p.remote, branch, sha: s};
+		branch === undefined
+			? null
+			:
+				{
+					project: p.name,
+					dir: p.dir,
+					repository: p.remote,
+					branch,
+					sha: s,
+				};
 	const outcome = await testStep(
 		{
 			trustPatchIdGreen: repo.trustPatchIdGreen === true,
@@ -247,13 +361,31 @@ export async function advance(
 			preReplaySha: candidate.sha,
 			sha,
 			replayed: sha !== candidate.sha,
-			...(baselineFailures === undefined ? {} : {baselineFailures}),
+			...(baselineFailures === undefined
+				? {}
+				:
+					{
+						baselineFailures,
+					}),
 			autoFixed,
 		},
 		{
 			results: async (s) => (await gitTestResults(p.dir, DEFAULT_GIT_TEST, [s])).get(s) ?? "unknown",
-			run: async (s) => (await gitTestRun(p.dir, s, {logDir, background, env, signal})).exitCode,
-			publish: async (s) => {
+			run: async (s) =>
+				(
+					await gitTestRun(
+						p.dir,
+						s,
+						{
+							logDir,
+							background,
+							env,
+							signal,
+						},
+					)
+				).exitCode,
+			publish: async (s) =>
+			{
 				const request = pushRequest(s);
 				if (request === null || !(await publishForChecks(p, request, candidate.sha))) return false;
 				markLocalTestSkipped(p.name, s, repo.verifyByDraftPr === true ? "draft-pr" : "green-before-replay");
@@ -269,12 +401,27 @@ export async function advance(
 	// 4. Step 34: a ready item in a repo explicitly set to land by pull request is force-pushed with
 	// lease through the gate; an unconfigured repo is rebased and tested but never pushed unasked.
 	const request = pushRequest(sha);
-	if (request !== null) {
+	if (request !== null)
+	{
 		const pushed = await publishAfterAdvance(
-			{backgroundPush: repo.backgroundPush, outcome, request, autoFixed},
+			{
+				backgroundPush: repo.backgroundPush,
+				outcome,
+				request,
+				autoFixed,
+			},
 			backgroundPusher(),
 		);
-		if (pushed !== null) log.general.info({project: p.name, branch, sha, push: pushed}, "Ready-buffer push");
+		if (pushed !== null)
+			log.general.info(
+				{
+					project: p.name,
+					branch,
+					sha,
+					push: pushed,
+				},
+				"Ready-buffer push",
+			);
 	}
 	return outcome;
 }
@@ -283,25 +430,42 @@ let gate: GitHubActionsGate | null = null;
 let pusher: BackgroundPusher | null = null;
 
 /** The one pusher, and so the one GitHub Actions gate, for every background push in this process. */
-function backgroundPusher(): BackgroundPusher {
-	pusher ??= createBackgroundPusher({
-		gate: {
-			// Created on first use, so the node-only checks source loads lazily.
-			check: async (repository) => {
-				const {GitHubActionsGate: Gate, githubChecksSource} = await import("@wip/shared");
-				gate ??= new Gate(githubChecksSource);
-				return gate.check(repository);
+function backgroundPusher(): BackgroundPusher
+{
+	pusher ??= createBackgroundPusher(
+		{
+			gate:
+			{
+				// Created on first use, so the node-only checks source loads lazily.
+				check: async (repository) =>
+				{
+					const {GitHubActionsGate: Gate, githubChecksSource} = await import("@wip/shared");
+					gate ??= new Gate(githubChecksSource);
+					return gate.check(repository);
+				},
+				recordPush: (push) =>
+				{
+					gate?.recordPush(push);
+				},
 			},
-			recordPush: (push) => {
-				gate?.recordPush(push);
+			git: async (args) =>
+			{
+				const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
+				const result = await tracedExeca(
+					"git",
+					[...args],
+					{
+						reject: false,
+					},
+				);
+				return {
+					exitCode: result.exitCode,
+					stdout: result.stdout,
+					stderr: result.stderr,
+				};
 			},
 		},
-		git: async (args) => {
-			const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
-			const result = await tracedExeca("git", [...args], {reject: false});
-			return {exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr};
-		},
-	});
+	);
 	return pusher;
 }
 
@@ -313,7 +477,8 @@ function backgroundPusher(): BackgroundPusher {
  * updates with the push across rebases.
  */
 async function publishForChecks(
-	p: {
+	p:
+	{
 		name: string;
 		dir: string;
 		remote: string;
@@ -323,13 +488,27 @@ async function publishForChecks(
 	},
 	request: PushRequest,
 	preReplaySha: string,
-): Promise<boolean> {
+): Promise<boolean>
+{
 	const {createPullRequest, getCachedChildren, invalidatePrCache, prRepository} = await import("@wip/shared");
 	const {branch} = request;
 	if (openPrRefusal(branch, p.upstreamBranch) !== null) return false;
-	const push = await backgroundPusher().push(request, {defer: false});
-	if (push.status === "held" || push.status === "failed") {
-		log.general.warn({project: p.name, branch, push}, "Ready-buffer fast-path push not done");
+	const push = await backgroundPusher().push(
+		request,
+		{
+			defer: false,
+		},
+	);
+	if (push.status === "held" || push.status === "failed")
+	{
+		log.general.warn(
+			{
+				project: p.name,
+				branch,
+				push,
+			},
+			"Ready-buffer fast-path push not done",
+		);
 		return false;
 	}
 	invalidatePrCache(p.name);
@@ -339,24 +518,34 @@ async function publishForChecks(
 	const [owner, name] = target.split("/");
 	const [originOwner] = p.originRemote.split("/");
 	if (!owner || !name) return false;
-	const created = await createPullRequest({
-		owner,
-		name,
-		baseRefName: p.upstreamBranch,
-		headRefName: p.originRemote !== target && originOwner ? `${originOwner}:${branch}` : branch,
-		title: child?.subject ?? branch,
-		body: "",
-		draft: true,
-	});
+	const created = await createPullRequest(
+		{
+			owner,
+			name,
+			baseRefName: p.upstreamBranch,
+			headRefName: p.originRemote !== target && originOwner ? `${originOwner}:${branch}` : branch,
+			title: child?.subject ?? branch,
+			body: "",
+			draft: true,
+		},
+	);
 	// The branch's PR exists but the children cache hadn't seen it yet: the push already updated it.
 	if (!created.ok && /already exists/i.test(created.message)) return true;
 	if (!created.ok)
-		log.general.warn({project: p.name, branch, message: created.message}, "Ready-buffer fast-path PR failed");
+		log.general.warn(
+			{
+				project: p.name,
+				branch,
+				message: created.message,
+			},
+			"Ready-buffer fast-path PR failed",
+		);
 	return created.ok;
 }
 
 /** The candidate's project as the AI rungs see it; null when it is gone or has local changes. */
-async function rungProject(repo: BufferRepo) {
+async function rungProject(repo: BufferRepo)
+{
 	const {listProjects} = await import("./server-fns.js");
 	const p = (await listProjects()).find((proj) => proj.name === repo.name);
 	if (!p || p.dirty) return null;
@@ -372,9 +561,16 @@ async function rungProject(repo: BufferRepo) {
 	};
 }
 
-async function branchTip(dir: string, branch: string): Promise<string | null> {
+async function branchTip(dir: string, branch: string): Promise<string | null>
+{
 	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
-	const tip = await tracedExeca("git", ["-C", dir, "rev-parse", branch], {reject: false});
+	const tip = await tracedExeca(
+		"git",
+		["-C", dir, "rev-parse", branch],
+		{
+			reject: false,
+		},
+	);
 	return tip.exitCode === 0 ? tip.stdout.trim() : null;
 }
 
@@ -386,7 +582,8 @@ async function resolveConflicts(
 	repo: BufferRepo,
 	candidate: BufferCandidate,
 	signal: AbortSignal,
-): Promise<string | null> {
+): Promise<string | null>
+{
 	if (candidate.branch === undefined) return null;
 	const {aiRungDeps, resolveBranchConflict} = await import("./herdr/ai-rungs.js");
 	const project = await rungProject(repo);
@@ -401,7 +598,8 @@ async function resolveConflicts(
  * so the repeated-failure signature is populated. The fixup is recorded as "auto-fixed: <failure>"
  * by the failing commit's patch-id; the advance then retests the fixup.
  */
-async function fixTest(repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal): Promise<string | null> {
+async function fixTest(repo: BufferRepo, candidate: BufferCandidate, signal: AbortSignal): Promise<string | null>
+{
 	if (candidate.branch === undefined) return null;
 	const fs = await import("node:fs");
 	const path = await import("node:path");
@@ -415,19 +613,38 @@ async function fixTest(repo: BufferRepo, candidate: BufferCandidate, signal: Abo
 	const fixup = await fixTestAsFixup(project, candidate.branch, failing, logPath, aiRungDeps(), signal);
 	if (fixup === null) return null;
 	let failureLog = "";
-	try {
+	try
+	{
 		failureLog = fs.readFileSync(logPath, "utf8");
-	} catch {
+	}
+	catch
+	{
 		// No log: the marker falls back to a generic failure label.
 	}
 	const patchId = (await getCommitFacts(project.path, project.name, [failing])).get(failing)?.patchId ?? candidate.id;
-	setAutoFix(project.name, patchId, {branch: candidate.branch, fixupSha: fixup, failure: failureSummary(failureLog)});
+	setAutoFix(
+		project.name,
+		patchId,
+		{
+			branch: candidate.branch,
+			fixupSha: fixup,
+			failure: failureSummary(failureLog),
+		},
+	);
 	return fixup;
 }
 
-function warnOnFailure(promise: Promise<void>, signal: string): void {
-	promise.catch((error: unknown) => {
-		log.general.error({error, signal}, "Ready-buffer pull failed");
+function warnOnFailure(promise: Promise<void>, signal: string): void
+{
+	promise.catch((error: unknown) =>
+	{
+		log.general.error(
+			{
+				error,
+				signal,
+			},
+			"Ready-buffer pull failed",
+		);
 	});
 }
 
@@ -436,29 +653,44 @@ function warnOnFailure(promise: Promise<void>, signal: string): void {
  * pause-on-battery jobs and the buffer starts none; back on AC both resume, and a pull republishes
  * the Ready to land state either way.
  */
-async function startPowerWatch(buffer: () => ReturnType<typeof currentReadyBuffer>) {
+async function startPowerWatch(buffer: () => ReturnType<typeof currentReadyBuffer>)
+{
 	const {readPowerSource} = await import("@wip/shared");
 	const {tracedExeca} = await import("@wip/shared/services/traced-execa.js");
 	const {createPowerWatch} = await import("./power-watch.js");
-	const watch = createPowerWatch({
-		read: async () =>
-			readPowerSource({
-				platform: process.platform,
-				pmset: async () => (await tracedExeca("pmset", ["-g", "batt"])).stdout,
-			}),
-		onChange: (onBattery) => {
-			log.general.info(
-				{onBattery},
-				onBattery ? "On battery: background work paused" : "On AC: background work resumed",
-			);
-			workQueue.setOnBattery(onBattery);
-			const current = buffer();
-			if (current) warnOnFailure(current.pull(), "power");
+	const watch = createPowerWatch(
+		{
+			read: async () =>
+				readPowerSource(
+					{
+						platform: process.platform,
+						pmset: async () => (await tracedExeca("pmset", ["-g", "batt"])).stdout,
+					},
+				),
+			onChange: (onBattery) =>
+			{
+				log.general.info(
+					{
+						onBattery,
+					},
+					onBattery ? "On battery: background work paused" : "On AC: background work resumed",
+				);
+				workQueue.setOnBattery(onBattery);
+				const current = buffer();
+				if (current) warnOnFailure(current.pull(), "power");
+			},
 		},
-	});
-	const check = (): void => {
-		watch.check().catch((error: unknown) => {
-			log.general.warn({error}, "Power source check failed");
+	);
+	const check = (): void =>
+	{
+		watch.check().catch((error: unknown) =>
+		{
+			log.general.warn(
+				{
+					error,
+				},
+				"Power source check failed",
+			);
 		});
 	};
 	await watch.check().catch(() => undefined);
@@ -472,111 +704,202 @@ async function startPowerWatch(buffer: () => ReturnType<typeof currentReadyBuffe
  * under the shared cache dir), so two servers never replay and test the same repos.
  */
 export async function startReadyBuffer(
-	enqueueProjectRefresh: (project: string, options: {force: boolean}) => void,
-): Promise<void> {
+	enqueueProjectRefresh: (
+		project: string,
+		options:
+		{
+			force: boolean;
+		},
+	) => void,
+): Promise<void>
+{
 	if (currentReadyBuffer()) return;
-	if (!readyBufferEnabled(process.env)) {
+	if (!readyBufferEnabled(process.env))
+	{
 		log.general.info("Ready buffer disabled by WIP_READY_BUFFER");
 		return;
 	}
 	const {acquireProcessLock, getReadyBufferCapacity, getReadyBufferSize, loadWorkItems} = await import("@wip/shared");
 	const firstSeenOf = (project: string, id: string): string | undefined =>
 		loadWorkItems(project).find((item) => item.patchId === id)?.firstSeen;
-	if (acquireProcessLock("ready-buffer") === null) {
+	if (acquireProcessLock("ready-buffer") === null)
+	{
 		log.general.warn("Ready buffer already running in another wip process; not starting it here");
 		return;
 	}
 	const power = await startPowerWatch(() => currentReadyBuffer());
 	const {untrustedAgentFolders} = await import("./herdr/claude-trust.js");
-	const started = createReadyBuffer({
-		onBattery: () => power.onBattery(),
-		untrustedAgentFolders,
-		warn: (error, item) => {
-			log.general.error({error, item}, "Ready-buffer item failed");
-		},
-		queue: workQueue,
-		snapshot,
-		// Read per pull so a config change takes effect without a restart.
-		target: () => getReadyBufferSize(),
-		capacity: () => getReadyBufferCapacity(),
-		advance: async (repo, candidate, signal, onReplayed) => {
-			const outcome = await advance(repo, candidate, signal, onReplayed);
-			log.general.info({project: repo.name, sha: candidate.sha, outcome}, "Ready-buffer advance");
-			// The replay and test changed what the cards show.
-			enqueueProjectRefresh(repo.name, {force: true});
-			return outcome;
-		},
-		resolveConflicts: async (repo, candidate, signal) => {
-			const resolved = await resolveConflicts(repo, candidate, signal);
-			log.general.info({project: repo.name, sha: candidate.sha, resolved}, "Ready-buffer conflict resolution");
-			enqueueProjectRefresh(repo.name, {force: true});
-			return resolved;
-		},
-		fixTest: async (repo, candidate, signal) => {
-			const fixup = await fixTest(repo, candidate, signal);
-			log.general.info({project: repo.name, sha: candidate.sha, fixup}, "Ready-buffer test fix");
-			enqueueProjectRefresh(repo.name, {force: true});
-			return fixup;
-		},
-		firstSeen: (project, id) => firstSeenOf(project, id),
-		nameBranch: async (repo, candidate) => {
-			const {createBranchForChild, getCachedChildren, suggestBranchNames} = await import("@wip/shared");
-			const {listProjects} = await import("./server-fns.js");
-			const p = (await listProjects()).find((proj) => proj.name === repo.name);
-			const child = getCachedChildren(repo.name)?.find((c) => c.sha === candidate.sha);
-			if (!p || !child) return null;
-			// suggestBranchNames caches the name and honors the failed-naming cooldown.
-			const names = await suggestBranchNames([
-				{sha: candidate.sha, project: p.name, subject: child.subject, dir: p.dir},
-			]);
-			if (!names.has(`${p.name}:${candidate.sha}`)) return null;
-			// A local ref only: the advance replays and pushes it. A taken name picks the next one.
-			const branch = await createBranchForChild(
-				p.dir,
-				{sha: candidate.sha, shortSha: child.shortSha, subject: child.subject},
-				p.name,
-			).catch((error: unknown) => {
-				log.general.warn(
-					{project: repo.name, sha: candidate.sha, err: error},
-					"Ready-buffer branch not created",
+	const started = createReadyBuffer(
+		{
+			onBattery: () => power.onBattery(),
+			untrustedAgentFolders,
+			warn: (error, item) =>
+			{
+				log.general.error(
+					{
+						error,
+						item,
+					},
+					"Ready-buffer item failed",
 				);
-				return null;
-			});
-			log.general.info({project: repo.name, sha: candidate.sha, branch}, "Ready-buffer branch created");
-			// The card shows the branch on the next refresh.
-			enqueueProjectRefresh(repo.name, {force: false});
-			return branch;
+			},
+			queue: workQueue,
+			snapshot,
+			// Read per pull so a config change takes effect without a restart.
+			target: () => getReadyBufferSize(),
+			capacity: () => getReadyBufferCapacity(),
+			advance: async (repo, candidate, signal, onReplayed) =>
+			{
+				const outcome = await advance(repo, candidate, signal, onReplayed);
+				log.general.info(
+					{
+						project: repo.name,
+						sha: candidate.sha,
+						outcome,
+					},
+					"Ready-buffer advance",
+				);
+				// The replay and test changed what the cards show.
+				enqueueProjectRefresh(
+					repo.name,
+					{
+						force: true,
+					},
+				);
+				return outcome;
+			},
+			resolveConflicts: async (repo, candidate, signal) =>
+			{
+				const resolved = await resolveConflicts(repo, candidate, signal);
+				log.general.info(
+					{
+						project: repo.name,
+						sha: candidate.sha,
+						resolved,
+					},
+					"Ready-buffer conflict resolution",
+				);
+				enqueueProjectRefresh(
+					repo.name,
+					{
+						force: true,
+					},
+				);
+				return resolved;
+			},
+			fixTest: async (repo, candidate, signal) =>
+			{
+				const fixup = await fixTest(repo, candidate, signal);
+				log.general.info(
+					{
+						project: repo.name,
+						sha: candidate.sha,
+						fixup,
+					},
+					"Ready-buffer test fix",
+				);
+				enqueueProjectRefresh(
+					repo.name,
+					{
+						force: true,
+					},
+				);
+				return fixup;
+			},
+			firstSeen: (project, id) => firstSeenOf(project, id),
+			nameBranch: async (repo, candidate) =>
+			{
+				const {createBranchForChild, getCachedChildren, suggestBranchNames} = await import("@wip/shared");
+				const {listProjects} = await import("./server-fns.js");
+				const p = (await listProjects()).find((proj) => proj.name === repo.name);
+				const child = getCachedChildren(repo.name)?.find((c) => c.sha === candidate.sha);
+				if (!p || !child) return null;
+				// suggestBranchNames caches the name and honors the failed-naming cooldown.
+				const names = await suggestBranchNames([
+					{
+						sha: candidate.sha,
+						project: p.name,
+						subject: child.subject,
+						dir: p.dir,
+					},
+				]);
+				if (!names.has(`${p.name}:${candidate.sha}`)) return null;
+				// A local ref only: the advance replays and pushes it. A taken name picks the next one.
+				const branch = await createBranchForChild(
+					p.dir,
+					{
+						sha: candidate.sha,
+						shortSha: child.shortSha,
+						subject: child.subject,
+					},
+					p.name,
+				).catch((error: unknown) =>
+				{
+					log.general.warn(
+						{
+							project: repo.name,
+							sha: candidate.sha,
+							err: error,
+						},
+						"Ready-buffer branch not created",
+					);
+					return null;
+				});
+				log.general.info(
+					{
+						project: repo.name,
+						sha: candidate.sha,
+						branch,
+					},
+					"Ready-buffer branch created",
+				);
+				// The card shows the branch on the next refresh.
+				enqueueProjectRefresh(
+					repo.name,
+					{
+						force: false,
+					},
+				);
+				return branch;
+			},
 		},
-	});
+	);
 	setReadyBuffer(started);
 
 	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
 	// The Ready to land section reads this over the SSE stream.
-	started.onStateChange((state) => {
+	started.onStateChange((state) =>
+	{
 		readyBufferEmitter.emit("state", state);
 	});
 
 	const {emitter: mergeEmitter} = await import("./merge-queue.js");
-	mergeEmitter.on("upstreamMoved", (event: {project: string}) => {
+	mergeEmitter.on("upstreamMoved", (event: {project: string}) =>
+	{
 		warnOnFailure(started.upstreamMoved(event.project), "upstreamMoved");
 	});
-	mergeEmitter.on("landed", (event: {project: string}) => {
+	mergeEmitter.on("landed", (event: {project: string}) =>
+	{
 		warnOnFailure(started.landed(event.project), "landed");
 	});
 	const {emitter: taskEmitter} = await import("./task-queue.js");
-	taskEmitter.on("task", (event: {type: string; status: string}) => {
+	taskEmitter.on("task", (event: {type: string; status: string}) =>
+	{
 		if (event.type !== "status" || event.status === "queued" || event.status === "running") return;
 		warnOnFailure(started.pull(), "task");
 	});
-	readyBufferEmitter.on("onHold", (event: OnHoldSignal) => {
+	readyBufferEmitter.on("onHold", (event: OnHoldSignal) =>
+	{
 		warnOnFailure(started.onHold(event.project), "onHold");
 	});
 	const {childrenEmitter} = await import("./children-events.js");
-	childrenEmitter.on("children", () => {
+	childrenEmitter.on("children", () =>
+	{
 		warnOnFailure(started.pull(), "children");
 		warnOnFailure(backgroundPusher().flush(), "push-flush");
 	});
-	setInterval(() => {
+	setInterval(() =>
+	{
 		warnOnFailure(started.pull(), "tick");
 		warnOnFailure(backgroundPusher().flush(), "push-flush");
 	}, SAFETY_TICK_MS).unref();

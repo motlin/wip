@@ -1,8 +1,17 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from "vite-plus/test";
 
-const {ensureBackgroundRefresh} = vi.hoisted(() => ({ensureBackgroundRefresh: vi.fn<() => void>()}));
-vi.mock("./background-refresh.js", () => ({ensureBackgroundRefresh}));
-vi.mock("./server-fns.js", () => ({listProjects: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([])}));
+const {ensureBackgroundRefresh} = vi.hoisted(() => (
+{
+	ensureBackgroundRefresh: vi.fn<() => void>(),
+}));
+vi.mock("./background-refresh.js", () => (
+{
+	ensureBackgroundRefresh,
+}));
+vi.mock("./server-fns.js", () => (
+{
+	listProjects: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([]),
+}));
 
 import {initDb, resetDb} from "@wip/shared";
 
@@ -15,7 +24,8 @@ import {todoEmitter} from "./todo-events.js";
 import {githubEmitter} from "./github-events.js";
 import {createEventsResponse} from "./events-stream.js";
 
-interface ListenerCounts {
+interface ListenerCounts
+{
 	task: number;
 	merge: number;
 	projects: number;
@@ -25,7 +35,8 @@ interface ListenerCounts {
 	projectItems: number;
 }
 
-function listenerCounts(): ListenerCounts {
+function listenerCounts(): ListenerCounts
+{
 	return {
 		task: taskEmitter.listenerCount("task"),
 		merge: mergeEmitter.listenerCount("mergeStatus"),
@@ -37,37 +48,44 @@ function listenerCounts(): ListenerCounts {
 	};
 }
 
-describe("createEventsResponse", () => {
-	beforeEach(() => {
+describe("createEventsResponse", () =>
+{
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		vi.useFakeTimers();
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.useRealTimers();
 		resetDb();
 	});
 
-	it("only subscribes: background work starts at server boot, not on connect", async () => {
+	it("only subscribes: background work starts at server boot, not on connect", async () =>
+	{
 		const response = await createEventsResponse();
 		await response.body?.cancel();
 		expect(ensureBackgroundRefresh).not.toHaveBeenCalled();
 	});
 
-	it("releases listeners and the keepalive timer when the client disconnects", async () => {
+	it("releases listeners and the keepalive timer when the client disconnects", async () =>
+	{
 		const before = listenerCounts();
 		const timersBefore = vi.getTimerCount();
 
 		const response = await createEventsResponse();
-		expect(listenerCounts()).toEqual({
-			task: before.task + 1,
-			merge: before.merge + 1,
-			projects: before.projects + 1,
-			children: before.children + 1,
-			todos: before.todos + 1,
-			issues: before.issues + 1,
-			projectItems: before.projectItems + 1,
-		});
+		expect(listenerCounts()).toEqual(
+			{
+				task: before.task + 1,
+				merge: before.merge + 1,
+				projects: before.projects + 1,
+				children: before.children + 1,
+				todos: before.todos + 1,
+				issues: before.issues + 1,
+				projectItems: before.projectItems + 1,
+			},
+		);
 		expect(vi.getTimerCount()).toBe(timersBefore + 1);
 
 		await response.body?.cancel();
@@ -76,7 +94,8 @@ describe("createEventsResponse", () => {
 		expect(vi.getTimerCount()).toBe(timersBefore);
 	});
 
-	it("forwards refreshed issues and project items as SSE frames", async () => {
+	it("forwards refreshed issues and project items as SSE frames", async () =>
+	{
 		const response = await createEventsResponse();
 		const issues = [
 			{
@@ -84,7 +103,11 @@ describe("createEventsResponse", () => {
 				title: "Real issue",
 				url: "https://github.com/owner/repo/issues/3",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		];
 		githubEmitter.emit("issues", issues);
@@ -93,27 +116,42 @@ describe("createEventsResponse", () => {
 		const reader = response.body!.getReader();
 		const decoder = new TextDecoder();
 		const frames: unknown[] = [];
-		while (frames.length < 2) {
+		while (frames.length < 2)
+		{
 			// eslint-disable-next-line no-await-in-loop -- reading a stream frame by frame
 			const {value} = await reader.read();
-			for (const line of decoder.decode(value).split("\n\n")) {
+			for (const line of decoder.decode(value).split("\n\n"))
+			{
 				if (!line.startsWith("data: ")) continue;
-				const frame = JSON.parse(line.slice("data: ".length)) as {channel: string};
+				const frame = JSON.parse(line.slice("data: ".length)) as
+				{
+					channel: string;
+				};
 				if (frame.channel === "issues" || frame.channel === "projectItems") frames.push(frame);
 			}
 		}
 		await reader.cancel();
 
 		expect(frames).toStrictEqual([
-			{channel: "issues", data: issues},
-			{channel: "projectItems", data: []},
+			{
+				channel: "issues",
+				data: issues,
+			},
+			{
+				channel: "projectItems",
+				data: [],
+			},
 		]);
 	});
 
-	it("registers no listeners or keepalive when an initial send fails", async () => {
+	it("registers no listeners or keepalive when an initial send fails", async () =>
+	{
 		const before = listenerCounts();
 		const timersBefore = vi.getTimerCount();
-		const unserializable = {id: 1n} as unknown as ReturnType<typeof taskQueue.getAllActiveTasks>[number];
+		const unserializable =
+		{
+			id: 1n,
+		} as unknown as ReturnType<typeof taskQueue.getAllActiveTasks>[number];
 		vi.spyOn(taskQueue, "getAllActiveTasks").mockReturnValue([unserializable]);
 
 		await createEventsResponse();

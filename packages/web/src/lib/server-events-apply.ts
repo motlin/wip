@@ -18,7 +18,8 @@ import {pushToast} from "./toast-store.js";
 
 const QUERY_FLUSH_DELAY_MS = 300;
 
-const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
+const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> =
+{
 	queued: "running",
 	running: "running",
 	passed: "passed",
@@ -26,10 +27,20 @@ const TASK_TO_TEST_STATUS: Partial<Record<TaskEvent["status"], TestStatus>> = {
 	cancelled: "unknown",
 };
 
-function patchChildItem(queryClient: QueryClient, project: string, sha: string, patch: Partial<GitChildResult>) {
-	queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) => {
+function patchChildItem(queryClient: QueryClient, project: string, sha: string, patch: Partial<GitChildResult>)
+{
+	queryClient.setQueryData<ProjectChildrenResult>(["children", project], (old) =>
+	{
 		if (!old) return old;
-		return old.map((c) => (c.sha === sha ? {...c, ...patch} : c));
+		return old.map((c) =>
+			c.sha === sha
+				?
+					{
+						...c,
+						...patch,
+					}
+				: c,
+		);
 	});
 }
 
@@ -43,109 +54,160 @@ function keepClientOverlays(
 	old: GitChildResult[] | undefined,
 	incoming: GitChildResult[],
 	isActive?: (child: GitChildResult, taskType: "test" | "push") => boolean,
-): GitChildResult[] {
+): GitChildResult[]
+{
 	if (!old) return incoming;
 	const previous = new Map(old.map((c) => [c.sha, c]));
-	return incoming.map((child) => {
+	return incoming.map((child) =>
+	{
 		const prior = previous.get(child.sha);
 		if (!prior) return child;
 		const pushing = prior.pushing && (!isActive || isActive(child, "push")) ? true : child.pushing;
 		const testStatus =
 			prior.testStatus === "running" && (!isActive || isActive(child, "test")) ? "running" : child.testStatus;
-		return {...child, pushing, testStatus};
+		return {
+			...child,
+			pushing,
+			testStatus,
+		};
 	});
 }
 
-function applyTaskSideEffects(queryClient: QueryClient, data: TaskEvent) {
-	if (data.taskType === "test") {
+function applyTaskSideEffects(queryClient: QueryClient, data: TaskEvent)
+{
+	if (data.taskType === "test")
+	{
 		const testStatus = TASK_TO_TEST_STATUS[data.status] ?? "unknown";
-		patchChildItem(queryClient, data.project, data.sha, {testStatus});
+		patchChildItem(
+			queryClient,
+			data.project,
+			data.sha,
+			{
+				testStatus,
+			},
+		);
 	}
 
-	if (data.taskType === "push") {
+	if (data.taskType === "push")
+	{
 		const pushing = data.status === "queued" || data.status === "running";
-		patchChildItem(queryClient, data.project, data.sha, {
-			pushing,
-			...(data.status === "passed" ? {pushedToRemote: true, localAhead: false} : {}),
-		});
+		patchChildItem(
+			queryClient,
+			data.project,
+			data.sha,
+			{
+				pushing,
+				...(data.status === "passed"
+					?
+						{
+							pushedToRemote: true,
+							localAhead: false,
+						}
+					: {}),
+			},
+		);
 	}
 
 	const toast = taskEventToast(data);
 	if (toast) pushToast(toast);
 }
 
-export interface ServerEventApplier {
+export interface ServerEventApplier
+{
 	apply: (event: ServerEvent) => void;
 	/** Cancel pending batched cache flushes. */
 	dispose: () => void;
 }
 
-export function createServerEventApplier(queryClient: QueryClient): ServerEventApplier {
-	const childrenBatcher = createQueryUpdateBatcher<GitChildResult[]>((updates) => {
-		for (const [project, projectChildren] of updates) {
+export function createServerEventApplier(queryClient: QueryClient): ServerEventApplier
+{
+	const childrenBatcher = createQueryUpdateBatcher<GitChildResult[]>((updates) =>
+	{
+		for (const [project, projectChildren] of updates)
+		{
 			const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
 			const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
 			const merged = keepClientOverlays(old, projectChildren);
 			queryClient.setQueryData(["children", project], flagSnoozedChildren(merged, project, snoozed));
 		}
 	}, QUERY_FLUSH_DELAY_MS);
-	const todosBatcher = createQueryUpdateBatcher<TodoItem[]>((updates) => {
-		for (const [project, todos] of updates) {
+	const todosBatcher = createQueryUpdateBatcher<TodoItem[]>((updates) =>
+	{
+		for (const [project, todos] of updates)
+		{
 			queryClient.setQueryData(["todos", project], todos);
 		}
 	}, QUERY_FLUSH_DELAY_MS);
 
-	function apply(event: ServerEvent): void {
-		switch (event.channel) {
-			case "task": {
+	function apply(event: ServerEvent): void
+	{
+		switch (event.channel)
+		{
+			case "task":
+			{
 				applyTaskEvent(event.data);
-				if (event.data.type !== "log") {
+				if (event.data.type !== "log")
+				{
 					applyTaskSideEffects(queryClient, event.data);
 				}
 				return;
 			}
-			case "merge": {
+			case "merge":
+			{
 				const data = event.data;
 				applyMergeEvent(data);
-				patchChildItem(queryClient, data.project, data.sha, {
-					commitsBehind: data.commitsBehind,
-					commitsAhead: data.commitsAhead,
-					rebaseable: data.rebaseable ?? undefined,
-				});
+				patchChildItem(
+					queryClient,
+					data.project,
+					data.sha,
+					{
+						commitsBehind: data.commitsBehind,
+						commitsAhead: data.commitsAhead,
+						rebaseable: data.rebaseable ?? undefined,
+					},
+				);
 				return;
 			}
-			case "projects": {
+			case "projects":
+			{
 				queryClient.setQueryData(["projects"], event.data);
 				return;
 			}
-			case "issues": {
+			case "issues":
+			{
 				queryClient.setQueryData(["issues"], event.data);
 				return;
 			}
-			case "projectItems": {
+			case "projectItems":
+			{
 				queryClient.setQueryData(["projectItems"], event.data);
 				return;
 			}
-			case "children": {
+			case "children":
+			{
 				childrenBatcher.add(event.data.project, event.data.children);
 				return;
 			}
-			case "todos": {
+			case "todos":
+			{
 				todosBatcher.add(event.data.project, event.data.todos);
 				return;
 			}
-			case "action": {
+			case "action":
+			{
 				// A tab following this action (Open PR's) shows it without waiting for its next poll.
 				queryClient.setQueryData(["actionStatus", event.data.id], event.data);
 				const toast = actionEventToast(event.data);
 				if (toast) pushToast(toast);
 				return;
 			}
-			case "refresh-state": {
+			case "refresh-state":
+			{
 				applySchedulerState(event.data);
 				return;
 			}
-			case "ready-buffer": {
+			case "ready-buffer":
+			{
 				// The children refresh that a state names new shas from arrives first: apply it now, so a
 				// row never renders against a children cache that lacks its sha (no subject, no PR).
 				childrenBatcher.flush();
@@ -156,15 +218,18 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 				);
 				return;
 			}
-			case "refresh-error": {
-				pushToast({
-					level: "error",
-					message:
-						event.data.kind === "escape-hatch"
-							? `A More menu recipe failed in ${event.data.project}`
-							: `Background ${event.data.kind} refresh failed for ${event.data.project}`,
-					detail: event.data.message,
-				});
+			case "refresh-error":
+			{
+				pushToast(
+					{
+						level: "error",
+						message:
+							event.data.kind === "escape-hatch"
+								? `A More menu recipe failed in ${event.data.project}`
+								: `Background ${event.data.kind} refresh failed for ${event.data.project}`,
+						detail: event.data.message,
+					},
+				);
 				return;
 			}
 		}
@@ -172,19 +237,22 @@ export function createServerEventApplier(queryClient: QueryClient): ServerEventA
 
 	return {
 		apply,
-		dispose: () => {
+		dispose: () =>
+		{
 			childrenBatcher.cancel();
 			todosBatcher.cancel();
 		},
 	};
 }
 
-function hasActiveTask(child: GitChildResult, taskType: "test" | "push"): boolean {
+function hasActiveTask(child: GitChildResult, taskType: "test" | "push"): boolean
+{
 	const task = getTaskSnapshot(child.sha, child.project);
 	return task?.taskType === taskType && (task.status === "queued" || task.status === "running");
 }
 
-export interface ResyncFetchers {
+export interface ResyncFetchers
+{
 	fetchChildren: (project: string) => Promise<GitChildResult[]>;
 	fetchTodos: (project: string) => Promise<TodoItem[]>;
 }
@@ -202,22 +270,27 @@ export async function resyncLoadedProjects(
 	queryClient: QueryClient,
 	fetchers: ResyncFetchers,
 	batchSize: number = RESYNC_BATCH_SIZE,
-): Promise<void> {
+): Promise<void>
+{
 	const projects = new Set<string>();
-	for (const query of queryClient.getQueryCache().findAll()) {
+	for (const query of queryClient.getQueryCache().findAll())
+	{
 		const [kind, project] = query.queryKey;
 		if ((kind === "children" || kind === "todos") && typeof project === "string") projects.add(project);
 	}
 	const list = [...projects];
-	for (let i = 0; i < list.length; i += batchSize) {
+	for (let i = 0; i < list.length; i += batchSize)
+	{
 		// eslint-disable-next-line no-await-in-loop -- batches are sequential on purpose to throttle load
 		await Promise.all(
-			list.slice(i, i + batchSize).map(async (project) => {
+			list.slice(i, i + batchSize).map(async (project) =>
+			{
 				const [children, todos] = await Promise.allSettled([
 					fetchers.fetchChildren(project),
 					fetchers.fetchTodos(project),
 				]);
-				if (children.status === "fulfilled") {
+				if (children.status === "fulfilled")
+				{
 					const snoozed = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
 					const old = queryClient.getQueryData<ProjectChildrenResult>(["children", project]);
 					queryClient.setQueryData(

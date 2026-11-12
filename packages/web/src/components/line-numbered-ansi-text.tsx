@@ -1,19 +1,28 @@
 import {useMemo} from "react";
 import AnsiToHtml from "ansi-to-html";
 
-const converter = new AnsiToHtml({
-	escapeXML: true,
-});
+const converter = new AnsiToHtml(
+	{
+		escapeXML: true,
+	},
+);
 
-interface LineNumberedAnsiTextProps {
+interface LineNumberedAnsiTextProps
+{
 	text: string;
 	className?: string;
 }
 
-export function LineNumberedAnsiText({text, className}: LineNumberedAnsiTextProps) {
-	const lines = useMemo(() => {
+export function LineNumberedAnsiText({text, className}: LineNumberedAnsiTextProps)
+{
+	const lines = useMemo(() =>
+	{
 		const raw = text.split("\n");
-		return raw.map((line, index) => ({lineNumber: index + 1, html: converter.toHtml(line)}));
+		return raw.map((line, index) => (
+		{
+			lineNumber: index + 1,
+			html: converter.toHtml(line),
+		}));
 	}, [text]);
 
 	const gutterWidth = String(lines.length).length;
@@ -24,11 +33,19 @@ export function LineNumberedAnsiText({text, className}: LineNumberedAnsiTextProp
 				<div key={lineNumber} className="flex">
 					<span
 						className="mr-4 inline-block select-none text-right text-text-500"
-						style={{minWidth: `${gutterWidth}ch`}}
+						style={
+						{
+							minWidth: `${gutterWidth}ch`,
+						}}
 					>
 						{lineNumber}
 					</span>
-					<span dangerouslySetInnerHTML={{__html: html || "\u200b"}} />
+					<span
+						dangerouslySetInnerHTML={
+						{
+							__html: html || "\u200b",
+						}}
+					/>
 				</div>
 			))}
 		</pre>

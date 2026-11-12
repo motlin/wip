@@ -4,12 +4,22 @@ import {actionName} from "../lib/action-messages.js";
 import {recentActionLogsQueryOptions} from "../lib/queries.js";
 
 /** The recent failed actions, newest first, for a "See the log" link whose action the server never named. */
-export const Route = createFileRoute("/action-log/")({
-	head: () => ({meta: [{title: "Failed actions"}]}),
-	component: RecentActionLogs,
-});
+export const Route = createFileRoute("/action-log/")(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					title: "Failed actions",
+				},
+			],
+		}),
+		component: RecentActionLogs,
+	},
+);
 
-function RecentActionLogs() {
+function RecentActionLogs()
+{
 	const {data, isPending} = useQuery(recentActionLogsQueryOptions());
 	return (
 		<div className="mx-auto max-w-4xl p-6" data-testid="recent-action-logs">
@@ -23,7 +33,14 @@ function RecentActionLogs() {
 					{data.map((log) => (
 						<li key={log.id} className="text-sm">
 							<span className="font-semibold text-red-600">{actionName(log.label)} failed: </span>
-							<Link to="/action-log/$actionId" params={{actionId: log.id}} className="underline">
+							<Link
+								to="/action-log/$actionId"
+								params={
+								{
+									actionId: log.id,
+								}}
+								className="underline"
+							>
 								{log.message}
 							</Link>
 						</li>

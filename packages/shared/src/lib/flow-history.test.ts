@@ -4,7 +4,8 @@ import {flowHistory, type WorkItemHistoryRow} from "./flow-history.js";
 const NOW = Date.parse("2026-10-28T12:00:00.000Z");
 const DAY_MS = 86_400_000;
 
-function daysAgo(days: number): string {
+function daysAgo(days: number): string
+{
 	return new Date(NOW - days * DAY_MS).toISOString();
 }
 
@@ -15,7 +16,8 @@ function row(
 	stateSinceDaysAgo: number,
 	firstSeenDaysAgo: number,
 	landedDaysAgo: number | null = null,
-): WorkItemHistoryRow {
+): WorkItemHistoryRow
+{
 	return {
 		project,
 		patchId,
@@ -27,8 +29,10 @@ function row(
 	};
 }
 
-describe("flowHistory", () => {
-	it("computes daily throughput, the aging of items in WIP and time spent in each state from the state history", () => {
+describe("flowHistory", () =>
+{
+	it("computes daily throughput, the aging of items in WIP and time spent in each state from the state history", () =>
+	{
 		const rows = [
 			// a: ready_to_test 10d ago -> test_failed 6d ago -> (sha change, same state) -> landed 2d ago
 			row("app", "a", "ready_to_test", 10, 10),
@@ -50,32 +54,77 @@ describe("flowHistory", () => {
 
 		const history = flowHistory(rows, NOW, 4);
 
-		expect(history).toStrictEqual({
-			throughput: [
-				{day: "2026-10-25", landings: 0},
-				{day: "2026-10-26", landings: 1},
-				{day: "2026-10-27", landings: 0},
-				{day: "2026-10-28", landings: 1},
-			],
-			aging: [
-				{project: "app", patchId: "b", subject: "change b", state: "test_failed", ageDays: 5},
-				{project: "lib", patchId: "c", subject: "change c", state: "ready_to_test", ageDays: 1},
-			],
-			timeInState: [
-				{state: "ready_to_test", spans: 4, totalDays: 11, medianDays: 3},
-				{state: "test_failed", spans: 2, totalDays: 7, medianDays: 3.5},
-			],
-		});
+		expect(history).toStrictEqual(
+			{
+				throughput: [
+					{
+						day: "2026-10-25",
+						landings: 0,
+					},
+					{
+						day: "2026-10-26",
+						landings: 1,
+					},
+					{
+						day: "2026-10-27",
+						landings: 0,
+					},
+					{
+						day: "2026-10-28",
+						landings: 1,
+					},
+				],
+				aging: [
+					{
+						project: "app",
+						patchId: "b",
+						subject: "change b",
+						state: "test_failed",
+						ageDays: 5,
+					},
+					{
+						project: "lib",
+						patchId: "c",
+						subject: "change c",
+						state: "ready_to_test",
+						ageDays: 1,
+					},
+				],
+				timeInState: [
+					{
+						state: "ready_to_test",
+						spans: 4,
+						totalDays: 11,
+						medianDays: 3,
+					},
+					{
+						state: "test_failed",
+						spans: 2,
+						totalDays: 7,
+						medianDays: 3.5,
+					},
+				],
+			},
+		);
 	});
 
-	it("is empty days and no aging or state time for an empty ledger", () => {
-		expect(flowHistory([], NOW, 2)).toStrictEqual({
-			throughput: [
-				{day: "2026-10-27", landings: 0},
-				{day: "2026-10-28", landings: 0},
-			],
-			aging: [],
-			timeInState: [],
-		});
+	it("is empty days and no aging or state time for an empty ledger", () =>
+	{
+		expect(flowHistory([], NOW, 2)).toStrictEqual(
+			{
+				throughput: [
+					{
+						day: "2026-10-27",
+						landings: 0,
+					},
+					{
+						day: "2026-10-28",
+						landings: 0,
+					},
+				],
+				aging: [],
+				timeInState: [],
+			},
+		);
 	});
 });

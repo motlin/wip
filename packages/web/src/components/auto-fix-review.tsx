@@ -3,7 +3,8 @@ import {useState} from "react";
 import {Loader2} from "./icons.js";
 import {getAutoFixReview} from "../lib/server-fns.js";
 
-export interface AutoFixReviewActions {
+export interface AutoFixReviewActions
+{
 	/** Squash the fixup into the failing commit. */
 	onAccept: () => Promise<void>;
 	/** Keep the item red and take it over; the fixup stays until the user decides. */
@@ -32,19 +33,35 @@ export function AutoFixReview({
 	sha: string;
 	branch: string;
 	actions: AutoFixReviewActions;
-}) {
-	const review = useQuery({
-		queryKey: ["auto-fix-review", project, sha],
-		queryFn: async () => getAutoFixReview({data: {project, sha}}),
-	});
+})
+{
+	const review = useQuery(
+		{
+			queryKey: ["auto-fix-review", project, sha],
+			queryFn: async () =>
+				getAutoFixReview(
+					{
+						data:
+						{
+							project,
+							sha,
+						},
+					},
+				),
+		},
+	);
 	const [busy, setBusy] = useState(false);
 	const [confirmDrop, setConfirmDrop] = useState(false);
 
-	const run = (action: () => Promise<void>) => async () => {
+	const run = (action: () => Promise<void>) => async () =>
+	{
 		setBusy(true);
-		try {
+		try
+		{
 			await action();
-		} finally {
+		}
+		finally
+		{
 			setBusy(false);
 		}
 	};
@@ -86,7 +103,8 @@ export function AutoFixReview({
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							void run(actions.onDrop)();
 						}}
 						className={`${ACTION_CLASS} bg-red-600 text-white hover:bg-red-700`}
@@ -95,7 +113,8 @@ export function AutoFixReview({
 					</button>
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirmDrop(false);
 						}}
 						className={`${ACTION_CLASS} text-text-400 hover:bg-bg-200`}
@@ -108,7 +127,8 @@ export function AutoFixReview({
 					<button
 						type="button"
 						disabled={busy || !review.data}
-						onClick={() => {
+						onClick={() =>
+						{
 							void run(actions.onAccept)();
 						}}
 						title={`Squash the fixup into this commit on ${branch}`}
@@ -119,7 +139,8 @@ export function AutoFixReview({
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							void run(actions.onFixMyself)();
 						}}
 						title="Keep the item red and take it over; the fixup stays until you decide"
@@ -130,7 +151,8 @@ export function AutoFixReview({
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							void run(actions.onHold)();
 						}}
 						className={`${ACTION_CLASS} text-text-300 hover:bg-bg-200`}
@@ -140,7 +162,8 @@ export function AutoFixReview({
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirmDrop(true);
 						}}
 						title={`Delete the local branch ${branch} (never a remote one)`}

@@ -5,11 +5,13 @@ import {getFlowHistoryHandler} from "./server-fns.impl.js";
 const START = Date.parse("2026-10-20T12:00:00.000Z");
 const DAY_MS = 86_400_000;
 
-function at(day: number): string {
+function at(day: number): string
+{
 	return new Date(START + day * DAY_MS).toISOString();
 }
 
-function item(patchId: string, state: string, stateSinceDay: number, landedDay: number | null = null): WorkItem {
+function item(patchId: string, state: string, stateSinceDay: number, landedDay: number | null = null): WorkItem
+{
 	return {
 		patchId,
 		sha: patchId.padEnd(40, "0"),
@@ -21,18 +23,26 @@ function item(patchId: string, state: string, stateSinceDay: number, landedDay: 
 	};
 }
 
-describe("getFlowHistoryHandler", () => {
-	beforeEach(() => {
+describe("getFlowHistoryHandler", () =>
+{
+	beforeEach(() =>
+	{
 		initDb(":memory:");
-		vi.useFakeTimers({toFake: ["Date"]});
+		vi.useFakeTimers(
+			{
+				toFake: ["Date"],
+			},
+		);
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.useRealTimers();
 		resetDb();
 	});
 
-	it("computes per-state durations, aging and throughput from the seeded ledger history", async () => {
+	it("computes per-state durations, aging and throughput from the seeded ledger history", async () =>
+	{
 		vi.setSystemTime(at(0));
 		writeWorkItems("app", [item("a", "ready_to_test", 0), item("b", "ready_to_test", 0)]);
 		writeWorkItems("lib", [item("c", "ready_to_test", 0)]);
@@ -44,26 +54,61 @@ describe("getFlowHistoryHandler", () => {
 
 		const history = await getFlowHistoryHandler();
 
-		expect({
-			lastDays: history.throughput.slice(-3),
-			days: history.throughput.length,
-			aging: history.aging,
-			timeInState: history.timeInState,
-		}).toStrictEqual({
-			lastDays: [
-				{day: "2026-10-24", landings: 0},
-				{day: "2026-10-25", landings: 1},
-				{day: "2026-10-26", landings: 0},
-			],
-			days: 28,
-			aging: [
-				{project: "app", patchId: "b", subject: "change b", state: "test_failed", ageDays: 6},
-				{project: "lib", patchId: "c", subject: "change c", state: "ready_to_test", ageDays: 6},
-			],
-			timeInState: [
-				{state: "ready_to_test", spans: 3, totalDays: 10, medianDays: 2},
-				{state: "test_failed", spans: 2, totalDays: 7, medianDays: 3.5},
-			],
-		});
+		expect(
+			{
+				lastDays: history.throughput.slice(-3),
+				days: history.throughput.length,
+				aging: history.aging,
+				timeInState: history.timeInState,
+			},
+		).toStrictEqual(
+			{
+				lastDays: [
+					{
+						day: "2026-10-24",
+						landings: 0,
+					},
+					{
+						day: "2026-10-25",
+						landings: 1,
+					},
+					{
+						day: "2026-10-26",
+						landings: 0,
+					},
+				],
+				days: 28,
+				aging: [
+					{
+						project: "app",
+						patchId: "b",
+						subject: "change b",
+						state: "test_failed",
+						ageDays: 6,
+					},
+					{
+						project: "lib",
+						patchId: "c",
+						subject: "change c",
+						state: "ready_to_test",
+						ageDays: 6,
+					},
+				],
+				timeInState: [
+					{
+						state: "ready_to_test",
+						spans: 3,
+						totalDays: 10,
+						medianDays: 2,
+					},
+					{
+						state: "test_failed",
+						spans: 2,
+						totalDays: 7,
+						medianDays: 3.5,
+					},
+				],
+			},
+		);
 	});
 });

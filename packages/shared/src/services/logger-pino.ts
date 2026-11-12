@@ -7,7 +7,8 @@ import type {StderrLog} from "./logger-pino-stderr.js";
 // node builtins for the browser and throws on the import binding, which previously
 // crashed client hydration on every route.
 
-const LEVELS = {
+const LEVELS =
+{
 	trace: 10,
 	debug: 20,
 	info: 30,
@@ -19,7 +20,8 @@ const LEVELS = {
 type LevelName = keyof typeof LEVELS;
 type Fields = Record<string, unknown>;
 
-interface CategoryLogger {
+interface CategoryLogger
+{
 	trace(obj: Fields | string, msg?: string): void;
 	debug(obj: Fields | string, msg?: string): void;
 	info(obj: Fields | string, msg?: string): void;
@@ -30,7 +32,8 @@ interface CategoryLogger {
 
 type Category = "subprocess" | "progress" | "general";
 
-function isLoggingEnabled(): boolean {
+function isLoggingEnabled(): boolean
+{
 	return typeof process === "object" ? process.env["WIP_SUBPROCESS_LOGGING"] === "true" : false;
 }
 
@@ -40,53 +43,87 @@ function isLoggingEnabled(): boolean {
 // anyway), so stderr output is simply skipped while the in-memory buffer is
 // still fed below. Entries logged while the import is in flight are queued and
 // written once it lands, so a server's first subprocess lines aren't lost.
-type Pending = {category: Category; level: LevelName; fields: Fields; msg: string};
+type Pending =
+{
+	category: Category;
+	level: LevelName;
+	fields: Fields;
+	msg: string;
+};
 let stderrLog: StderrLog | undefined;
 let stderrPending: Pending[] | undefined;
 let stderrUnavailable = false;
-function writeStderr(entry: Pending): void {
+function writeStderr(entry: Pending): void
+{
 	if (stderrUnavailable) return;
-	if (stderrLog) {
+	if (stderrLog)
+	{
 		stderrLog[entry.category][entry.level](entry.fields, entry.msg);
 		return;
 	}
-	if (stderrPending) {
+	if (stderrPending)
+	{
 		stderrPending.push(entry);
 		return;
 	}
 	const queue = [entry];
 	stderrPending = queue;
-	void (async () => {
-		try {
+	void (async () =>
+	{
+		try
+		{
 			const {createStderrLog} = await import("./logger-pino-stderr.js");
 			stderrLog = createStderrLog();
-			for (const queued of queue) {
+			for (const queued of queue)
+			{
 				stderrLog[queued.category][queued.level](queued.fields, queued.msg);
 			}
-		} catch {
+		}
+		catch
+		{
 			// stderr logging is best-effort; don't retry the import on every entry
 			stderrUnavailable = true;
-		} finally {
+		}
+		finally
+		{
 			stderrPending = undefined;
 		}
 	})();
 }
 
-function emit(category: Category, level: LevelName, arg1: Fields | string, arg2?: string): void {
+function emit(category: Category, level: LevelName, arg1: Fields | string, arg2?: string): void
+{
 	if (!isLoggingEnabled()) return;
 
 	const fields = typeof arg1 === "string" ? {} : arg1;
 	const msg = typeof arg1 === "string" ? arg1 : (arg2 ?? "");
 
-	writeLogEntry({time: Date.now(), level: LEVELS[level], category, msg, ...fields});
+	writeLogEntry(
+		{
+			time: Date.now(),
+			level: LEVELS[level],
+			category,
+			msg,
+			...fields,
+		},
+	);
 
-	writeStderr({category, level, fields, msg});
+	writeStderr(
+		{
+			category,
+			level,
+			fields,
+			msg,
+		},
+	);
 }
 
-function makeCategoryLogger(category: Category): CategoryLogger {
+function makeCategoryLogger(category: Category): CategoryLogger
+{
 	const at =
 		(level: LevelName) =>
-		(obj: Fields | string, msg?: string): void => {
+		(obj: Fields | string, msg?: string): void =>
+		{
 			emit(category, level, obj, msg);
 		};
 	return {
@@ -99,7 +136,8 @@ function makeCategoryLogger(category: Category): CategoryLogger {
 	};
 }
 
-export const log = {
+export const log =
+{
 	subprocess: makeCategoryLogger("subprocess"),
 	progress: makeCategoryLogger("progress"),
 	general: makeCategoryLogger("general"),

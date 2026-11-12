@@ -5,7 +5,8 @@ import "@git-diff-view/react/styles/diff-view.css";
 import {BranchActions, PullRequestActions} from "../components/commit-actions";
 import {FileDiffSection, DiffToolbar} from "../components/diff-section";
 import {ReadyLandPanel} from "../components/ready-to-land-section";
-import {
+import
+{
 	diffQueryOptions,
 	projectChildrenQueryOptions,
 	projectsQueryOptions,
@@ -15,22 +16,46 @@ import {useLandReadyItem} from "../lib/use-land-ready-item";
 import {landOutcomeKey, useActionOutcomes, useDismissActionOutcome} from "../lib/action-outcomes";
 import {classifyBranch, classifyPullRequest} from "@wip/shared/classify.js";
 
-export const Route = createFileRoute("/diff/$project/$sha")({
-	loader: async ({context: {queryClient}, params}) =>
-		Promise.all([
-			queryClient.query({...diffQueryOptions(params.project, params.sha), staleTime: "static"}),
-			queryClient.query({...projectChildrenQueryOptions(params.project), staleTime: "static"}),
-			queryClient.query({...projectsQueryOptions(), staleTime: "static"}),
-		]),
-	head: ({params}) => ({
-		meta: [{title: `Diff: ${params.sha.slice(0, 7)}`}],
-	}),
-	component: DiffViewer,
-});
+export const Route = createFileRoute("/diff/$project/$sha")(
+	{
+		loader: async ({context: {queryClient}, params}) =>
+			Promise.all([
+				queryClient.query(
+					{
+						...diffQueryOptions(params.project, params.sha),
+						staleTime: "static",
+					},
+				),
+				queryClient.query(
+					{
+						...projectChildrenQueryOptions(params.project),
+						staleTime: "static",
+					},
+				),
+				queryClient.query(
+					{
+						...projectsQueryOptions(),
+						staleTime: "static",
+					},
+				),
+			]),
+		head: ({params}) => (
+		{
+			meta: [
+				{
+					title: `Diff: ${params.sha.slice(0, 7)}`,
+				},
+			],
+		}),
+		component: DiffViewer,
+	},
+);
 
-function DiffViewer() {
+function DiffViewer()
+{
 	const {project, sha} = Route.useParams();
-	const {
+	const
+	{
 		data: {files, stat, subject},
 	} = useSuspenseQuery(diffQueryOptions(project, sha));
 	const {data: children} = useSuspenseQuery(projectChildrenQueryOptions(project));
@@ -77,7 +102,8 @@ function DiffViewer() {
 					projectInfo={projectInfo}
 					onLand={land}
 					outcome={outcomes[landOutcomeKey(project, sha)]}
-					onDismissOutcome={() => {
+					onDismissOutcome={() =>
+					{
 						dismissOutcome(landOutcomeKey(project, sha));
 					}}
 				/>

@@ -6,10 +6,12 @@ import {captureActionLogs} from "./queued-action.js";
 const KEPT_LOGS = 200;
 const kept = new Map<string, ActionLog>();
 
-function keep(log: ActionLog): void {
+function keep(log: ActionLog): void
+{
 	kept.delete(log.id);
 	kept.set(log.id, log);
-	while (kept.size > KEPT_LOGS) {
+	while (kept.size > KEPT_LOGS)
+	{
 		const oldest = kept.keys().next().value;
 		if (oldest === undefined) break;
 		kept.delete(oldest);
@@ -17,16 +19,19 @@ function keep(log: ActionLog): void {
 }
 
 /** A failed action's log by id; null when it succeeded, never ran here, or was evicted. */
-export function actionLog(id: string): ActionLog | null {
+export function actionLog(id: string): ActionLog | null
+{
 	return kept.get(id) ?? null;
 }
 
 /** The kept failed actions' logs, newest first. */
-export function recentActionLogs(): ActionLog[] {
+export function recentActionLogs(): ActionLog[]
+{
 	return [...kept.values()].toReversed();
 }
 
-export function resetActionLogs(): void {
+export function resetActionLogs(): void
+{
 	kept.clear();
 }
 
@@ -39,9 +44,11 @@ export async function loggedAction(
 	label: string,
 	fn: () => Promise<ActionResult>,
 	id: string = crypto.randomUUID(),
-): Promise<ActionResult> {
+): Promise<ActionResult>
+{
 	const {settled, logs, failures} = await captureActionLogs(fn);
-	const entries: ActionLogEntry[] = logs.map((e) => ({
+	const entries: ActionLogEntry[] = logs.map((e) => (
+	{
 		time: e.time,
 		level: e.level,
 		category: e.category,
@@ -53,12 +60,37 @@ export async function loggedAction(
 		last === undefined
 			? {}
 			: last.kind === "subprocess"
-				? {failedCommand: {command: last.command, exitCode: last.exitCode, stderr: last.stderr}}
-				: {failedRequest: {operation: last.operation, message: last.message}};
-	const record = (message: string): void => {
-		keep({id, label, message, ...failure, logs: entries});
+				?
+					{
+						failedCommand:
+						{
+							command: last.command,
+							exitCode: last.exitCode,
+							stderr: last.stderr,
+						},
+					}
+				:
+					{
+						failedRequest:
+						{
+							operation: last.operation,
+							message: last.message,
+						},
+					};
+	const record = (message: string): void =>
+	{
+		keep(
+			{
+				id,
+				label,
+				message,
+				...failure,
+				logs: entries,
+			},
+		);
 	};
-	if (settled.status === "rejected") {
+	if (settled.status === "rejected")
+	{
 		const reason: unknown = settled.reason;
 		record(reason instanceof Error ? reason.message : String(reason));
 		throw reason;
@@ -67,7 +99,17 @@ export async function loggedAction(
 	if (!result.ok) record(result.message);
 	return {
 		...result,
-		...(result.ok ? {} : {actionId: id}),
-		...(entries.length === 0 ? {} : {logs: entries}),
+		...(result.ok
+			? {}
+			:
+				{
+					actionId: id,
+				}),
+		...(entries.length === 0
+			? {}
+			:
+				{
+					logs: entries,
+				}),
 	};
 }

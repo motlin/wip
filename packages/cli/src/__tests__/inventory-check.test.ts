@@ -9,63 +9,120 @@ import {saveInventory, type ProjectRecord} from "@wip/shared";
 
 import InventoryCheck, {type InventoryCheckResult} from "../commands/inventory/check.js";
 
-async function runCheck(argv: string[]): Promise<{result?: InventoryCheckResult; exitCode?: number}> {
+async function runCheck(argv: string[]): Promise<
+{
+	result?: InventoryCheckResult;
+	exitCode?: number;
+}>
+{
 	const config = await loadTestConfig();
-	try {
-		return {result: await new InventoryCheck(argv, config).run()};
-	} catch (error) {
-		const exit = (error as {oclif?: {exit?: number}}).oclif?.exit;
+	try
+	{
+		return {
+			result: await new InventoryCheck(argv, config).run(),
+		};
+	}
+	catch (error)
+	{
+		const exit = (
+			error as
+			{
+				oclif?:
+				{
+					exit?: number;
+				};
+			}
+		).oclif?.exit;
 		if (exit === undefined) throw error;
-		return {exitCode: exit};
+		return {
+			exitCode: exit,
+		};
 	}
 }
 
-describe("wip inventory check", () => {
+describe("wip inventory check", () =>
+{
 	let tmp: string;
 	let projectsDir: string;
 	let originalXdg: string | undefined;
 	let stdout: string[];
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wip-inv-check-"));
 		originalXdg = process.env.XDG_CONFIG_HOME;
 		process.env.XDG_CONFIG_HOME = path.join(tmp, "config");
 		projectsDir = path.join(tmp, "projects");
-		fs.mkdirSync(projectsDir, {recursive: true});
+		fs.mkdirSync(
+			projectsDir,
+			{
+				recursive: true,
+			},
+		);
 		stdout = [];
-		vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+		vi.spyOn(console, "log").mockImplementation((line: unknown) =>
+		{
 			stdout.push(`${String(line)}\n`);
 		});
 		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.restoreAllMocks();
 		process.exitCode = undefined;
 		if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
 		else process.env.XDG_CONFIG_HOME = originalXdg;
-		fs.rmSync(tmp, {recursive: true, force: true});
+		fs.rmSync(
+			tmp,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	function makeRepo(name: string): string {
+	function makeRepo(name: string): string
+	{
 		const dir = path.join(projectsDir, name);
-		fs.mkdirSync(path.join(dir, ".git"), {recursive: true});
+		fs.mkdirSync(
+			path.join(dir, ".git"),
+			{
+				recursive: true,
+			},
+		);
 		return dir;
 	}
 
-	function record(name: string, kind: ProjectRecord["kind"] = "own"): ProjectRecord {
-		return {name, dir: path.join(projectsDir, name), template: "typescript", kind};
+	function record(name: string, kind: ProjectRecord["kind"] = "own"): ProjectRecord
+	{
+		return {
+			name,
+			dir: path.join(projectsDir, name),
+			template: "typescript",
+			kind,
+		};
 	}
 
-	it("is consistent when registry and disk agree", async () => {
+	it("is consistent when registry and disk agree", async () =>
+	{
 		makeRepo("alpha");
 		fs.mkdirSync(path.join(projectsDir, "not-a-repo"));
 		saveInventory([record("alpha")]);
 		const {result} = await runCheck(["--projects-dir", projectsDir, "--json"]);
-		expect(result).toEqual({consistent: true, unregistered: [], missing: [], skipped: [], removableSkips: []});
+		expect(result).toEqual(
+			{
+				consistent: true,
+				unregistered: [],
+				missing: [],
+				skipped: [],
+				removableSkips: [],
+			},
+		);
 	});
 
-	it("is consistent with skip entries for existing worktrees and copies, and lists them with their reasons", async () => {
+	it("is consistent with skip entries for existing worktrees and copies, and lists them with their reasons", async () =>
+	{
 		makeRepo("alpha");
 		makeRepo("alpha-pr3");
 		const worktree = path.join(projectsDir, "feature");
@@ -76,37 +133,65 @@ describe("wip inventory check", () => {
 			record("alpha"),
 			record("alpha-pr3", "skip"),
 			record("feature", "skip"),
-			{...record("archived", "skip"), skipNote: "old experiment"},
+			{
+				...record("archived", "skip"),
+				skipNote: "old experiment",
+			},
 		]);
 		const {result, exitCode} = await runCheck(["--projects-dir", projectsDir, "--json"]);
 		expect(exitCode).toBeUndefined();
 		expect(process.exitCode).toBeUndefined();
-		expect(result).toEqual({
-			consistent: true,
-			unregistered: [],
-			missing: [],
-			skipped: [
-				{
-					name: "alpha-pr3",
-					dir: path.join(projectsDir, "alpha-pr3"),
-					reason: {code: "pr", text: "PR #3 worktree of alpha"},
-				},
-				{
-					name: "archived",
-					dir: path.join(projectsDir, "archived"),
-					reason: {code: "user", text: "skipped by you"},
-					note: "old experiment",
-				},
-				{name: "feature", dir: worktree, reason: {code: "worktree", text: "git worktree of nowhere"}},
-			],
-			removableSkips: [],
-		});
+		expect(result).toEqual(
+			{
+				consistent: true,
+				unregistered: [],
+				missing: [],
+				skipped: [
+					{
+						name: "alpha-pr3",
+						dir: path.join(projectsDir, "alpha-pr3"),
+						reason:
+						{
+							code: "pr",
+							text: "PR #3 worktree of alpha",
+						},
+					},
+					{
+						name: "archived",
+						dir: path.join(projectsDir, "archived"),
+						reason:
+						{
+							code: "user",
+							text: "skipped by you",
+						},
+						note: "old experiment",
+					},
+					{
+						name: "feature",
+						dir: worktree,
+						reason:
+						{
+							code: "worktree",
+							text: "git worktree of nowhere",
+						},
+					},
+				],
+				removableSkips: [],
+			},
+		);
 	});
 
-	it("prints present skip entries informationally under a consistent text report", async () => {
+	it("prints present skip entries informationally under a consistent text report", async () =>
+	{
 		makeRepo("alpha-pr3");
 		makeRepo("archived");
-		saveInventory([record("alpha-pr3", "skip"), {...record("archived", "skip"), skipNote: "old experiment"}]);
+		saveInventory([
+			record("alpha-pr3", "skip"),
+			{
+				...record("archived", "skip"),
+				skipNote: "old experiment",
+			},
+		]);
 		const {exitCode} = await runCheck(["--projects-dir", projectsDir]);
 		expect(exitCode).toBeUndefined();
 		expect(stdout.join("")).toBe(
@@ -119,21 +204,30 @@ describe("wip inventory check", () => {
 		);
 	});
 
-	it("notes a skip entry whose directory is gone as removable without failing", async () => {
+	it("notes a skip entry whose directory is gone as removable without failing", async () =>
+	{
 		saveInventory([record("absent-skip", "skip")]);
 		const {result, exitCode} = await runCheck(["--projects-dir", projectsDir, "--json"]);
 		expect(exitCode).toBeUndefined();
 		expect(process.exitCode).toBeUndefined();
-		expect(result).toEqual({
-			consistent: true,
-			unregistered: [],
-			missing: [],
-			skipped: [],
-			removableSkips: [{name: "absent-skip", dir: path.join(projectsDir, "absent-skip")}],
-		});
+		expect(result).toEqual(
+			{
+				consistent: true,
+				unregistered: [],
+				missing: [],
+				skipped: [],
+				removableSkips: [
+					{
+						name: "absent-skip",
+						dir: path.join(projectsDir, "absent-skip"),
+					},
+				],
+			},
+		);
 	});
 
-	it("prints a gone skip entry as a removable note under a consistent text report", async () => {
+	it("prints a gone skip entry as a removable note under a consistent text report", async () =>
+	{
 		saveInventory([record("absent-skip", "skip")]);
 		const {exitCode} = await runCheck(["--projects-dir", projectsDir]);
 		expect(exitCode).toBeUndefined();
@@ -146,7 +240,8 @@ describe("wip inventory check", () => {
 		);
 	});
 
-	it("reports unregistered, missing and not-a-repo entries, lists present skips, and exits 1", async () => {
+	it("reports unregistered, missing and not-a-repo entries, lists present skips, and exits 1", async () =>
+	{
 		makeRepo("alpha");
 		makeRepo("stray");
 		makeRepo("skipped");
@@ -166,12 +261,18 @@ describe("wip inventory check", () => {
 		);
 	});
 
-	it("accepts nested entries inside a parent repo and reports the unregistered parent", async () => {
+	it("accepts nested entries inside a parent repo and reports the unregistered parent", async () =>
+	{
 		const parent = makeRepo("quarto");
 		fs.mkdirSync(path.join(parent, "solver"));
 		fs.mkdirSync(path.join(parent, "web"));
 		const deep = path.join(parent, "archetype", "src", "main", "resources");
-		fs.mkdirSync(deep, {recursive: true});
+		fs.mkdirSync(
+			deep,
+			{
+				recursive: true,
+			},
+		);
 		saveInventory([
 			record("quarto/solver", "nested"),
 			record("quarto/web", "nested"),
@@ -187,44 +288,76 @@ describe("wip inventory check", () => {
 		expect(stdout.join("")).toBe(`unregistered: ${parent}\n`);
 	});
 
-	it("reports a nested entry outside any git repo as not a git repo", async () => {
-		fs.mkdirSync(path.join(projectsDir, "loose", "child"), {recursive: true});
+	it("reports a nested entry outside any git repo as not a git repo", async () =>
+	{
+		fs.mkdirSync(
+			path.join(projectsDir, "loose", "child"),
+			{
+				recursive: true,
+			},
+		);
 		saveInventory([record("loose/child", "nested")]);
 		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], await loadTestConfig());
-		expect(JSON.parse(stdout.join(""))).toEqual({
-			consistent: false,
-			unregistered: [],
-			missing: [{name: "loose/child", dir: path.join(projectsDir, "loose", "child"), reason: "not-a-git-repo"}],
-			skipped: [],
-			removableSkips: [],
-		});
+		expect(JSON.parse(stdout.join(""))).toEqual(
+			{
+				consistent: false,
+				unregistered: [],
+				missing: [
+					{
+						name: "loose/child",
+						dir: path.join(projectsDir, "loose", "child"),
+						reason: "not-a-git-repo",
+					},
+				],
+				skipped: [],
+				removableSkips: [],
+			},
+		);
 	});
 
-	it("reports a registered file as not a git repo and ignores unregistered files", async () => {
+	it("reports a registered file as not a git repo and ignores unregistered files", async () =>
+	{
 		fs.writeFileSync(path.join(projectsDir, "Brewfile"), "brew 'git'\n");
 		fs.writeFileSync(path.join(projectsDir, "notes.txt"), "notes\n");
 		saveInventory([record("Brewfile")]);
 		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], await loadTestConfig());
-		expect(JSON.parse(stdout.join(""))).toEqual({
-			consistent: false,
-			unregistered: [],
-			missing: [{name: "Brewfile", dir: path.join(projectsDir, "Brewfile"), reason: "not-a-git-repo"}],
-			skipped: [],
-			removableSkips: [],
-		});
+		expect(JSON.parse(stdout.join(""))).toEqual(
+			{
+				consistent: false,
+				unregistered: [],
+				missing: [
+					{
+						name: "Brewfile",
+						dir: path.join(projectsDir, "Brewfile"),
+						reason: "not-a-git-repo",
+					},
+				],
+				skipped: [],
+				removableSkips: [],
+			},
+		);
 	});
 
-	it("prints exactly one JSON document and exits 1 when inconsistent with --json", async () => {
+	it("prints exactly one JSON document and exits 1 when inconsistent with --json", async () =>
+	{
 		makeRepo("stray");
 		saveInventory([record("gone")]);
 		await InventoryCheck.run(["--projects-dir", projectsDir, "--json"], await loadTestConfig());
 		expect(process.exitCode).toBe(1);
-		expect(JSON.parse(stdout.join(""))).toEqual({
-			consistent: false,
-			unregistered: [path.join(projectsDir, "stray")],
-			missing: [{name: "gone", dir: path.join(projectsDir, "gone"), reason: "missing"}],
-			skipped: [],
-			removableSkips: [],
-		});
+		expect(JSON.parse(stdout.join(""))).toEqual(
+			{
+				consistent: false,
+				unregistered: [path.join(projectsDir, "stray")],
+				missing: [
+					{
+						name: "gone",
+						dir: path.join(projectsDir, "gone"),
+						reason: "missing",
+					},
+				],
+				skipped: [],
+				removableSkips: [],
+			},
+		);
 	});
 });

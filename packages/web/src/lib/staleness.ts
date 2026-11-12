@@ -4,7 +4,8 @@
  */
 
 /** Parses a DB timestamp (UTC, no zone) or an ISO timestamp that carries its own zone (the ledger's). */
-export function parseDbTimestamp(timestamp: string): number {
+export function parseDbTimestamp(timestamp: string): number
+{
 	if (/(?:Z|[+-]\d\d:\d\d)$/.test(timestamp)) return Date.parse(timestamp);
 	return Date.parse(`${timestamp.replace(" ", "T")}Z`);
 }
@@ -12,11 +13,13 @@ export function parseDbTimestamp(timestamp: string): number {
 const DAY_MS = 86_400_000;
 
 /** "in wip Nd": whole days since the work item's first seen (lean plan step 44); never styled by age. */
-export function wipAgeText(firstSeen: string, nowMs: number): string {
+export function wipAgeText(firstSeen: string, nowMs: number): string
+{
 	return `in wip ${Math.floor(Math.max(0, nowMs - parseDbTimestamp(firstSeen)) / DAY_MS)}d`;
 }
 
-export function formatRelativeAge(dbTimestamp: string, nowMs: number): string {
+export function formatRelativeAge(dbTimestamp: string, nowMs: number): string
+{
 	const ageMs = Math.max(0, nowMs - parseDbTimestamp(dbTimestamp));
 	const minutes = Math.floor(ageMs / 60_000);
 	if (minutes < 1) return "just now";
@@ -35,11 +38,19 @@ export function freshnessSummary(
 	projectRefreshedAt: Readonly<Record<string, string>>,
 	nowMs: number,
 	staleAfterMinutes: number,
-): {refreshedAt: string | null; staleProjects: string[]} {
+):
+{
+	refreshedAt: string | null;
+	staleProjects: string[];
+}
+{
 	const timestamps = Object.values(projectRefreshedAt).toSorted();
 	const staleProjects = Object.entries(projectRefreshedAt)
 		.filter(([, timestamp]) => nowMs - parseDbTimestamp(timestamp) > staleAfterMinutes * 60_000)
 		.map(([project]) => project)
 		.toSorted();
-	return {refreshedAt: timestamps[Math.floor((timestamps.length - 1) / 2)] ?? null, staleProjects};
+	return {
+		refreshedAt: timestamps[Math.floor((timestamps.length - 1) / 2)] ?? null,
+		staleProjects,
+	};
 }

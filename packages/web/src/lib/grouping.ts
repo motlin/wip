@@ -6,7 +6,8 @@ import type {WorkItems} from "./use-work-items.js";
 
 export type Grouped = Record<Category, ColumnItems>;
 
-export function emptyGrouped(): Grouped {
+export function emptyGrouped(): Grouped
+{
 	return {
 		upstream_red: {},
 		pr_refs_missing: {},
@@ -40,7 +41,8 @@ export function emptyGrouped(): Grouped {
 	};
 }
 
-export function bucketCount(items: ColumnItems): number {
+export function bucketCount(items: ColumnItems): number
+{
 	return (
 		(items.gitChildren?.length ?? 0) +
 		(items.issues?.length ?? 0) +
@@ -50,21 +52,25 @@ export function bucketCount(items: ColumnItems): number {
 }
 
 // Queue and kanban share this so the same work items land in the same categories on both pages.
-export function buildGrouped(workItems: WorkItems, projects: ProjectInfo[]): Grouped {
+export function buildGrouped(workItems: WorkItems, projects: ProjectInfo[]): Grouped
+{
 	const grouped = emptyGrouped();
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 
-	for (const child of workItems.gitChildren) {
+	for (const child of workItems.gitChildren)
+	{
 		const project = projectMap.get(child.project);
 		if (!project) continue;
 		// A foreign red upstream is the baseline, not work: it gets no item.
 		if (child.kind === "upstream_ci" && !isOwnUpstreamRed(child)) continue;
 		(grouped[classifyGitChild(child, project)].gitChildren ??= []).push(child);
 	}
-	for (const issue of workItems.issues) {
+	for (const issue of workItems.issues)
+	{
 		(grouped[classifyIssue(issue)].issues ??= []).push(issue);
 	}
-	for (const todo of workItems.todos) {
+	for (const todo of workItems.todos)
+	{
 		(grouped[classifyTodo(todo)].todos ??= []).push(todo);
 	}
 	// Project items lack assignment info, so they are untriaged.

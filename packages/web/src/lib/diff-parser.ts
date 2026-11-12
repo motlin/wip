@@ -5,7 +5,8 @@
  * share one parsing implementation instead of two drifting copies.
  */
 
-export interface FileDiff {
+export interface FileDiff
+{
 	oldFileName: string;
 	newFileName: string;
 	/** Full diff chunk including the `diff --git` header — @git-diff-view/core needs it. */
@@ -14,18 +15,21 @@ export interface FileDiff {
 	newContent: string;
 }
 
-export interface DiffContentFetchers {
+export interface DiffContentFetchers
+{
 	/** Resolve a file's pre-change content; return "" on failure. */
 	old: (fileName: string) => Promise<string>;
 	/** Resolve a file's post-change content; return "" on failure. */
 	new: (fileName: string) => Promise<string>;
 }
 
-export async function parseDiffFiles(rawDiff: string, fetch: DiffContentFetchers): Promise<FileDiff[]> {
+export async function parseDiffFiles(rawDiff: string, fetch: DiffContentFetchers): Promise<FileDiff[]>
+{
 	const chunks = rawDiff.split(/^(?=diff --git )/m).filter(Boolean);
 
 	const files = await Promise.all(
-		chunks.map(async (chunk): Promise<FileDiff | undefined> => {
+		chunks.map(async (chunk): Promise<FileDiff | undefined> =>
+		{
 			const headerMatch = chunk.match(/^diff --git a\/(.*?) b\/(.*)/m);
 			if (!headerMatch) return undefined;
 			const oldFileName = headerMatch[1] ?? "";
@@ -40,7 +44,13 @@ export async function parseDiffFiles(rawDiff: string, fetch: DiffContentFetchers
 				isDeletedFile ? "" : fetch.new(newFileName),
 			]);
 
-			return {oldFileName, newFileName, hunks: chunk, oldContent, newContent};
+			return {
+				oldFileName,
+				newFileName,
+				hunks: chunk,
+				oldContent,
+				newContent,
+			};
 		}),
 	);
 	return files.filter((file) => file !== undefined);

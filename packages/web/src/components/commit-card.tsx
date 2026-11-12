@@ -10,7 +10,8 @@ import {BranchActions} from "./commit-actions";
 import {wipAgeText} from "../lib/staleness";
 import {UpstreamRedBlockedMarker} from "./upstream-ci-card";
 
-export function CommitCard({commit, category}: {commit: GitChildResult; category?: Category}) {
+export function CommitCard({commit, category}: {commit: GitChildResult; category?: Category})
+{
 	const queryClient = useQueryClient();
 	const [branchName, setBranchName] = useState(commit.suggestedBranch ?? "");
 	const [creating, setCreating] = useState(false);
@@ -20,49 +21,78 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 	const [naming, setNaming] = useState(false);
 	// Ages come from the client clock, set after mount so hydration matches the server render.
 	const [now, setNow] = useState<number | null>(null);
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (commit.firstSeen === undefined) return undefined;
-		const tick = () => {
+		const tick = () =>
+		{
 			setNow(Date.now());
 		};
 		const first = setTimeout(tick, 0);
 		const timer = setInterval(tick, 60 * 60_000);
-		return () => {
+		return () =>
+		{
 			clearTimeout(first);
 			clearInterval(timer);
 		};
 	}, [commit.firstSeen]);
 
-	const startEditing = async () => {
+	const startEditing = async () =>
+	{
 		setEditing(true);
 		if (branchName.trim()) return;
 		setNaming(true);
-		try {
-			const {name} = await suggestBranchName({data: {project: commit.project, sha: commit.sha}});
+		try
+		{
+			const {name} = await suggestBranchName(
+				{
+					data:
+					{
+						project: commit.project,
+						sha: commit.sha,
+					},
+				},
+			);
 			if (name) setBranchName((current) => (current.trim() ? current : name));
-		} catch (e) {
+		}
+		catch (e)
+		{
 			setError(e instanceof Error ? e.message : "Failed to suggest a branch name");
-		} finally {
+		}
+		finally
+		{
 			setNaming(false);
 		}
 	};
 
-	const handleCreateBranch = async () => {
+	const handleCreateBranch = async () =>
+	{
 		if (!branchName.trim()) return;
 		setCreating(true);
 		setError(null);
-		try {
-			const result = await createBranch({
-				data: {project: commit.project, sha: commit.sha, branchName: branchName.trim()},
-			});
-			if (result.ok) {
+		try
+		{
+			const result = await createBranch(
+				{
+					data:
+					{
+						project: commit.project,
+						sha: commit.sha,
+						branchName: branchName.trim(),
+					},
+				},
+			);
+			if (result.ok)
+			{
 				queryClient.setQueryData<import("../lib/server-fns").ProjectChildrenResult>(
 					["children", commit.project],
-					(old) => {
+					(old) =>
+					{
 						if (!old) return old;
 						return old.map((c) =>
 							c.sha === commit.sha
-								? {
+								?
+									{
 										...c,
 										branch: branchName.trim(),
 										pushedToRemote: false,
@@ -75,12 +105,18 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 						);
 					},
 				);
-			} else {
+			}
+			else
+			{
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			setError(e instanceof Error ? e.message : "Failed to create branch");
-		} finally {
+		}
+		finally
+		{
 			setCreating(false);
 		}
 	};
@@ -123,7 +159,11 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 			</div>
 			<Link
 				to="/item/$project/$sha"
-				params={{project: commit.project, sha: commit.sha}}
+				params={
+				{
+					project: commit.project,
+					sha: commit.sha,
+				}}
 				className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors"
 			>
 				<span className="font-mono text-xs text-text-400 mr-1.5">{commit.shortSha}</span>
@@ -169,10 +209,12 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 								<input
 									type="text"
 									value={branchName}
-									onChange={(e) => {
+									onChange={(e) =>
+									{
 										setBranchName(e.target.value);
 									}}
-									onKeyDown={(e) => {
+									onKeyDown={(e) =>
+									{
 										if (e.key === "Enter") void handleCreateBranch();
 									}}
 									placeholder={naming ? "naming..." : "branch-name"}
@@ -180,7 +222,8 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 								/>
 								<button
 									type="button"
-									onClick={() => {
+									onClick={() =>
+									{
 										void handleCreateBranch();
 									}}
 									disabled={creating || !branchName.trim()}
@@ -201,7 +244,8 @@ export function CommitCard({commit, category}: {commit: GitChildResult; category
 						) : (
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									void startEditing();
 								}}
 								className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 hover:text-text-100"

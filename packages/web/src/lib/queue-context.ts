@@ -2,7 +2,8 @@ import {createContext, useContext} from "react";
 import type {Category} from "@wip/shared";
 import type {ColumnItems} from "../components/kanban-column";
 
-export interface QueueContextValue {
+export interface QueueContextValue
+{
 	grouped: Record<Category, ColumnItems>;
 	totalCount: number;
 	readyToTestCount: number;
@@ -18,9 +19,11 @@ export interface QueueContextValue {
 
 export const QueueContext = createContext<QueueContextValue | null>(null);
 
-export function useQueueContext(): QueueContextValue {
+export function useQueueContext(): QueueContextValue
+{
 	const context = useContext(QueueContext);
-	if (!context) {
+	if (!context)
+	{
 		throw new Error("useQueueContext must be used within QueueContext.Provider");
 	}
 	return context;

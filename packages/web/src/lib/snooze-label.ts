@@ -1,5 +1,6 @@
 /** "On hold" for an untimed row, otherwise the time left on the Snooze. */
-export function snoozeLabel(until: string | null, now: Date = new Date()): string {
+export function snoozeLabel(until: string | null, now: Date = new Date()): string
+{
 	if (!until) return "On hold";
 	const diffMs = new Date(until).getTime() - now.getTime();
 	if (diffMs <= 0) return "Expired";

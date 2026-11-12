@@ -2,10 +2,16 @@ import {describe, it, expect} from "vite-plus/test";
 
 import {normalizeFailureSignature, changeIdentity, RunMemory, type UnitRef} from "./advance-progress.js";
 
-const unit: UnitRef = {project: "liftwizard", changeIdentity: "patch-abc"};
+const unit: UnitRef =
+{
+	project: "liftwizard",
+	changeIdentity: "patch-abc",
+};
 
-describe("normalizeFailureSignature", () => {
-	it("ignores noise that varies run-to-run (timestamps, paths, shas, durations, line:col)", () => {
+describe("normalizeFailureSignature", () =>
+{
+	it("ignores noise that varies run-to-run (timestamps, paths, shas, durations, line:col)", () =>
+	{
 		const runA = [
 			"2026-06-27T09:52:00.123Z Running tests",
 			"FAIL src/Foo.test.ts > bar (1234ms)",
@@ -23,13 +29,15 @@ describe("normalizeFailureSignature", () => {
 		expect(normalizeFailureSignature(runA)).toStrictEqual(normalizeFailureSignature(runB));
 	});
 
-	it("differs when the actual failure message differs", () => {
+	it("differs when the actual failure message differs", () =>
+	{
 		const bar = "AssertionError: expected 1 to equal 2";
 		const baz = "AssertionError: expected 3 to equal 4";
 		expect(normalizeFailureSignature(`FAIL\n${bar}`)).not.toStrictEqual(normalizeFailureSignature(`FAIL\n${baz}`));
 	});
 
-	it("keeps only signal lines so surrounding chatter does not change the hash", () => {
+	it("keeps only signal lines so surrounding chatter does not change the hash", () =>
+	{
 		const withChatter = [
 			"info: starting",
 			"downloaded 40 packages",
@@ -40,22 +48,51 @@ describe("normalizeFailureSignature", () => {
 		expect(normalizeFailureSignature(withChatter)).toStrictEqual(normalizeFailureSignature(justSignal));
 	});
 
-	it("returns a short stable hex hash", () => {
+	it("returns a short stable hex hash", () =>
+	{
 		const sig = normalizeFailureSignature("Error: boom");
 		expect(sig).toMatch(/^[0-9a-f]{16}$/);
 	});
 });
 
-describe("changeIdentity", () => {
-	it("prefers patch-id, falls back to branch, then sha", () => {
-		expect(changeIdentity({patchId: "p1", branch: "feat", sha: "abc"})).toStrictEqual("p1");
-		expect(changeIdentity({patchId: "", branch: "feat", sha: "abc"})).toStrictEqual("feat");
-		expect(changeIdentity({patchId: "", branch: "", sha: "abc"})).toStrictEqual("abc");
+describe("changeIdentity", () =>
+{
+	it("prefers patch-id, falls back to branch, then sha", () =>
+	{
+		expect(
+			changeIdentity(
+				{
+					patchId: "p1",
+					branch: "feat",
+					sha: "abc",
+				},
+			),
+		).toStrictEqual("p1");
+		expect(
+			changeIdentity(
+				{
+					patchId: "",
+					branch: "feat",
+					sha: "abc",
+				},
+			),
+		).toStrictEqual("feat");
+		expect(
+			changeIdentity(
+				{
+					patchId: "",
+					branch: "",
+					sha: "abc",
+				},
+			),
+		).toStrictEqual("abc");
 	});
 });
 
-describe("RunMemory", () => {
-	it("flags a unit as stuck only after the same signature recurs for the same kind", () => {
+describe("RunMemory", () =>
+{
+	it("flags a unit as stuck only after the same signature recurs for the same kind", () =>
+	{
 		const m = new RunMemory();
 		const sig = normalizeFailureSignature("FAIL Foo.bar");
 
@@ -67,14 +104,16 @@ describe("RunMemory", () => {
 		expect(m.isStuck(unit)).toBe(true);
 	});
 
-	it("does not flag stuck when the signature changes (progress was made)", () => {
+	it("does not flag stuck when the signature changes (progress was made)", () =>
+	{
 		const m = new RunMemory();
 		m.record(unit, "test", normalizeFailureSignature("FAIL first failure"));
 		expect(m.seen(unit, "test", normalizeFailureSignature("FAIL different failure"))).toBe(false);
 		expect(m.isStuck(unit)).toBe(false);
 	});
 
-	it("separates signatures by kind", () => {
+	it("separates signatures by kind", () =>
+	{
 		const m = new RunMemory();
 		const sig = normalizeFailureSignature("CONFLICT in App.tsx");
 		m.record(unit, "conflicts", sig);
@@ -82,7 +121,8 @@ describe("RunMemory", () => {
 		expect(m.seen(unit, "test", sig)).toBe(false);
 	});
 
-	it("counts attempts per kind", () => {
+	it("counts attempts per kind", () =>
+	{
 		const m = new RunMemory();
 		expect(m.attemptCount(unit, "fix")).toBe(0);
 		m.record(unit, "fix", "a");
@@ -91,13 +131,22 @@ describe("RunMemory", () => {
 		expect(m.attemptCount(unit, "test")).toBe(0);
 	});
 
-	it("scopes memory by project and change identity", () => {
+	it("scopes memory by project and change identity", () =>
+	{
 		const m = new RunMemory();
 		const sig = normalizeFailureSignature("Error boom");
 		m.record(unit, "test", sig);
-		const other: UnitRef = {project: "other", changeIdentity: "patch-abc"};
+		const other: UnitRef =
+		{
+			project: "other",
+			changeIdentity: "patch-abc",
+		};
 		expect(m.seen(other, "test", sig)).toBe(false);
-		const otherChange: UnitRef = {project: "liftwizard", changeIdentity: "patch-zzz"};
+		const otherChange: UnitRef =
+		{
+			project: "liftwizard",
+			changeIdentity: "patch-zzz",
+		};
 		expect(m.seen(otherChange, "test", sig)).toBe(false);
 	});
 });

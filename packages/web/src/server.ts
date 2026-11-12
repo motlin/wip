@@ -7,8 +7,11 @@ import {bootServer} from "./lib/server-boot.js";
 // Gate the shared work queue and start background work at boot, not on the first SSE connect.
 void bootServer();
 
-export default createServerEntry({
-	async fetch(request: Request) {
-		return handler.fetch(request);
+export default createServerEntry(
+	{
+		async fetch(request: Request)
+		{
+			return handler.fetch(request);
+		},
 	},
-});
+);

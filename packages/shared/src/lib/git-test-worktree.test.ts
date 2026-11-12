@@ -9,13 +9,18 @@ import type {ExecaResult} from "../services/traced-execa.js";
 type Run = () => Promise<ExecaResult>;
 
 /** Wrappers around the next `git rev-parse --git-common-dir` calls, so a test can reorder them. */
-const {revParseHooks} = vi.hoisted(() => ({revParseHooks: [] as ((run: Run) => ReturnType<Run>)[]}));
+const {revParseHooks} = vi.hoisted(() => (
+{
+	revParseHooks: [] as ((run: Run) => ReturnType<Run>)[],
+}));
 
-vi.mock("../services/traced-execa.js", async (importOriginal) => {
+vi.mock("../services/traced-execa.js", async (importOriginal) =>
+{
 	const original = await importOriginal<typeof import("../services/traced-execa.js")>();
 	return {
 		...original,
-		tracedExeca: async (...args: Parameters<typeof original.tracedExeca>) => {
+		tracedExeca: async (...args: Parameters<typeof original.tracedExeca>) =>
+		{
 			const run = async () => original.tracedExeca(...args);
 			const hook = args[1].includes("--git-common-dir") ? revParseHooks.shift() : undefined;
 			return hook ? hook(run) : run();
@@ -25,14 +30,27 @@ vi.mock("../services/traced-execa.js", async (importOriginal) => {
 
 import {gitTestRun, testWorktreeLockFile, withTestWorktree} from "./git-test-cli.js";
 
-function git(dir: string, command: string): string {
-	return execSync(`git ${command}`, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
+function git(dir: string, command: string): string
+{
+	return execSync(
+		`git ${command}`,
+		{
+			cwd: dir,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
 
 /** HEAD, the HEAD reflog and `git status` together: anything a checkout would disturb. */
-function checkoutState(dir: string): {head: string; reflog: string; status: string} {
+function checkoutState(dir: string):
+{
+	head: string;
+	reflog: string;
+	status: string;
+}
+{
 	return {
 		head: git(dir, "rev-parse HEAD"),
 		reflog: git(dir, "reflog HEAD"),
@@ -40,12 +58,14 @@ function checkoutState(dir: string): {head: string; reflog: string; status: stri
 	};
 }
 
-describe("gitTestRun never touches the user's checkout", () => {
+describe("gitTestRun never touches the user's checkout", () =>
+{
 	let dir: string;
 	let worktree: string;
 	let scratch: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-worktree-")));
 		worktree = `${dir}-test-worktree`;
 		scratch = fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-worktree-scratch-"));
@@ -63,13 +83,34 @@ describe("gitTestRun never touches the user's checkout", () => {
 		fs.writeFileSync(path.join(dir, "untracked.txt"), "new\n");
 	});
 
-	afterEach(() => {
-		if (fs.existsSync(worktree)) fs.rmSync(worktree, {recursive: true, force: true});
-		fs.rmSync(dir, {recursive: true, force: true});
-		fs.rmSync(scratch, {recursive: true, force: true});
+	afterEach(() =>
+	{
+		if (fs.existsSync(worktree))
+			fs.rmSync(
+				worktree,
+				{
+					recursive: true,
+					force: true,
+				},
+			);
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		fs.rmSync(
+			scratch,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("runs in the sibling <repo>-test-worktree and leaves HEAD, reflog and working tree unchanged, even mid-run", async () => {
+	it("runs in the sibling <repo>-test-worktree and leaves HEAD, reflog and working tree unchanged, even mid-run", async () =>
+	{
 		const during = path.join(scratch, "during");
 		// The test command snapshots the main checkout while the test is running, i.e. the state
 		// an abort or a killed server would leave behind.
@@ -77,22 +118,33 @@ describe("gitTestRun never touches the user's checkout", () => {
 		const before = checkoutState(dir);
 		const tip = git(dir, "rev-parse main");
 
-		const result = await gitTestRun(dir, tip, {logDir: path.join(scratch, "logs")});
+		const result = await gitTestRun(
+			dir,
+			tip,
+			{
+				logDir: path.join(scratch, "logs"),
+			},
+		);
 
-		expect({
-			exitCode: result.exitCode,
-			after: checkoutState(dir),
-			during: fs.readFileSync(during, "utf8"),
-			stored: git(dir, `test results --no-color ${tip}`).split(/\s+/)[0],
-		}).toStrictEqual({
-			exitCode: 0,
-			after: before,
-			during: `${before.head} ${worktree}\n`,
-			stored: "good",
-		});
+		expect(
+			{
+				exitCode: result.exitCode,
+				after: checkoutState(dir),
+				during: fs.readFileSync(during, "utf8"),
+				stored: git(dir, `test results --no-color ${tip}`).split(/\s+/)[0],
+			},
+		).toStrictEqual(
+			{
+				exitCode: 0,
+				after: before,
+				during: `${before.head} ${worktree}\n`,
+				stored: "good",
+			},
+		);
 	});
 
-	it("reuses the existing test worktree and serializes concurrent runs in it", async () => {
+	it("reuses the existing test worktree and serializes concurrent runs in it", async () =>
+	{
 		const ran = path.join(scratch, "ran");
 		git(dir, `test add --test default 'git rev-parse HEAD >> ${ran}'`);
 		const before = checkoutState(dir);
@@ -100,27 +152,44 @@ describe("gitTestRun never touches the user's checkout", () => {
 		const tip = git(dir, "rev-parse main");
 
 		const results = await Promise.all([
-			gitTestRun(dir, base, {logDir: path.join(scratch, "logs")}),
-			gitTestRun(dir, tip, {logDir: path.join(scratch, "logs")}),
+			gitTestRun(
+				dir,
+				base,
+				{
+					logDir: path.join(scratch, "logs"),
+				},
+			),
+			gitTestRun(
+				dir,
+				tip,
+				{
+					logDir: path.join(scratch, "logs"),
+				},
+			),
 		]);
 
-		expect({
-			exitCodes: results.map((r) => r.exitCode),
-			ran: fs.readFileSync(ran, "utf8").split("\n").filter(Boolean),
-			after: checkoutState(dir),
-			worktrees: git(dir, "worktree list --porcelain")
-				.split("\n")
-				.filter((line) => line.startsWith("worktree "))
-				.map((line) => fs.realpathSync(line.slice("worktree ".length))),
-		}).toStrictEqual({
-			exitCodes: [0, 0],
-			ran: [base, tip],
-			after: before,
-			worktrees: [dir, worktree],
-		});
+		expect(
+			{
+				exitCodes: results.map((r) => r.exitCode),
+				ran: fs.readFileSync(ran, "utf8").split("\n").filter(Boolean),
+				after: checkoutState(dir),
+				worktrees: git(dir, "worktree list --porcelain")
+					.split("\n")
+					.filter((line) => line.startsWith("worktree "))
+					.map((line) => fs.realpathSync(line.slice("worktree ".length))),
+			},
+		).toStrictEqual(
+			{
+				exitCodes: [0, 0],
+				ran: [base, tip],
+				after: before,
+				worktrees: [dir, worktree],
+			},
+		);
 	});
 
-	it("runs concurrent calls in call order even when the first call's worktree lookup finishes last", async () => {
+	it("runs concurrent calls in call order even when the first call's worktree lookup finishes last", async () =>
+	{
 		const ran = path.join(scratch, "ran");
 		git(dir, `test add --test default 'git rev-parse HEAD >> ${ran}'`);
 		const base = git(dir, "rev-parse HEAD");
@@ -128,15 +197,18 @@ describe("gitTestRun never touches the user's checkout", () => {
 		// The first call's lookup waits until the second call's lookup has returned, the order
 		// a loaded machine can produce.
 		let secondLookupDone!: () => void;
-		const secondLookup = new Promise<void>((resolve) => {
+		const secondLookup = new Promise<void>((resolve) =>
+		{
 			secondLookupDone = resolve;
 		});
 		revParseHooks.push(
-			async (run) => {
+			async (run) =>
+			{
 				await secondLookup;
 				return run();
 			},
-			async (run) => {
+			async (run) =>
+			{
 				const result = await run();
 				secondLookupDone();
 				return result;
@@ -144,26 +216,44 @@ describe("gitTestRun never touches the user's checkout", () => {
 		);
 
 		const results = await Promise.all([
-			gitTestRun(dir, base, {logDir: path.join(scratch, "logs")}),
-			gitTestRun(dir, tip, {logDir: path.join(scratch, "logs")}),
+			gitTestRun(
+				dir,
+				base,
+				{
+					logDir: path.join(scratch, "logs"),
+				},
+			),
+			gitTestRun(
+				dir,
+				tip,
+				{
+					logDir: path.join(scratch, "logs"),
+				},
+			),
 		]);
 
-		expect({
-			exitCodes: results.map((r) => r.exitCode),
-			ran: fs.readFileSync(ran, "utf8").split("\n").filter(Boolean),
-		}).toStrictEqual({
-			exitCodes: [0, 0],
-			ran: [base, tip],
-		});
+		expect(
+			{
+				exitCodes: results.map((r) => r.exitCode),
+				ran: fs.readFileSync(ran, "utf8").split("\n").filter(Boolean),
+			},
+		).toStrictEqual(
+			{
+				exitCodes: [0, 0],
+				ran: [base, tip],
+			},
+		);
 	});
 });
 
-describe("withTestWorktree excludes other processes", () => {
+describe("withTestWorktree excludes other processes", () =>
+{
 	let dir: string;
 	let worktree: string;
 	let scratch: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-worktree-lock-")));
 		worktree = `${dir}-test-worktree`;
 		scratch = fs.mkdtempSync(path.join(os.tmpdir(), "wip-test-worktree-lock-scratch-"));
@@ -176,47 +266,87 @@ describe("withTestWorktree excludes other processes", () => {
 		git(dir, "commit -m base");
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.unstubAllEnvs();
-		if (fs.existsSync(worktree)) fs.rmSync(worktree, {recursive: true, force: true});
-		fs.rmSync(dir, {recursive: true, force: true});
-		fs.rmSync(scratch, {recursive: true, force: true});
+		if (fs.existsSync(worktree))
+			fs.rmSync(
+				worktree,
+				{
+					recursive: true,
+					force: true,
+				},
+			);
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		fs.rmSync(
+			scratch,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("waits while another live process holds the worktree's lock file, then runs and releases it", async () => {
+	it("waits while another live process holds the worktree's lock file, then runs and releases it", async () =>
+	{
 		const lockFile = testWorktreeLockFile(worktree);
-		fs.mkdirSync(path.dirname(lockFile), {recursive: true});
+		fs.mkdirSync(
+			path.dirname(lockFile),
+			{
+				recursive: true,
+			},
+		);
 		// Another wip process (the CLI, or the server) mid-run in the same worktree.
 		fs.writeFileSync(lockFile, String(process.ppid));
 		const events: string[] = [];
 		const head = git(dir, "rev-parse HEAD");
 
-		const run = withTestWorktree(dir, head, async (wt) => {
+		const run = withTestWorktree(dir, head, async (wt) =>
+		{
 			events.push(`ran in ${wt}, lock owner ${fs.readFileSync(lockFile, "utf8")}`);
 			return Promise.resolve("done");
 		});
-		await new Promise((resolve) => {
+		await new Promise((resolve) =>
+		{
 			setTimeout(resolve, 400);
 		});
 		events.push("other process releases");
 		fs.rmSync(lockFile);
 
-		expect({result: await run, events, lockHeld: fs.existsSync(lockFile)}).toStrictEqual({
-			result: "done",
-			events: ["other process releases", `ran in ${worktree}, lock owner ${process.pid}`],
-			lockHeld: false,
-		});
+		expect(
+			{
+				result: await run,
+				events,
+				lockHeld: fs.existsSync(lockFile),
+			},
+		).toStrictEqual(
+			{
+				result: "done",
+				events: ["other process releases", `ran in ${worktree}, lock owner ${process.pid}`],
+				lockHeld: false,
+			},
+		);
 	});
 
-	it("stops waiting behind an in-process run when the signal aborts, and the next caller still waits for that run", async () => {
+	it("stops waiting behind an in-process run when the signal aborts, and the next caller still waits for that run", async () =>
+	{
 		const head = git(dir, "rev-parse HEAD");
 		const events: string[] = [];
 		let finishFirst!: () => void;
-		const firstRunning = new Promise<void>((resolveStarted) => {
-			void withTestWorktree(dir, head, async () => {
+		const firstRunning = new Promise<void>((resolveStarted) =>
+		{
+			void withTestWorktree(dir, head, async () =>
+			{
 				events.push("first starts");
 				resolveStarted();
-				await new Promise<void>((resolve) => {
+				await new Promise<void>((resolve) =>
+				{
 					finishFirst = resolve;
 				});
 				events.push("first ends");
@@ -228,13 +358,15 @@ describe("withTestWorktree excludes other processes", () => {
 		const second = withTestWorktree(
 			dir,
 			head,
-			async () => {
+			async () =>
+			{
 				events.push("second ran");
 				return Promise.resolve();
 			},
 			controller.signal,
 		);
-		const third = withTestWorktree(dir, head, async () => {
+		const third = withTestWorktree(dir, head, async () =>
+		{
 			events.push("third runs");
 			return Promise.resolve();
 		});
@@ -248,9 +380,15 @@ describe("withTestWorktree excludes other processes", () => {
 		expect(events).toStrictEqual(["first starts", "second aborted", "first ends", "third runs"]);
 	});
 
-	it("stops waiting for the lock when the signal aborts", async () => {
+	it("stops waiting for the lock when the signal aborts", async () =>
+	{
 		const lockFile = testWorktreeLockFile(worktree);
-		fs.mkdirSync(path.dirname(lockFile), {recursive: true});
+		fs.mkdirSync(
+			path.dirname(lockFile),
+			{
+				recursive: true,
+			},
+		);
 		fs.writeFileSync(lockFile, String(process.ppid));
 		const controller = new AbortController();
 		let ran = false;
@@ -258,7 +396,8 @@ describe("withTestWorktree excludes other processes", () => {
 		const run = withTestWorktree(
 			dir,
 			git(dir, "rev-parse HEAD"),
-			async () => {
+			async () =>
+			{
 				ran = true;
 				return Promise.resolve();
 			},
@@ -267,9 +406,16 @@ describe("withTestWorktree excludes other processes", () => {
 		controller.abort();
 
 		await expect(run).rejects.toThrow(`Aborted waiting for test worktree lock ${worktree}`);
-		expect({ran, owner: fs.readFileSync(lockFile, "utf8")}).toStrictEqual({
-			ran: false,
-			owner: String(process.ppid),
-		});
+		expect(
+			{
+				ran,
+				owner: fs.readFileSync(lockFile, "utf8"),
+			},
+		).toStrictEqual(
+			{
+				ran: false,
+				owner: String(process.ppid),
+			},
+		);
 	});
 });

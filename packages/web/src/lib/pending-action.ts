@@ -9,19 +9,27 @@ export async function runPendingAction(
 	action: string,
 	setPending: ((pending: boolean) => void) | undefined,
 	run: () => Promise<unknown>,
-): Promise<boolean> {
+): Promise<boolean>
+{
 	setPending?.(true);
-	try {
+	try
+	{
 		await run();
 		return true;
-	} catch (e) {
-		pushToast({
-			level: "error",
-			message: action,
-			detail: e instanceof Error ? e.message : String(e),
-		});
+	}
+	catch (e)
+	{
+		pushToast(
+			{
+				level: "error",
+				message: action,
+				detail: e instanceof Error ? e.message : String(e),
+			},
+		);
 		return false;
-	} finally {
+	}
+	finally
+	{
 		setPending?.(false);
 	}
 }

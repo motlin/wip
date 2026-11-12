@@ -1,7 +1,8 @@
 import {useState, type ReactNode} from "react";
 import type {ProjectRecord} from "@wip/shared";
 // The client-safe module, so the browser bundle never pulls the node-only registry code.
-import {
+import
+{
 	diffInventories,
 	type InventoryDiff,
 	type LandingMode,
@@ -15,7 +16,8 @@ import {CheckCircle, Loader2} from "./icons.js";
 type Kind = ProjectRecord["kind"];
 
 /** Each decision's chip color once chosen: kept kinds in green, blue, and purple, a skip in muted gray. */
-const DECISION_COLORS: Record<Kind, string> = {
+const DECISION_COLORS: Record<Kind, string> =
+{
 	own: "peer-checked:bg-btn-success-bg peer-checked:text-btn-success-text",
 	fork: "peer-checked:bg-blue-column peer-checked:text-blue-700 dark:peer-checked:text-blue-300",
 	nested: "peer-checked:bg-purple-column peer-checked:text-purple-700 dark:peer-checked:text-purple-300",
@@ -36,7 +38,8 @@ const LANDINGS: [LandingMode, string][] = [
 	["fast-forward", "Push directly (fast-forward)"],
 ];
 
-interface GroupSpec {
+interface GroupSpec
+{
 	group: RegistryGroup;
 	label: string;
 	word: string;
@@ -46,19 +49,34 @@ interface GroupSpec {
 }
 
 /** A `<repo>-test-worktree` wip skips on its own; it needs no decision and no registry entry. */
-function isAutomaticSkip(row: RegistryCandidate): boolean {
+function isAutomaticSkip(row: RegistryCandidate): boolean
+{
 	return row.skipReason?.code === "test-worktree" && row.project.kind === "skip";
 }
 
 /** Groups whose rows wait for a decision; a decided row leaves its card. */
 const INBOX: GroupSpec[] = [
-	{group: "unregistered", label: "Unregistered", word: "unregistered"},
-	{group: "conflict", label: "Template conflicts", word: "conflicting", hideWhenEmpty: true},
+	{
+		group: "unregistered",
+		label: "Unregistered",
+		word: "unregistered",
+	},
+	{
+		group: "conflict",
+		label: "Template conflicts",
+		word: "conflicting",
+		hideWhenEmpty: true,
+	},
 ];
 
 /** Groups already in the registry, shown as a report the user may still correct. */
 const REPORT: GroupSpec[] = [
-	{group: "registered", label: "Registered", word: "registered", explanation: "Kept up to date by wip ladder --all."},
+	{
+		group: "registered",
+		label: "Registered",
+		word: "registered",
+		explanation: "Kept up to date by wip ladder --all.",
+	},
 	{
 		group: "skipped",
 		label: "Skipped",
@@ -80,7 +98,8 @@ const INBOX_GROUPS: ReadonlySet<RegistryGroup> = new Set(INBOX.map((spec) => spe
  * under another name (a Maven copy, a PR worktree), so one bulk action skips every copy and its
  * label counts each kind.
  */
-const COPY_PLURALS: Partial<Record<SkipReasonCode, string>> = {
+const COPY_PLURALS: Partial<Record<SkipReasonCode, string>> =
+{
 	pr: "PR worktrees",
 	maven: "Maven copies",
 	template: "template repos",
@@ -89,7 +108,8 @@ const COPY_PLURALS: Partial<Record<SkipReasonCode, string>> = {
 };
 
 /** Plural nouns for the other bulk skip buttons; reasons that only describe an existing skip have none. */
-const SKIP_PLURALS: Partial<Record<SkipReasonCode, string>> = {
+const SKIP_PLURALS: Partial<Record<SkipReasonCode, string>> =
+{
 	"not-a-repo": "non-git directories",
 	missing: "missing directories",
 };
@@ -97,28 +117,44 @@ const SKIP_PLURALS: Partial<Record<SkipReasonCode, string>> = {
 /** Rows a group card shows before its show-all button. */
 const FIRST_ROWS = 25;
 
-const BY_YOU: SkipReason = {code: "user", text: "skipped by you"};
+const BY_YOU: SkipReason =
+{
+	code: "user",
+	text: "skipped by you",
+};
 
-function parseTemplate(value: string): ProjectRecord["template"] | undefined {
+function parseTemplate(value: string): ProjectRecord["template"] | undefined
+{
 	return TEMPLATES.find((template) => template === value);
 }
 
-function parseLanding(value: string): LandingMode | undefined {
+function parseLanding(value: string): LandingMode | undefined
+{
 	return LANDINGS.find(([landing]) => landing === value)?.[0];
 }
 
 /** The project with a new decision; a note only explains a skip, so other kinds drop it. */
-function decide(project: ProjectRecord, kind: Kind): ProjectRecord {
-	if (kind === "skip") return {...project, kind};
+function decide(project: ProjectRecord, kind: Kind): ProjectRecord
+{
+	if (kind === "skip")
+		return {
+			...project,
+			kind,
+		};
 	const {skipNote: _dropped, ...rest} = project;
-	return {...rest, kind};
+	return {
+		...rest,
+		kind,
+	};
 }
 
-function describe(project: ProjectRecord): string {
+function describe(project: ProjectRecord): string
+{
 	return `${project.name} (${project.template}, ${project.kind}) ${project.dir}`;
 }
 
-function describeChange({before, after}: InventoryDiff["changed"][number]): string {
+function describeChange({before, after}: InventoryDiff["changed"][number]): string
+{
 	const changes = (["name", "template", "kind"] as const)
 		.filter((key) => before[key] !== after[key])
 		.map((key) => `${before[key]} → ${after[key]}`);
@@ -128,7 +164,8 @@ function describeChange({before, after}: InventoryDiff["changed"][number]): stri
 	return `${before.name}: ${changes.join(", ")}`;
 }
 
-function DiffView({diff}: {diff: InventoryDiff}) {
+function DiffView({diff}: {diff: InventoryDiff})
+{
 	return (
 		<section aria-label="Registry changes" className="mt-2 rounded-md border border-border-300/50 p-2 font-mono">
 			<ul>
@@ -181,7 +218,8 @@ function CandidateRow({
 	onLanding: (landing: LandingMode) => void;
 	/** Returns a decided row to the inbox; only decided inbox rows have it. */
 	onUndo?: () => void;
-}) {
+})
+{
 	const {name, dir, template, kind, skipNote} = row.project;
 	const skipped = kind === "skip";
 	const reason = row.skipReason ?? BY_YOU;
@@ -198,7 +236,8 @@ function CandidateRow({
 						<select
 							aria-label={`Template for ${name}`}
 							value={template}
-							onChange={(event) => {
+							onChange={(event) =>
+							{
 								const next = parseTemplate(event.target.value);
 								if (next) onTemplate(next);
 							}}
@@ -218,7 +257,8 @@ function CandidateRow({
 							aria-label={`Landing for ${name}`}
 							title="The ready buffer force-pushes ready commits only in pull-request repos."
 							value={row.project.landing ?? ""}
-							onChange={(event) => {
+							onChange={(event) =>
+							{
 								const next = parseLanding(event.target.value);
 								if (next) onLanding(next);
 							}}
@@ -248,7 +288,8 @@ function CandidateRow({
 								aria-label={`Skip note for ${name}`}
 								placeholder="optional note"
 								value={skipNote ?? ""}
-								onChange={(event) => {
+								onChange={(event) =>
+								{
 									onNote(event.target.value);
 								}}
 								className={selectClass}
@@ -274,7 +315,8 @@ function CandidateRow({
 								type="radio"
 								name={`decision-${dir}`}
 								checked={!undecided && kind === value}
-								onChange={() => {
+								onChange={() =>
+								{
 									onDecide(value);
 								}}
 								className="peer sr-only"
@@ -305,7 +347,8 @@ function CandidateRow({
 	);
 }
 
-interface BulkAction {
+interface BulkAction
+{
 	/** Stable across counts, so a kept question stays answered as rows change. */
 	key: string;
 	label: string;
@@ -323,14 +366,16 @@ interface BulkAction {
 }
 
 /** How many copies of each kind, in COPY_PLURALS order. */
-function copyKinds(copies: RegistryCandidate[]): (readonly [number, string])[] {
+function copyKinds(copies: RegistryCandidate[]): (readonly [number, string])[]
+{
 	return Object.entries(COPY_PLURALS)
 		.map(([code, plural]) => [copies.filter((row) => row.skipReason?.code === code).length, plural] as const)
 		.filter(([count]) => count > 0);
 }
 
 /** "Skip all N copies (a PR worktrees, b git worktrees)", or the one kind's own label when only one is present. */
-function copiesLabel(copies: RegistryCandidate[]): string {
+function copiesLabel(copies: RegistryCandidate[]): string
+{
 	const kinds = copyKinds(copies);
 	if (kinds.length === 1) return `Skip all ${copies.length} ${kinds[0]?.[1]}`;
 	return `Skip all ${copies.length} copies (${kinds.map(([count, plural]) => `${count} ${plural}`).join(", ")})`;
@@ -340,50 +385,84 @@ function copiesLabel(copies: RegistryCandidate[]): string {
  * One skip action for every copy, one per other skip reason, and one Own action per template,
  * wherever at least two rows share it. Each label counts exactly the rows it decides.
  */
-function bulkActions(rows: RegistryCandidate[], word: string, undecided: boolean): BulkAction[] {
+function bulkActions(rows: RegistryCandidate[], word: string, undecided: boolean): BulkAction[]
+{
 	const actions: BulkAction[] = [];
 	const add = (
 		key: string,
 		targets: RegistryCandidate[],
 		kind: Kind,
-		text: {label: string; short: string; question: string; covers: string},
-	) => {
+		text:
+		{
+			label: string;
+			short: string;
+			question: string;
+			covers: string;
+		},
+	) =>
+	{
 		if (targets.length < 2) return;
 		const dirs = new Set(targets.map((row) => row.project.dir));
 		const done = !undecided && targets.every((row) => row.project.kind === kind);
-		actions.push({key, ...text, names: targets.map((row) => row.project.name), dirs, kind, done});
+		actions.push(
+			{
+				key,
+				...text,
+				names: targets.map((row) => row.project.name),
+				dirs,
+				kind,
+				done,
+			},
+		);
 	};
 	const copyCodes = new Set(Object.keys(COPY_PLURALS));
 	const copies = rows.filter((row) => row.skipReason !== undefined && copyCodes.has(row.skipReason.code));
 	const kinds = copyKinds(copies);
 	const [onlyKind] = kinds;
 	const copyNoun = kinds.length === 1 && onlyKind ? onlyKind[1] : "copies";
-	add("copies", copies, "skip", {
-		label: copiesLabel(copies),
-		short: `Skip all ${copies.length} ${copyNoun}`,
-		question: `Skip the ${copies.length} ${kinds.length === 1 ? copyNoun : "copies of other repos"}?`,
-		covers: `Copies of another repo (${kinds.map(([count, plural]) => `${count} ${plural}`).join(", ")}). wip ladder --all already updates the original, so a copy only adds work.`,
-	});
-	for (const [code, plural] of Object.entries(SKIP_PLURALS)) {
+	add(
+		"copies",
+		copies,
+		"skip",
+		{
+			label: copiesLabel(copies),
+			short: `Skip all ${copies.length} ${copyNoun}`,
+			question: `Skip the ${copies.length} ${kinds.length === 1 ? copyNoun : "copies of other repos"}?`,
+			covers: `Copies of another repo (${kinds.map(([count, plural]) => `${count} ${plural}`).join(", ")}). wip ladder --all already updates the original, so a copy only adds work.`,
+		},
+	);
+	for (const [code, plural] of Object.entries(SKIP_PLURALS))
+	{
 		const targets = rows.filter((row) => row.skipReason?.code === code);
-		add(`skip:${code}`, targets, "skip", {
-			label: `Skip all ${targets.length} ${plural}`,
-			short: `Skip all ${targets.length} ${plural}`,
-			question: `Skip the ${targets.length} ${plural}?`,
-			covers:
-				code === "missing"
-					? "The directory is gone, so wip ladder --all has nothing to update."
-					: "Directories without a git repo, so wip ladder --all has nothing to update.",
-		});
+		add(
+			`skip:${code}`,
+			targets,
+			"skip",
+			{
+				label: `Skip all ${targets.length} ${plural}`,
+				short: `Skip all ${targets.length} ${plural}`,
+				question: `Skip the ${targets.length} ${plural}?`,
+				covers:
+					code === "missing"
+						? "The directory is gone, so wip ladder --all has nothing to update."
+						: "Directories without a git repo, so wip ladder --all has nothing to update.",
+			},
+		);
 	}
-	for (const template of TEMPLATES) {
+	for (const template of TEMPLATES)
+	{
 		const targets = rows.filter((row) => row.project.template === template);
-		add(`own:${template}`, targets, "own", {
-			label: `Mark all ${targets.length} ${word} ${template} repos Own`,
-			short: `Mark all ${targets.length} Own`,
-			question: `Mark the ${targets.length} ${word} ${template} repos Own?`,
-			covers: `Every ${word} repo on the ${template} template. Own means wip ladder --all keeps it up to date.`,
-		});
+		add(
+			`own:${template}`,
+			targets,
+			"own",
+			{
+				label: `Mark all ${targets.length} ${word} ${template} repos Own`,
+				short: `Mark all ${targets.length} Own`,
+				question: `Mark the ${targets.length} ${word} ${template} repos Own?`,
+				covers: `Every ${word} repo on the ${template} template. Own means wip ladder --all keeps it up to date.`,
+			},
+		);
 	}
 	return actions;
 }
@@ -418,7 +497,8 @@ function GroupCard({
 	/** Its bulk actions are asked as quick questions above, so the card leaves them out. */
 	askedAbove?: boolean;
 	children?: ReactNode;
-}) {
+})
+{
 	const [showAll, setShowAll] = useState(false);
 	const shown = showAll ? rows : rows.slice(0, FIRST_ROWS);
 	const actions = askedAbove ? [] : bulkActions(rows, word, undecided);
@@ -439,7 +519,8 @@ function GroupCard({
 							key={action.label}
 							type="button"
 							disabled={action.done}
-							onClick={() => {
+							onClick={() =>
+							{
 								edit(action.dirs, (project) => decide(project, action.kind), true);
 							}}
 							className={buttonClass}
@@ -453,31 +534,52 @@ function GroupCard({
 				heading === undefined && <p className="text-text-500">None</p>
 			) : (
 				<ul>
-					{shown.map((row) => {
+					{shown.map((row) =>
+					{
 						const only = new Set([row.project.dir]);
 						return (
 							<CandidateRow
 								key={row.project.dir}
 								row={row}
 								undecided={undecided}
-								onDecide={(kind) => {
+								onDecide={(kind) =>
+								{
 									edit(only, (project) => decide(project, kind), true);
 								}}
-								onTemplate={(template) => {
-									edit(only, (project) => ({...project, template}));
+								onTemplate={(template) =>
+								{
+									edit(only, (project) => (
+									{
+										...project,
+										template,
+									}));
 								}}
-								onLanding={(landing) => {
-									edit(only, (project) => ({...project, landing}));
+								onLanding={(landing) =>
+								{
+									edit(only, (project) => (
+									{
+										...project,
+										landing,
+									}));
 								}}
-								onNote={(note) => {
-									edit(only, (project) => {
+								onNote={(note) =>
+								{
+									edit(only, (project) =>
+									{
 										const {skipNote: _old, ...rest} = project;
-										return note === "" ? rest : {...rest, skipNote: note};
+										return note === ""
+											? rest
+											:
+												{
+													...rest,
+													skipNote: note,
+												};
 									});
 								}}
 								onUndo={
 									onUndo &&
-									(() => {
+									(() =>
+									{
 										onUndo(row.project.dir);
 									})
 								}
@@ -489,7 +591,8 @@ function GroupCard({
 			{rows.length > shown.length && (
 				<button
 					type="button"
-					onClick={() => {
+					onClick={() =>
+					{
 						setShowAll(true);
 					}}
 					className={`${buttonClass} mt-1`}
@@ -515,7 +618,8 @@ const STEPS: [Step, string][] = [
 	[3, "Save"],
 ];
 
-function StepBadge({number, step}: {number: Step; step: Step}) {
+function StepBadge({number, step}: {number: Step; step: Step})
+{
 	const tone =
 		number < step
 			? "bg-status-green text-white"
@@ -535,7 +639,8 @@ function StepBadge({number, step}: {number: Step; step: Step}) {
  * The three steps, the current one highlighted: the page's only step navigation, so the sections
  * below carry no numbered headings and the save bar alone counts what is left to decide.
  */
-function Progress({step}: {step: Step}) {
+function Progress({step}: {step: Step})
+{
 	return (
 		<nav aria-label="Review progress" className="mb-4 rounded-lg border border-border-300/50 bg-bg-100 px-3 py-2">
 			<ol className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -557,7 +662,8 @@ function Progress({step}: {step: Step}) {
 }
 
 /** What a step's section asks for; the step bar above names it. */
-function StepHint({children}: {children: ReactNode}) {
+function StepHint({children}: {children: ReactNode})
+{
 	return <p className="mb-2 text-xs text-text-500">{children}</p>;
 }
 
@@ -578,7 +684,8 @@ function QuestionCard({
 	total: number;
 	onAnswer: () => void;
 	onKeep: () => void;
-}) {
+})
+{
 	const sample = action.names.slice(0, SAMPLE);
 	const more = action.names.length - sample.length;
 	return (
@@ -634,21 +741,30 @@ function QuestionCard({
 }
 
 /** A question the card can take the shape of once none are left, holding the area's height. */
-const PLACEHOLDER: BulkAction = {
+const PLACEHOLDER: BulkAction =
+{
 	key: "placeholder",
 	label: "",
 	short: "Skip all",
 	question: "",
 	covers: "",
-	names: Array.from({length: SAMPLE}, (_, index) => `repo-${index}`),
+	names: Array.from(
+		{
+			length: SAMPLE,
+		},
+		(_, index) => `repo-${index}`,
+	),
 	dirs: new Set(),
 	kind: "skip",
 	done: true,
 };
 
-const noop = () => {};
+const noop = () =>
+{
+};
 
-function inboxHeading(remaining: number, decided: number): string {
+function inboxHeading(remaining: number, decided: number): string
+{
 	if (remaining > 0) return `${remaining} repos aren't kept up to date by Update all yet: decide each one`;
 	if (decided > 0) return "Every repo is decided: save to finish";
 	return "Every repo is kept up to date by Update all";
@@ -678,7 +794,8 @@ export function RegistryReview({
 	saveLabel: (changes: number, projects: number) => string;
 	saving: boolean;
 	onSave: (projects: ProjectRecord[]) => void;
-}) {
+})
+{
 	const [rows, setRows] = useState(candidates);
 	const [decided, setDecided] = useState<ReadonlySet<string>>(new Set());
 	const [showDiff, setShowDiff] = useState(false);
@@ -686,7 +803,8 @@ export function RegistryReview({
 	/** Questions answered or kept; neither is asked again until a discard. */
 	const [asked, setAsked] = useState<ReadonlySet<string>>(new Set());
 
-	function discard() {
+	function discard()
+	{
 		setRows(candidates);
 		setDecided(new Set());
 		setAsked(new Set());
@@ -696,7 +814,8 @@ export function RegistryReview({
 	// New candidates (a fetch replacing a persisted list, or a save) restart the review; the
 	// query's structural sharing keeps the same array while the server's answer is unchanged.
 	const [shownCandidates, setShownCandidates] = useState(candidates);
-	if (shownCandidates !== candidates) {
+	if (shownCandidates !== candidates)
+	{
 		setShownCandidates(candidates);
 		discard();
 	}
@@ -713,14 +832,24 @@ export function RegistryReview({
 	const decidedRows = inboxRows.filter((row) => decided.has(row.project.dir));
 	const remaining = inboxRows.length - decidedRows.length;
 
-	const edit: Edit = (dirs, change, decides = false) => {
+	const edit: Edit = (dirs, change, decides = false) =>
+	{
 		setRows((previous) =>
-			previous.map((row) => (dirs.has(row.project.dir) ? {...row, project: change(row.project)} : row)),
+			previous.map((row) =>
+				dirs.has(row.project.dir)
+					?
+						{
+							...row,
+							project: change(row.project),
+						}
+					: row,
+			),
 		);
 		if (decides) setDecided((previous) => new Set([...previous, ...dirs]));
 	};
 
-	function undo(dir: string) {
+	function undo(dir: string)
+	{
 		const original = candidates.find((row) => row.project.dir === dir);
 		if (original) edit(new Set([dir]), () => original.project);
 		setDecided((previous) => new Set([...previous].filter((other) => other !== dir)));
@@ -731,7 +860,8 @@ export function RegistryReview({
 	const questions = bulkActions(waitingUnregistered, "unregistered", true).filter((action) => !asked.has(action.key));
 	const [question] = questions;
 	const step: Step = question ? 1 : remaining > 0 ? 2 : 3;
-	const ask = (key: string) => {
+	const ask = (key: string) =>
+	{
 		setAsked((previous) => new Set([...previous, key]));
 	};
 
@@ -746,11 +876,13 @@ export function RegistryReview({
 						action={question}
 						position={asked.size + 1}
 						total={asked.size + questions.length}
-						onAnswer={() => {
+						onAnswer={() =>
+						{
 							edit(question.dirs, (project) => decide(project, question.kind), true);
 							ask(question.key);
 						}}
-						onKeep={() => {
+						onKeep={() =>
+						{
 							ask(question.key);
 						}}
 					/>
@@ -771,7 +903,8 @@ export function RegistryReview({
 				<StepHint>
 					Pick Own, Fork, Nested, or Skip for each repo. Decided repos move to their own card until you save.
 				</StepHint>
-				{INBOX.map(({group, label, word, hideWhenEmpty}) => {
+				{INBOX.map(({group, label, word, hideWhenEmpty}) =>
+				{
 					const all = groupRows(group);
 					if (hideWhenEmpty && all.length === 0) return null;
 					const waiting = all.filter((row) => !decided.has(row.project.dir));
@@ -838,7 +971,8 @@ export function RegistryReview({
 						<>
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									setShowDiff((shown) => !shown);
 								}}
 								className={buttonClass}
@@ -853,7 +987,8 @@ export function RegistryReview({
 					<button
 						type="button"
 						disabled={saving || changes === 0}
-						onClick={() => {
+						onClick={() =>
+						{
 							onSave(projects);
 						}}
 						className={primaryClass}

@@ -1,6 +1,7 @@
 import {useState, type ReactNode} from "react";
 import type {Category, GitChildResult, IssueResult, ProjectItemResult, TodoItem} from "@wip/shared";
-import {
+import
+{
 	isGitChildPullRequest,
 	isGitChildBranch,
 	isGitChildCommit,
@@ -19,20 +20,23 @@ import {UpstreamCiCard} from "./upstream-ci-card.js";
 import {PrRefsMissingCard, RemoteOnlyCard} from "./remote-only-card.js";
 import {limitVisibleItems, SECTION_PAGE_SIZE} from "../lib/visible-items.js";
 
-export interface ColumnItems {
+export interface ColumnItems
+{
 	gitChildren?: GitChildResult[];
 	issues?: IssueResult[];
 	projectItems?: ProjectItemResult[];
 	todos?: TodoItem[];
 }
 
-interface KanbanColumnProps {
+interface KanbanColumnProps
+{
 	category: Category;
 	items: ColumnItems;
 	count: number;
 }
 
-export function KanbanColumn({category, items, count}: KanbanColumnProps) {
+export function KanbanColumn({category, items, count}: KanbanColumnProps)
+{
 	const config = CATEGORIES[category];
 
 	const pullRequests = items.gitChildren?.filter(isGitChildPullRequest) ?? [];
@@ -83,7 +87,8 @@ export function KanbanColumn({category, items, count}: KanbanColumnProps) {
 				{hidden > 0 && (
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setExpanded(true);
 						}}
 						className="rounded-md px-2 py-1.5 text-left text-[0.8125rem] text-text-500 hover:bg-bg-200 hover:text-text-300"

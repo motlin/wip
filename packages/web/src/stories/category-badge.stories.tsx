@@ -2,11 +2,14 @@ import type {Meta, StoryObj} from "@storybook/react-vite";
 import {CategorySchema} from "@wip/shared/schemas.js";
 import {CategoryBadge} from "../components/category-badge.js";
 
-const meta: Meta<typeof CategoryBadge> = {
+const meta: Meta<typeof CategoryBadge> =
+{
 	title: "Components/CategoryBadge",
 	component: CategoryBadge,
-	argTypes: {
-		category: {
+	argTypes:
+	{
+		category:
+		{
 			control: "select",
 			options: CategorySchema.options,
 		},
@@ -20,6 +23,24 @@ const approved = CategorySchema.parse("approved");
 const checksFailed = CategorySchema.parse("checks_failed");
 const snoozed = CategorySchema.parse("snoozed");
 
-export const HappyPath: Story = {args: {category: approved}};
-export const ErrorPath: Story = {args: {category: checksFailed}};
-export const EdgeCase: Story = {args: {category: snoozed}};
+export const HappyPath: Story =
+{
+	args:
+	{
+		category: approved,
+	},
+};
+export const ErrorPath: Story =
+{
+	args:
+	{
+		category: checksFailed,
+	},
+};
+export const EdgeCase: Story =
+{
+	args:
+	{
+		category: snoozed,
+	},
+};

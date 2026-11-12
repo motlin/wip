@@ -11,7 +11,8 @@ import {actionLogHref} from "./action-log-schema.js";
  */
 
 /** What each queued action is doing, by its internal runQueuedAction label. */
-const ACTION_PHRASES: Record<string, string> = {
+const ACTION_PHRASES: Record<string, string> =
+{
 	createPr: "Opening a pull request",
 	mergePr: "Merging the pull request",
 	forcePush: "Force-pushing",
@@ -32,7 +33,8 @@ const ACTION_PHRASES: Record<string, string> = {
 };
 
 /** The job a waiting action is stuck behind, by work-queue job kind. */
-const JOB_NAMES: Record<string, string> = {
+const JOB_NAMES: Record<string, string> =
+{
 	test: "a test run",
 	rebase: "a rebase",
 	push: "a push",
@@ -48,25 +50,37 @@ const JOB_NAMES: Record<string, string> = {
 
 const GITHUB_LINK_LABEL = "View on GitHub";
 /** A failed action's "See the log" link: its own log page, or the recent failures when the server never named it. */
-export function actionLogLink(actionId: string | undefined): ToastLink {
-	return {href: actionLogHref(actionId), label: "See the log"};
+export function actionLogLink(actionId: string | undefined): ToastLink
+{
+	return {
+		href: actionLogHref(actionId),
+		label: "See the log",
+	};
 }
-const TASKS_LINK: ToastLink = {href: "/tasks", label: "See tasks"};
+const TASKS_LINK: ToastLink =
+{
+	href: "/tasks",
+	label: "See tasks",
+};
 
-function describeAction(label: string): string {
+function describeAction(label: string): string
+{
 	return ACTION_PHRASES[label] ?? "Running an action";
 }
 
-function describeJob(kind: string | undefined): string {
+function describeJob(kind: string | undefined): string
+{
 	return (kind === undefined ? undefined : JOB_NAMES[kind]) ?? "another job";
 }
 
-function lowerFirst(text: string): string {
+function lowerFirst(text: string): string
+{
 	return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
 /** The first non-blank line of a failure message, so a stderr dump does not flood the toast. */
-function shortReason(message: string | undefined): string | undefined {
+function shortReason(message: string | undefined): string | undefined
+{
 	const line = message
 		?.split("\n")
 		.map((l) => l.trim())
@@ -75,10 +89,12 @@ function shortReason(message: string | undefined): string | undefined {
 }
 
 /** The toast for a queued action waiting for, or refused by, a busy repo; null for running and done. */
-export function actionEventToast(event: ActionEvent): ToastInput | null {
+export function actionEventToast(event: ActionEvent): ToastInput | null
+{
 	const phrase = describeAction(event.label);
 	const subject = event.target === undefined ? `in ${event.project}` : `for ${event.target}`;
-	if (event.status === "waiting") {
+	if (event.status === "waiting")
+	{
 		return {
 			level: "info",
 			message: `${phrase} ${subject}…`,
@@ -88,7 +104,8 @@ export function actionEventToast(event: ActionEvent): ToastInput | null {
 					: `Waiting for ${describeJob(event.waitingFor)} in ${event.project} to finish`,
 		};
 	}
-	if (event.status === "busy") {
+	if (event.status === "busy")
+	{
 		const job = describeJob(event.waitingFor);
 		return {
 			level: "error",
@@ -100,7 +117,8 @@ export function actionEventToast(event: ActionEvent): ToastInput | null {
 }
 
 /** What a user-facing action is called in its failure message, by its internal runQueuedAction label. */
-const ACTION_NAMES: Record<string, string> = {
+const ACTION_NAMES: Record<string, string> =
+{
 	createPr: "Open PR",
 	mergePr: "Merge PR",
 	landFastForward: "Fast-forward main",
@@ -108,14 +126,17 @@ const ACTION_NAMES: Record<string, string> = {
 };
 
 /** The name a failed action's message starts with ("Open PR failed"). */
-export function actionName(label: string): string {
+export function actionName(label: string): string
+{
 	return ACTION_NAMES[label] ?? "The action";
 }
 
 /** The progress line for an action's tab: waiting behind a job, its current step, or starting. */
-export function actionProgressText(event: ActionEvent | null): string {
+export function actionProgressText(event: ActionEvent | null): string
+{
 	if (event === null) return "Starting…";
-	if (event.status === "waiting") {
+	if (event.status === "waiting")
+	{
 		return event.waitingFor === undefined
 			? `Waiting for ${event.project}…`
 			: `Waiting for ${describeJob(event.waitingFor)} in ${event.project}…`;
@@ -124,8 +145,10 @@ export function actionProgressText(event: ActionEvent | null): string {
 }
 
 /** The toast for a finished action: its result with a GitHub link, or a short reason and the log. */
-export function actionResultToast(action: string, result: ActionResult): ToastInput {
-	if (!result.ok) {
+export function actionResultToast(action: string, result: ActionResult): ToastInput
+{
+	if (!result.ok)
+	{
 		return {
 			level: "error",
 			message: `${action} failed`,
@@ -137,50 +160,115 @@ export function actionResultToast(action: string, result: ActionResult): ToastIn
 	return {
 		level: "success",
 		message: result.message,
-		...(href === undefined ? {} : {link: {href, label: GITHUB_LINK_LABEL}}),
+		...(href === undefined
+			? {}
+			:
+				{
+					link:
+					{
+						href,
+						label: GITHUB_LINK_LABEL,
+					},
+				}),
 	};
 }
 
 /** A row's in-progress outcome for a queued action, by its internal runQueuedAction label. */
-export function runningOutcome(label: string): ActionOutcome {
-	return {status: "running", message: `${describeAction(label)}…`};
+export function runningOutcome(label: string): ActionOutcome
+{
+	return {
+		status: "running",
+		message: `${describeAction(label)}…`,
+	};
 }
 
 /** A row's outcome for a finished action: the same words and link as its toast, kept on the row. */
-export function actionResultOutcome(action: string, result: ActionResult): ActionOutcome {
+export function actionResultOutcome(action: string, result: ActionResult): ActionOutcome
+{
 	const {message, detail, link} = actionResultToast(action, result);
-	if (result.ok) return {status: "success", message, ...(link === undefined ? {} : {link})};
+	if (result.ok)
+		return {
+			status: "success",
+			message,
+			...(link === undefined
+				? {}
+				:
+					{
+						link,
+					}),
+		};
 	return {
 		status: "failure",
 		message,
-		...(detail === undefined ? {} : {detail}),
+		...(detail === undefined
+			? {}
+			:
+				{
+					detail,
+				}),
 		link: link ?? actionLogLink(result.actionId),
 	};
 }
 
 /** The completion toast for a background task (push, rebase, Claude task); null otherwise. */
-export function taskEventToast(event: TaskEvent): ToastInput | null {
+export function taskEventToast(event: TaskEvent): ToastInput | null
+{
 	if (event.status !== "passed" && event.status !== "failed") return null;
-	const logLink: ToastLink = {href: `/log/${event.project}/${event.sha}`, label: "See the log"};
-	switch (event.taskType) {
+	const logLink: ToastLink =
+	{
+		href: `/log/${event.project}/${event.sha}`,
+		label: "See the log",
+	};
+	switch (event.taskType)
+	{
 		case "push":
 			return event.status === "passed"
-				? {
+				?
+					{
 						level: "success",
 						message: event.message ?? `Pushed ${event.branch ?? event.shortSha}`,
 						...(event.compareUrl === undefined
 							? {}
-							: {link: {href: event.compareUrl, label: GITHUB_LINK_LABEL}}),
+							:
+								{
+									link:
+									{
+										href: event.compareUrl,
+										label: GITHUB_LINK_LABEL,
+									},
+								}),
 					}
-				: {level: "error", message: "Push failed", detail: shortReason(event.message), link: logLink};
+				:
+					{
+						level: "error",
+						message: "Push failed",
+						detail: shortReason(event.message),
+						link: logLink,
+					};
 		case "rebase":
 			return event.status === "passed"
-				? {level: "success", message: event.message ?? `Rebased ${event.branch ?? event.shortSha}`}
-				: {level: "error", message: "Rebase failed", detail: shortReason(event.message), link: logLink};
+				?
+					{
+						level: "success",
+						message: event.message ?? `Rebased ${event.branch ?? event.shortSha}`,
+					}
+				:
+					{
+						level: "error",
+						message: "Rebase failed",
+						detail: shortReason(event.message),
+						link: logLink,
+					};
 		case "claude":
 			return event.status === "passed"
-				? {level: "success", message: `Finished "${event.subject}"`, link: TASKS_LINK}
-				: {
+				?
+					{
+						level: "success",
+						message: `Finished "${event.subject}"`,
+						link: TASKS_LINK,
+					}
+				:
+					{
 						level: "error",
 						message: `Couldn't finish "${event.subject}"`,
 						detail: shortReason(event.message),

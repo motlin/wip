@@ -1,13 +1,15 @@
 import {effectivePriority, PRIORITY_RANK, type Priority} from "./priority.js";
 
 /** A registry repo; an unset priority reads as medium. Client-safe: no node builtins. */
-export interface ReadyQueueRepo {
+export interface ReadyQueueRepo
+{
 	name: string;
 	priority?: Priority;
 }
 
 /** One unit of work (a commit by patch-id, or a todo) and where it stands in the flow. */
-export interface ReadyQueueItem {
+export interface ReadyQueueItem
+{
 	repo: string;
 	id: string;
 	/** A per-item override wins over its repo's priority. */
@@ -18,7 +20,8 @@ export interface ReadyQueueItem {
 	onHold: boolean;
 }
 
-export interface ReadyPullLimits {
+export interface ReadyPullLimits
+{
 	/** How many commits the buffer keeps ready across all repos (readyBuffer.size). */
 	target: number;
 	/** How many buffer jobs may run at once (readyBuffer.capacity). */
@@ -32,15 +35,24 @@ export interface ReadyPullLimits {
  * priority (item override > repo > medium), then remaining job, then input order (each repo's
  * candidates arrive in their own rank order). Ready, in-flight and on-hold items are not pullable.
  */
-export function orderReadyQueue(repos: readonly ReadyQueueRepo[], items: readonly ReadyQueueItem[]): ReadyQueueItem[] {
+export function orderReadyQueue(repos: readonly ReadyQueueRepo[], items: readonly ReadyQueueItem[]): ReadyQueueItem[]
+{
 	const repoPriority = new Map(repos.map((r) => [r.name, r.priority]));
 	return (
 		items
 			.filter((it) => it.state === "unready" && !it.onHold && repoPriority.has(it.repo))
-			.map((it, index) => ({
+			.map((it, index) => (
+			{
 				it,
 				index,
-				tier: PRIORITY_RANK[effectivePriority({repo: repoPriority.get(it.repo), override: it.override})],
+				tier: PRIORITY_RANK[
+					effectivePriority(
+						{
+							repo: repoPriority.get(it.repo),
+							override: it.override,
+						},
+					)
+				],
 			}))
 			// eslint-disable-next-line unicorn/no-array-sort -- sorts the fresh array produced by map
 			.sort((a, b) => a.tier - b.tier || (a.it.job ?? 0) - (b.it.job ?? 0) || a.index - b.index)
@@ -57,7 +69,8 @@ export function planReadyPulls(
 	repos: readonly ReadyQueueRepo[],
 	items: readonly ReadyQueueItem[],
 	limits: ReadyPullLimits,
-): ReadyQueueItem[] {
+): ReadyQueueItem[]
+{
 	const known = new Set(repos.map((r) => r.name));
 	const ready = items.filter((it) => it.state === "ready" && !it.onHold && known.has(it.repo)).length;
 	const room = Math.min(limits.target - ready - limits.inFlight, limits.capacity - limits.inFlight);

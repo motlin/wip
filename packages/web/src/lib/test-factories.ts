@@ -1,6 +1,7 @@
 import type {GitChildResult} from "@wip/shared";
 
-export function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult {
+export function makeChild(overrides: Partial<GitChildResult> = {}): GitChildResult
+{
 	return {
 		project: "test",
 		remote: "owner/repo",

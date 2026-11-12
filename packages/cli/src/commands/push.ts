@@ -6,7 +6,8 @@ import {runInRepoQueue} from "../lib/repo-queue.js";
 import {discoverAllProjects, getChildCommits, getProjectsDirs, isDirty} from "@wip/shared";
 import {log} from "@wip/shared/services/logger-pino.js";
 
-interface PushResult {
+interface PushResult
+{
 	sha: string;
 	shortSha: string;
 	branch: string;
@@ -16,16 +17,29 @@ interface PushResult {
 	prUrl?: string;
 }
 
-interface PushJson {
+interface PushJson
+{
 	dryRun: boolean;
 	pushed: PushResult[];
 	skippedProjects: string[];
-	summary: {pushed: number; planned: number; failed: number; skipped: number};
+	summary:
+	{
+		pushed: number;
+		planned: number;
+		failed: number;
+		skipped: number;
+	};
 }
 
-export default class Push extends Command {
-	static override args = {
-		project: Args.string({description: "Filter to a specific project name"}),
+export default class Push extends Command
+{
+	static override args =
+	{
+		project: Args.string(
+			{
+				description: "Filter to a specific project name",
+			},
+		),
 	};
 
 	static override description = "Push green children: create branches, push, and optionally create PRs";
@@ -39,20 +53,30 @@ export default class Push extends Command {
 		"<%= config.bin %> push --json",
 	];
 
-	static override flags = {
-		"dry-run": Flags.boolean({
-			char: "n",
-			default: false,
-			description: "Show what would be pushed without pushing",
-		}),
-		pr: Flags.boolean({
-			default: false,
-			description: "Also create draft PRs for new branches",
-		}),
-		"projects-dir": Flags.string({description: "Override projects directory"}),
+	static override flags =
+	{
+		"dry-run": Flags.boolean(
+			{
+				char: "n",
+				default: false,
+				description: "Show what would be pushed without pushing",
+			},
+		),
+		pr: Flags.boolean(
+			{
+				default: false,
+				description: "Also create draft PRs for new branches",
+			},
+		),
+		"projects-dir": Flags.string(
+			{
+				description: "Override projects directory",
+			},
+		),
 	};
 
-	async run(): Promise<PushJson> {
+	async run(): Promise<PushJson>
+	{
 		const {args, flags} = await this.parse(Push);
 		const projectsDirs = getProjectsDirs(flags["projects-dir"]);
 		const projects = await discoverAllProjects(projectsDirs);
@@ -61,11 +85,13 @@ export default class Push extends Command {
 		const skippedProjects: string[] = [];
 
 		/* oxlint-disable no-await-in-loop -- pushes run sequentially: ordered console output and per-project git state */
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			if (args.project && p.name !== args.project) continue;
 
 			const dirty = await isDirty(p.dir);
-			if (dirty) {
+			if (dirty)
+			{
 				this.log(chalk.dim(`Skipping ${p.name} (dirty)`));
 				skippedProjects.push(p.name);
 				continue;
@@ -78,7 +104,8 @@ export default class Push extends Command {
 
 			this.log(chalk.bold(`\n${p.name}`) + chalk.dim(` (${green.length} green children)`));
 
-			for (const child of green) {
+			for (const child of green)
+			{
 				const branchName =
 					child.branch ??
 					child.subject
@@ -86,22 +113,32 @@ export default class Push extends Command {
 						.replaceAll(/[^a-z0-9]+/g, "-")
 						.replace(/^-|-$/g, "");
 
-				if (flags["dry-run"]) {
+				if (flags["dry-run"])
+				{
 					this.log(`  would push ${child.shortSha} ${child.subject} \u2192 ${branchName}`);
-					pushResults.push({
-						sha: child.sha,
-						shortSha: child.shortSha,
-						branch: branchName,
-						subject: child.subject,
-						status: "planned",
-					});
+					pushResults.push(
+						{
+							sha: child.sha,
+							shortSha: child.shortSha,
+							branch: branchName,
+							subject: child.subject,
+							status: "planned",
+						},
+					);
 					continue;
 				}
 
-				if (!child.branch) {
+				if (!child.branch)
+				{
 					const branchStart = performance.now();
 					await runInRepoQueue(p.name, "branch", "git-write", async () =>
-						execa("git", ["-C", p.dir, "branch", branchName, child.sha], {reject: false}),
+						execa(
+							"git",
+							["-C", p.dir, "branch", branchName, child.sha],
+							{
+								reject: false,
+							},
+						),
 					);
 					const branchDuration = Math.round(performance.now() - branchStart);
 					log.subprocess.debug(
@@ -134,9 +171,11 @@ export default class Push extends Command {
 					`git -C ${p.dir} push -u ${p.upstreamRemote} ${child.sha}:refs/heads/${branchName} (${pushDuration}ms)`,
 				);
 
-				if (pushResult.exitCode === 0) {
+				if (pushResult.exitCode === 0)
+				{
 					this.log(chalk.green(`  \u2713 pushed ${child.shortSha} \u2192 ${branchName}`));
-					const result: PushResult = {
+					const result: PushResult =
+					{
 						sha: child.sha,
 						shortSha: child.shortSha,
 						branch: branchName,
@@ -144,7 +183,8 @@ export default class Push extends Command {
 						status: "pushed",
 					};
 
-					if (flags.pr) {
+					if (flags.pr)
+					{
 						const prUrl = await runInRepoQueue(p.name, "pr", "git-write", async () =>
 							this.createPR(p.dir, branchName, child, p.upstreamBranch),
 						);
@@ -152,16 +192,20 @@ export default class Push extends Command {
 					}
 
 					pushResults.push(result);
-				} else {
+				}
+				else
+				{
 					this.log(chalk.red(`  \u2717 failed to push ${child.shortSha}: ${pushResult.stderr}`));
-					pushResults.push({
-						sha: child.sha,
-						shortSha: child.shortSha,
-						branch: branchName,
-						subject: child.subject,
-						status: "failed",
-						error: pushResult.stderr,
-					});
+					pushResults.push(
+						{
+							sha: child.sha,
+							shortSha: child.shortSha,
+							branch: branchName,
+							subject: child.subject,
+							status: "failed",
+							error: pushResult.stderr,
+						},
+					);
 				}
 			}
 		}
@@ -171,9 +215,12 @@ export default class Push extends Command {
 		const plannedCount = pushResults.filter((r) => r.status === "planned").length;
 		const failedCount = pushResults.filter((r) => r.status === "failed").length;
 
-		if (flags["dry-run"]) {
+		if (flags["dry-run"])
+		{
 			this.log(`\nWould push ${plannedCount} branches, skipped ${skippedProjects.length} dirty projects`);
-		} else {
+		}
+		else
+		{
 			this.log(`\nPushed ${pushedCount} branches, skipped ${skippedProjects.length} dirty projects`);
 		}
 
@@ -181,7 +228,8 @@ export default class Push extends Command {
 			dryRun: flags["dry-run"],
 			pushed: pushResults,
 			skippedProjects,
-			summary: {
+			summary:
+			{
 				pushed: pushedCount,
 				planned: plannedCount,
 				failed: failedCount,
@@ -193,15 +241,25 @@ export default class Push extends Command {
 	private async createPR(
 		dir: string,
 		branch: string,
-		child: {shortSha: string; subject: string},
+		child:
+		{
+			shortSha: string;
+			subject: string;
+		},
 		base: string,
-	): Promise<string | undefined> {
-		const existingPR = await execa("gh", ["pr", "view", branch, "--repo", ".", "--json", "number"], {
-			cwd: dir,
-			reject: false,
-		});
+	): Promise<string | undefined>
+	{
+		const existingPR = await execa(
+			"gh",
+			["pr", "view", branch, "--repo", ".", "--json", "number"],
+			{
+				cwd: dir,
+				reject: false,
+			},
+		);
 
-		if (existingPR.exitCode === 0) {
+		if (existingPR.exitCode === 0)
+		{
 			this.log(chalk.dim(`    PR already exists for ${branch}`));
 			return undefined;
 		}
@@ -215,7 +273,8 @@ export default class Push extends Command {
 			},
 		);
 
-		if (prResult.exitCode === 0) {
+		if (prResult.exitCode === 0)
+		{
 			this.log(chalk.green(`    Created draft PR: ${prResult.stdout}`));
 			return prResult.stdout;
 		}

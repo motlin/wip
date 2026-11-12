@@ -8,7 +8,8 @@ import {describe, it, expect} from "vite-plus/test";
 
 import {captureLogs} from "./logger.js";
 import {SUBPROCESS_LIMIT} from "./subprocess-gate.js";
-import {
+import
+{
 	isExpectedProbeExit,
 	subscribeSubprocessFailures,
 	tracedExeca,
@@ -21,24 +22,32 @@ import {
  * dies too, so launchd reaps it) are asynchronous; under load a fixed short sleep can still see the
  * grandchild, or its zombie, answer `kill 0`.
  */
-async function waitUntilGone(pid: number): Promise<boolean> {
+async function waitUntilGone(pid: number): Promise<boolean>
+{
 	const deadline = Date.now() + 5000;
-	for (;;) {
-		try {
+	for (;;)
+	{
+		try
+		{
 			process.kill(pid, 0);
-		} catch {
+		}
+		catch
+		{
 			return true;
 		}
 		if (Date.now() > deadline) return false;
 		// eslint-disable-next-line no-await-in-loop
-		await new Promise((resolve) => {
+		await new Promise((resolve) =>
+		{
 			setTimeout(resolve, 20);
 		});
 	}
 }
 
-describe("tracedExeca global subprocess cap", () => {
-	it("never runs more than SUBPROCESS_LIMIT children at once, however many callers fire together", async () => {
+describe("tracedExeca global subprocess cap", () =>
+{
+	it("never runs more than SUBPROCESS_LIMIT children at once, however many callers fire together", async () =>
+	{
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-subprocess-cap-"));
 		const live = path.join(dir, "live");
 		fs.mkdirSync(live);
@@ -49,7 +58,19 @@ describe("tracedExeca global subprocess cap", () => {
 
 		const callers = 4 * SUBPROCESS_LIMIT;
 		const results = await Promise.all(
-			Array.from({length: callers}, async () => tracedExeca("sh", ["-c", script], {reject: false})),
+			Array.from(
+				{
+					length: callers,
+				},
+				async () =>
+					tracedExeca(
+						"sh",
+						["-c", script],
+						{
+							reject: false,
+						},
+					),
+			),
 		);
 
 		const counts = fs
@@ -57,43 +78,90 @@ describe("tracedExeca global subprocess cap", () => {
 			.trim()
 			.split("\n")
 			.map((line) => Number(line.trim()));
-		fs.rmSync(dir, {recursive: true, force: true});
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 
-		expect({
-			exitCodes: results.map((r) => r.exitCode),
-			samples: counts.length,
-			peakWithinCap: Math.max(...counts) <= SUBPROCESS_LIMIT,
-		}).toStrictEqual({
-			exitCodes: Array.from({length: callers}, () => 0),
-			samples: callers,
-			peakWithinCap: true,
-		});
+		expect(
+			{
+				exitCodes: results.map((r) => r.exitCode),
+				samples: counts.length,
+				peakWithinCap: Math.max(...counts) <= SUBPROCESS_LIMIT,
+			},
+		).toStrictEqual(
+			{
+				exitCodes: Array.from(
+					{
+						length: callers,
+					},
+					() => 0,
+				),
+				samples: callers,
+				peakWithinCap: true,
+			},
+		);
 	});
 });
 
-describe("tracedExeca exit codes", () => {
-	it("reports 0 for a successful command", async () => {
-		const result = await tracedExeca("true", [], {reject: false});
+describe("tracedExeca exit codes", () =>
+{
+	it("reports 0 for a successful command", async () =>
+	{
+		const result = await tracedExeca(
+			"true",
+			[],
+			{
+				reject: false,
+			},
+		);
 		expect(result.exitCode).toBe(0);
 		expect(result.failed).toBe(false);
 	});
 
-	it("reports the real non-zero exit code", async () => {
-		const result = await tracedExeca("sh", ["-c", "exit 3"], {reject: false});
+	it("reports the real non-zero exit code", async () =>
+	{
+		const result = await tracedExeca(
+			"sh",
+			["-c", "exit 3"],
+			{
+				reject: false,
+			},
+		);
 		expect(result.exitCode).toBe(3);
 		expect(result.failed).toBe(true);
 	});
 
-	it("reports non-zero for a timed-out process", async () => {
-		const result = await tracedExeca("sleep", ["5"], {reject: false, timeout: 50});
+	it("reports non-zero for a timed-out process", async () =>
+	{
+		const result = await tracedExeca(
+			"sleep",
+			["5"],
+			{
+				reject: false,
+				timeout: 50,
+			},
+		);
 		expect(result.exitCode).not.toBe(0);
 		expect(result.failed).toBe(true);
 	});
 
-	it("reports non-zero for a cancelled process", async () => {
+	it("reports non-zero for a cancelled process", async () =>
+	{
 		const controller = new AbortController();
-		const promise = tracedExeca("sleep", ["5"], {reject: false, cancelSignal: controller.signal});
-		setTimeout(() => {
+		const promise = tracedExeca(
+			"sleep",
+			["5"],
+			{
+				reject: false,
+				cancelSignal: controller.signal,
+			},
+		);
+		setTimeout(() =>
+		{
 			controller.abort();
 		}, 50);
 		const result = await promise;
@@ -102,18 +170,31 @@ describe("tracedExeca exit codes", () => {
 	});
 });
 
-describe("tracedExeca killTreeOn", () => {
-	it("kills the whole process tree, grandchildren included, when the signal aborts", async () => {
+describe("tracedExeca killTreeOn", () =>
+{
+	it("kills the whole process tree, grandchildren included, when the signal aborts", async () =>
+	{
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-kill-tree-"));
 		const pidFile = path.join(dir, "grandchild.pid");
 		// The child starts a grandchild (the sleep), records its pid, and waits on it.
 		const script = `sleep 30 & echo $! > "${pidFile}"; wait`;
 		const controller = new AbortController();
 		const started = Date.now();
-		const run = tracedExeca("sh", ["-c", script], {reject: false}, {killTreeOn: controller.signal});
-		while (!fs.existsSync(pidFile) || fs.readFileSync(pidFile, "utf8").trim() === "") {
+		const run = tracedExeca(
+			"sh",
+			["-c", script],
+			{
+				reject: false,
+			},
+			{
+				killTreeOn: controller.signal,
+			},
+		);
+		while (!fs.existsSync(pidFile) || fs.readFileSync(pidFile, "utf8").trim() === "")
+		{
 			// eslint-disable-next-line no-await-in-loop
-			await new Promise((resolve) => {
+			await new Promise((resolve) =>
+			{
 				setTimeout(resolve, 20);
 			});
 		}
@@ -122,13 +203,27 @@ describe("tracedExeca killTreeOn", () => {
 		const result = await run;
 		const grandchildAlive = !(await waitUntilGone(grandchild));
 		if (grandchildAlive) process.kill(grandchild, "SIGKILL");
-		fs.rmSync(dir, {recursive: true, force: true});
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 
-		expect({
-			failed: result.failed,
-			quick: Date.now() - started < 10_000,
-			grandchildAlive,
-		}).toStrictEqual({failed: true, quick: true, grandchildAlive: false});
+		expect(
+			{
+				failed: result.failed,
+				quick: Date.now() - started < 10_000,
+				grandchildAlive,
+			},
+		).toStrictEqual(
+			{
+				failed: true,
+				quick: true,
+				grandchildAlive: false,
+			},
+		);
 	});
 });
 
@@ -154,26 +249,36 @@ void tracedExeca("sh", ["-c", \`sleep 30 & echo $! > "\${pidFile}"; wait\`], {re
 setInterval(() => {}, 1000);
 `;
 
-describe("tracedExeca detached process groups on server shutdown", () => {
+describe("tracedExeca detached process groups on server shutdown", () =>
+{
 	it.each(["SIGTERM", "SIGINT"] as const)(
 		"kills a running group when the server gets %s, and the server still exits",
-		async (signal) => {
+		async (signal) =>
+		{
 			const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-orphan-group-"));
 			const pidFile = path.join(dir, "grandchild.pid");
 			const scriptFile = path.join(dir, "server.mjs");
 			fs.writeFileSync(scriptFile, SERVER_SCRIPT);
 			const modulePath = url.fileURLToPath(new URL("traced-execa.ts", import.meta.url));
-			const server = childProcess.spawn(process.execPath, [scriptFile, modulePath, pidFile], {
-				stdio: "ignore",
-			});
-			const exited = new Promise<number | null>((resolve) => {
-				server.on("exit", (code) => {
+			const server = childProcess.spawn(
+				process.execPath,
+				[scriptFile, modulePath, pidFile],
+				{
+					stdio: "ignore",
+				},
+			);
+			const exited = new Promise<number | null>((resolve) =>
+			{
+				server.on("exit", (code) =>
+				{
 					resolve(code);
 				});
 			});
-			while (!fs.existsSync(pidFile) || fs.readFileSync(pidFile, "utf8").trim() === "") {
+			while (!fs.existsSync(pidFile) || fs.readFileSync(pidFile, "utf8").trim() === "")
+			{
 				// eslint-disable-next-line no-await-in-loop
-				await new Promise((resolve) => {
+				await new Promise((resolve) =>
+				{
 					setTimeout(resolve, 20);
 				});
 			}
@@ -182,41 +287,93 @@ describe("tracedExeca detached process groups on server shutdown", () => {
 			const exitCode = await exited;
 			const grandchildAlive = !(await waitUntilGone(grandchild));
 			if (grandchildAlive) process.kill(grandchild, "SIGKILL");
-			fs.rmSync(dir, {recursive: true, force: true});
+			fs.rmSync(
+				dir,
+				{
+					recursive: true,
+					force: true,
+				},
+			);
 
-			expect({exitCode, grandchildAlive}).toStrictEqual({
-				exitCode: 128 + {SIGTERM: 15, SIGINT: 2}[signal],
-				grandchildAlive: false,
-			});
+			expect(
+				{
+					exitCode,
+					grandchildAlive,
+				},
+			).toStrictEqual(
+				{
+					exitCode:
+						128 +
+						{
+							SIGTERM: 15,
+							SIGINT: 2,
+						}[signal],
+					grandchildAlive: false,
+				},
+			);
 		},
 		20_000,
 	);
 });
 
-describe("tracedExeca failure listeners", () => {
-	it("reports each failing subprocess's command, exit code and stderr, whether or not it rejects", async () => {
+describe("tracedExeca failure listeners", () =>
+{
+	it("reports each failing subprocess's command, exit code and stderr, whether or not it rejects", async () =>
+	{
 		const failures: SubprocessFailure[] = [];
-		const listener = (failure: SubprocessFailure): void => {
+		const listener = (failure: SubprocessFailure): void =>
+		{
 			failures.push(failure);
 		};
 		subscribeSubprocessFailures(listener);
-		try {
-			await tracedExeca("sh", ["-c", "exit 0"], {reject: false});
-			await tracedExeca("sh", ["-c", "echo boom >&2; exit 3"], {reject: false});
+		try
+		{
+			await tracedExeca(
+				"sh",
+				["-c", "exit 0"],
+				{
+					reject: false,
+				},
+			);
+			await tracedExeca(
+				"sh",
+				["-c", "echo boom >&2; exit 3"],
+				{
+					reject: false,
+				},
+			);
 			await tracedExeca("sh", ["-c", "echo bang >&2; exit 4"]).catch(() => undefined);
-		} finally {
+		}
+		finally
+		{
 			unsubscribeSubprocessFailures(listener);
 		}
-		await tracedExeca("sh", ["-c", "exit 5"], {reject: false});
+		await tracedExeca(
+			"sh",
+			["-c", "exit 5"],
+			{
+				reject: false,
+			},
+		);
 		expect(failures).toStrictEqual([
-			{command: "sh -c 'echo boom >&2; exit 3'", exitCode: 3, stderr: "boom"},
-			{command: "sh -c 'echo bang >&2; exit 4'", exitCode: 4, stderr: "bang"},
+			{
+				command: "sh -c 'echo boom >&2; exit 3'",
+				exitCode: 3,
+				stderr: "boom",
+			},
+			{
+				command: "sh -c 'echo bang >&2; exit 4'",
+				exitCode: 4,
+				stderr: "bang",
+			},
 		]);
 	});
 });
 
-describe("isExpectedProbeExit", () => {
-	it("knows the git probes whose non-zero exit is an answer, not a failure", () => {
+describe("isExpectedProbeExit", () =>
+{
+	it("knows the git probes whose non-zero exit is an answer, not a failure", () =>
+	{
 		const cases: [string[], number][] = [
 			[["-C", "/r", "merge-base", "--is-ancestor", "a", "b"], 1],
 			[["-C", "/r", "merge-base", "--is-ancestor", "a", "b"], 128],
@@ -254,21 +411,42 @@ describe("isExpectedProbeExit", () => {
 		expect(isExpectedProbeExit("sh", ["-c", "exit 1"], 1)).toBe(false);
 	});
 
-	it("never reports a probe's expected exit as a failing subprocess", async () => {
+	it("never reports a probe's expected exit as a failing subprocess", async () =>
+	{
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-probe-"));
 		childProcess.execFileSync("git", ["init", "--quiet", dir]);
 		const failures: SubprocessFailure[] = [];
-		const listener = (failure: SubprocessFailure): void => {
+		const listener = (failure: SubprocessFailure): void =>
+		{
 			failures.push(failure);
 		};
 		subscribeSubprocessFailures(listener);
-		try {
-			await tracedExeca("git", ["-C", dir, "rev-parse", "--verify", "--quiet", "refs/heads/nope"], {
-				reject: false,
-			});
-			await tracedExeca("git", ["-C", dir, "config", "--get", "no.such"], {reject: false});
-			await tracedExeca("git", ["-C", dir, "merge-base", "--is-ancestor", "nope", "HEAD"], {reject: false});
-		} finally {
+		try
+		{
+			await tracedExeca(
+				"git",
+				["-C", dir, "rev-parse", "--verify", "--quiet", "refs/heads/nope"],
+				{
+					reject: false,
+				},
+			);
+			await tracedExeca(
+				"git",
+				["-C", dir, "config", "--get", "no.such"],
+				{
+					reject: false,
+				},
+			);
+			await tracedExeca(
+				"git",
+				["-C", dir, "merge-base", "--is-ancestor", "nope", "HEAD"],
+				{
+					reject: false,
+				},
+			);
+		}
+		finally
+		{
 			unsubscribeSubprocessFailures(listener);
 		}
 		expect(failures.map((f) => [f.command, f.exitCode])).toStrictEqual([
@@ -277,26 +455,57 @@ describe("isExpectedProbeExit", () => {
 	});
 });
 
-async function logged(run: () => Promise<unknown>): Promise<Record<string, unknown>[]> {
+async function logged(run: () => Promise<unknown>): Promise<Record<string, unknown>[]>
+{
 	const saved = process.env["WIP_SUBPROCESS_LOGGING"];
 	process.env["WIP_SUBPROCESS_LOGGING"] = "true";
-	try {
-		const {logs} = await captureLogs(run, {categories: ["subprocess"]});
-		return logs.map(({time, duration, ...rest}) =>
-			Object.assign(rest, {time: typeof time, duration: typeof duration}),
+	try
+	{
+		const {logs} = await captureLogs(
+			run,
+			{
+				categories: ["subprocess"],
+			},
 		);
-	} finally {
+		return logs.map(({time, duration, ...rest}) =>
+			Object.assign(
+				rest,
+				{
+					time: typeof time,
+					duration: typeof duration,
+				},
+			),
+		);
+	}
+	finally
+	{
 		if (saved === undefined) delete process.env["WIP_SUBPROCESS_LOGGING"];
 		else process.env["WIP_SUBPROCESS_LOGGING"] = saved;
 	}
 }
 
-describe("tracedExeca subprocess log", () => {
-	it("logs every subprocess with its command, cwd and exit code, and stderr when it fails", async () => {
+describe("tracedExeca subprocess log", () =>
+{
+	it("logs every subprocess with its command, cwd and exit code, and stderr when it fails", async () =>
+	{
 		const script = "process.stderr.write('remote rejected'); process.exit(3)";
-		const logs = await logged(async () => {
-			await tracedExeca("node", ["-e", "process.stdout.write('ok')"], {reject: false, cwd: os.tmpdir()});
-			await tracedExeca("node", ["-e", script], {reject: false});
+		const logs = await logged(async () =>
+		{
+			await tracedExeca(
+				"node",
+				["-e", "process.stdout.write('ok')"],
+				{
+					reject: false,
+					cwd: os.tmpdir(),
+				},
+			);
+			await tracedExeca(
+				"node",
+				["-e", script],
+				{
+					reject: false,
+				},
+			);
 		});
 		expect(logs).toStrictEqual([
 			{
@@ -324,7 +533,8 @@ describe("tracedExeca subprocess log", () => {
 		]);
 	});
 
-	it("logs a subprocess that throws", async () => {
+	it("logs a subprocess that throws", async () =>
+	{
 		const logs = await logged(async () => tracedExeca("node", ["-e", "process.exit(2)"]).catch(() => undefined));
 		expect(logs).toStrictEqual([
 			{

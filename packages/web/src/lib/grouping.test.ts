@@ -4,7 +4,8 @@ import type {IssueResult, ProjectInfo, ProjectItemResult, TodoItem} from "@wip/s
 import {buildGrouped, emptyGrouped} from "./grouping.js";
 import {makeChild} from "./test-factories.js";
 
-const project: ProjectInfo = {
+const project: ProjectInfo =
+{
 	name: "test",
 	dir: "/tmp/test",
 	remote: "owner/repo",
@@ -19,54 +20,169 @@ const project: ProjectInfo = {
 	rebaseInProgress: false,
 };
 
-describe("buildGrouped", () => {
-	it("buckets git children, issues, todos and project items by category for queue and kanban alike", () => {
-		const failed = makeChild({sha: "a".repeat(40), branch: undefined, testStatus: "failed"});
-		const orphan = makeChild({sha: "b".repeat(40), project: "unknown"});
-		const issue = {number: 1, url: "https://example.test/1"} as IssueResult;
-		const todo: TodoItem = {project: "test", title: "Open", sourceFile: ".llm/todo.md", sourceLabel: "todo.md"};
-		const blockedTodo: TodoItem = {...todo, title: "Stuck", blocked: true};
-		const projectItem = {project: "board", title: "Card"} as ProjectItemResult;
+describe("buildGrouped", () =>
+{
+	it("buckets git children, issues, todos and project items by category for queue and kanban alike", () =>
+	{
+		const failed = makeChild(
+			{
+				sha: "a".repeat(40),
+				branch: undefined,
+				testStatus: "failed",
+			},
+		);
+		const orphan = makeChild(
+			{
+				sha: "b".repeat(40),
+				project: "unknown",
+			},
+		);
+		const issue =
+		{
+			number: 1,
+			url: "https://example.test/1",
+		} as IssueResult;
+		const todo: TodoItem =
+		{
+			project: "test",
+			title: "Open",
+			sourceFile: ".llm/todo.md",
+			sourceLabel: "todo.md",
+		};
+		const blockedTodo: TodoItem =
+		{
+			...todo,
+			title: "Stuck",
+			blocked: true,
+		};
+		const projectItem =
+		{
+			project: "board",
+			title: "Card",
+		} as ProjectItemResult;
 
 		const grouped = buildGrouped(
-			{gitChildren: [failed, orphan], issues: [issue], todos: [todo, blockedTodo], projectItems: [projectItem]},
+			{
+				gitChildren: [failed, orphan],
+				issues: [issue],
+				todos: [todo, blockedTodo],
+				projectItems: [projectItem],
+			},
 			[project],
 		);
 
-		expect(grouped).toStrictEqual({
-			...emptyGrouped(),
-			test_failed: {gitChildren: [failed]},
-			triaged: {issues: [issue], todos: [todo]},
-			blocked: {todos: [blockedTodo]},
-			untriaged: {projectItems: [projectItem]},
-		});
+		expect(grouped).toStrictEqual(
+			{
+				...emptyGrouped(),
+				test_failed:
+				{
+					gitChildren: [failed],
+				},
+				triaged:
+				{
+					issues: [issue],
+					todos: [todo],
+				},
+				blocked:
+				{
+					todos: [blockedTodo],
+				},
+				untriaged:
+				{
+					projectItems: [projectItem],
+				},
+			},
+		);
 	});
 
-	it("gives an own red upstream one upstream_red item and a foreign red upstream none", () => {
-		const red = {kind: "upstream_ci" as const, checkStatus: "failed" as const, branch: "main"};
-		const own = makeChild({...red, sha: "c".repeat(40), ownership: "own"});
-		const foreign = makeChild({...red, sha: "d".repeat(40), ownership: "foreign"});
+	it("gives an own red upstream one upstream_red item and a foreign red upstream none", () =>
+	{
+		const red =
+		{
+			kind: "upstream_ci" as const,
+			checkStatus: "failed" as const,
+			branch: "main",
+		};
+		const own = makeChild(
+			{
+				...red,
+				sha: "c".repeat(40),
+				ownership: "own",
+			},
+		);
+		const foreign = makeChild(
+			{
+				...red,
+				sha: "d".repeat(40),
+				ownership: "foreign",
+			},
+		);
 
-		const grouped = buildGrouped({gitChildren: [own, foreign], issues: [], todos: [], projectItems: []}, [project]);
+		const grouped = buildGrouped(
+			{
+				gitChildren: [own, foreign],
+				issues: [],
+				todos: [],
+				projectItems: [],
+			},
+			[project],
+		);
 
-		expect(grouped).toStrictEqual({...emptyGrouped(), upstream_red: {gitChildren: [own]}});
+		expect(grouped).toStrictEqual(
+			{
+				...emptyGrouped(),
+				upstream_red:
+				{
+					gitChildren: [own],
+				},
+			},
+		);
 	});
 
-	it("gives a repo missing PR refs one pr_refs_missing item and a green remote-only commit remote_only, never ready", () => {
-		const prRefs = makeChild({kind: "pr_refs_missing", prRemote: "upstream", sha: "e".repeat(40)});
-		const lost = makeChild({
-			sha: "f".repeat(40),
-			branch: undefined,
-			testStatus: "passed",
-			remoteOnly: {remote: "origin", branch: "lost"},
-		});
+	it("gives a repo missing PR refs one pr_refs_missing item and a green remote-only commit remote_only, never ready", () =>
+	{
+		const prRefs = makeChild(
+			{
+				kind: "pr_refs_missing",
+				prRemote: "upstream",
+				sha: "e".repeat(40),
+			},
+		);
+		const lost = makeChild(
+			{
+				sha: "f".repeat(40),
+				branch: undefined,
+				testStatus: "passed",
+				remoteOnly:
+				{
+					remote: "origin",
+					branch: "lost",
+				},
+			},
+		);
 
-		const grouped = buildGrouped({gitChildren: [prRefs, lost], issues: [], todos: [], projectItems: []}, [project]);
+		const grouped = buildGrouped(
+			{
+				gitChildren: [prRefs, lost],
+				issues: [],
+				todos: [],
+				projectItems: [],
+			},
+			[project],
+		);
 
-		expect(grouped).toStrictEqual({
-			...emptyGrouped(),
-			pr_refs_missing: {gitChildren: [prRefs]},
-			remote_only: {gitChildren: [lost]},
-		});
+		expect(grouped).toStrictEqual(
+			{
+				...emptyGrouped(),
+				pr_refs_missing:
+				{
+					gitChildren: [prRefs],
+				},
+				remote_only:
+				{
+					gitChildren: [lost],
+				},
+			},
+		);
 	});
 });

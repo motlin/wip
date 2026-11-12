@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 
 import {getCommitFacts} from "./commit-facts.js";
-import {
+import
+{
 	getActiveSnoozedForProject,
 	getSnoozedNeedingBackfill,
 	repointSnoozed,
@@ -15,13 +16,15 @@ import {
  * (not yet backfilled, empty diff, or orphaned) match on sha alone.
  */
 
-interface ChildRef {
+interface ChildRef
+{
 	sha: string;
 	shortSha: string;
 	subject: string;
 }
 
-export interface ResolvedSnoozes {
+export interface ResolvedSnoozes
+{
 	/** Shas of children that are on hold or snoozed. */
 	held: Set<string>;
 	/** Patch-ids found for the children, computed only when some row carries a patch-id. */
@@ -34,7 +37,8 @@ export interface ResolvedSnoozes {
  * remove. Rows already filled or orphaned are skipped, so after the first read this
  * spawns nothing.
  */
-export async function backfillSnoozedPatchIds(dir: string, project: string): Promise<void> {
+export async function backfillSnoozedPatchIds(dir: string, project: string): Promise<void>
+{
 	const rows = getSnoozedNeedingBackfill(project);
 	if (rows.length === 0 || !fs.existsSync(dir)) return;
 	const facts = await getCommitFacts(
@@ -42,10 +46,25 @@ export async function backfillSnoozedPatchIds(dir: string, project: string): Pro
 		project,
 		rows.map((row) => row.sha),
 	);
-	for (const row of rows) {
+	for (const row of rows)
+	{
 		const found = facts.get(row.sha);
-		if (!found) setSnoozedIdentity(row.sha, project, {orphaned: true});
-		else if (found.patchId) setSnoozedIdentity(row.sha, project, {patchId: found.patchId});
+		if (!found)
+			setSnoozedIdentity(
+				row.sha,
+				project,
+				{
+					orphaned: true,
+				},
+			);
+		else if (found.patchId)
+			setSnoozedIdentity(
+				row.sha,
+				project,
+				{
+					patchId: found.patchId,
+				},
+			);
 	}
 }
 
@@ -57,17 +76,26 @@ export async function resolveSnoozedChildren(
 	dir: string,
 	project: string,
 	children: ChildRef[],
-): Promise<ResolvedSnoozes> {
+): Promise<ResolvedSnoozes>
+{
 	await backfillSnoozedPatchIds(dir, project);
 	const rows = getActiveSnoozedForProject(project);
 	const held = new Set<string>();
-	if (rows.length === 0) return {held, patchIds: new Map()};
+	if (rows.length === 0)
+		return {
+			held,
+			patchIds: new Map(),
+		};
 
 	const rowShas = new Set(rows.map((row) => row.sha));
 	for (const c of children) if (rowShas.has(c.sha)) held.add(c.sha);
 
 	const byPatchId = new Map(rows.filter((row) => row.patchId).map((row) => [row.patchId, row]));
-	if (byPatchId.size === 0) return {held, patchIds: new Map()};
+	if (byPatchId.size === 0)
+		return {
+			held,
+			patchIds: new Map(),
+		};
 
 	const facts = await getCommitFacts(
 		dir,
@@ -76,7 +104,8 @@ export async function resolveSnoozedChildren(
 	);
 	const childShas = new Set(children.map((c) => c.sha));
 	const patchIds = new Map<string, string>();
-	for (const c of children) {
+	for (const c of children)
+	{
 		const patchId = facts.get(c.sha)?.patchId;
 		if (!patchId) continue;
 		patchIds.set(c.sha, patchId);
@@ -85,12 +114,22 @@ export async function resolveSnoozedChildren(
 		held.add(c.sha);
 		// Re-point only when the last-known sha is gone from the children, so a cherry-pick
 		// beside the original does not steal the row.
-		if (!childShas.has(row.sha)) {
+		if (!childShas.has(row.sha))
+		{
 			repointSnoozed(row, c);
-			byPatchId.set(patchId, {...row, sha: c.sha});
+			byPatchId.set(
+				patchId,
+				{
+					...row,
+					sha: c.sha,
+				},
+			);
 		}
 	}
-	return {held, patchIds};
+	return {
+		held,
+		patchIds,
+	};
 }
 
 /**
@@ -98,11 +137,27 @@ export async function resolveSnoozedChildren(
  * commit: true when an active On hold or Snooze row matches it by patch-id, or by
  * the row's last-known sha.
  */
-export function isOnHold(project: string, identity: {sha: string; patchId?: string | undefined}): boolean {
+export function isOnHold(
+	project: string,
+	identity:
+	{
+		sha: string;
+		patchId?: string | undefined;
+	},
+): boolean
+{
 	return holdsAny(getActiveSnoozedForProject(project), identity);
 }
 
-function holdsAny(rows: SnoozedItem[], identity: {sha: string; patchId?: string | undefined}): boolean {
+function holdsAny(
+	rows: SnoozedItem[],
+	identity:
+	{
+		sha: string;
+		patchId?: string | undefined;
+	},
+): boolean
+{
 	return rows.some((row) => row.sha === identity.sha || (row.patchId !== null && row.patchId === identity.patchId));
 }
 
@@ -111,11 +166,27 @@ function holdsAny(rows: SnoozedItem[], identity: {sha: string; patchId?: string 
  * nothing when the project has no active rows, and looks up patch-ids (cached in
  * commit_facts) only when some row carries one.
  */
-export async function heldShas(dir: string, project: string, shas: string[]): Promise<Set<string>> {
+export async function heldShas(dir: string, project: string, shas: string[]): Promise<Set<string>>
+{
 	const rows = getActiveSnoozedForProject(project);
 	if (rows.length === 0) return new Set();
 	const patchIds = rows.some((row) => row.patchId)
 		? await getCommitFacts(dir, project, shas)
-		: new Map<string, {patchId: string}>();
-	return new Set(shas.filter((sha) => holdsAny(rows, {sha, patchId: patchIds.get(sha)?.patchId})));
+		: new Map<
+				string,
+				{
+					patchId: string;
+				}
+			>();
+	return new Set(
+		shas.filter((sha) =>
+			holdsAny(
+				rows,
+				{
+					sha,
+					patchId: patchIds.get(sha)?.patchId,
+				},
+			),
+		),
+	);
 }

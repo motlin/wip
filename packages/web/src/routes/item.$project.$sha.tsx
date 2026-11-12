@@ -2,7 +2,8 @@ import {useEffect, useRef} from "react";
 import {createFileRoute, Link} from "@tanstack/react-router";
 import {z} from "zod";
 import {useSuspenseQuery, useQuery} from "@tanstack/react-query";
-import {
+import
+{
 	ArrowLeft,
 	Loader2,
 	Clock,
@@ -24,7 +25,8 @@ import {CategoryBadge} from "../components/category-badge.js";
 import {UpstreamRedBlockedMarker} from "../components/upstream-ci-card.js";
 import {RemoteOnlyCard} from "../components/remote-only-card.js";
 import {AnsiText} from "../components/ansi-text.js";
-import {
+import
+{
 	projectChildrenQueryOptions,
 	diffQueryOptions,
 	workingTreeDiffQueryOptions,
@@ -41,28 +43,63 @@ import {useAutoTail} from "../lib/use-auto-tail.js";
 import {itemBackLabel, itemBackTarget} from "../lib/item-back-link.js";
 import {findSnoozedEntry} from "../lib/snoozed-filter.js";
 
-const itemSearchSchema = z.object({
-	from: z.string().optional(),
-});
+const itemSearchSchema = z.object(
+	{
+		from: z.string().optional(),
+	},
+);
 
-export const Route = createFileRoute("/item/$project/$sha")({
-	validateSearch: itemSearchSchema,
-	loader: async ({context: {queryClient}, params}) =>
-		Promise.all([
-			queryClient.query({...projectChildrenQueryOptions(params.project), staleTime: "static"}),
-			queryClient.query({...diffQueryOptions(params.project, params.sha), staleTime: "static"}),
-			queryClient.query({...testLogQueryOptions(params.project, params.sha), staleTime: "static"}),
-			queryClient.query({...projectsQueryOptions(), staleTime: "static"}),
-			queryClient.query({...snoozedQueryOptions(), staleTime: "static"}),
-		]),
-	head: ({params}) => ({
-		meta: [{title: `${params.project} / ${params.sha.slice(0, 7)}`}],
-	}),
-	component: ItemDetail,
-	errorComponent: ItemDetailError,
-});
+export const Route = createFileRoute("/item/$project/$sha")(
+	{
+		validateSearch: itemSearchSchema,
+		loader: async ({context: {queryClient}, params}) =>
+			Promise.all([
+				queryClient.query(
+					{
+						...projectChildrenQueryOptions(params.project),
+						staleTime: "static",
+					},
+				),
+				queryClient.query(
+					{
+						...diffQueryOptions(params.project, params.sha),
+						staleTime: "static",
+					},
+				),
+				queryClient.query(
+					{
+						...testLogQueryOptions(params.project, params.sha),
+						staleTime: "static",
+					},
+				),
+				queryClient.query(
+					{
+						...projectsQueryOptions(),
+						staleTime: "static",
+					},
+				),
+				queryClient.query(
+					{
+						...snoozedQueryOptions(),
+						staleTime: "static",
+					},
+				),
+			]),
+		head: ({params}) => (
+		{
+			meta: [
+				{
+					title: `${params.project} / ${params.sha.slice(0, 7)}`,
+				},
+			],
+		}),
+		component: ItemDetail,
+		errorComponent: ItemDetailError,
+	},
+);
 
-function ItemDetailError({error}: {error: unknown}) {
+function ItemDetailError({error}: {error: unknown})
+{
 	return (
 		<div className="p-6">
 			<Link
@@ -89,34 +126,47 @@ function ItemDetailError({error}: {error: unknown}) {
 	);
 }
 
-function ItemDetail() {
+function ItemDetail()
+{
 	const {project, sha} = Route.useParams();
 	const {from} = Route.useSearch();
 	const backTo = itemBackTarget(from);
 	const {data: children} = useSuspenseQuery(projectChildrenQueryOptions(project));
 	const child = children.find((c) => c.sha === sha) ?? null;
-	const {
+	const
+	{
 		data: {files, stat},
 	} = useSuspenseQuery(diffQueryOptions(project, sha));
-	const {
+	const
+	{
 		data: {log},
 	} = useSuspenseQuery(testLogQueryOptions(project, sha));
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const {data: snoozedItems} = useSuspenseQuery(snoozedQueryOptions());
 	const projectInfo = projects.find((p) => p.name === project);
-	const snoozedEntry = findSnoozedEntry(snoozedItems, project, {sha, patchId: child?.patchId});
+	const snoozedEntry = findSnoozedEntry(
+		snoozedItems,
+		project,
+		{
+			sha,
+			patchId: child?.patchId,
+		},
+	);
 	const isSnoozed = snoozedEntry !== undefined || child?.onHold === true;
 	const testJob = useTestJob(sha, project);
 	const liveLog = useTestLog(sha, project);
 	const {containerRef: liveLogRef, isFollowing, setFollowing, scrollToStart, handleScroll} = useAutoTail(liveLog);
 
 	const prevTestStatus = useRef(testJob?.status);
-	useEffect(() => {
+	useEffect(() =>
+	{
 		const prev = prevTestStatus.current;
 		const curr = testJob?.status;
 		prevTestStatus.current = curr;
-		if ((curr === "running" || curr === "queued") && prev !== "running" && prev !== "queued") {
-			requestAnimationFrame(() => {
+		if ((curr === "running" || curr === "queued") && prev !== "running" && prev !== "queued")
+		{
+			requestAnimationFrame(() =>
+			{
 				scrollToStart();
 			});
 			setFollowing(true);
@@ -143,13 +193,17 @@ function ItemDetail() {
 			: baseCategory;
 
 	const isLocalChanges = category === "local_changes";
-	const {data: workingTreeDiff} = useQuery({
-		...workingTreeDiffQueryOptions(project),
-		enabled: isLocalChanges,
-	});
+	const {data: workingTreeDiff} = useQuery(
+		{
+			...workingTreeDiffQueryOptions(project),
+			enabled: isLocalChanges,
+		},
+	);
 
-	if (!child) {
-		if (isSnoozed && snoozedEntry) {
+	if (!child)
+	{
+		if (isSnoozed && snoozedEntry)
+		{
 			return (
 				<div className="p-6">
 					<Link
@@ -368,7 +422,14 @@ function ItemDetail() {
 								<h1 className="text-lg font-semibold text-text-100 leading-snug">{child.subject}</h1>
 								<div className="mt-1.5 flex items-center gap-2 text-xs text-text-400">
 									{category && (
-										<Link to="/states" search={{state: category}} className="hover:underline">
+										<Link
+											to="/states"
+											search={
+											{
+												state: category,
+											}}
+											className="hover:underline"
+										>
 											<span className={categoryTextClass(category)}>
 												{CATEGORIES[category].label}
 											</span>
@@ -468,7 +529,11 @@ function ItemDetail() {
 								{log && (
 									<Link
 										to="/log/$project/$sha"
-										params={{project, sha}}
+										params={
+										{
+											project,
+											sha,
+										}}
 										className="mt-2 inline-flex items-center gap-1 text-xs text-text-400 hover:text-text-100 transition-colors"
 									>
 										View Test Log
@@ -502,7 +567,11 @@ function ItemDetail() {
 							)}
 							<Link
 								to="/diff/$project/$sha"
-								params={{project, sha}}
+								params={
+								{
+									project,
+									sha,
+								}}
 								className="mt-2 inline-flex items-center gap-1 text-xs text-text-400 hover:text-text-100 transition-colors"
 							>
 								View Full Diff
@@ -539,7 +608,11 @@ function ItemDetail() {
 								<h2 className="text-sm font-semibold text-text-200">Test Log</h2>
 								<Link
 									to="/log/$project/$sha"
-									params={{project, sha}}
+									params={
+									{
+										project,
+										sha,
+									}}
 									className="inline-flex items-center gap-1 text-xs text-text-400 hover:text-text-100 transition-colors"
 								>
 									Full Log
@@ -560,7 +633,11 @@ function ItemDetail() {
 								<h2 className="text-sm font-semibold text-text-200">Live Test Output</h2>
 								<Link
 									to="/log/$project/$sha"
-									params={{project, sha}}
+									params={
+									{
+										project,
+										sha,
+									}}
 									className="inline-flex items-center gap-1 text-xs text-text-400 hover:text-text-100 transition-colors"
 								>
 									Full Log
@@ -580,7 +657,8 @@ function ItemDetail() {
 							{!isFollowing && (
 								<button
 									type="button"
-									onClick={() => {
+									onClick={() =>
+									{
 										setFollowing(true);
 									}}
 									className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10 mt-2 inline-flex items-center gap-1.5 rounded-full bg-bg-000 border border-border-300/50 px-3 py-1.5 text-xs font-medium text-text-200 shadow-lg transition-colors hover:bg-bg-100"
@@ -597,7 +675,8 @@ function ItemDetail() {
 	);
 }
 
-function SidebarSection({title, children}: {title: string; children: React.ReactNode}) {
+function SidebarSection({title, children}: {title: string; children: React.ReactNode})
+{
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-100 p-3">
 			<h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-text-500">{title}</h3>
@@ -606,7 +685,8 @@ function SidebarSection({title, children}: {title: string; children: React.React
 	);
 }
 
-function SidebarField({label, children}: {label: string; children: React.ReactNode}) {
+function SidebarField({label, children}: {label: string; children: React.ReactNode})
+{
 	return (
 		<div className="flex items-baseline justify-between gap-2">
 			<dt className="shrink-0 text-text-500">{label}</dt>
@@ -625,14 +705,16 @@ function NavTab({
 	children: React.ReactNode;
 	active?: boolean;
 	external?: boolean;
-}) {
+})
+{
 	const className = `inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
 		active
 			? "border-blue-500 text-text-100"
 			: "border-transparent text-text-400 hover:text-text-200 hover:border-border-300/50"
 	}`;
 
-	if (external) {
+	if (external)
+	{
 		return (
 			<a href={href} target="_blank" rel="noopener noreferrer" className={className}>
 				{children}

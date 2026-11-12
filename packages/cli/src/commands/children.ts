@@ -3,20 +3,34 @@ import chalk from "chalk";
 
 import {type ChildCommit, discoverAllProjects, getChildCommits, getProjectsDirs} from "@wip/shared";
 
-interface ProjectChildren {
+interface ProjectChildren
+{
 	name: string;
 	dir: string;
 	children: ChildCommit[];
 }
 
-interface ChildrenJson {
+interface ChildrenJson
+{
 	projects: ProjectChildren[];
-	summary: {total: number; passed: number; failed: number; unknown: number};
+	summary:
+	{
+		total: number;
+		passed: number;
+		failed: number;
+		unknown: number;
+	};
 }
 
-export default class Children extends Command {
-	static override args = {
-		project: Args.string({description: "Filter to a specific project name"}),
+export default class Children extends Command
+{
+	static override args =
+	{
+		project: Args.string(
+			{
+				description: "Filter to a specific project name",
+			},
+		),
 	};
 
 	static override description = "List child commits across all projects with test status";
@@ -29,11 +43,17 @@ export default class Children extends Command {
 		"<%= config.bin %> children --json",
 	];
 
-	static override flags = {
-		"projects-dir": Flags.string({description: "Override projects directory"}),
+	static override flags =
+	{
+		"projects-dir": Flags.string(
+			{
+				description: "Override projects directory",
+			},
+		),
 	};
 
-	async run(): Promise<ChildrenJson> {
+	async run(): Promise<ChildrenJson>
+	{
 		const {args, flags} = await this.parse(Children);
 		const projectsDirs = getProjectsDirs(flags["projects-dir"]);
 		const projects = await discoverAllProjects(projectsDirs);
@@ -41,14 +61,22 @@ export default class Children extends Command {
 		const results: ProjectChildren[] = [];
 
 		/* oxlint-disable no-await-in-loop -- projects are processed sequentially to bound git subprocess load */
-		for (const p of projects) {
+		for (const p of projects)
+		{
 			if (args.project && p.name !== args.project) continue;
 
 			const children = await getChildCommits(p.dir, p.upstreamRef, p.hasTestConfigured);
 			if (children.length === 0) continue;
 
-			if (children.length > 0) {
-				results.push({name: p.name, dir: p.dir, children});
+			if (children.length > 0)
+			{
+				results.push(
+					{
+						name: p.name,
+						dir: p.dir,
+						children,
+					},
+				);
 			}
 		}
 		/* oxlint-enable no-await-in-loop */
@@ -61,20 +89,30 @@ export default class Children extends Command {
 			0,
 		);
 
-		const output: ChildrenJson = {
+		const output: ChildrenJson =
+		{
 			projects: results,
-			summary: {total, passed, failed, unknown},
+			summary:
+			{
+				total,
+				passed,
+				failed,
+				unknown,
+			},
 		};
 
-		if (results.length === 0) {
+		if (results.length === 0)
+		{
 			this.log("No children found.");
 			return output;
 		}
 
-		for (const proj of results) {
+		for (const proj of results)
+		{
 			this.log(chalk.bold(`\n${proj.name}`) + chalk.dim(` (${proj.children.length} children)`));
 
-			for (const c of proj.children) {
+			for (const c of proj.children)
+			{
 				const statusIcon =
 					c.testStatus === "passed"
 						? chalk.green("\u2713")

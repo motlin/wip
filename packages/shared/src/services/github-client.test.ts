@@ -1,9 +1,23 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
-const execaMock = vi.hoisted(() => vi.fn<(file: string, args: string[]) => Promise<{stdout: string}>>());
-vi.mock("execa", () => ({execa: execaMock}));
+const execaMock = vi.hoisted(() =>
+	vi.fn<
+		(
+			file: string,
+			args: string[],
+		) => Promise<
+		{
+			stdout: string;
+		}>
+	>(),
+);
+vi.mock("execa", () => (
+{
+	execa: execaMock,
+}));
 
-import {
+import
+{
 	getGitHubClient,
 	resetGitHubClient,
 	resetGitHubTokenCache,
@@ -15,28 +29,62 @@ import {
 
 const TOKEN_TTL_MS = 60_000;
 
-type FetchMock = ReturnType<typeof vi.fn<(url: string, init: {headers: Record<string, string>}) => Promise<Response>>>;
+type FetchMock = ReturnType<
+	typeof vi.fn<
+		(
+			url: string,
+			init:
+			{
+				headers: Record<string, string>;
+			},
+		) => Promise<Response>
+	>
+>;
 
-function authorizationHeaders(fetchMock: FetchMock): unknown[] {
+function authorizationHeaders(fetchMock: FetchMock): unknown[]
+{
 	return fetchMock.mock.calls.map((call) => call[1].headers["Authorization"]);
 }
 
-describe("GitHub token caching", () => {
+describe("GitHub token caching", () =>
+{
 	let fetchMock: FetchMock;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		vi.stubEnv("GITHUB_TOKEN", "");
-		vi.useFakeTimers({toFake: ["Date"]});
+		vi.useFakeTimers(
+			{
+				toFake: ["Date"],
+			},
+		);
 		fetchMock = vi
-			.fn<(url: string, init: {headers: Record<string, string>}) => Promise<Response>>()
-			.mockImplementation(async () => Promise.resolve(Response.json({data: {}})));
+			.fn<
+				(
+					url: string,
+					init:
+					{
+						headers: Record<string, string>;
+					},
+				) => Promise<Response>
+			>()
+			.mockImplementation(async () =>
+				Promise.resolve(
+					Response.json(
+						{
+							data: {},
+						},
+					),
+				),
+			);
 		vi.stubGlobal("fetch", fetchMock);
 		resetGitHubClient();
 		resetGitHubTokenCache();
 		execaMock.mockReset();
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.useRealTimers();
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
@@ -44,16 +92,29 @@ describe("GitHub token caching", () => {
 		resetGitHubTokenCache();
 	});
 
-	it("keeps serving the cached token while an expired one refreshes off the request path", async () => {
+	it("keeps serving the cached token while an expired one refreshes off the request path", async () =>
+	{
 		let releaseRefresh!: () => void;
-		execaMock.mockResolvedValueOnce({stdout: "token-1\n"}).mockImplementationOnce(
-			async () =>
-				new Promise((resolve) => {
-					releaseRefresh = () => {
-						resolve({stdout: "token-2\n"});
-					};
-				}),
-		);
+		execaMock
+			.mockResolvedValueOnce(
+				{
+					stdout: "token-1\n",
+				},
+			)
+			.mockImplementationOnce(
+				async () =>
+					new Promise((resolve) =>
+					{
+						releaseRefresh = () =>
+						{
+							resolve(
+								{
+									stdout: "token-2\n",
+								},
+							);
+						};
+					}),
+			);
 		const client = getGitHubClient();
 
 		await client.graphql("query { viewer { login } }");
@@ -61,7 +122,8 @@ describe("GitHub token caching", () => {
 		// The refresh is still pending here; the request must not wait on it.
 		await client.graphql("query { viewer { login } }");
 		releaseRefresh();
-		await vi.waitFor(async () => {
+		await vi.waitFor(async () =>
+		{
 			await client.graphql("query { viewer { login } }");
 			expect(authorizationHeaders(fetchMock).at(-1)).toBe("bearer token-2");
 		});
@@ -73,9 +135,27 @@ describe("GitHub token caching", () => {
 		]);
 	});
 
-	it("drops the cached token after a 401 so the next request fetches a new one", async () => {
-		execaMock.mockResolvedValueOnce({stdout: "revoked\n"}).mockResolvedValueOnce({stdout: "renewed\n"});
-		fetchMock.mockResolvedValueOnce(new Response("Bad credentials", {status: 401}));
+	it("drops the cached token after a 401 so the next request fetches a new one", async () =>
+	{
+		execaMock
+			.mockResolvedValueOnce(
+				{
+					stdout: "revoked\n",
+				},
+			)
+			.mockResolvedValueOnce(
+				{
+					stdout: "renewed\n",
+				},
+			);
+		fetchMock.mockResolvedValueOnce(
+			new Response(
+				"Bad credentials",
+				{
+					status: 401,
+				},
+			),
+		);
 		const client = getGitHubClient();
 
 		await expect(client.graphql("query { viewer { login } }")).rejects.toThrow(/authentication failed \(401\)/);
@@ -85,19 +165,38 @@ describe("GitHub token caching", () => {
 	});
 });
 
-describe("GitHub GraphQL endpoint", () => {
-	afterEach(() => {
+describe("GitHub GraphQL endpoint", () =>
+{
+	afterEach(() =>
+	{
 		vi.unstubAllEnvs();
 		vi.unstubAllGlobals();
 		resetGitHubClient();
 	});
 
-	it("posts to WIP_GITHUB_GRAPHQL_URL when it is set, so the end-to-end harness never reaches GitHub", async () => {
+	it("posts to WIP_GITHUB_GRAPHQL_URL when it is set, so the end-to-end harness never reaches GitHub", async () =>
+	{
 		vi.stubEnv("GITHUB_TOKEN", "fake-token");
 		vi.stubEnv("WIP_GITHUB_GRAPHQL_URL", "http://127.0.0.1:9/graphql");
 		const fetchMock = vi
-			.fn<(url: string, init: {headers: Record<string, string>}) => Promise<Response>>()
-			.mockImplementation(async () => Promise.resolve(Response.json({data: {}})));
+			.fn<
+				(
+					url: string,
+					init:
+					{
+						headers: Record<string, string>;
+					},
+				) => Promise<Response>
+			>()
+			.mockImplementation(async () =>
+				Promise.resolve(
+					Response.json(
+						{
+							data: {},
+						},
+					),
+				),
+			);
 		vi.stubGlobal("fetch", fetchMock);
 		resetGitHubClient();
 
@@ -107,49 +206,96 @@ describe("GitHub GraphQL endpoint", () => {
 	});
 });
 
-describe("GitHub API failure listeners", () => {
-	afterEach(() => {
+describe("GitHub API failure listeners", () =>
+{
+	afterEach(() =>
+	{
 		resetGitHubClient();
 	});
 
-	it("reports each failing request's operation and message: thrown errors and GraphQL errors arrays", async () => {
+	it("reports each failing request's operation and message: thrown errors and GraphQL errors arrays", async () =>
+	{
 		const responses: (() => Promise<unknown>)[] = [
-			async () => Promise.resolve({data: {viewer: {login: "me"}}}),
 			async () =>
-				Promise.resolve({data: null, errors: [{message: "Head sha can't be blank"}, {message: "No commits"}]}),
+				Promise.resolve(
+					{
+						data:
+						{
+							viewer:
+							{
+								login: "me",
+							},
+						},
+					},
+				),
+			async () =>
+				Promise.resolve(
+					{
+						data: null,
+						errors: [
+							{
+								message: "Head sha can't be blank",
+							},
+							{
+								message: "No commits",
+							},
+						],
+					},
+				),
 			async () => Promise.reject(new Error("GitHub API server error (502): Bad gateway")),
 		];
-		setGitHubClient({
-			async graphql(): Promise<unknown> {
-				const next = responses.shift();
-				return next === undefined ? Promise.resolve({}) : next();
+		setGitHubClient(
+			{
+				async graphql(): Promise<unknown>
+				{
+					const next = responses.shift();
+					return next === undefined ? Promise.resolve({}) : next();
+				},
 			},
-		});
+		);
 		const failures: GitHubApiFailure[] = [];
-		const listener = (failure: GitHubApiFailure): void => {
+		const listener = (failure: GitHubApiFailure): void =>
+		{
 			failures.push(failure);
 		};
 		subscribeGitHubApiFailures(listener);
 		const thrown: string[] = [];
-		try {
+		try
+		{
 			await getGitHubClient().graphql("query { viewer { login } }");
 			await getGitHubClient().graphql(
 				"\n  mutation($repositoryId: ID!) {\n    createPullRequest(input: {repositoryId: $repositoryId}) { pullRequest { url } }\n  }",
 			);
 			await getGitHubClient()
 				.graphql("query($owner: String!) { repository(owner: $owner) { id } }")
-				.catch((error: unknown) => {
+				.catch((error: unknown) =>
+				{
 					thrown.push(error instanceof Error ? error.message : String(error));
 				});
-		} finally {
+		}
+		finally
+		{
 			unsubscribeGitHubApiFailures(listener);
 		}
-		expect({failures, thrown}).toStrictEqual({
-			failures: [
-				{operation: "mutation createPullRequest", message: "Head sha can't be blank; No commits"},
-				{operation: "query repository", message: "GitHub API server error (502): Bad gateway"},
-			],
-			thrown: ["GitHub API server error (502): Bad gateway"],
-		});
+		expect(
+			{
+				failures,
+				thrown,
+			},
+		).toStrictEqual(
+			{
+				failures: [
+					{
+						operation: "mutation createPullRequest",
+						message: "Head sha can't be blank; No commits",
+					},
+					{
+						operation: "query repository",
+						message: "GitHub API server error (502): Bad gateway",
+					},
+				],
+				thrown: ["GitHub API server error (502): Bad gateway"],
+			},
+		);
 	});
 });

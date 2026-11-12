@@ -6,13 +6,18 @@ import {createFileRoute} from "@tanstack/react-router";
  * multiplexes over this connection as {channel, data} envelopes, so the
  * browser's six-connections-per-origin cap never starves mutation POSTs.
  */
-export const Route = createFileRoute("/api/events")({
-	server: {
-		handlers: {
-			GET: async () => {
-				const {createEventsResponse} = await import("../../lib/events-stream.js");
-				return createEventsResponse();
+export const Route = createFileRoute("/api/events")(
+	{
+		server:
+		{
+			handlers:
+			{
+				GET: async () =>
+				{
+					const {createEventsResponse} = await import("../../lib/events-stream.js");
+					return createEventsResponse();
+				},
 			},
 		},
 	},
-});
+);

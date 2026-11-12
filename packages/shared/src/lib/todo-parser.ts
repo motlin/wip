@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export interface TodoTask {
+export interface TodoTask
+{
 	text: string;
 	completed: boolean;
 	blocked: boolean;
@@ -17,7 +18,8 @@ const TASK_PATTERN = /^- \[([ x!])\] (.+)$/;
  * Parse markdown task lists from a file.
  * Extracts `- [ ]`, `- [x]`, and `- [!]` checkbox items with any indented context lines below them.
  */
-export function parseTodoFile(filePath: string): TodoTask[] {
+export function parseTodoFile(filePath: string): TodoTask[]
+{
 	if (!fs.existsSync(filePath)) return [];
 
 	const content = fs.readFileSync(filePath, "utf-8");
@@ -27,25 +29,33 @@ export function parseTodoFile(filePath: string): TodoTask[] {
 /**
  * Parse markdown task list content (testable without filesystem).
  */
-export function parseTodoContent(content: string, sourceFile: string): TodoTask[] {
+export function parseTodoContent(content: string, sourceFile: string): TodoTask[]
+{
 	const lines = content.split("\n");
 	const tasks: TodoTask[] = [];
 	let current: TodoTask | null = null;
 
-	for (const line of lines) {
+	for (const line of lines)
+	{
 		const match = line.match(TASK_PATTERN);
-		if (match) {
+		if (match)
+		{
 			if (current) tasks.push(current);
-			current = {
+			current =
+			{
 				text: match[2] ?? "",
 				completed: match[1] === "x",
 				blocked: match[1] === "!",
 				sourceFile,
 				contextLines: [],
 			};
-		} else if (current && line.startsWith("  ") && line.trim().length > 0) {
+		}
+		else if (current && line.startsWith("  ") && line.trim().length > 0)
+		{
 			current.contextLines.push(line.trimStart());
-		} else if (current) {
+		}
+		else if (current)
+		{
 			// Non-indented non-task line ends the current task's context
 			tasks.push(current);
 			current = null;
@@ -60,10 +70,12 @@ export function parseTodoContent(content: string, sourceFile: string): TodoTask[
 /**
  * Scan a project directory for todo/task markdown files and return all incomplete tasks.
  */
-export function findTodoTasks(projectDir: string): TodoTask[] {
+export function findTodoTasks(projectDir: string): TodoTask[]
+{
 	const tasks: TodoTask[] = [];
 
-	for (const filename of TODO_FILENAMES) {
+	for (const filename of TODO_FILENAMES)
+	{
 		const filePath = path.join(projectDir, filename);
 		const fileTasks = parseTodoFile(filePath);
 		tasks.push(...fileTasks);
@@ -75,6 +87,7 @@ export function findTodoTasks(projectDir: string): TodoTask[] {
 /**
  * Return only incomplete tasks from a project directory.
  */
-export function findIncompleteTodoTasks(projectDir: string): TodoTask[] {
+export function findIncompleteTodoTasks(projectDir: string): TodoTask[]
+{
 	return findTodoTasks(projectDir).filter((t) => !t.completed);
 }

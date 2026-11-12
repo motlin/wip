@@ -7,22 +7,30 @@ export async function mapWithConcurrency<T, R>(
 	items: readonly T[],
 	limit: number,
 	mapper: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
+): Promise<R[]>
+{
 	if (limit < 1) throw new Error(`Concurrency limit must be at least 1, got ${limit}`);
 
 	const results: R[] = [];
 	// A single shared iterator hands each worker the next unclaimed item.
 	const pending = items.entries();
 
-	async function worker(): Promise<void> {
-		for (const [index, item] of pending) {
+	async function worker(): Promise<void>
+	{
+		for (const [index, item] of pending)
+		{
 			// Sequential within a worker by design: concurrency is bounded by the worker count.
 			// eslint-disable-next-line no-await-in-loop
 			results[index] = await mapper(item, index);
 		}
 	}
 
-	const workers = Array.from({length: Math.min(limit, items.length)}, async () => worker());
+	const workers = Array.from(
+		{
+			length: Math.min(limit, items.length),
+		},
+		async () => worker(),
+	);
 	await Promise.all(workers);
 	return results;
 }
@@ -34,38 +42,50 @@ export async function mapWithConcurrency<T, R>(
  * unbounded process fan-out (e.g. `claude -p` branch naming spawned by every
  * concurrent project refresh) from escaping per-call limits and pegging the machine.
  */
-export function createGate(limit: number): <T>(fn: () => Promise<T>) => Promise<T> {
+export function createGate(limit: number): <T>(fn: () => Promise<T>) => Promise<T>
+{
 	if (limit < 1) throw new Error(`Gate limit must be at least 1, got ${limit}`);
 
 	let active = 0;
 	const waiters: Array<() => void> = [];
 
-	async function acquire(): Promise<void> {
-		if (active < limit) {
+	async function acquire(): Promise<void>
+	{
+		if (active < limit)
+		{
 			active += 1;
 			return;
 		}
-		await new Promise<void>((resolve) => {
+		await new Promise<void>((resolve) =>
+		{
 			waiters.push(resolve);
 		});
 	}
 
-	function release(): void {
+	function release(): void
+	{
 		// Hand the slot straight to the next waiter (active unchanged) rather than
 		// decrement-then-reacquire, so the budget can never momentarily overshoot.
 		const next = waiters.shift();
-		if (next) {
+		if (next)
+		{
 			next();
-		} else {
+		}
+		else
+		{
 			active -= 1;
 		}
 	}
 
-	return async function run<T>(fn: () => Promise<T>): Promise<T> {
+	return async function run<T>(fn: () => Promise<T>): Promise<T>
+	{
 		await acquire();
-		try {
+		try
+		{
 			return await fn();
-		} finally {
+		}
+		finally
+		{
 			release();
 		}
 	};

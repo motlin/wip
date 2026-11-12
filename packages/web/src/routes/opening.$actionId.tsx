@@ -7,23 +7,35 @@ import {actionLogHref} from "../lib/action-log-schema.js";
 import {actionStatusQueryOptions} from "../lib/queries.js";
 import {redirectTo} from "../lib/redirect.js";
 
-const openingSearchSchema = z.object({
-	/** A failure the page that opened this tab saw (a server function that threw), for an action the server may never have recorded. */
-	failed: z.string().optional(),
-});
+const openingSearchSchema = z.object(
+	{
+		/** A failure the page that opened this tab saw (a server function that threw), for an action the server may never have recorded. */
+		failed: z.string().optional(),
+	},
+);
 
 /**
  * The tab Open PR opens in its confirm click: the action's progress while it waits or runs, then the
  * new PR or, when the token could not open one, GitHub's new-PR page (this tab goes there), or the
  * reason it failed with the log link. Never blank, never closed.
  */
-export const Route = createFileRoute("/opening/$actionId")({
-	validateSearch: openingSearchSchema,
-	head: () => ({meta: [{title: "Opening a pull request"}]}),
-	component: OpeningAction,
-});
+export const Route = createFileRoute("/opening/$actionId")(
+	{
+		validateSearch: openingSearchSchema,
+		head: () => (
+		{
+			meta: [
+				{
+					title: "Opening a pull request",
+				},
+			],
+		}),
+		component: OpeningAction,
+	},
+);
 
-function OpeningAction() {
+function OpeningAction()
+{
 	const {actionId} = Route.useParams();
 	const {failed} = Route.useSearch();
 	const {data} = useQuery(actionStatusQueryOptions(actionId));
@@ -31,7 +43,8 @@ function OpeningAction() {
 	const result = event?.result;
 	const url = result?.ok === true ? (result.prUrl ?? result.compareUrl) : undefined;
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (url !== undefined) redirectTo(url);
 	}, [url]);
 

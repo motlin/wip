@@ -9,7 +9,8 @@ const MIN_PLACEHOLDER_HEIGHT_PX = 120;
 const MAX_PLACEHOLDER_HEIGHT_PX = 4000;
 
 /** Estimate the rendered height of a diff section from its hunk text. */
-export function estimatePlaceholderHeight(hunks: string): number {
+export function estimatePlaceholderHeight(hunks: string): number
+{
 	const newlineCount = (hunks.match(/\n/g) ?? []).length;
 	const estimated = newlineCount * APPROX_LINE_HEIGHT_PX;
 	return Math.max(MIN_PLACEHOLDER_HEIGHT_PX, Math.min(estimated, MAX_PLACEHOLDER_HEIGHT_PX));
@@ -53,7 +54,8 @@ const SUPPORTED_LANGS = new Set([
 ]);
 
 /** Common file extensions mapped to their shiki language identifier. */
-const EXT_TO_LANG: Record<string, string> = {
+const EXT_TO_LANG: Record<string, string> =
+{
 	js: "javascript",
 	mjs: "javascript",
 	cjs: "javascript",
@@ -80,7 +82,8 @@ const EXT_TO_LANG: Record<string, string> = {
 	Dockerfile: "dockerfile",
 };
 
-export function resolveLanguage(fileName: string): string {
+export function resolveLanguage(fileName: string): string
+{
 	const ext = fileName.split(".").pop() ?? "";
 	const mapped = EXT_TO_LANG[ext] ?? ext;
 	return SUPPORTED_LANGS.has(mapped) ? mapped : "txt";

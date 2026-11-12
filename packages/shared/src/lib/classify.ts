@@ -1,7 +1,8 @@
 import type {Category, GitChildResult, IssueResult, TodoItem, ProjectInfo} from "./schemas.js";
 import {isGitChildPullRequest, isGitChildBranch} from "./git-child-discriminators.js";
 
-export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category {
+export function classifyGitChild(child: GitChildResult, project: ProjectInfo): Category
+{
 	if (child.kind === "upstream_ci") return "upstream_red";
 	if (child.kind === "pr_refs_missing") return "pr_refs_missing";
 	if (child.onHold) return "snoozed";
@@ -12,7 +13,8 @@ export function classifyGitChild(child: GitChildResult, project: ProjectInfo): C
 	return classifyCommit(child, project);
 }
 
-export function classifyCommit(child: GitChildResult, project: ProjectInfo): Category {
+export function classifyCommit(child: GitChildResult, project: ProjectInfo): Category
+{
 	if (child.skippable) return "skippable";
 	if (child.pushing) return "pushing";
 	if (child.testStatus === "running") return "test_running";
@@ -24,7 +26,8 @@ export function classifyCommit(child: GitChildResult, project: ProjectInfo): Cat
 	return "ready_to_test";
 }
 
-export function classifyBranch(child: GitChildResult, project: ProjectInfo): Category {
+export function classifyBranch(child: GitChildResult, project: ProjectInfo): Category
+{
 	if (child.skippable) return "skippable";
 	if (child.pushing) return "pushing";
 	if (child.isHead && project.rebaseInProgress) return "rebase_stuck";
@@ -44,23 +47,27 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 }
 
 // Project-wide conditions apply only to the child checked out at HEAD; the project itself shows one chip.
-export function projectCondition(project: ProjectInfo): Category | undefined {
+export function projectCondition(project: ProjectInfo): Category | undefined
+{
 	if (project.rebaseInProgress) return "rebase_stuck";
 	if (project.detachedHead) return "detached_head";
 	if (project.dirty) return "local_changes";
 	return undefined;
 }
 
-export function classifyIssue(_issue: IssueResult): Category {
+export function classifyIssue(_issue: IssueResult): Category
+{
 	return "triaged";
 }
 
-export function classifyTodo(todo: TodoItem): Category {
+export function classifyTodo(todo: TodoItem): Category
+{
 	if (todo.onHold) return "snoozed";
 	return todo.blocked ? "blocked" : "triaged";
 }
 
-export function classifyPullRequest(child: GitChildResult, project: ProjectInfo): Category {
+export function classifyPullRequest(child: GitChildResult, project: ProjectInfo): Category
+{
 	if (child.skippable) return "skippable";
 	if (child.pushing) return "pushing";
 	if (child.isHead && project.rebaseInProgress) return "rebase_stuck";

@@ -16,7 +16,8 @@ const DEFAULT_CONCURRENCY = 1;
 const ENVRC_RE = /^(?:export\s+)?WIP_ADVANCE_CONCURRENCY=(\S+)/m;
 
 /** Read WIP_ADVANCE_CONCURRENCY from a repo's `.envrc`, or null if absent/invalid. */
-export function parseAdvanceConcurrency(dir: string): number | null {
+export function parseAdvanceConcurrency(dir: string): number | null
+{
 	const envrcPath = path.join(dir, ".envrc");
 	if (!fs.existsSync(envrcPath)) return null;
 	const match = fs.readFileSync(envrcPath, "utf-8").match(ENVRC_RE);
@@ -25,12 +26,15 @@ export function parseAdvanceConcurrency(dir: string): number | null {
 	return Number.isInteger(value) && value >= 1 ? value : null;
 }
 
-export function resolveAdvanceConcurrency(project: string, dir: string): number {
+export function resolveAdvanceConcurrency(project: string, dir: string): number
+{
 	return getAdvanceConfig(project) ?? parseAdvanceConcurrency(dir) ?? DEFAULT_CONCURRENCY;
 }
 
-function patternMatches(name: string, pattern: string): boolean {
-	if (pattern.includes("*")) {
+function patternMatches(name: string, pattern: string): boolean
+{
+	if (pattern.includes("*"))
+	{
 		const re = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
 		return re.test(name);
 	}
@@ -43,7 +47,8 @@ function patternMatches(name: string, pattern: string): boolean {
  * pattern matches (exclude wins). Patterns are substrings, or globs when they
  * contain `*`.
  */
-export function matchesFilters(name: string, include: string[], exclude: string[]): boolean {
+export function matchesFilters(name: string, include: string[], exclude: string[]): boolean
+{
 	if (exclude.some((pattern) => patternMatches(name, pattern))) return false;
 	if (include.length === 0) return true;
 	return include.some((pattern) => patternMatches(name, pattern));

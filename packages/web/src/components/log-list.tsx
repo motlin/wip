@@ -4,23 +4,27 @@ import type {LogEntry} from "@wip/shared";
 import {scrollToBottom} from "../lib/use-auto-tail.js";
 import {CATEGORY_CLASS, formatTime, LEVEL_CLASS, LEVEL_LABEL} from "../lib/log-format.js";
 
-export interface KeyedEntry {
+export interface KeyedEntry
+{
 	id: number;
 	entry: LogEntry;
 }
 
 const ESTIMATED_ROW_HEIGHT = 24;
 
-function extras(entry: LogEntry): Record<string, unknown> {
+function extras(entry: LogEntry): Record<string, unknown>
+{
 	const skip = new Set(["time", "level", "category", "msg", "pid", "hostname", "v"]);
 	const out: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(entry)) {
+	for (const [k, v] of Object.entries(entry))
+	{
 		if (!skip.has(k)) out[k] = v;
 	}
 	return out;
 }
 
-interface LogListProps {
+interface LogListProps
+{
 	entries: KeyedEntry[];
 	containerRef: RefObject<HTMLDivElement | null>;
 	onScroll: () => void;
@@ -29,19 +33,23 @@ interface LogListProps {
 }
 
 /** Scrollable, virtualized list of log entries. Only visible rows are in the DOM. */
-export function LogList({entries, containerRef, onScroll, isFollowing, children}: LogListProps) {
+export function LogList({entries, containerRef, onScroll, isFollowing, children}: LogListProps)
+{
 	// oxlint-disable-next-line react/incompatible-library -- the compiler skips this component, which is acceptable here
-	const virtualizer = useVirtualizer({
-		count: entries.length,
-		getScrollElement: () => containerRef.current,
-		estimateSize: () => ESTIMATED_ROW_HEIGHT,
-		getItemKey: (index) => entries[index]?.id ?? index,
-		overscan: 10,
-	});
+	const virtualizer = useVirtualizer(
+		{
+			count: entries.length,
+			getScrollElement: () => containerRef.current,
+			estimateSize: () => ESTIMATED_ROW_HEIGHT,
+			getItemKey: (index) => entries[index]?.id ?? index,
+			overscan: 10,
+		},
+	);
 	const totalSize = virtualizer.getTotalSize();
 
 	// Row heights are measured lazily, so keep pinned to the bottom while following.
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (!isFollowing) return;
 		const el = containerRef.current;
 		if (el) scrollToBottom(el);
@@ -55,8 +63,15 @@ export function LogList({entries, containerRef, onScroll, isFollowing, children}
 		>
 			{children}
 			{entries.length > 0 && (
-				<ul className="relative w-full" style={{height: totalSize}}>
-					{virtualizer.getVirtualItems().map((item) => {
+				<ul
+					className="relative w-full"
+					style={
+					{
+						height: totalSize,
+					}}
+				>
+					{virtualizer.getVirtualItems().map((item) =>
+					{
 						const keyed = entries[item.index];
 						if (!keyed) return null;
 						const {entry} = keyed;
@@ -73,7 +88,10 @@ export function LogList({entries, containerRef, onScroll, isFollowing, children}
 								data-index={item.index}
 								ref={virtualizer.measureElement}
 								className="absolute left-0 top-0 flex w-full items-start gap-2 border-b border-border-300/20 px-4 py-1 hover:bg-bg-100"
-								style={{transform: `translateY(${item.start}px)`}}
+								style={
+								{
+									transform: `translateY(${item.start}px)`,
+								}}
 							>
 								<span className="flex-shrink-0 text-text-500">{formatTime(entry.time)}</span>
 								<span

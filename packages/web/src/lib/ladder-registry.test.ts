@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
-import {
+import
+{
 	initDb,
 	loadInventory,
 	resetDb,
@@ -12,7 +13,8 @@ import {
 	type ProjectRecord,
 } from "@wip/shared";
 
-import {
+import
+{
 	getInventoryStatusHandler,
 	getRegistryCandidatesHandler,
 	resetProjectCache,
@@ -23,7 +25,8 @@ import {
 import {getAllTasks, resetQueue} from "./task-queue.js";
 import {useTempConfigHome} from "./temp-registry.js";
 
-function makeProject(name: string): ProjectInfo {
+function makeProject(name: string): ProjectInfo
+{
 	return {
 		name,
 		dir: `/nonexistent/${name}`,
@@ -43,13 +46,20 @@ function makeProject(name: string): ProjectInfo {
 let temp: ReturnType<typeof useTempConfigHome>;
 let templatesDir: string;
 
-function writeTemplate(name: string, yaml: string): void {
+function writeTemplate(name: string, yaml: string): void
+{
 	const dir = path.join(templatesDir, `${name}-template`, ".llm");
-	fs.mkdirSync(dir, {recursive: true});
+	fs.mkdirSync(
+		dir,
+		{
+			recursive: true,
+		},
+	);
 	fs.writeFileSync(path.join(dir, "projects.yaml"), yaml);
 }
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	initDb(":memory:");
 	seedProjectCache([makeProject("alpha"), makeProject("beta")]);
 	temp = useTempConfigHome();
@@ -59,15 +69,18 @@ beforeEach(() => {
 	writeTemplate("java", `own:\n  - ${templatesDir}/gamma\n  - ${templatesDir}/alpha\n`);
 });
 
-afterEach(async () => {
+afterEach(async () =>
+{
 	await resetQueue();
 	resetProjectCache();
 	resetDb();
 	temp.restore();
 });
 
-describe("runLadderAllHandler without a registry", () => {
-	it("refuses instead of falling back to a directory scan, and queues nothing", async () => {
+describe("runLadderAllHandler without a registry", () =>
+{
+	it("refuses instead of falling back to a directory scan, and queues nothing", async () =>
+	{
 		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
 		await expect(runLadderAllHandler()).rejects.toThrow(
 			`No project registry at ${registryPath}; import one with \`wip inventory import\` before running the ladder on every project`,
@@ -76,28 +89,58 @@ describe("runLadderAllHandler without a registry", () => {
 	});
 });
 
-function pass(rung: LadderResult["rungs"][number]["rung"]) {
+function pass(rung: LadderResult["rungs"][number]["rung"])
+{
 	return async (p: {name: string}) =>
-		Promise.resolve({project: p.name, rungs: [{rung, status: "passed" as const, detail: "ok"}]});
+		Promise.resolve(
+			{
+				project: p.name,
+				rungs: [
+					{
+						rung,
+						status: "passed" as const,
+						detail: "ok",
+					},
+				],
+			},
+		);
 }
 
-describe("runLadderAllHandler with a registry", () => {
-	it("queues the ladder only for registered projects that are not skipped", async () => {
+describe("runLadderAllHandler with a registry", () =>
+{
+	it("queues the ladder only for registered projects that are not skipped", async () =>
+	{
 		seedProjectCache([makeProject("alpha"), makeProject("beta"), makeProject("stray")]);
 		saveInventory([
-			{name: "alpha", dir: "/nonexistent/alpha", template: "typescript", kind: "own"},
-			{name: "beta", dir: "/nonexistent/beta", template: "typescript", kind: "skip"},
-		]);
-		const jobs = await runLadderAllHandler({
-			runners: {
-				fetch: pass("fetch"),
-				replay: pass("replay"),
-				"rebase-leftovers": pass("rebase-leftovers"),
-				"worktree-prune": pass("worktree-prune"),
-				"delete-merged-local": pass("delete-merged-local"),
+			{
+				name: "alpha",
+				dir: "/nonexistent/alpha",
+				template: "typescript",
+				kind: "own",
 			},
-			ai: {probe: async () => Promise.resolve(false)},
-		});
+			{
+				name: "beta",
+				dir: "/nonexistent/beta",
+				template: "typescript",
+				kind: "skip",
+			},
+		]);
+		const jobs = await runLadderAllHandler(
+			{
+				runners:
+				{
+					fetch: pass("fetch"),
+					replay: pass("replay"),
+					"rebase-leftovers": pass("rebase-leftovers"),
+					"worktree-prune": pass("worktree-prune"),
+					"delete-merged-local": pass("delete-merged-local"),
+				},
+				ai:
+				{
+					probe: async () => Promise.resolve(false),
+				},
+			},
+		);
 		expect(jobs.length).toBe(1);
 		expect([...getAllTasks().values()].filter((t) => t.taskType === "ladder").map((t) => t.project)).toEqual([
 			"alpha",
@@ -105,179 +148,391 @@ describe("runLadderAllHandler with a registry", () => {
 	});
 });
 
-describe("getInventoryStatusHandler", () => {
-	it("reports a missing registry", async () => {
-		expect(await getInventoryStatusHandler({templatesDir, homeDir: temp.dir})).toEqual({
-			exists: false,
-			registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
-			templatesDir,
-			registry: null,
-		});
+describe("getInventoryStatusHandler", () =>
+{
+	it("reports a missing registry", async () =>
+	{
+		expect(
+			await getInventoryStatusHandler(
+				{
+					templatesDir,
+					homeDir: temp.dir,
+				},
+			),
+		).toEqual(
+			{
+				exists: false,
+				registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
+				templatesDir,
+				registry: null,
+			},
+		);
 	});
 
-	it("summarizes an existing registry", async () => {
-		saveInventory([{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}]);
-		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
-		expect(await getInventoryStatusHandler({templatesDir, homeDir: temp.dir})).toEqual({
-			exists: true,
-			registryPath,
-			templatesDir,
-			registry: {
-				total: 1,
-				byTemplate: {rust: 1},
-				byKind: {own: 1},
-				modifiedAt: fs.statSync(registryPath).mtime.toISOString(),
-				projects: [{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}],
+	it("summarizes an existing registry", async () =>
+	{
+		saveInventory([
+			{
+				name: "old",
+				dir: `${templatesDir}/old`,
+				template: "rust",
+				kind: "own",
 			},
-		});
+		]);
+		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
+		expect(
+			await getInventoryStatusHandler(
+				{
+					templatesDir,
+					homeDir: temp.dir,
+				},
+			),
+		).toEqual(
+			{
+				exists: true,
+				registryPath,
+				templatesDir,
+				registry:
+				{
+					total: 1,
+					byTemplate:
+					{
+						rust: 1,
+					},
+					byKind:
+					{
+						own: 1,
+					},
+					modifiedAt: fs.statSync(registryPath).mtime.toISOString(),
+					projects: [
+						{
+							name: "old",
+							dir: `${templatesDir}/old`,
+							template: "rust",
+							kind: "own",
+						},
+					],
+				},
+			},
+		);
 	});
 });
 
-function registryFile(): string {
+function registryFile(): string
+{
 	return path.join(temp.dir, "config", "wip", "projects.json5");
 }
 
-function gitRepo(name: string): string {
+function gitRepo(name: string): string
+{
 	const dir = path.join(templatesDir, name);
-	fs.mkdirSync(path.join(dir, ".git"), {recursive: true});
+	fs.mkdirSync(
+		path.join(dir, ".git"),
+		{
+			recursive: true,
+		},
+	);
 	return dir;
 }
 
-describe("getRegistryCandidatesHandler", () => {
-	it("lists the template entries, conflicts, and unregistered repos before the first import", async () => {
+describe("getRegistryCandidatesHandler", () =>
+{
+	it("lists the template entries, conflicts, and unregistered repos before the first import", async () =>
+	{
 		gitRepo("beta");
 		gitRepo("skipped");
 		gitRepo("stray-pr7");
-		const options = {templatesDir, homeDir: temp.dir, projectsDirs: [templatesDir]};
-		expect(await getRegistryCandidatesHandler(options)).toEqual({
-			registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
-			baseModifiedAt: null,
-			candidates: [
-				{
-					project: {name: "alpha", dir: `${templatesDir}/alpha`, template: "typescript", kind: "own"},
-					group: "conflict",
-					note: "listed by typescript, java",
-					skipReason: {code: "missing", text: "directory missing"},
-				},
-				{
-					project: {name: "beta", dir: `${templatesDir}/beta`, template: "typescript", kind: "fork"},
-					group: "registered",
-				},
-				{
-					project: {name: "gamma", dir: `${templatesDir}/gamma`, template: "java", kind: "own"},
-					group: "missing",
-					note: "directory missing",
-					skipReason: {code: "missing", text: "directory missing"},
-				},
-				{
-					project: {name: "skipped", dir: `${templatesDir}/skipped`, template: "project", kind: "skip"},
-					group: "skipped",
-					skipReason: {code: "listed", text: "listed under skip in project-template"},
-				},
-				{
-					project: {name: "stray-pr7", dir: `${templatesDir}/stray-pr7`, template: "unknown", kind: "skip"},
-					group: "unregistered",
-					skipReason: {code: "pr", text: "PR #7 worktree of stray"},
-				},
-			],
-		});
-	});
-
-	it("lists the saved registry instead of the templates once it exists", async () => {
-		gitRepo("old");
-		gitRepo("stray");
-		saveInventory([{name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"}]);
-		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
-		const options = {templatesDir, homeDir: temp.dir, projectsDirs: [templatesDir]};
-		expect(await getRegistryCandidatesHandler(options)).toEqual({
-			registryPath,
-			baseModifiedAt: fs.statSync(registryPath).mtime.toISOString(),
-			candidates: [
-				{
-					project: {name: "old", dir: `${templatesDir}/old`, template: "rust", kind: "own"},
-					group: "registered",
-				},
-				{
-					project: {name: "stray", dir: `${templatesDir}/stray`, template: "unknown", kind: "own"},
-					group: "unregistered",
-				},
-			],
-		});
-	});
-});
-
-describe("saveRegistryHandler", () => {
-	const beta: ProjectRecord = {name: "beta", dir: "/p/beta", template: "typescript", kind: "fork"};
-	const gamma: ProjectRecord = {name: "gamma", dir: "/p/gamma", template: "java", kind: "skip"};
-
-	it("writes the first registry and returns its status and fresh candidates", async () => {
-		const options = {templatesDir, homeDir: temp.dir, projectsDirs: [templatesDir]};
-		const saved = await saveRegistryHandler({projects: [gamma, beta], baseModifiedAt: null}, options);
-		const modifiedAt = fs.statSync(registryFile()).mtime.toISOString();
-		expect(saved).toEqual({
-			status: {
-				exists: true,
-				registryPath: registryFile(),
-				templatesDir,
-				registry: {
-					total: 2,
-					byTemplate: {java: 1, typescript: 1},
-					byKind: {fork: 1, skip: 1},
-					modifiedAt,
-					projects: [beta, gamma],
-				},
-			},
-			candidates: {
-				registryPath: registryFile(),
-				baseModifiedAt: modifiedAt,
+		const options =
+		{
+			templatesDir,
+			homeDir: temp.dir,
+			projectsDirs: [templatesDir],
+		};
+		expect(await getRegistryCandidatesHandler(options)).toEqual(
+			{
+				registryPath: path.join(temp.dir, "config", "wip", "projects.json5"),
+				baseModifiedAt: null,
 				candidates: [
 					{
-						project: beta,
+						project:
+						{
+							name: "alpha",
+							dir: `${templatesDir}/alpha`,
+							template: "typescript",
+							kind: "own",
+						},
+						group: "conflict",
+						note: "listed by typescript, java",
+						skipReason:
+						{
+							code: "missing",
+							text: "directory missing",
+						},
+					},
+					{
+						project:
+						{
+							name: "beta",
+							dir: `${templatesDir}/beta`,
+							template: "typescript",
+							kind: "fork",
+						},
+						group: "registered",
+					},
+					{
+						project:
+						{
+							name: "gamma",
+							dir: `${templatesDir}/gamma`,
+							template: "java",
+							kind: "own",
+						},
 						group: "missing",
 						note: "directory missing",
-						skipReason: {code: "missing", text: "directory missing"},
+						skipReason:
+						{
+							code: "missing",
+							text: "directory missing",
+						},
+					},
+					{
+						project:
+						{
+							name: "skipped",
+							dir: `${templatesDir}/skipped`,
+							template: "project",
+							kind: "skip",
+						},
+						group: "skipped",
+						skipReason:
+						{
+							code: "listed",
+							text: "listed under skip in project-template",
+						},
+					},
+					{
+						project:
+						{
+							name: "stray-pr7",
+							dir: `${templatesDir}/stray-pr7`,
+							template: "unknown",
+							kind: "skip",
+						},
+						group: "unregistered",
+						skipReason:
+						{
+							code: "pr",
+							text: "PR #7 worktree of stray",
+						},
 					},
 				],
 			},
-		});
+		);
+	});
+
+	it("lists the saved registry instead of the templates once it exists", async () =>
+	{
+		gitRepo("old");
+		gitRepo("stray");
+		saveInventory([
+			{
+				name: "old",
+				dir: `${templatesDir}/old`,
+				template: "rust",
+				kind: "own",
+			},
+		]);
+		const registryPath = path.join(temp.dir, "config", "wip", "projects.json5");
+		const options =
+		{
+			templatesDir,
+			homeDir: temp.dir,
+			projectsDirs: [templatesDir],
+		};
+		expect(await getRegistryCandidatesHandler(options)).toEqual(
+			{
+				registryPath,
+				baseModifiedAt: fs.statSync(registryPath).mtime.toISOString(),
+				candidates: [
+					{
+						project:
+						{
+							name: "old",
+							dir: `${templatesDir}/old`,
+							template: "rust",
+							kind: "own",
+						},
+						group: "registered",
+					},
+					{
+						project:
+						{
+							name: "stray",
+							dir: `${templatesDir}/stray`,
+							template: "unknown",
+							kind: "own",
+						},
+						group: "unregistered",
+					},
+				],
+			},
+		);
+	});
+});
+
+describe("saveRegistryHandler", () =>
+{
+	const beta: ProjectRecord =
+	{
+		name: "beta",
+		dir: "/p/beta",
+		template: "typescript",
+		kind: "fork",
+	};
+	const gamma: ProjectRecord =
+	{
+		name: "gamma",
+		dir: "/p/gamma",
+		template: "java",
+		kind: "skip",
+	};
+
+	it("writes the first registry and returns its status and fresh candidates", async () =>
+	{
+		const options =
+		{
+			templatesDir,
+			homeDir: temp.dir,
+			projectsDirs: [templatesDir],
+		};
+		const saved = await saveRegistryHandler(
+			{
+				projects: [gamma, beta],
+				baseModifiedAt: null,
+			},
+			options,
+		);
+		const modifiedAt = fs.statSync(registryFile()).mtime.toISOString();
+		expect(saved).toEqual(
+			{
+				status:
+				{
+					exists: true,
+					registryPath: registryFile(),
+					templatesDir,
+					registry:
+					{
+						total: 2,
+						byTemplate:
+						{
+							java: 1,
+							typescript: 1,
+						},
+						byKind:
+						{
+							fork: 1,
+							skip: 1,
+						},
+						modifiedAt,
+						projects: [beta, gamma],
+					},
+				},
+				candidates:
+				{
+					registryPath: registryFile(),
+					baseModifiedAt: modifiedAt,
+					candidates: [
+						{
+							project: beta,
+							group: "missing",
+							note: "directory missing",
+							skipReason:
+							{
+								code: "missing",
+								text: "directory missing",
+							},
+						},
+					],
+				},
+			},
+		);
 		expect(loadInventory().projects).toEqual([beta, gamma]);
 	});
 
-	it("drops skip entries whose directory is gone when the reviewed candidates are saved", async () => {
+	it("drops skip entries whose directory is gone when the reviewed candidates are saved", async () =>
+	{
 		saveInventory([beta, gamma]);
-		const options = {templatesDir, homeDir: temp.dir, projectsDirs: []};
+		const options =
+		{
+			templatesDir,
+			homeDir: temp.dir,
+			projectsDirs: [],
+		};
 		const review = await getRegistryCandidatesHandler(options);
 		expect(review.candidates).toEqual([
 			{
 				project: beta,
 				group: "missing",
 				note: "directory missing",
-				skipReason: {code: "missing", text: "directory missing"},
+				skipReason:
+				{
+					code: "missing",
+					text: "directory missing",
+				},
 			},
 		]);
 		await saveRegistryHandler(
-			{projects: review.candidates.map((candidate) => candidate.project), baseModifiedAt: review.baseModifiedAt},
+			{
+				projects: review.candidates.map((candidate) => candidate.project),
+				baseModifiedAt: review.baseModifiedAt,
+			},
 			options,
 		);
 		expect(loadInventory().projects).toEqual([beta]);
 	});
 
-	it("overwrites the registry it was reviewed against", async () => {
+	it("overwrites the registry it was reviewed against", async () =>
+	{
 		saveInventory([beta]);
 		const baseModifiedAt = fs.statSync(registryFile()).mtime.toISOString();
-		await saveRegistryHandler({projects: [gamma], baseModifiedAt}, {templatesDir, projectsDirs: []});
+		await saveRegistryHandler(
+			{
+				projects: [gamma],
+				baseModifiedAt,
+			},
+			{
+				templatesDir,
+				projectsDirs: [],
+			},
+		);
 		expect(loadInventory().projects).toEqual([gamma]);
 	});
 
-	it("refuses to replace a registry that appeared or changed after the review loaded", async () => {
+	it("refuses to replace a registry that appeared or changed after the review loaded", async () =>
+	{
 		saveInventory([beta]);
 		await expect(
-			saveRegistryHandler({projects: [gamma], baseModifiedAt: null}, {templatesDir, projectsDirs: []}),
+			saveRegistryHandler(
+				{
+					projects: [gamma],
+					baseModifiedAt: null,
+				},
+				{
+					templatesDir,
+					projectsDirs: [],
+				},
+			),
 		).rejects.toThrow(`Registry at ${registryFile()} changed since it was reviewed; reload and try again`);
 		await expect(
 			saveRegistryHandler(
-				{projects: [gamma], baseModifiedAt: "2000-01-01T00:00:00.000Z"},
-				{templatesDir, projectsDirs: []},
+				{
+					projects: [gamma],
+					baseModifiedAt: "2000-01-01T00:00:00.000Z",
+				},
+				{
+					templatesDir,
+					projectsDirs: [],
+				},
 			),
 		).rejects.toThrow(`Registry at ${registryFile()} changed since it was reviewed; reload and try again`);
 		expect(loadInventory().projects).toEqual([beta]);

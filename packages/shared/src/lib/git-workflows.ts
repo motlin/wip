@@ -1,7 +1,8 @@
 import {tracedExeca} from "../services/traced-execa.js";
 import {cacheMergeStatus, getCachedUpstreamSha} from "./db.js";
 
-export interface ApplyFixesOptions {
+export interface ApplyFixesOptions
+{
 	branch: string;
 	prNumber: number;
 	env?: Record<string, string>;
@@ -14,87 +15,157 @@ export interface ApplyFixesOptions {
 export async function applyFixesToBranch(
 	dir: string,
 	options: ApplyFixesOptions,
-): Promise<{ok: boolean; message: string}> {
+): Promise<
+{
+	ok: boolean;
+	message: string;
+}>
+{
 	const {branch, prNumber, env} = options;
 
-	await tracedExeca("git", ["-C", dir, "fetch", "origin"], {reject: false, env});
+	await tracedExeca(
+		"git",
+		["-C", dir, "fetch", "origin"],
+		{
+			reject: false,
+			env,
+		},
+	);
 
 	const branchListResult = await tracedExeca(
 		"git",
 		["-C", dir, "branch", "-r", "--list", `origin/fix-${prNumber}-*`],
-		{reject: false, env},
+		{
+			reject: false,
+			env,
+		},
 	);
-	if (branchListResult.exitCode !== 0 || !branchListResult.stdout.trim()) {
-		return {ok: false, message: `No fix branches found for PR #${prNumber}`};
+	if (branchListResult.exitCode !== 0 || !branchListResult.stdout.trim())
+	{
+		return {
+			ok: false,
+			message: `No fix branches found for PR #${prNumber}`,
+		};
 	}
 
 	const fixBranches = branchListResult.stdout
 		.split("\n")
 		.map((b) => b.trim())
 		.filter(Boolean);
-	if (fixBranches.length === 0) {
-		return {ok: false, message: `No fix branches found for PR #${prNumber}`};
+	if (fixBranches.length === 0)
+	{
+		return {
+			ok: false,
+			message: `No fix branches found for PR #${prNumber}`,
+		};
 	}
 
-	const checkout = await tracedExeca("git", ["-C", dir, "checkout", branch], {
-		reject: false,
-		env,
-	});
-	if (checkout.exitCode !== 0) {
-		return {ok: false, message: `Failed to checkout ${branch}: ${checkout.stderr}`};
+	const checkout = await tracedExeca(
+		"git",
+		["-C", dir, "checkout", branch],
+		{
+			reject: false,
+			env,
+		},
+	);
+	if (checkout.exitCode !== 0)
+	{
+		return {
+			ok: false,
+			message: `Failed to checkout ${branch}: ${checkout.stderr}`,
+		};
 	}
 
 	const appliedFixes: string[] = [];
 	/* eslint-disable no-await-in-loop -- cherry-picks mutate one working tree and must run strictly in order */
-	for (const fixBranch of fixBranches) {
-		const cp = await tracedExeca("git", ["-C", dir, "cherry-pick", "--no-commit", fixBranch], {
-			reject: false,
-			env,
-		});
-		if (cp.exitCode !== 0) {
-			await tracedExeca("git", ["-C", dir, "cherry-pick", "--abort"], {
+	for (const fixBranch of fixBranches)
+	{
+		const cp = await tracedExeca(
+			"git",
+			["-C", dir, "cherry-pick", "--no-commit", fixBranch],
+			{
 				reject: false,
 				env,
-			});
-			await tracedExeca("git", ["-C", dir, "reset", "--hard", "HEAD"], {
-				reject: false,
-				env,
-			});
+			},
+		);
+		if (cp.exitCode !== 0)
+		{
+			await tracedExeca(
+				"git",
+				["-C", dir, "cherry-pick", "--abort"],
+				{
+					reject: false,
+					env,
+				},
+			);
+			await tracedExeca(
+				"git",
+				["-C", dir, "reset", "--hard", "HEAD"],
+				{
+					reject: false,
+					env,
+				},
+			);
 			continue;
 		}
 		appliedFixes.push(fixBranch.replace("origin/", ""));
 	}
 	/* eslint-enable no-await-in-loop */
 
-	if (appliedFixes.length === 0) {
+	if (appliedFixes.length === 0)
+	{
 		return {
 			ok: false,
 			message: "All fix cherry-picks had conflicts — manual resolution needed",
 		};
 	}
 
-	const diffIndex = await tracedExeca("git", ["-C", dir, "diff", "--cached", "--quiet"], {
-		reject: false,
-		env,
-	});
-	if (diffIndex.exitCode === 0) {
-		return {ok: false, message: "Fix branches had no changes to apply"};
+	const diffIndex = await tracedExeca(
+		"git",
+		["-C", dir, "diff", "--cached", "--quiet"],
+		{
+			reject: false,
+			env,
+		},
+	);
+	if (diffIndex.exitCode === 0)
+	{
+		return {
+			ok: false,
+			message: "Fix branches had no changes to apply",
+		};
 	}
 
-	const amend = await tracedExeca("git", ["-C", dir, "commit", "--amend", "--no-edit"], {
-		reject: false,
-		env,
-	});
-	if (amend.exitCode !== 0) {
-		return {ok: false, message: `Failed to amend commit: ${amend.stderr}`};
+	const amend = await tracedExeca(
+		"git",
+		["-C", dir, "commit", "--amend", "--no-edit"],
+		{
+			reject: false,
+			env,
+		},
+	);
+	if (amend.exitCode !== 0)
+	{
+		return {
+			ok: false,
+			message: `Failed to amend commit: ${amend.stderr}`,
+		};
 	}
 
-	const push = await tracedExeca("git", ["-C", dir, "push", "origin", `${branch}:${branch}`, "--force-with-lease"], {
-		reject: false,
-		env,
-	});
-	if (push.exitCode !== 0) {
-		return {ok: false, message: `Amended commit but failed to push: ${push.stderr}`};
+	const push = await tracedExeca(
+		"git",
+		["-C", dir, "push", "origin", `${branch}:${branch}`, "--force-with-lease"],
+		{
+			reject: false,
+			env,
+		},
+	);
+	if (push.exitCode !== 0)
+	{
+		return {
+			ok: false,
+			message: `Amended commit but failed to push: ${push.stderr}`,
+		};
 	}
 
 	return {
@@ -103,7 +174,8 @@ export async function applyFixesToBranch(
 	};
 }
 
-export interface RebaseBranchOptions {
+export interface RebaseBranchOptions
+{
 	branch: string;
 	/** Project name, used to record merge status on conflict. */
 	project: string;
@@ -126,9 +198,19 @@ export interface RebaseBranchOptions {
 }
 
 export type RebaseBranchResult =
-	| {ok: true; message: string}
-	| {ok: false; stage: "checkout" | "rebase" | "push"; stderr: string}
-	| {
+	|
+	  {
+			ok: true;
+			message: string;
+	  }
+	|
+	  {
+			ok: false;
+			stage: "checkout" | "rebase" | "push";
+			stderr: string;
+	  }
+	|
+	  {
 			ok: false;
 			stage: "cancelled";
 			stderr: string;
@@ -136,10 +218,22 @@ export type RebaseBranchResult =
 			pushMayHaveLanded?: true;
 	  };
 
-function cancelledRebase(pushMayHaveLanded = false): RebaseBranchResult {
+function cancelledRebase(pushMayHaveLanded = false): RebaseBranchResult
+{
 	return pushMayHaveLanded
-		? {ok: false, stage: "cancelled", stderr: "", pushMayHaveLanded: true}
-		: {ok: false, stage: "cancelled", stderr: ""};
+		?
+			{
+				ok: false,
+				stage: "cancelled",
+				stderr: "",
+				pushMayHaveLanded: true,
+			}
+		:
+			{
+				ok: false,
+				stage: "cancelled",
+				stderr: "",
+			};
 }
 
 /**
@@ -147,8 +241,10 @@ function cancelledRebase(pushMayHaveLanded = false): RebaseBranchResult {
  * branch's remote. On conflict the rebase is aborted and the branch is recorded
  * as non-rebaseable in the merge-status cache.
  */
-export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranchOptions): Promise<RebaseBranchResult> {
-	const {
+export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranchOptions): Promise<RebaseBranchResult>
+{
+	const
+	{
 		branch,
 		project,
 		upstreamRef,
@@ -164,9 +260,19 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 	// Only the long-running git steps are cancellable. Cleanup (rebase --abort,
 	// restoring the branch) always runs so an aborted rebase never leaves the
 	// repository mid-rebase or on the wrong branch.
-	const run = async (args: string[], cancelSignal?: AbortSignal) => {
-		const result = await tracedExeca("git", ["-C", dir, ...args], {reject: false, env, cancelSignal});
-		if (onOutput) {
+	const run = async (args: string[], cancelSignal?: AbortSignal) =>
+	{
+		const result = await tracedExeca(
+			"git",
+			["-C", dir, ...args],
+			{
+				reject: false,
+				env,
+				cancelSignal,
+			},
+		);
+		if (onOutput)
+		{
 			const out = [result.stdout, result.stderr].filter(Boolean).join("\n");
 			if (out) onOutput(out);
 		}
@@ -177,7 +283,8 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 	// was checked out before this rebase started (set below, before checkout).
 	let restoreTarget: string | undefined = restoreBranch;
 
-	const restore = async (): Promise<void> => {
+	const restore = async (): Promise<void> =>
+	{
 		if (restoreTarget) await run(["checkout", restoreTarget]);
 	};
 
@@ -185,7 +292,15 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 
 	const pushRemote =
 		options.pushRemote ??
-		((await tracedExeca("git", ["-C", dir, "config", `branch.${branch}.remote`], {reject: false})).stdout.trim() ||
+		((
+			await tracedExeca(
+				"git",
+				["-C", dir, "config", `branch.${branch}.remote`],
+				{
+					reject: false,
+				},
+			)
+		).stdout.trim() ||
 			"origin");
 	// Pin the lease to the remote sha we knew before fetching. A bare
 	// --force-with-lease compares against the tracking ref, which the fetch below
@@ -195,36 +310,71 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 		await tracedExeca(
 			"git",
 			["-C", dir, "rev-parse", "--verify", "--quiet", `refs/remotes/${pushRemote}/${branch}`],
-			{reject: false, env},
+			{
+				reject: false,
+				env,
+			},
 		)
 	).stdout.trim();
 	const leaseArg = leaseSha ? `--force-with-lease=refs/heads/${branch}:${leaseSha}` : "--force-with-lease";
 
-	if (upstreamRemote) {
+	if (upstreamRemote)
+	{
 		await run(fetchBranch ? ["fetch", upstreamRemote, fetchBranch] : ["fetch", upstreamRemote], signal);
 	}
 	if (signal?.aborted) return cancelledRebase();
 
-	if (!restoreTarget) {
+	if (!restoreTarget)
+	{
 		const previousBranch = (
-			await tracedExeca("git", ["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"], {reject: false, env})
+			await tracedExeca(
+				"git",
+				["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"],
+				{
+					reject: false,
+					env,
+				},
+			)
 		).stdout.trim();
 		// A detached HEAD reports "HEAD"; restore to its commit instead.
 		restoreTarget =
 			previousBranch && previousBranch !== "HEAD"
 				? previousBranch
-				: (await tracedExeca("git", ["-C", dir, "rev-parse", "HEAD"], {reject: false, env})).stdout.trim() ||
-					undefined;
+				: (
+						await tracedExeca(
+							"git",
+							["-C", dir, "rev-parse", "HEAD"],
+							{
+								reject: false,
+								env,
+							},
+						)
+					).stdout.trim() || undefined;
 	}
 
 	const checkout = await run(["checkout", branch], signal);
-	if (checkout.exitCode !== 0) {
-		return {ok: false, stage: "checkout", stderr: checkout.stderr};
+	if (checkout.exitCode !== 0)
+	{
+		return {
+			ok: false,
+			stage: "checkout",
+			stderr: checkout.stderr,
+		};
 	}
 
-	const branchSha = (await tracedExeca("git", ["-C", dir, "rev-parse", "HEAD"], {reject: false, env})).stdout.trim();
+	const branchSha = (
+		await tracedExeca(
+			"git",
+			["-C", dir, "rev-parse", "HEAD"],
+			{
+				reject: false,
+				env,
+			},
+		)
+	).stdout.trim();
 
-	if (signal?.aborted) {
+	if (signal?.aborted)
+	{
 		await restore();
 		return cancelledRebase();
 	}
@@ -233,34 +383,51 @@ export async function rebaseBranchOntoUpstream(dir: string, options: RebaseBranc
 		? ["rebase", "--rebase-merges", "--update-refs", upstreamRef]
 		: ["rebase", upstreamRef];
 	const rebase = await run(rebaseArgs, signal);
-	if (rebase.exitCode !== 0) {
+	if (rebase.exitCode !== 0)
+	{
 		await run(["rebase", "--abort"]);
-		if (signal?.aborted) {
+		if (signal?.aborted)
+		{
 			await restore();
 			return cancelledRebase();
 		}
 		const upstreamSha = getCachedUpstreamSha(project);
-		if (upstreamSha && branchSha) {
+		if (upstreamSha && branchSha)
+		{
 			cacheMergeStatus(project, branchSha, upstreamSha, 0, 1, false);
 		}
 		await restore();
-		return {ok: false, stage: "rebase", stderr: rebase.stderr};
+		return {
+			ok: false,
+			stage: "rebase",
+			stderr: rebase.stderr,
+		};
 	}
-	if (signal?.aborted) {
+	if (signal?.aborted)
+	{
 		await restore();
 		return cancelledRebase();
 	}
 
 	const push = await run(["push", pushRemote, `${branch}:${branch}`, leaseArg], signal);
-	if (signal?.aborted) {
+	if (signal?.aborted)
+	{
 		await restore();
 		return cancelledRebase(true);
 	}
-	if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date")) {
+	if (push.exitCode !== 0 && !push.stderr.includes("Everything up-to-date"))
+	{
 		await restore();
-		return {ok: false, stage: "push", stderr: push.stderr};
+		return {
+			ok: false,
+			stage: "push",
+			stderr: push.stderr,
+		};
 	}
 
 	await restore();
-	return {ok: true, message: `Rebased ${branch} onto ${upstreamRef}`};
+	return {
+		ok: true,
+		message: `Rebased ${branch} onto ${upstreamRef}`,
+	};
 }

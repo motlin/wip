@@ -12,11 +12,18 @@ import type {MergeStatusEvent, TaskEvent} from "./server-events-schema.js";
 
 export type {MergeStatusEvent};
 
-const EMPTY_SCHEDULER_STATE: RefreshSchedulerState = {
+const EMPTY_SCHEDULER_STATE: RefreshSchedulerState =
+{
 	slots: 0,
 	running: [],
 	queued: [],
-	runningByClass: {cheap: 0, "git-write": 0, build: 0, ai: 0},
+	runningByClass:
+	{
+		cheap: 0,
+		"git-write": 0,
+		build: 0,
+		ai: 0,
+	},
 };
 
 const tasks = new Map<string, TaskEvent>();
@@ -28,42 +35,51 @@ let hasActiveTasks = false;
 
 const keyListeners = new Map<string, Set<() => void>>();
 
-export function taskStoreKey(project: string, sha: string): string {
+export function taskStoreKey(project: string, sha: string): string
+{
 	return `${project}:${sha}`;
 }
 
-export function subscribeToStoreKey(key: string, listener: () => void): () => void {
+export function subscribeToStoreKey(key: string, listener: () => void): () => void
+{
 	let listeners = keyListeners.get(key);
-	if (!listeners) {
+	if (!listeners)
+	{
 		listeners = new Set();
 		keyListeners.set(key, listeners);
 	}
 	listeners.add(listener);
-	return () => {
+	return () =>
+	{
 		listeners.delete(listener);
 		if (listeners.size === 0) keyListeners.delete(key);
 	};
 }
 
-function notifyKey(key: string): void {
+function notifyKey(key: string): void
+{
 	const listeners = keyListeners.get(key);
 	if (!listeners) return;
-	for (const listener of listeners) {
+	for (const listener of listeners)
+	{
 		listener();
 	}
 }
 
-export function applyTaskEvent(event: TaskEvent): void {
+export function applyTaskEvent(event: TaskEvent): void
+{
 	const key = taskStoreKey(event.project, event.sha);
 
-	if (event.type === "log" && event.log) {
+	if (event.type === "log" && event.log)
+	{
 		logs.set(key, (logs.get(key) ?? "") + event.log);
 		notifyKey(`log:${key}`);
 		return;
 	}
 
 	tasks.set(key, event);
-	if (event.status === "queued") {
+	if (event.status === "queued")
+	{
 		logs.delete(key);
 		notifyKey(`log:${key}`);
 	}
@@ -78,8 +94,10 @@ export function applyTaskEvent(event: TaskEvent): void {
  * replays its real active tasks on connect, so anything left over here missed
  * its terminal event during the gap.
  */
-export function clearActiveTasks(): void {
-	for (const [key, task] of tasks) {
+export function clearActiveTasks(): void
+{
+	for (const [key, task] of tasks)
+	{
 		if (task.status !== "queued" && task.status !== "running") continue;
 		tasks.delete(key);
 		notifyKey(`task:${key}`);
@@ -89,37 +107,45 @@ export function clearActiveTasks(): void {
 	notifyKey("tasks");
 }
 
-export function applyMergeEvent(event: MergeStatusEvent): void {
+export function applyMergeEvent(event: MergeStatusEvent): void
+{
 	mergeStatuses.set(taskStoreKey(event.project, event.sha), event);
 	notifyKey(`merge:${taskStoreKey(event.project, event.sha)}`);
 }
 
-export function applySchedulerState(state: RefreshSchedulerState): void {
+export function applySchedulerState(state: RefreshSchedulerState): void
+{
 	schedulerState = state;
 	notifyKey("scheduler");
 }
 
-export function getTaskSnapshot(sha: string, project: string): TaskEvent | undefined {
+export function getTaskSnapshot(sha: string, project: string): TaskEvent | undefined
+{
 	return tasks.get(taskStoreKey(project, sha));
 }
 
-export function getTaskLogSnapshot(sha: string, project: string): string | undefined {
+export function getTaskLogSnapshot(sha: string, project: string): string | undefined
+{
 	return logs.get(taskStoreKey(project, sha));
 }
 
-export function getMergeStatusSnapshot(sha: string, project: string): MergeStatusEvent | undefined {
+export function getMergeStatusSnapshot(sha: string, project: string): MergeStatusEvent | undefined
+{
 	return mergeStatuses.get(taskStoreKey(project, sha));
 }
 
-export function getAllTasksSnapshot(): Map<string, TaskEvent> {
+export function getAllTasksSnapshot(): Map<string, TaskEvent>
+{
 	return tasksSnapshot;
 }
 
-export function hasActiveTasksSnapshot(): boolean {
+export function hasActiveTasksSnapshot(): boolean
+{
 	return hasActiveTasks;
 }
 
-export function getSchedulerStateSnapshot(): RefreshSchedulerState {
+export function getSchedulerStateSnapshot(): RefreshSchedulerState
+{
 	return schedulerState;
 }
 
@@ -130,16 +156,19 @@ const EMPTY_TASKS: ReadonlyMap<string, TaskEvent> = new Map();
  * deliver it before a lazily loaded route hydrates. Hydration must render what
  * the server rendered, so these never reflect live state.
  */
-export function getServerTasksSnapshot(): ReadonlyMap<string, TaskEvent> {
+export function getServerTasksSnapshot(): ReadonlyMap<string, TaskEvent>
+{
 	return EMPTY_TASKS;
 }
 
-export function getServerSchedulerStateSnapshot(): RefreshSchedulerState {
+export function getServerSchedulerStateSnapshot(): RefreshSchedulerState
+{
 	return EMPTY_SCHEDULER_STATE;
 }
 
 /** Test-only: clear all state and listeners. */
-export function resetServerEventsStore(): void {
+export function resetServerEventsStore(): void
+{
 	tasks.clear();
 	logs.clear();
 	mergeStatuses.clear();

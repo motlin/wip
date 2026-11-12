@@ -1,5 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
-import {
+import
+{
 	CATEGORIES,
 	CATEGORY_PRIORITY,
 	CATEGORY_PRIORITY_REVERSED,
@@ -12,142 +13,197 @@ import {
 import {CategorySchema, type Category} from "@wip/shared";
 import {getTransitionsFrom} from "@wip/shared/schemas.js";
 
-function indexOf(cat: Category): number {
+function indexOf(cat: Category): number
+{
 	return CATEGORY_PRIORITY.indexOf(cat);
 }
 
-describe("CATEGORIES", () => {
-	it("has an entry for every category in CategorySchema", () => {
-		for (const cat of CategorySchema.options) {
+describe("CATEGORIES", () =>
+{
+	it("has an entry for every category in CategorySchema", () =>
+	{
+		for (const cat of CategorySchema.options)
+		{
 			expect(CATEGORIES).toHaveProperty(cat);
 		}
 	});
 
-	it("llmCommand is undefined or a non-empty string for every category", () => {
+	it("llmCommand is undefined or a non-empty string for every category", () =>
+	{
 		const commands = Object.values(CATEGORIES)
 			.map((config) => config.llmCommand)
 			.filter((command) => command !== undefined);
-		for (const command of commands) {
+		for (const command of commands)
+		{
 			expect(typeof command).toBe("string");
 			expect(command.length).toBeGreaterThan(0);
 		}
 	});
 
-	it("maps test_failed to /build:fix", () => {
+	it("maps test_failed to /build:fix", () =>
+	{
 		expect(CATEGORIES.test_failed.llmCommand).toBe("/build:fix");
 	});
 
-	it("maps rebase_conflicts to /git:conflicts", () => {
+	it("maps rebase_conflicts to /git:conflicts", () =>
+	{
 		expect(CATEGORIES.rebase_conflicts.llmCommand).toBe("/git:conflicts");
 	});
 
-	it("maps ready_to_test to /build:test-branch", () => {
+	it("maps ready_to_test to /build:test-branch", () =>
+	{
 		expect(CATEGORIES.ready_to_test.llmCommand).toBe("/build:test-branch");
 	});
 
-	it("maps local_changes to /git:commit", () => {
+	it("maps local_changes to /git:commit", () =>
+	{
 		expect(CATEGORIES.local_changes.llmCommand).toBe("/git:commit");
 	});
 
-	it("makes Abort rebase the first action for rebase_stuck, with no rescue command", () => {
-		expect({first: CATEGORIES.rebase_stuck.actions[0], llmCommand: CATEGORIES.rebase_stuck.llmCommand}).toEqual({
-			first: "abort_rebase",
-			llmCommand: undefined,
-		});
+	it("makes Abort rebase the first action for rebase_stuck, with no rescue command", () =>
+	{
+		expect(
+			{
+				first: CATEGORIES.rebase_stuck.actions[0],
+				llmCommand: CATEGORIES.rebase_stuck.llmCommand,
+			},
+		).toEqual(
+			{
+				first: "abort_rebase",
+				llmCommand: undefined,
+			},
+		);
 	});
 
-	it("models Abort rebase as the rebase_stuck --abort_rebase--> needs_rebase edge, so the next action is a rebase", () => {
-		expect({
-			edges: getTransitionsFrom("rebase_stuck")
-				.filter((t) => t.transition === "abort_rebase")
-				.map((t) => t.to),
-			action: TRANSITION_TO_ACTION.abort_rebase,
-			nextActions: CATEGORIES.needs_rebase.actions.includes("rebase_local"),
-		}).toEqual({edges: ["needs_rebase"], action: "abort_rebase", nextActions: true});
+	it("models Abort rebase as the rebase_stuck --abort_rebase--> needs_rebase edge, so the next action is a rebase", () =>
+	{
+		expect(
+			{
+				edges: getTransitionsFrom("rebase_stuck")
+					.filter((t) => t.transition === "abort_rebase")
+					.map((t) => t.to),
+				action: TRANSITION_TO_ACTION.abort_rebase,
+				nextActions: CATEGORIES.needs_rebase.actions.includes("rebase_local"),
+			},
+		).toEqual(
+			{
+				edges: ["needs_rebase"],
+				action: "abort_rebase",
+				nextActions: true,
+			},
+		);
 	});
 
-	it("maps checks_failed to /gha", () => {
+	it("maps checks_failed to /gha", () =>
+	{
 		expect(CATEGORIES.checks_failed.llmCommand).toBe("/gha");
 	});
 
-	it("gives upstream_red the red palette and /github:gha", () => {
-		expect({palette: CATEGORIES.upstream_red.palette, llmCommand: CATEGORIES.upstream_red.llmCommand}).toEqual({
-			palette: "red",
-			llmCommand: "/github:gha",
-		});
+	it("gives upstream_red the red palette and /github:gha", () =>
+	{
+		expect(
+			{
+				palette: CATEGORIES.upstream_red.palette,
+				llmCommand: CATEGORIES.upstream_red.llmCommand,
+			},
+		).toEqual(
+			{
+				palette: "red",
+				llmCommand: "/github:gha",
+			},
+		);
 	});
 
-	it("ranks the blockers first: pr_refs_missing, then upstream_red", () => {
+	it("ranks the blockers first: pr_refs_missing, then upstream_red", () =>
+	{
 		expect(CATEGORY_PRIORITY_REVERSED.slice(0, 2)).toStrictEqual(["pr_refs_missing", "upstream_red"]);
 	});
 });
 
-describe("TRANSITION_TO_ACTION", () => {
-	it("maps run_test to test", () => {
+describe("TRANSITION_TO_ACTION", () =>
+{
+	it("maps run_test to test", () =>
+	{
 		expect(TRANSITION_TO_ACTION.run_test).toBe("test");
 	});
 
-	it("maps push to push", () => {
+	it("maps push to push", () =>
+	{
 		expect(TRANSITION_TO_ACTION.push).toBe("push");
 	});
 
-	it("maps force_push to force_push", () => {
+	it("maps force_push to force_push", () =>
+	{
 		expect(TRANSITION_TO_ACTION.force_push).toBe("force_push");
 	});
 
-	it("maps commit to commit", () => {
+	it("maps commit to commit", () =>
+	{
 		expect(TRANSITION_TO_ACTION.commit).toBe("commit");
 	});
 
-	it("maps create_pr to create_pr", () => {
+	it("maps create_pr to create_pr", () =>
+	{
 		expect(TRANSITION_TO_ACTION.create_pr).toBe("create_pr");
 	});
 
-	it("maps rebase to rebase_local", () => {
+	it("maps rebase to rebase_local", () =>
+	{
 		expect(TRANSITION_TO_ACTION.rebase).toBe("rebase_local");
 	});
 
-	it("maps create_branch to create_branch", () => {
+	it("maps create_branch to create_branch", () =>
+	{
 		expect(TRANSITION_TO_ACTION.create_branch).toBe("create_branch");
 	});
 
-	it("maps merge to merge", () => {
+	it("maps merge to merge", () =>
+	{
 		expect(TRANSITION_TO_ACTION.merge).toBe("merge");
 	});
 
-	it("maps split to split", () => {
+	it("maps split to split", () =>
+	{
 		expect(TRANSITION_TO_ACTION.split).toBe("split");
 	});
 });
 
-describe("getTransitionActions", () => {
-	it("returns test for ready_to_test", () => {
+describe("getTransitionActions", () =>
+{
+	it("returns test for ready_to_test", () =>
+	{
 		expect(getTransitionActions("ready_to_test")).toContain("test");
 	});
 
-	it("returns push and force_push for ready_to_push", () => {
+	it("returns push and force_push for ready_to_push", () =>
+	{
 		const actions = getTransitionActions("ready_to_push");
 		expect(actions).toContain("push");
 		expect(actions).toContain("force_push");
 	});
 
-	it("returns create_pr for pushed_no_pr", () => {
+	it("returns create_pr for pushed_no_pr", () =>
+	{
 		expect(getTransitionActions("pushed_no_pr")).toContain("create_pr");
 	});
 
-	it("returns commit for local_changes", () => {
+	it("returns commit for local_changes", () =>
+	{
 		expect(getTransitionActions("local_changes")).toContain("commit");
 	});
 
-	it("returns rebase_local for needs_rebase", () => {
+	it("returns rebase_local for needs_rebase", () =>
+	{
 		expect(getTransitionActions("needs_rebase")).toContain("rebase_local");
 	});
 
-	it("returns create_branch for detached_head", () => {
+	it("returns create_branch for detached_head", () =>
+	{
 		expect(getTransitionActions("detached_head")).toContain("create_branch");
 	});
 
-	it("offers split exactly from the states with a split transition", () => {
+	it("offers split exactly from the states with a split transition", () =>
+	{
 		expect(CategorySchema.options.filter((cat) => getTransitionActions(cat).includes("split"))).toStrictEqual([
 			"ready_to_test",
 			"test_failed",
@@ -158,8 +214,10 @@ describe("getTransitionActions", () => {
 	});
 });
 
-describe("actions arrays are derived from state machine", () => {
-	it("ready_to_test actions start with transition-derived actions followed by supplementary", () => {
+describe("actions arrays are derived from state machine", () =>
+{
+	it("ready_to_test actions start with transition-derived actions followed by supplementary", () =>
+	{
 		const actions = CATEGORIES.ready_to_test.actions;
 		expect(actions).toContain("test");
 		expect(actions).toContain("refresh");
@@ -167,20 +225,24 @@ describe("actions arrays are derived from state machine", () => {
 		expect(actions).toContain("delete_branch");
 	});
 
-	it("test_failed actions contain test from state machine", () => {
+	it("test_failed actions contain test from state machine", () =>
+	{
 		const actions = CATEGORIES.test_failed.actions;
 		expect(actions).toContain("test");
 		expect(actions).toContain("view_test_log");
 	});
 
-	it("checks_failed actions contain force_push from state machine", () => {
+	it("checks_failed actions contain force_push from state machine", () =>
+	{
 		const actions = CATEGORIES.checks_failed.actions;
 		expect(actions).toContain("force_push");
 		expect(actions).toContain("apply_fixes");
 	});
 
-	it("every category actions array matches transition-derived + supplementary", () => {
-		for (const cat of CategorySchema.options) {
+	it("every category actions array matches transition-derived + supplementary", () =>
+	{
+		for (const cat of CategorySchema.options)
+		{
 			const config = CATEGORIES[cat];
 			const transitionActions = getTransitionActions(cat);
 			const supplementary = SUPPLEMENTARY_ACTIONS[cat] ?? [];
@@ -190,44 +252,54 @@ describe("actions arrays are derived from state machine", () => {
 	});
 });
 
-describe("CATEGORY_PRIORITY", () => {
-	it("includes every category exactly once", () => {
+describe("CATEGORY_PRIORITY", () =>
+{
+	it("includes every category exactly once", () =>
+	{
 		expect(CATEGORY_PRIORITY).toHaveLength(CategorySchema.options.length);
 		expect(new Set(CATEGORY_PRIORITY).size).toBe(CategorySchema.options.length);
-		for (const cat of CategorySchema.options) {
+		for (const cat of CategorySchema.options)
+		{
 			expect(CATEGORY_PRIORITY).toContain(cat);
 		}
 	});
 
-	it("places snoozed first", () => {
+	it("places snoozed first", () =>
+	{
 		expect(CATEGORY_PRIORITY[0]).toBe("snoozed");
 	});
 
-	it("places skippable second (right after snoozed)", () => {
+	it("places skippable second (right after snoozed)", () =>
+	{
 		expect(CATEGORY_PRIORITY[1]).toBe("skippable");
 	});
 
-	it("orders ideas before test flow", () => {
+	it("orders ideas before test flow", () =>
+	{
 		expect(indexOf("untriaged")).toBeLessThan(indexOf("ready_to_test"));
 		expect(indexOf("triaged")).toBeLessThan(indexOf("ready_to_test"));
 	});
 
-	it("orders test flow before push flow", () => {
+	it("orders test flow before push flow", () =>
+	{
 		expect(indexOf("ready_to_test")).toBeLessThan(indexOf("ready_to_push"));
 		expect(indexOf("test_running")).toBeLessThan(indexOf("ready_to_push"));
 	});
 
-	it("orders push flow before CI flow", () => {
+	it("orders push flow before CI flow", () =>
+	{
 		expect(indexOf("ready_to_push")).toBeLessThan(indexOf("checks_unknown"));
 		expect(indexOf("pushed_no_pr")).toBeLessThan(indexOf("checks_unknown"));
 	});
 
-	it("orders CI flow before review flow", () => {
+	it("orders CI flow before review flow", () =>
+	{
 		expect(indexOf("checks_unknown")).toBeLessThan(indexOf("checks_passed"));
 		expect(indexOf("checks_running")).toBeLessThan(indexOf("checks_passed"));
 	});
 
-	it("orders review flow last, followed only by terminal landed and the forced remote-only, upstream_red and PR refs", () => {
+	it("orders review flow last, followed only by terminal landed and the forced remote-only, upstream_red and PR refs", () =>
+	{
 		expect(indexOf("checks_passed")).toBeLessThan(indexOf("approved"));
 		expect(CATEGORY_PRIORITY.slice(-5)).toStrictEqual([
 			"approved",
@@ -238,11 +310,13 @@ describe("CATEGORY_PRIORITY", () => {
 		]);
 	});
 
-	it("places test_failed adjacent to test_running (not after push states)", () => {
+	it("places test_failed adjacent to test_running (not after push states)", () =>
+	{
 		expect(Math.abs(indexOf("test_failed") - indexOf("test_running"))).toBeLessThanOrEqual(1);
 	});
 
-	it("places checks_failed adjacent to checks_running or checks_passed", () => {
+	it("places checks_failed adjacent to checks_running or checks_passed", () =>
+	{
 		const cfIdx = indexOf("checks_failed");
 		const crIdx = indexOf("checks_running");
 		const cpIdx = indexOf("checks_passed");
@@ -250,14 +324,17 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(cfIdx).toBeLessThan(cpIdx);
 	});
 
-	it("places rebase states before push states", () => {
+	it("places rebase states before push states", () =>
+	{
 		expect(indexOf("needs_rebase")).toBeLessThan(indexOf("ready_to_push"));
 		expect(indexOf("rebase_conflicts")).toBeLessThan(indexOf("ready_to_push"));
 	});
 });
 
-describe("primaryAction", () => {
-	const expected: Record<Category, PrimaryAction | null> = {
+describe("primaryAction", () =>
+{
+	const expected: Record<Category, PrimaryAction | null> =
+	{
 		upstream_red: "run_claude",
 		pr_refs_missing: "setup_pr_refs",
 		remote_only: "restore_branch",
@@ -289,14 +366,17 @@ describe("primaryAction", () => {
 		snoozed: null,
 	};
 
-	it("names one primary action for every category", () => {
+	it("names one primary action for every category", () =>
+	{
 		expect(Object.fromEntries(CategorySchema.options.map((cat) => [cat, primaryAction(cat)]))).toStrictEqual(
 			expected,
 		);
 	});
 
-	it("picks a primary the category can actually perform", () => {
-		const unperformable = CategorySchema.options.filter((cat) => {
+	it("picks a primary the category can actually perform", () =>
+	{
+		const unperformable = CategorySchema.options.filter((cat) =>
+		{
 			const primary = primaryAction(cat);
 			if (primary === null || primary === "do_task") return false;
 			if (primary === "run_claude") return CATEGORIES[cat].llmCommand === undefined;

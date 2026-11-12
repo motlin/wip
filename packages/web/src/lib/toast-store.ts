@@ -3,19 +3,22 @@ import type {ActionLogEntry} from "@wip/shared";
 export type ToastLevel = "info" | "success" | "warning" | "error";
 
 /** Where the user finds an action's result: a GitHub page or an in-app route such as a log. */
-export interface ToastLink {
+export interface ToastLink
+{
 	href: string;
 	label: string;
 }
 
-export interface ToastInput {
+export interface ToastInput
+{
 	level: ToastLevel;
 	message: string;
 	detail?: string;
 	link?: ToastLink;
 }
 
-export interface Toast {
+export interface Toast
+{
 	id: string;
 	level: ToastLevel;
 	message: string;
@@ -36,41 +39,57 @@ const listeners = new Set<Listener>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 let nextId = 0;
 
-function emit(): void {
+function emit(): void
+{
 	const snapshot = toasts;
-	for (const listener of listeners) {
-		try {
+	for (const listener of listeners)
+	{
+		try
+		{
 			listener(snapshot);
-		} catch {
+		}
+		catch
+		{
 			// A throwing listener must not prevent other listeners from being notified
 		}
 	}
 }
 
-function scheduleDismiss(id: string, level: ToastLevel): void {
+function scheduleDismiss(id: string, level: ToastLevel): void
+{
 	// Tests and SSR skip auto-dismiss
 	if (typeof window === "undefined") return;
 	const ttl = level === "error" ? ERROR_TTL_MS : DEFAULT_TTL_MS;
-	const timer = setTimeout(() => {
+	const timer = setTimeout(() =>
+	{
 		dismissToast(id);
 	}, ttl);
 	timers.set(id, timer);
 }
 
-export function pushToast(input: ToastInput): Toast {
+export function pushToast(input: ToastInput): Toast
+{
 	nextId += 1;
-	const toast: Toast = {
+	const toast: Toast =
+	{
 		id: `toast-${nextId}`,
 		level: input.level,
 		message: input.message,
 		detail: input.detail,
-		...(input.link ? {link: input.link} : {}),
+		...(input.link
+			?
+				{
+					link: input.link,
+				}
+			: {}),
 		createdAt: Date.now(),
 	};
 	toasts = [...toasts, toast];
-	if (toasts.length > MAX_TOASTS) {
+	if (toasts.length > MAX_TOASTS)
+	{
 		const dropped = toasts.slice(0, toasts.length - MAX_TOASTS);
-		for (const d of dropped) {
+		for (const d of dropped)
+		{
 			const t = timers.get(d.id);
 			if (t) clearTimeout(t);
 			timers.delete(d.id);
@@ -82,7 +101,8 @@ export function pushToast(input: ToastInput): Toast {
 	return toast;
 }
 
-export function dismissToast(id: string): void {
+export function dismissToast(id: string): void
+{
 	const existing = toasts.find((t) => t.id === id);
 	if (!existing) return;
 	const timer = timers.get(id);
@@ -92,20 +112,24 @@ export function dismissToast(id: string): void {
 	emit();
 }
 
-export function clearToasts(): void {
+export function clearToasts(): void
+{
 	for (const t of timers.values()) clearTimeout(t);
 	timers.clear();
 	toasts = [];
 	emit();
 }
 
-export function getToasts(): readonly Toast[] {
+export function getToasts(): readonly Toast[]
+{
 	return toasts;
 }
 
-export function subscribeToasts(listener: Listener): () => void {
+export function subscribeToasts(listener: Listener): () => void
+{
 	listeners.add(listener);
-	return () => {
+	return () =>
+	{
 		listeners.delete(listener);
 	};
 }
@@ -114,7 +138,8 @@ export function subscribeToasts(listener: Listener): () => void {
  * Convert a pino log level number into a toast level. Pino uses:
  *   10=trace, 20=debug, 30=info, 40=warn, 50=error, 60=fatal
  */
-export function levelFromPino(pinoLevel: number): ToastLevel {
+export function levelFromPino(pinoLevel: number): ToastLevel
+{
 	if (pinoLevel >= 50) return "error";
 	if (pinoLevel >= 40) return "warning";
 	return "info";
@@ -125,32 +150,41 @@ export function levelFromPino(pinoLevel: number): ToastLevel {
  * can dismiss them later if needed. Entries at the debug/trace level are
  * collapsed into a single summary toast to avoid flooding the UI.
  */
-export function toastLogs(entries: readonly ActionLogEntry[]): Toast[] {
+export function toastLogs(entries: readonly ActionLogEntry[]): Toast[]
+{
 	if (entries.length === 0) return [];
 
 	const importantEntries = entries.filter((e) => e.level >= 30);
 	const debugEntries = entries.filter((e) => e.level < 30);
 
 	const created: Toast[] = [];
-	for (const entry of importantEntries) {
+	for (const entry of importantEntries)
+	{
 		created.push(
-			pushToast({
-				level: levelFromPino(entry.level),
-				message: entry.msg,
-			}),
+			pushToast(
+				{
+					level: levelFromPino(entry.level),
+					message: entry.msg,
+				},
+			),
 		);
 	}
 
-	if (importantEntries.length === 0 && debugEntries.length > 0) {
+	if (importantEntries.length === 0 && debugEntries.length > 0)
+	{
 		// Show a single summary toast for debug-only actions (typical "clean" flows)
 		const latest = debugEntries[debugEntries.length - 1];
-		if (latest) {
+		if (latest)
+		{
 			created.push(
-				pushToast({
-					level: "info",
-					message: latest.msg,
-					detail: debugEntries.length > 1 ? `+${debugEntries.length - 1} more subprocess logs` : undefined,
-				}),
+				pushToast(
+					{
+						level: "info",
+						message: latest.msg,
+						detail:
+							debugEntries.length > 1 ? `+${debugEntries.length - 1} more subprocess logs` : undefined,
+					},
+				),
 			);
 		}
 	}

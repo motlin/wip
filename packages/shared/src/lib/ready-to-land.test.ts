@@ -1,5 +1,7 @@
 import {describe, expect, it} from "vite-plus/test";
+import type {GitChildResult} from "./schemas.js";
 import {
+	landableCount,
 	landingOrder,
 	stableRowOrder,
 	prChecksPending,
@@ -158,6 +160,44 @@ describe("readyRowView", () => {
 			readyRowView(pr, commit({autoMergeAllowed: true})),
 			readyRowView(pr, commit({autoMerge: true, checkStatus: "passed"})),
 		]).toStrictEqual(["waiting", "land", "land"]);
+	});
+});
+
+const landingChild = (id: string, fields: Partial<GitChildResult>): GitChildResult => ({
+	project: "p",
+	remote: "owner/repo",
+	originRemote: "owner/repo",
+	sha: id.padEnd(40, "0"),
+	shortSha: id.padEnd(7, "0"),
+	subject: id,
+	date: "2026-01-01",
+	skippable: false,
+	pushedToRemote: true,
+	testStatus: "passed",
+	reviewStatus: "no_pr",
+	checkStatus: "none",
+	...fields,
+});
+const prItem = (id: string): ReadyToLandItem => ({...item("p", id), landing: "pull-request"});
+
+describe("landableCount", () => {
+	it("counts the buffer rows that land now: never one whose PR checks failed or still run", () => {
+		const state = {
+			ready: [prItem("g1"), prItem("n1"), prItem("f1")],
+			awaitingChecks: [prItem("w1")],
+			checksFailed: [prItem("f2")],
+		};
+		const commits = [
+			landingChild("g1", {prNumber: 1, checkStatus: "passed"}),
+			landingChild("f1", {prNumber: 2, checkStatus: "failed"}),
+			landingChild("w1", {prNumber: 3, checkStatus: "pending"}),
+			landingChild("f2", {prNumber: 4, checkStatus: "failed"}),
+		];
+		expect([
+			landableCount(state, commits),
+			landableCount(null, commits),
+			landableCount(undefined, []),
+		]).toStrictEqual([2, 0, 0]);
 	});
 });
 

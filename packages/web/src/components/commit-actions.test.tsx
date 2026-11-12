@@ -701,8 +701,13 @@ const readyItem = (overrides: Partial<ReadyToLandItem> = {}): ReadyToLandItem =>
 });
 
 function landContext(state: Partial<ReadyToLandState>, overrides: Partial<LandContextValue> = {}): LandContextValue {
+	const full: ReadyToLandState = {slots: 2, ready: [], inFlight: [], next: [], stoppedProjects: [], ...state};
 	return {
-		readyItemOf: readyIndex({slots: 2, ready: [], inFlight: [], next: [], stoppedProjects: [], ...state}),
+		readyItemOf: readyIndex(full),
+		state: full,
+		landable: full.ready.length,
+		mainPushes: [],
+		onPush: vi.fn<LandContextValue["onPush"]>(),
 		projects: [project(true)],
 		onLand: vi.fn<LandContextValue["onLand"]>(),
 		outcomes: {},

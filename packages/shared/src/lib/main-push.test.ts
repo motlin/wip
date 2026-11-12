@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vite-plus/test";
-import {afterPush, greenPrefix, type MainPushCommit} from "./main-push.js";
+import {afterPush, greenPrefix, visiblePushes, type MainPushCommit} from "./main-push.js";
 
 const commit = (n: number, status: MainPushCommit["status"]): MainPushCommit => ({
 	sha: String(n).repeat(40).slice(0, 40),
@@ -55,5 +55,15 @@ describe("afterPush", () => {
 	it("removes the project's row when everything was pushed", () => {
 		const pushes = [push("a", [commit(1, "good")])];
 		expect(afterPush(pushes, "a", commit(1, "good").sha)).toStrictEqual([]);
+	});
+});
+
+describe("visiblePushes", () => {
+	it("keeps a diverged main, a non-empty green prefix, or a running test, and drops an idle main with nothing green", () => {
+		const idle = push("idle", [commit(1, "unknown")]);
+		const green = push("green", [commit(2, "good"), commit(3, "bad")]);
+		const testing = {...push("testing", [commit(4, "unknown")]), testing: commit(4, "unknown").sha};
+		const diverged = {...push("diverged", []), diverged: true};
+		expect(visiblePushes([idle, green, testing, diverged])).toStrictEqual([green, testing, diverged]);
 	});
 });

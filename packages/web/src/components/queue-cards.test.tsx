@@ -2,8 +2,8 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {useMemo} from "react";
 import {cleanup, render, screen} from "@testing-library/react";
-import type {GitChildResult} from "@wip/shared";
-import {readyIndex, type ReadyToLandItem} from "@wip/shared/ready-to-land.js";
+import type {GitChildResult, MainPush} from "@wip/shared";
+import {readyIndex, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 
 import {CATEGORY_PRIORITY, CATEGORY_PRIORITY_REVERSED} from "../lib/category-actions.js";
 import {emptyGrouped, type Grouped} from "../lib/grouping.js";
@@ -93,21 +93,39 @@ function readyItem(sha: string, overrides: Partial<ReadyToLandItem> = {}): Ready
 	return {project: "test", id: sha, sha, ...overrides};
 }
 
-function landContext(ready: ReadyToLandItem[], outcomes: ActionOutcomes): LandContextValue {
+function landContext(
+	ready: ReadyToLandItem[],
+	outcomes: ActionOutcomes,
+	overrides: Partial<LandContextValue> = {},
+): LandContextValue {
+	const state: ReadyToLandState = {slots: 2, ready, inFlight: [], next: [], stoppedProjects: []};
 	return {
-		readyItemOf: readyIndex({slots: 2, ready, inFlight: [], next: [], stoppedProjects: []}),
+		readyItemOf: readyIndex(state),
+		state,
+		landable: ready.length,
+		mainPushes: [],
+		onPush: vi.fn<LandContextValue["onPush"]>(),
 		projects: [],
 		onLand: vi.fn<LandContextValue["onLand"]>(),
 		outcomes,
 		onDismissOutcome: vi.fn<LandContextValue["onDismissOutcome"]>(),
 		actionsBlocked: new Set(),
 		onLandByPushing: vi.fn<LandContextValue["onLandByPushing"]>(),
+		...overrides,
 	};
 }
 
-function PinnedQueue({grouped, land}: {grouped: Grouped; land: LandContextValue}) {
+function PinnedQueue({
+	grouped,
+	land,
+	selectedProject = null,
+}: {
+	grouped: Grouped;
+	land: LandContextValue;
+	selectedProject?: string | null;
+}) {
 	const pinned = usePinnedLandings(grouped, land.outcomes);
-	const queue = useMemo(() => ({...queueContext(), grouped: pinned}), [pinned]);
+	const queue = useMemo(() => ({...queueContext(), grouped: pinned, selectedProject}), [pinned, selectedProject]);
 	return (
 		<LandContext.Provider value={land}>
 			<QueueContext.Provider value={queue}>
@@ -141,7 +159,7 @@ describe("QueueCards landing columns", () => {
 	it("orders landing cards by the ready buffer's stable row order: priority first, whatever the queue rank", () => {
 		const ready = [readyItem(OLDER_SHA), readyItem(NEWER_SHA, {priority: "high"})];
 		render(<PinnedQueue grouped={landingGrouped("ready_to_push")} land={landContext(ready, {})} />);
-		expect(sections()).toStrictEqual([`${READY}2High priority commitOlder commit`]);
+		expect(sections()).toStrictEqual([`${READY}22 ready (target 2) · 0 readyingHigh priority commitOlder commit`]);
 	});
 
 	it("keeps a card in its column while its land action runs, and moves it once the action settles", () => {
@@ -159,8 +177,95 @@ describe("QueueCards landing columns", () => {
 		const settled: ActionOutcomes = {[runningKey]: {status: "success", message: "Opened PR"}};
 		rerender(<PinnedQueue grouped={moved} land={landContext(ready, settled)} />);
 		expect({whileRunning, settled: sections()}).toStrictEqual({
-			whileRunning: [`${READY}2High priority commitOlder commit`],
-			settled: [`${CHECKS_RUNNING}1High priority commit`, `${READY}1Older commit`],
+			whileRunning: [`${READY}22 ready (target 2) · 0 readyingHigh priority commitOlder commit`],
+			settled: [`${CHECKS_RUNNING}1High priority commit`, `${READY}12 ready (target 2) · 0 readyingOlder commit`],
 		});
+	});
+});
+
+const GADGETS_PUSH: MainPush = {
+	project: "gadgets",
+	remote: "upstream",
+	branch: "main",
+	diverged: false,
+	commits: [{sha: OLDER_SHA, subject: "Fast-forwarded commit", status: "good"}],
+};
+
+describe("QueueCards Ready to Land column header", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("shows on its own when the column is empty: the ready count, Paused on battery and the buffer's notices", () => {
+		const land = landContext([], {}, {landable: 0});
+		const state: ReadyToLandState = {
+			slots: 3,
+			ready: [],
+			inFlight: [readyItem(NEWER_SHA)],
+			next: [],
+			stoppedProjects: [],
+			pausedOnBattery: true,
+			verifyNotices: [{project: "secret", reason: "alice/secret is private; testing locally"}],
+		};
+		render(<PinnedQueue grouped={emptyGrouped()} land={{...land, state}} />);
+		expect(sections()).toStrictEqual([
+			`${READY}00 ready (target 3) · 1 readying` +
+				"Paused on battery: background tests resume when the Mac is plugged in." +
+				"secret: alice/secret is private; testing locally",
+		]);
+	});
+
+	it("shows no Ready to Land column before the buffer state has loaded, or when the buffer is off", () => {
+		const land = landContext([], {});
+		render(<PinnedQueue grouped={emptyGrouped()} land={{...land, state: undefined}} />);
+		const loading = sections();
+		cleanup();
+		render(<PinnedQueue grouped={emptyGrouped()} land={{...land, state: null}} />);
+		expect({loading, off: sections()}).toStrictEqual({loading: [], off: []});
+	});
+
+	it("puts each project's Push main card first in Ready to Land, before the ready commits", () => {
+		const idle: MainPush = {
+			...GADGETS_PUSH,
+			project: "idle",
+			commits: [{...GADGETS_PUSH.commits[0]!, status: "unknown"}],
+		};
+		const ready = [readyItem(NEWER_SHA)];
+		const grouped = emptyGrouped();
+		grouped.ready_to_push.gitChildren = [makeChild({sha: NEWER_SHA, subject: "High priority commit"})];
+		render(
+			<PinnedQueue
+				grouped={grouped}
+				land={landContext(ready, {}, {mainPushes: [GADGETS_PUSH, idle, {...GADGETS_PUSH, project: "other"}]})}
+			/>,
+		);
+		const column = screen.getAllByTestId(/^push-row$|^ready-to-land-heading$/).map((el) => el.textContent);
+		expect({column, sections: sections()}).toStrictEqual({
+			column: [
+				"1 ready (target 2) · 0 readying",
+				"gadgets: 1 of 1 unpushed commits on main are greenPush 1 green commit to upstream/main",
+				"other: 1 of 1 unpushed commits on main are greenPush 1 green commit to upstream/main",
+			],
+			sections: [
+				`${READY}11 ready (target 2) · 0 readying` +
+					"gadgets: 1 of 1 unpushed commits on main are greenPush 1 green commit to upstream/main" +
+					"other: 1 of 1 unpushed commits on main are greenPush 1 green commit to upstream/main" +
+					"High priority commit",
+			],
+		});
+	});
+
+	it("shows only the selected project's Push main card", () => {
+		const pushes = [GADGETS_PUSH, {...GADGETS_PUSH, project: "other"}];
+		render(
+			<PinnedQueue
+				grouped={emptyGrouped()}
+				land={landContext([], {}, {mainPushes: pushes, landable: 0})}
+				selectedProject="other"
+			/>,
+		);
+		expect(screen.getAllByTestId("push-row").map((el) => el.textContent)).toStrictEqual([
+			"other: 1 of 1 unpushed commits on main are greenPush 1 green commit to upstream/main",
+		]);
 	});
 });

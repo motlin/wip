@@ -1,6 +1,6 @@
 import {useCallback, useMemo} from "react";
 import {useQueries, useQueryClient, type QueryClient} from "@tanstack/react-query";
-import {readyIndex, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import {landableCount, readyIndex, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {ActionResult, GitChildResult, ProjectInfo} from "@wip/shared/schemas.js";
 import {afterPush, type MainPush} from "@wip/shared/main-push.js";
 import {billingCheckCandidates, landingAction} from "../components/land-control.js";
@@ -250,20 +250,52 @@ function useLandByPushing(): (project: string) => void {
 	);
 }
 
-/** The land context /queue and /kanban provide, so each landing card offers its own land action. */
+const NO_PUSHES: readonly MainPush[] = [];
+
+/**
+ * The land context /queue and /kanban provide, so each landing card offers its own land action;
+ * `mainPushes` (only /queue reads them) become the Push main cards heading Ready to Land.
+ */
 export function useLandContextValue(
 	state: ReadyToLandState | null | undefined,
 	commits: readonly GitChildResult[],
 	projects: readonly ProjectInfo[],
+	mainPushes: readonly MainPush[] = NO_PUSHES,
 ): LandContextValue {
+	const onPush = usePushUpstreamBranch();
 	const onLand = useLandReadyItem();
 	const onLandByPushing = useLandByPushing();
 	const outcomes = useActionOutcomes();
 	const onDismissOutcome = useDismissActionOutcome();
 	const actionsBlocked = useActionsBlocked(state, commits);
 	const readyItemOf = useMemo(() => readyIndex(state), [state]);
+	const landable = useMemo(() => landableCount(state, commits), [state, commits]);
 	return useMemo(
-		() => ({readyItemOf, projects, onLand, outcomes, onDismissOutcome, actionsBlocked, onLandByPushing}),
-		[readyItemOf, projects, onLand, outcomes, onDismissOutcome, actionsBlocked, onLandByPushing],
+		() => ({
+			readyItemOf,
+			state,
+			landable,
+			mainPushes,
+			onPush,
+			projects,
+			onLand,
+			outcomes,
+			onDismissOutcome,
+			actionsBlocked,
+			onLandByPushing,
+		}),
+		[
+			readyItemOf,
+			state,
+			landable,
+			mainPushes,
+			onPush,
+			projects,
+			onLand,
+			outcomes,
+			onDismissOutcome,
+			actionsBlocked,
+			onLandByPushing,
+		],
 	);
 }

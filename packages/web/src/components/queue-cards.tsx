@@ -17,6 +17,7 @@ import {ProjectBoardItemCard} from "./project-board-item-card.js";
 import {TodoCard} from "./todo-card.js";
 import {UpstreamCiCard} from "./upstream-ci-card.js";
 import {PrRefsMissingCard, RemoteOnlyCard} from "./remote-only-card.js";
+import {ReadyToLandLead} from "./ready-to-land-lead.js";
 import {QueueSection} from "./queue-section.js";
 import {QueueTable} from "./queue-table.js";
 import {useQueueContext} from "../lib/queue-context.js";
@@ -94,12 +95,14 @@ function sectionCards(
  * the rest.
  */
 export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
-	const {grouped, visibleCategories, filterByProject, commitsWaiting} = useQueueContext();
+	const {grouped, visibleCategories, filterByProject, commitsWaiting, selectedProject} = useQueueContext();
 	const land = useLandContext();
+	// Ready to Land shows with its header even when empty, once the buffer state has loaded.
+	const hasLead = land?.state !== null && land?.state !== undefined;
 	const sections = visibleCategories
 		.filter((category) => BLOCKING_CATEGORIES.includes(category) === (part === "blocking"))
 		.map((category) => ({category, items: filterByProject(grouped[category])}))
-		.filter(({items}) => bucketCount(items) > 0);
+		.filter(({category, items}) => bucketCount(items) > 0 || (hasLead && category === "ready_to_push"));
 	if (part === "blocking" && sections.length === 0) return null;
 	const showsTodos = sections.some(({items}) => (items.todos?.length ?? 0) > 0);
 
@@ -116,6 +119,11 @@ export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
 					category={category}
 					count={bucketCount(items)}
 					cards={() => sectionCards(items, category, commitsWaiting, land)}
+					lead={
+						land !== null && category === "ready_to_push" ? (
+							<ReadyToLandLead land={land} project={selectedProject} />
+						) : undefined
+					}
 				/>
 			))}
 		</div>
@@ -125,7 +133,8 @@ export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
 /**
  * /queue's main column: blockers rank above what they block, so on either view the blocking cards
  * (or table rows) come first, then Ready to land, then the route's own content (the other sections,
- * or the table of the other rows).
+ * or the table of the other rows). The table view has no Ready to Land column, so it shows that
+ * column's header and Push main cards above its table.
  */
 export function QueueMain({
 	cardsView,
@@ -136,10 +145,17 @@ export function QueueMain({
 	readyToLand: ReactNode;
 	children: ReactNode;
 }) {
+	const land = useLandContext();
+	const {selectedProject} = useQueueContext();
 	return (
 		<>
 			{cardsView ? <QueueCards part="blocking" /> : <QueueTable part="blocking" />}
 			{readyToLand}
+			{!cardsView && land !== null && (
+				<div className="mb-6 flex flex-col gap-2">
+					<ReadyToLandLead land={land} project={selectedProject} />
+				</div>
+			)}
 			{children}
 		</>
 	);

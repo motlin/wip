@@ -13,7 +13,7 @@ import {
 } from "../../lib/queries";
 import {ReadyToLandSection} from "../../components/ready-to-land-section";
 import {QueueMain} from "../../components/queue-cards";
-import {useLandContextValue, usePushUpstreamBranch} from "../../lib/use-land-ready-item";
+import {useLandContextValue} from "../../lib/use-land-ready-item";
 import {LandContext} from "../../lib/land-context";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
@@ -83,8 +83,7 @@ function QueueLayout() {
 			clearInterval(timer);
 		};
 	}, []);
-	const push = usePushUpstreamBranch();
-	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects);
+	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects, mainPushes);
 	// A card whose land action runs stays in its column until the outcome settles.
 	const grouped = usePinnedLandings(builtGrouped, landContext.outcomes);
 	const readySlots = systemStatus?.readySlots;
@@ -368,8 +367,6 @@ function QueueLayout() {
 									projects={projects}
 									now={now}
 									onLand={landContext.onLand}
-									mainPushes={mainPushes}
-									onPush={push}
 									actionsBlocked={landContext.actionsBlocked}
 									onLandByPushing={landContext.onLandByPushing}
 									outcomes={landContext.outcomes}

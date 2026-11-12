@@ -7,6 +7,7 @@ import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {ActionResult} from "@wip/shared/schemas.js";
 import type {MainPush, ProjectInfo} from "@wip/shared";
 
+import {PushMainCards} from "../components/push-main-card";
 import {ReadyToLandSection} from "../components/ready-to-land-section";
 import {Toaster} from "../components/toaster";
 import {useActionOutcomes, useDismissActionOutcome} from "./action-outcomes";
@@ -88,7 +89,13 @@ function Harness({fromCache = false}: {fromCache?: boolean}) {
 				projects={[plain]}
 				now={null}
 				onLand={land}
-				mainPushes={[push]}
+				outcomes={outcomes}
+				onDismissOutcome={dismiss}
+			/>
+			<PushMainCards
+				pushes={[push]}
+				project={null}
+				stoppedProjects={[]}
 				onPush={pushMain}
 				outcomes={outcomes}
 				onDismissOutcome={dismiss}

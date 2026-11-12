@@ -9,9 +9,20 @@ const COLLAPSED_CATEGORIES: ReadonlySet<Category> = new Set(["snoozed"]);
 
 /**
  * One category section of the queue. `cards` is called only when the section shows
- * cards, so a collapsed On hold section renders none of them.
+ * cards, so a collapsed On hold section renders none of them. `lead` (the Ready to Land column's
+ * counts, notices and Push main cards) comes first, never paged away.
  */
-export function QueueSection({category, count, cards}: {category: Category; count: number; cards: () => ReactNode[]}) {
+export function QueueSection({
+	category,
+	count,
+	cards,
+	lead,
+}: {
+	category: Category;
+	count: number;
+	cards: () => ReactNode[];
+	lead?: ReactNode;
+}) {
 	const [open, setOpen] = useState(!COLLAPSED_CATEGORIES.has(category));
 	const [expanded, setExpanded] = useState(false);
 	const all = open ? cards() : [];
@@ -25,6 +36,7 @@ export function QueueSection({category, count, cards}: {category: Category; coun
 				<span className="ml-2 font-normal text-text-500">{count}</span>
 			</h2>
 			<div className="flex flex-col gap-2">
+				{lead}
 				{!open && (
 					<button
 						type="button"

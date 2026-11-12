@@ -55,3 +55,10 @@ export function afterPush(pushes: readonly MainPush[], project: string, sha: str
 		return commits.length === 0 ? [] : [{...push, commits}];
 	});
 }
+
+/** Push main rows worth showing: diverged, a non-empty green prefix, or a background test running. */
+export function visiblePushes(pushes: readonly MainPush[]): MainPush[] {
+	return pushes.filter(
+		(push) => push.diverged || push.testing !== undefined || greenPrefix(push.commits).green.length > 0,
+	);
+}

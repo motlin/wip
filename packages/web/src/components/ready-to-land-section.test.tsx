@@ -3,10 +3,10 @@ import type {ReactNode} from "react";
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {cleanup, fireEvent, render, screen, within} from "@testing-library/react";
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
-import type {GitChildResult, MainPush, ProjectInfo} from "@wip/shared";
+import type {GitChildResult, ProjectInfo} from "@wip/shared";
 import {makeChild} from "../lib/test-factories";
 import {ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
-import {landOutcomeKey, pushOutcomeKey, type ActionOutcomes} from "../lib/action-outcomes";
+import {landOutcomeKey, type ActionOutcomes} from "../lib/action-outcomes";
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -109,15 +109,12 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 			/>,
 		);
 
 		expect({
-			heading: screen.getByTestId("ready-to-land-heading").textContent,
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
 		}).toStrictEqual({
-			heading: "Ready to land6 ready (target 3) · 1 readying",
 			rows: [
 				"Fix redredin wip 3dconsider splittingPR #7ReviewMerge PR #7",
 				"Add parsera+10 −2 · 1 filein wip 1dReviewFast-forward main",
@@ -142,7 +139,6 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a")]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 			/>,
 		);
 
@@ -160,7 +156,6 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={onLand}
-				onPush={() => undefined}
 			/>,
 		);
 
@@ -172,26 +167,10 @@ describe("ReadyToLandSection", () => {
 
 	it("renders nothing without buffer state, and nothing when the buffer holds nothing", () => {
 		const {container} = render(
-			<ReadyToLandSection
-				state={null}
-				commits={[]}
-				projects={[]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
+			<ReadyToLandSection state={null} commits={[]} projects={[]} now={now} onLand={() => undefined} />,
 		);
 		const empty = {...state, ready: [], inFlight: []};
-		render(
-			<ReadyToLandSection
-				state={empty}
-				commits={[]}
-				projects={[]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
+		render(<ReadyToLandSection state={empty} commits={[]} projects={[]} now={now} onLand={() => undefined} />);
 
 		expect({first: container.innerHTML, rows: screen.queryAllByTestId("ready-to-land-row")}).toStrictEqual({
 			first: "",
@@ -199,56 +178,8 @@ describe("ReadyToLandSection", () => {
 		});
 	});
 
-	it("says background work is paused on battery, even when the buffer holds nothing", () => {
-		render(
-			<ReadyToLandSection
-				state={{...state, ready: [], inFlight: [], pausedOnBattery: true}}
-				commits={[]}
-				projects={[]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
-
-		expect(screen.getByTestId("ready-to-land-paused").textContent).toBe(
-			"Paused on battery: background tests resume when the Mac is plugged in.",
-		);
-	});
-
-	it("says why a repo's draft-PR verification is not in effect, even when the buffer holds nothing", () => {
-		render(
-			<ReadyToLandSection
-				state={{
-					...state,
-					ready: [],
-					inFlight: [],
-					verifyNotices: [{project: "secret", reason: "alice/secret is private; testing locally"}],
-				}}
-				commits={[]}
-				projects={[]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
-
-		expect(screen.getAllByTestId("ready-to-land-verify-notice").map((el) => el.textContent)).toStrictEqual([
-			"secret: alice/secret is private; testing locally",
-		]);
-	});
-
 	it("holds a fixed-height Loading placeholder until the buffer state has loaded", () => {
-		render(
-			<ReadyToLandSection
-				state={undefined}
-				commits={[]}
-				projects={[]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
+		render(<ReadyToLandSection state={undefined} commits={[]} projects={[]} now={now} onLand={() => undefined} />);
 		const placeholder = screen.getByTestId("ready-to-land-loading");
 
 		expect({text: placeholder.textContent, fixedHeight: placeholder.classList.contains("h-24")}).toStrictEqual({
@@ -268,7 +199,6 @@ describe("ReadyToLandSection", () => {
 				projects={[project("logs"), project("scraper")]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 			/>,
 		);
 
@@ -289,7 +219,6 @@ describe("ReadyToLandSection", () => {
 				projects={[project("a"), project("red"), project("plain", false)]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 			/>,
 		);
 
@@ -321,170 +250,6 @@ describe("ReadyToLandSection", () => {
 				["Review", `/diff/red/${sha("r2")}`],
 			],
 		]);
-	});
-});
-
-describe("ReadyToLandSection push main", () => {
-	afterEach(() => {
-		cleanup();
-	});
-
-	const empty: ReadyToLandState = {slots: 3, ready: [], inFlight: [], next: [], stoppedProjects: []};
-	const kalshi: MainPush = {
-		project: "kalshi",
-		remote: "origin",
-		branch: "main",
-		diverged: false,
-		commits: [
-			{sha: sha("k1"), subject: "Add parser", status: "good"},
-			{sha: sha("k2"), subject: "Use parser", status: "good"},
-			{sha: sha("k3"), subject: "Wire parser", status: "good"},
-			{sha: sha("k4"), subject: "Polish parser", status: "unknown"},
-			{sha: sha("k5"), subject: "Break parser", status: "bad"},
-		],
-		testing: sha("k4"),
-	};
-
-	function renderPushes(mainPushes: MainPush[], onPush = vi.fn<(push: MainPush, sha: string) => void>()) {
-		return {
-			onPush,
-			...render(
-				<ReadyToLandSection
-					state={{...empty, ready: [{project: "a", id: "pa1", sha: sha("a1"), landing: "fast-forward"}]}}
-					commits={commits}
-					projects={[project("a")]}
-					now={now}
-					onLand={() => undefined}
-					mainPushes={mainPushes}
-					onPush={onPush}
-				/>,
-			),
-		};
-	}
-
-	it("offers to push exactly the green prefix, after the commit rows, naming the commits and the sha it pushes", () => {
-		const {onPush} = renderPushes([kalshi]);
-
-		const list = screen.getByTestId("ready-to-land-heading").parentElement!;
-		const order = [...list.querySelectorAll("[data-testid]")]
-			.map((el) => el.getAttribute("data-testid"))
-			.filter((id) => id === "ready-to-land-row" || id === "push-main-group");
-		const rows = screen.getAllByTestId("push-row").map((row) => row.textContent);
-		fireEvent.click(screen.getByRole("button", {name: "Push 3 green commits to origin/main"}));
-		const prompt = screen.getByTestId("push-confirm").textContent;
-		const pushedBeforeConfirm = [...onPush.mock.calls];
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-
-		expect({order, rows, prompt, pushedBeforeConfirm, pushed: onPush.mock.calls}).toStrictEqual({
-			order: ["ready-to-land-row", "push-main-group"],
-			rows: [
-				"kalshi: 3 of 5 unpushed commits on main are green · testing k400000" +
-					"Push 3 green commits to origin/main" +
-					'Not pushed: 2 commits (1 unknown, 1 red), first "Polish parser" (k400000) unknown' +
-					'Show all 2"Polish parser" (k400000) unknown"Break parser" (k500000) red',
-			],
-			prompt:
-				'Push 3 green commits to origin/main in kalshi: "Add parser" (k100000), "Use parser" (k200000), ' +
-				'"Wire parser" (k300000). Pushes k300000:refs/heads/main, never forced.ConfirmCancel',
-			pushedBeforeConfirm: [],
-			pushed: [[kalshi, sha("k3")]],
-		});
-	});
-
-	it("offers no Push main in a stopped project, only the reason", () => {
-		render(
-			<ReadyToLandSection
-				state={{...empty, stoppedProjects: ["kalshi"]}}
-				commits={commits}
-				projects={[project("kalshi")]}
-				now={now}
-				onLand={() => undefined}
-				mainPushes={[kalshi]}
-				onPush={() => undefined}
-			/>,
-		);
-
-		expect({
-			rows: screen.getAllByTestId("push-row").map((row) => row.textContent),
-			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
-		}).toStrictEqual({
-			rows: [
-				"kalshi: 3 of 5 unpushed commits on main are green · testing k400000" +
-					"kalshi's upstream is red: fix it before landing" +
-					'Not pushed: 2 commits (1 unknown, 1 red), first "Polish parser" (k400000) unknown' +
-					'Show all 2"Polish parser" (k400000) unknown"Break parser" (k500000) red',
-			],
-			buttons: 0,
-		});
-	});
-
-	it("explains a diverged local main with no push button", () => {
-		renderPushes([{project: "kalshi", remote: "origin", branch: "main", diverged: true, commits: []}]);
-
-		expect({
-			rows: screen.getAllByTestId("push-row").map((row) => row.textContent),
-			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
-		}).toStrictEqual({
-			rows: ["kalshi: local main has diverged from origin/main; rebase first"],
-			buttons: 0,
-		});
-	});
-
-	it("shows a repo with no green commits only while a test is running, without a push button", () => {
-		const unknownHead = {sha: sha("u1"), subject: "Untested", status: "unknown" as const};
-		const idle: MainPush = {
-			project: "idle",
-			remote: "origin",
-			branch: "main",
-			diverged: false,
-			commits: [unknownHead],
-		};
-		renderPushes([idle, {...idle, project: "busy", testing: sha("u1")}]);
-
-		expect({
-			rows: screen.getAllByTestId("push-row").map((row) => row.textContent),
-			buttons: screen.queryAllByRole("button", {name: /^Push/}).length,
-		}).toStrictEqual({
-			rows: [
-				"busy: 0 of 1 unpushed commits on main are green · testing u100000" +
-					'Not pushed: 1 commit (1 unknown, 0 red), first "Untested" (u100000) unknown' +
-					'Show all 1"Untested" (u100000) unknown',
-			],
-			buttons: 0,
-		});
-	});
-
-	it("keeps a long not-pushed tail to one line, with the full list behind a disclosure", () => {
-		const tail = Array.from({length: 27}, (_, i) => ({
-			sha: sha(`c${i}`),
-			subject: `Commit ${i}`,
-			status: i === 0 ? ("unknown" as const) : ("bad" as const),
-		}));
-		renderPushes([
-			{
-				project: "checkstyle-results",
-				remote: "origin",
-				branch: "main",
-				diverged: false,
-				commits: [{sha: sha("g1"), subject: "Green", status: "good"}, ...tail],
-			},
-		]);
-
-		const disclosure = screen.getByTestId("not-pushed-all");
-		const openBefore = disclosure.hasAttribute("open");
-		fireEvent.click(screen.getByText("Show all 27"));
-
-		expect({
-			summary: screen.getByTestId("not-pushed").firstChild?.textContent,
-			openBefore,
-			openAfter: disclosure.hasAttribute("open"),
-			listed: [...disclosure.querySelectorAll("li")].length,
-		}).toStrictEqual({
-			summary: 'Not pushed: 27 commits (1 unknown, 26 red), first "Commit 0" (c000000) unknown',
-			openBefore: false,
-			openAfter: true,
-			listed: 27,
-		});
 	});
 });
 
@@ -528,7 +293,6 @@ describe("ReadyToLandSection when PR checks can't run", () => {
 				projects={[project("secret")]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 				actionsBlocked={new Set([`secret:${sha("s1")}`])}
 				onLandByPushing={onLandByPushing}
 			/>,
@@ -561,7 +325,6 @@ function shownRows(rowState: ReadyToLandState, rowCommits: GitChildResult[]) {
 			projects={[project("pr")]}
 			now={now}
 			onLand={() => undefined}
-			onPush={() => undefined}
 		/>,
 	);
 	const rows = {
@@ -643,7 +406,6 @@ describe("ReadyToLandSection while PR checks run", () => {
 				projects={[project("pr")]}
 				now={now}
 				onLand={onLand}
-				onPush={() => undefined}
 			/>,
 		);
 	}
@@ -711,14 +473,12 @@ describe("ReadyToLandSection while PR checks run", () => {
 		const waiting = screen.getAllByTestId("waiting-row");
 
 		expect({
-			heading: screen.getByTestId("ready-to-land-heading").textContent,
 			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
 			waiting: waiting.map((row) => row.textContent),
 			links: waiting.map(links),
 			targets: waiting.map((row) => within(row).getByRole("link", {name: /^PR #/}).getAttribute("target")),
 			buttons: screen.getAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
-			heading: "Ready to land2 ready (target 3) · 0 readying",
 			rows: ["AllowedprPR #4ReviewMerge PR #4", "GreenprPR #5ReviewMerge PR #5"],
 			waiting: [
 				"Merging · pr · PR #1 · waiting for checks, merges itself when they pass",
@@ -779,18 +539,15 @@ describe("ReadyToLandSection while PR checks run", () => {
 				projects={[project("pr")]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 			/>,
 		);
 		const failed = screen.getAllByTestId("checks-failed-row");
 
 		expect({
-			heading: screen.getByTestId("ready-to-land-heading").textContent,
 			failed: failed.map((row) => row.textContent),
 			links: failed.map(links),
 			buttons: screen.getAllByRole("button").map((button) => button.textContent),
 		}).toStrictEqual({
-			heading: "Ready to land1 ready (target 3) · 0 readying",
 			failed: ["Failing · pr · PR #11 · checks failed", "No run link · pr · PR #12 · checks failed"],
 			links: [
 				[
@@ -860,7 +617,6 @@ describe("ReadyToLandSection row order", () => {
 				projects={[project("a"), project("b")]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 			/>,
 		);
 		const order = screen
@@ -958,7 +714,6 @@ describe("ReadyToLandSection action outcomes", () => {
 				projects={[project("plain")]}
 				now={now}
 				onLand={() => undefined}
-				onPush={() => undefined}
 				outcomes={outcomes}
 				onDismissOutcome={onDismissOutcome}
 			/>,
@@ -977,54 +732,6 @@ describe("ReadyToLandSection action outcomes", () => {
 		expect({text, dismissed: onDismissOutcome.mock.calls}).toStrictEqual({
 			text: "Open PR failedSee the logDismiss",
 			dismissed: [[key]],
-		});
-	});
-
-	it("shows a push outcome on the Push main row, and after the pushed row leaves", () => {
-		const push: MainPush = {
-			project: "kalshi",
-			remote: "origin",
-			branch: "main",
-			diverged: false,
-			commits: [{sha: sha("k1"), subject: "Add parser", status: "good"}],
-		};
-		const pushed = {
-			[pushOutcomeKey("kalshi")]: {
-				status: "success" as const,
-				message: "Pushed 3 commits to origin/main",
-				link: {href: "https://github.com/motlin/kalshi/compare/a...b", label: "View on GitHub"},
-			},
-		};
-		const withRow = render(
-			<ReadyToLandSection
-				state={one}
-				commits={commits}
-				projects={[project("plain")]}
-				now={now}
-				onLand={() => undefined}
-				mainPushes={[push]}
-				onPush={() => undefined}
-				outcomes={pushed}
-			/>,
-		);
-		const onRow = links(screen.getByTestId("push-row"));
-		withRow.unmount();
-		render(
-			<ReadyToLandSection
-				state={one}
-				commits={commits}
-				projects={[project("plain")]}
-				now={now}
-				onLand={() => undefined}
-				mainPushes={[]}
-				onPush={() => undefined}
-				outcomes={pushed}
-			/>,
-		);
-
-		expect({onRow, afterLeaving: screen.getByTestId("push-row").textContent}).toStrictEqual({
-			onRow: [["View on GitHub", "https://github.com/motlin/kalshi/compare/a...b"]],
-			afterLeaving: "kalshi: Pushed 3 commits to origin/mainView on GitHub",
 		});
 	});
 

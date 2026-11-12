@@ -97,10 +97,16 @@ pre-commit: install
 check-client-bundle: build
     ! grep -lE 'import"(execa|node:[a-z_]+)"|from"(execa|node:[a-z_]+)"' packages/web/dist/client/assets/*.js
 
+# Build Storybook's static site and fail unless its index lists every story file
+[group('build')]
+check-storybook: install
+    vp exec pnpm --filter @wip/web build-storybook --quiet --disable-telemetry
+    node -e 'const fs = require("node:fs"); const files = fs.readdirSync("packages/web/src/stories").filter((f) => f.endsWith(".stories.tsx")); const paths = new Set(Object.values(JSON.parse(fs.readFileSync("packages/web/storybook-static/index.json", "utf8")).entries).map((e) => e.importPath)); const missing = files.filter((f) => !paths.has("./src/stories/" + f)); if (files.length === 0 || missing.length > 0) { console.error("Storybook index is missing:", missing); process.exit(1); }'
+
 # Run all pre-commit checks
 [arg("quick", long, value="true", help="Skip tests")]
 [group('build')]
-verify quick="": check build check-client-bundle fallow pre-commit
+verify quick="": check build check-client-bundle check-storybook fallow pre-commit
     {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
 

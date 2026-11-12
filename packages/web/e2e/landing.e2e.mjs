@@ -321,8 +321,8 @@ async function missingRow(page, rows)
 {
 	for (const [sections, subject] of rows)
 	{
-		// eslint-disable-next-line no-await-in-loop -- checks every card in one sample
 		if (
+			// eslint-disable-next-line no-await-in-loop -- checks every card in one sample
 			(await page
 				.locator(cardSelector(sections))
 				.filter(

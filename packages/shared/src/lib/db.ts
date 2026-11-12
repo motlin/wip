@@ -674,8 +674,8 @@ function temporalUpsert<
 		if (existing)
 		{
 			tx.update(args.table)
-				// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
 				.set(
+					// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
 					{
 						systemTo: timestamp,
 					} as Partial<InferInsertModel<TTable>>,
@@ -685,8 +685,8 @@ function temporalUpsert<
 		}
 
 		tx.insert(args.table)
-			// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
 			.values(
+				// eslint-disable-next-line typescript/no-unsafe-type-assertion -- drizzle's generic insert type cannot be inferred from a generic table
 				{
 					...args.newRow,
 					systemFrom: timestamp,

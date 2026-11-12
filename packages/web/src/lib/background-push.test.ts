@@ -188,8 +188,8 @@ describe("publishAfterAdvance", () =>
 		const outcomes = [];
 		for (const outcome of ["test_failed", "rebase_conflicts", "checks_pending", "skipped"] as const)
 		{
-			// eslint-disable-next-line no-await-in-loop
 			outcomes.push(
+				// eslint-disable-next-line no-await-in-loop
 				await publishAfterAdvance(
 					{
 						backgroundPush: true,

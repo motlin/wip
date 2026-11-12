@@ -102,6 +102,18 @@ describe("classifyCommit", () => {
 		expect(classifyCommit(makeCommit({testStatus: "passed"}), makeProject())).toBe("ready_to_push");
 	});
 
+	it("returns needs_rebase when a green commit is behind upstream", () => {
+		expect(classifyCommit(makeCommit({testStatus: "passed", commitsBehind: 1}), makeProject())).toBe(
+			"needs_rebase",
+		);
+	});
+
+	it("returns ready_to_push when a green commit is up to date with upstream", () => {
+		expect(classifyCommit(makeCommit({testStatus: "passed", commitsBehind: 0}), makeProject())).toBe(
+			"ready_to_push",
+		);
+	});
+
 	it("returns detached_head when project has detached head", () => {
 		expect(classifyCommit(makeCommit({isHead: true}), makeProject({detachedHead: true}))).toBe("detached_head");
 	});
@@ -166,6 +178,21 @@ describe("classifyBranch", () => {
 		expect(classifyBranch(makeBranch({testStatus: "passed", commitsAhead: 3}), makeProject())).toBe(
 			"ready_to_push",
 		);
+	});
+
+	it("returns needs_rebase when a green branch is behind upstream", () => {
+		expect(classifyBranch(makeBranch({testStatus: "passed", commitsBehind: 2}), makeProject())).toBe(
+			"needs_rebase",
+		);
+	});
+
+	it("returns needs_rebase when a pushed green branch ahead of its remote is behind upstream", () => {
+		expect(
+			classifyBranch(
+				makeBranch({pushedToRemote: true, localAhead: true, testStatus: "passed", commitsBehind: 1}),
+				makeProject(),
+			),
+		).toBe("needs_rebase");
 	});
 
 	it("returns ready_to_push when commitsAhead is undefined (defaults to single)", () => {

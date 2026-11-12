@@ -17,6 +17,8 @@ export function classifyCommit(child: GitChildResult, project: ProjectInfo): Cat
 	if (child.pushing) return "pushing";
 	if (child.testStatus === "running") return "test_running";
 	if (child.testStatus === "failed") return "test_failed";
+	// Behind upstream is Needs Rebase, never ready (docs/work-stages.md).
+	if (isBehind(child)) return "needs_rebase";
 	if (child.testStatus === "passed") return "ready_to_push";
 	if (child.isHead && project.detachedHead) return "detached_head";
 	if (child.isHead && project.dirty) return "local_changes";
@@ -33,6 +35,7 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 	if (child.needsRebase && child.rebaseable === false) return "rebase_conflicts";
 	if (child.needsRebase && child.rebaseable === true) return "needs_rebase";
 	if (child.needsRebase) return "rebase_unknown";
+	if (isBehind(child)) return "needs_rebase";
 	if (child.isHead && project.dirty) return "local_changes";
 	const verified = child.testStatus === "passed" || !project.hasTestConfigured;
 	if (verified && child.pushedToRemote && !child.localAhead && child.branch !== project.upstreamBranch)
@@ -41,6 +44,10 @@ export function classifyBranch(child: GitChildResult, project: ProjectInfo): Cat
 	if (!project.hasTestConfigured) return "no_test";
 	if (child.testStatus === "passed") return "ready_to_push";
 	return "ready_to_test";
+}
+
+function isBehind(child: GitChildResult): boolean {
+	return (child.commitsBehind ?? 0) > 0;
 }
 
 // Project-wide conditions apply only to the child checked out at HEAD; the project itself shows one chip.

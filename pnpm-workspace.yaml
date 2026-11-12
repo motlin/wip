@@ -24,6 +24,12 @@ overrides:
   morgan: "^1.12.1"
   # Older re2js has quadratic-time lookbehind matching (GHSA-gg6h-894w-4m9c).
   re2js: "^2.8.7"
+  # Older glob keeps walking the filesystem after its AbortSignal fires (GHSA-3g3m-2fjr-6pw4); @storybook/react-vite still pins a docgen plugin on glob 13.
+  glob: "^14.0.2"
+  # Older minimatch has a globparts amplification DoS (GHSA-g3hv-75wg-m249); eslint and typescript-eslint still depend on minimatch 10.
+  minimatch: "^11.0.1"
+  # Older katex lets existing prototype pollution bypass trust restrictions (GHSA-238p-pmpm-9mq7); micromark-extension-math (markdownlint) still depends on katex 0.16.
+  katex: "^0.18.2"
 peerDependencyRules:
   allowAny:
     - vite

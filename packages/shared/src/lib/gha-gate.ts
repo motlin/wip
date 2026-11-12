@@ -51,11 +51,15 @@ const ownerOf = (repository: string): string => repository.split("/")[0] ?? repo
  */
 export class GitHubActionsGate {
 	private readonly lastPushes = new Map<string, BackgroundPush>();
+	private readonly checksSource: ChecksSource;
+	private readonly now: () => number;
 
-	constructor(
-		private readonly checksSource: ChecksSource,
-		private readonly now: () => number = Date.now,
-	) {}
+	// Explicit fields, not parameter properties: the CLI loads @wip/shared from source with Node's
+	// strip-only type stripping, which rejects parameter properties.
+	constructor(checksSource: ChecksSource, now: () => number = Date.now) {
+		this.checksSource = checksSource;
+		this.now = now;
+	}
 
 	recordPush(push: BackgroundPush): void {
 		this.lastPushes.set(push.repository, push);

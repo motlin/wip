@@ -35,11 +35,13 @@ export default defineConfig({
 			check: {
 				command: "vp check",
 			},
-			// The root vitest run covers fewer tests than the per-package runs, so run every package.
+			// The root vitest run covers fewer tests than the per-package runs, so run every package. The wrapper runs
+			// `pnpm -r run test` while sampling memory and load into .llm/test-diagnostics, and on a timeout prints
+			// what the machine was doing then.
 			"test:run": {
-				command: "pnpm -r run test",
+				command: "node packages/shared/src/test/test-diagnostics.ts",
 				cache: {
-					input: [{auto: true}, "!node_modules/.vitest-cache/**"],
+					input: [{auto: true}, "!node_modules/.vitest-cache/**", "!.llm/test-diagnostics/**"],
 					output: [],
 				},
 			},

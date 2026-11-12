@@ -2,6 +2,8 @@ import {defineConfig} from "vite-plus";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 
+import {diagnosticsVitestOptions} from "../shared/src/test/test-diagnostics.ts";
+
 const cliRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
@@ -11,6 +13,7 @@ export default defineConfig({
 		include: ["src/**/*.test.ts"],
 		setupFiles: [path.resolve(cliRoot, "../shared/src/test/git-env-setup.ts")],
 		globals: true,
+		...diagnosticsVitestOptions("cli"),
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.ts"],

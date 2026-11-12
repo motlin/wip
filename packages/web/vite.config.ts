@@ -5,6 +5,8 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 
+import {diagnosticsVitestOptions} from "../shared/src/test/test-diagnostics.ts";
+
 process.title = "wip-web-dev";
 
 const webRoot = path.dirname(fileURLToPath(import.meta.url));
@@ -108,6 +110,7 @@ export default defineConfig({
 		globals: true,
 		hookTimeout: 30_000,
 		testTimeout: 30_000,
+		...diagnosticsVitestOptions("web"),
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.ts", "src/**/*.tsx"],

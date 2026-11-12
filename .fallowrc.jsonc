@@ -18,6 +18,8 @@
 		"packages/web/e2e/*.e2e.mjs",
 		// Run as a process (the fake gh on the harness server's PATH), never imported.
 		"packages/web/e2e/fake-gh.mjs",
+		// The test:run task's runner (vite.config.ts), run with node.
+		"packages/shared/src/test/test-diagnostics.ts",
 	],
 	"ignorePatterns": ["**/dist/**", "**/.output/**", "**/node_modules/**", "packages/web/.storybook/**"],
 	"rules": {

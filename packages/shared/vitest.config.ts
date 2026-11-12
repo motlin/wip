@@ -1,5 +1,7 @@
 import {defineConfig} from "vite-plus";
 
+import {diagnosticsVitestOptions} from "./src/test/test-diagnostics.ts";
+
 export default defineConfig({
 	test: {
 		setupFiles: ["./src/test/git-env-setup.ts"],
@@ -9,6 +11,7 @@ export default defineConfig({
 		// guards against hangs and stays well clear of slow-but-healthy runs.
 		hookTimeout: 120_000,
 		testTimeout: 120_000,
+		...diagnosticsVitestOptions("shared"),
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.ts"],

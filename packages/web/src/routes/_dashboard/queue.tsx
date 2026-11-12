@@ -13,13 +13,8 @@ import {
 } from "../../lib/queries";
 import {ReadyToLandSection} from "../../components/ready-to-land-section";
 import {QueueMain} from "../../components/queue-cards";
-import {
-	useActionsBlocked,
-	useLandByPushing,
-	useLandReadyItem,
-	usePushUpstreamBranch,
-} from "../../lib/use-land-ready-item";
-import {useActionOutcomes, useDismissActionOutcome} from "../../lib/action-outcomes";
+import {useLandContextValue, usePushUpstreamBranch} from "../../lib/use-land-ready-item";
+import {LandContext} from "../../lib/land-context";
 import {useWorkItems} from "../../lib/use-work-items";
 import type {ColumnItems} from "../../components/kanban-column";
 import {QueueContext, type QueueContextValue} from "../../lib/queue-context";
@@ -82,12 +77,8 @@ function QueueLayout() {
 			clearInterval(timer);
 		};
 	}, []);
-	const land = useLandReadyItem();
 	const push = usePushUpstreamBranch();
-	const landByPushing = useLandByPushing();
-	const outcomes = useActionOutcomes();
-	const dismissOutcome = useDismissActionOutcome();
-	const actionsBlocked = useActionsBlocked(readyToLand, workItems.gitChildren);
+	const landContext = useLandContextValue(readyToLand, workItems.gitChildren, projects);
 	const readySlots = systemStatus?.readySlots;
 	const counts = useMemo(
 		() =>
@@ -193,194 +184,196 @@ function QueueLayout() {
 
 	return (
 		<QueueContext.Provider value={queueContextValue}>
-			<div className="grid min-h-0 md:grid-cols-[240px_1fr]">
-				{/* Sidebar */}
-				<aside className="border-b border-border-300 bg-bg-100 p-5 md:overflow-y-auto md:border-b-0 md:border-r">
-					{/* Summary stats */}
-					<section className="mb-6">
-						<h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
-							Summary
-						</h3>
-						<div className="flex flex-col">
-							<div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
-								<span>Total items</span>
-								<span className="font-semibold text-text-000">{totalCount}</span>
+			<LandContext.Provider value={landContext}>
+				<div className="grid min-h-0 md:grid-cols-[240px_1fr]">
+					{/* Sidebar */}
+					<aside className="border-b border-border-300 bg-bg-100 p-5 md:overflow-y-auto md:border-b-0 md:border-r">
+						{/* Summary stats */}
+						<section className="mb-6">
+							<h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
+								Summary
+							</h3>
+							<div className="flex flex-col">
+								<div className="flex items-center justify-between border-b border-border-300 py-2 text-[0.8125rem] text-text-300">
+									<span>Total items</span>
+									<span className="font-semibold text-text-000">{totalCount}</span>
+								</div>
+								<div className="flex items-center justify-between py-2 text-[0.8125rem] text-text-300">
+									<span>Projects</span>
+									<span className="font-semibold text-text-000">{workItems.projectCount}</span>
+								</div>
 							</div>
-							<div className="flex items-center justify-between py-2 text-[0.8125rem] text-text-300">
-								<span>Projects</span>
-								<span className="font-semibold text-text-000">{workItems.projectCount}</span>
-							</div>
-						</div>
-					</section>
+						</section>
 
-					{/* Category filters */}
-					<section className="mb-6">
-						<h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
-							Categories
-						</h3>
-						<div className="flex flex-col gap-0.5">
-							<button
-								type="button"
-								onClick={() => {
-									handleCategoryClick(null);
-								}}
-								className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-									selectedCategory === null ? "bg-bg-200 font-medium" : ""
-								}`}
-							>
-								<span className="flex items-center">
-									<span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-status-green" />
-									All
-								</span>
-								<span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
-									{totalCount}
-								</span>
-							</button>
-							{CATEGORY_PRIORITY_REVERSED.map((cat) => {
-								const count = categoryCounts[cat];
-								if (!count) return null;
-								return (
+						{/* Category filters */}
+						<section className="mb-6">
+							<h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
+								Categories
+							</h3>
+							<div className="flex flex-col gap-0.5">
+								<button
+									type="button"
+									onClick={() => {
+										handleCategoryClick(null);
+									}}
+									className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
+										selectedCategory === null ? "bg-bg-200 font-medium" : ""
+									}`}
+								>
+									<span className="flex items-center">
+										<span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-status-green" />
+										All
+									</span>
+									<span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+										{totalCount}
+									</span>
+								</button>
+								{CATEGORY_PRIORITY_REVERSED.map((cat) => {
+									const count = categoryCounts[cat];
+									if (!count) return null;
+									return (
+										<button
+											key={cat}
+											type="button"
+											onClick={() => {
+												handleCategoryClick(cat);
+											}}
+											className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
+												selectedCategory === cat ? "bg-bg-200 font-medium" : ""
+											}`}
+										>
+											<span className="flex items-center">
+												<span
+													className={`mr-2 h-2 w-2 shrink-0 rounded-full ${categoryDotClass(cat)}`}
+												/>
+												{CATEGORIES[cat].label}
+											</span>
+											<span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+												{count}
+											</span>
+										</button>
+									);
+								})}
+							</div>
+						</section>
+
+						{/* Project filters */}
+						<section>
+							<h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
+								Projects
+							</h3>
+							<div className="flex flex-col gap-0.5">
+								{visibleProjects.map(({name: project, count, condition}) => (
 									<button
-										key={cat}
+										key={project}
 										type="button"
 										onClick={() => {
-											handleCategoryClick(cat);
+											handleProjectClick(project);
 										}}
 										className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-											selectedCategory === cat ? "bg-bg-200 font-medium" : ""
+											selectedProject === project ? "bg-bg-200 font-medium" : ""
 										}`}
 									>
-										<span className="flex items-center">
-											<span
-												className={`mr-2 h-2 w-2 shrink-0 rounded-full ${categoryDotClass(cat)}`}
-											/>
-											{CATEGORIES[cat].label}
+										<span className="flex min-w-0 items-center gap-1.5">
+											<span className="truncate">{project}</span>
+											{condition && <CategoryBadge category={condition} />}
 										</span>
-										<span className="min-w-6 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
+										<span className="ml-2 min-w-6 shrink-0 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
 											{count}
 										</span>
 									</button>
-								);
-							})}
-						</div>
-					</section>
-
-					{/* Project filters */}
-					<section>
-						<h3 className="mb-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-text-500">
-							Projects
-						</h3>
-						<div className="flex flex-col gap-0.5">
-							{visibleProjects.map(({name: project, count, condition}) => (
-								<button
-									key={project}
-									type="button"
-									onClick={() => {
-										handleProjectClick(project);
-									}}
-									className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[0.8125rem] text-text-100 transition-colors hover:bg-bg-200 ${
-										selectedProject === project ? "bg-bg-200 font-medium" : ""
-									}`}
-								>
-									<span className="flex min-w-0 items-center gap-1.5">
-										<span className="truncate">{project}</span>
-										{condition && <CategoryBadge category={condition} />}
-									</span>
-									<span className="ml-2 min-w-6 shrink-0 rounded-full bg-bg-300 px-2 py-0.5 text-center text-xs text-text-500">
-										{count}
-									</span>
-								</button>
-							))}
-							{hiddenProjectCount > 0 && !showAllProjects && (
-								<button
-									type="button"
-									onClick={() => {
-										setShowAllProjects(true);
-									}}
-									className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
-								>
-									+ {hiddenProjectCount} more...
-								</button>
-							)}
-							{showAllProjects && hiddenProjectCount > 0 && (
-								<button
-									type="button"
-									onClick={() => {
-										setShowAllProjects(false);
-									}}
-									className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
-								>
-									Show less
-								</button>
-							)}
-						</div>
-					</section>
-				</aside>
-
-				{/* Main content */}
-				<main className="overflow-y-auto p-6 pr-8">
-					<div className="mb-6 flex items-center justify-between">
-						<div>
-							<h1 className="text-xl font-semibold">Queue</h1>
-							<span className="text-sm text-text-500">
-								{totalCount} items across {workItems.projectCount} projects
-							</span>
-							<FlowStrip counts={counts} />
-							{flowMetrics && <FlowMetricsStrip metrics={flowMetrics} />}
-							<SystemStatus />
-						</div>
-						<div className="flex items-center gap-2">
-							{/* View toggle */}
-							<div className="mr-2 flex rounded-lg border border-border-300">
-								<Link
-									to="/queue"
-									activeOptions={{exact: true}}
-									className="rounded-l-lg px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
-								>
-									Cards
-								</Link>
-								<Link
-									to="/queue/table"
-									className="rounded-r-lg border-l border-border-300 px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
-								>
-									Table
-								</Link>
+								))}
+								{hiddenProjectCount > 0 && !showAllProjects && (
+									<button
+										type="button"
+										onClick={() => {
+											setShowAllProjects(true);
+										}}
+										className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
+									>
+										+ {hiddenProjectCount} more...
+									</button>
+								)}
+								{showAllProjects && hiddenProjectCount > 0 && (
+									<button
+										type="button"
+										onClick={() => {
+											setShowAllProjects(false);
+										}}
+										className="px-2 py-1.5 text-[0.8125rem] text-text-500 hover:text-text-300"
+									>
+										Show less
+									</button>
+								)}
 							</div>
-							<Link
-								to="/advance-plan"
-								className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-purple-700"
-							>
-								<ClipboardList className="h-4 w-4" />
-								Generate Advance Plan
-							</Link>
-							<BulkActions
-								topUp={async () => topUpReadyBuffer()}
-								runRecipe={async (recipe) => runEscapeHatch({data: {recipe}})}
-							/>
+						</section>
+					</aside>
+
+					{/* Main content */}
+					<main className="overflow-y-auto p-6 pr-8">
+						<div className="mb-6 flex items-center justify-between">
+							<div>
+								<h1 className="text-xl font-semibold">Queue</h1>
+								<span className="text-sm text-text-500">
+									{totalCount} items across {workItems.projectCount} projects
+								</span>
+								<FlowStrip counts={counts} />
+								{flowMetrics && <FlowMetricsStrip metrics={flowMetrics} />}
+								<SystemStatus />
+							</div>
+							<div className="flex items-center gap-2">
+								{/* View toggle */}
+								<div className="mr-2 flex rounded-lg border border-border-300">
+									<Link
+										to="/queue"
+										activeOptions={{exact: true}}
+										className="rounded-l-lg px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
+									>
+										Cards
+									</Link>
+									<Link
+										to="/queue/table"
+										className="rounded-r-lg border-l border-border-300 px-3 py-1.5 text-xs font-medium text-text-300 transition-colors hover:bg-bg-200 [&.active]:bg-bg-200 [&.active]:text-text-000"
+									>
+										Table
+									</Link>
+								</div>
+								<Link
+									to="/advance-plan"
+									className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+								>
+									<ClipboardList className="h-4 w-4" />
+									Generate Advance Plan
+								</Link>
+								<BulkActions
+									topUp={async () => topUpReadyBuffer()}
+									runRecipe={async (recipe) => runEscapeHatch({data: {recipe}})}
+								/>
+							</div>
 						</div>
-					</div>
-					<QueueMain
-						cardsView={cardsView}
-						readyToLand={
-							<ReadyToLandSection
-								state={readyToLand}
-								commits={workItems.gitChildren}
-								projects={projects}
-								now={now}
-								onLand={land}
-								mainPushes={mainPushes}
-								onPush={push}
-								actionsBlocked={actionsBlocked}
-								onLandByPushing={landByPushing}
-								outcomes={outcomes}
-								onDismissOutcome={dismissOutcome}
-							/>
-						}
-					>
-						<Outlet />
-					</QueueMain>
-				</main>
-			</div>
+						<QueueMain
+							cardsView={cardsView}
+							readyToLand={
+								<ReadyToLandSection
+									state={readyToLand}
+									commits={workItems.gitChildren}
+									projects={projects}
+									now={now}
+									onLand={landContext.onLand}
+									mainPushes={mainPushes}
+									onPush={push}
+									actionsBlocked={landContext.actionsBlocked}
+									onLandByPushing={landContext.onLandByPushing}
+									outcomes={landContext.outcomes}
+									onDismissOutcome={landContext.onDismissOutcome}
+								/>
+							}
+						>
+							<Outlet />
+						</QueueMain>
+					</main>
+				</div>
+			</LandContext.Provider>
 		</QueueContext.Provider>
 	);
 }

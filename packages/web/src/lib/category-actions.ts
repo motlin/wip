@@ -26,7 +26,8 @@ export type Action =
 	| "split"
 	| "restore_branch"
 	| "delete_remote_branch"
-	| "setup_pr_refs";
+	| "setup_pr_refs"
+	| "land";
 
 /** The detour task an "Add a test" click queues for a commit in a repo with no test configured. */
 export function addTestCommand(sha: string): string {
@@ -47,15 +48,15 @@ const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
 	pr_refs_missing: "setup_pr_refs",
 	remote_only: "restore_branch",
 	landed: null,
-	approved: "merge",
+	approved: "land",
 	changes_requested: "open_pr_link",
 	review_comments: "open_pr_link",
-	checks_passed: "open_pr_link",
+	checks_passed: "land",
 	checks_failed: "run_claude",
-	checks_running: "open_pr_link",
+	checks_running: "land",
 	checks_unknown: "refresh",
 	pushed_no_pr: "create_pr",
-	ready_to_push: "push",
+	ready_to_push: "land",
 	// Green, but the buffer does not list it ready: nothing lands from here
 	tests_passed: null,
 	pushing: null,
@@ -78,6 +79,19 @@ const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
 
 export function primaryAction(category: Category): PrimaryAction | null {
 	return PRIMARY_ACTIONS[category];
+}
+
+// A landing card the ready buffer does not list at its sha (another sha with the same change, buffer
+// off, or a page without the buffer's state) keeps the state's own next step.
+const LAND_FALLBACK: Partial<Record<Category, Action>> = {
+	ready_to_push: "push",
+	checks_running: "open_pr_link",
+	checks_passed: "open_pr_link",
+	approved: "merge",
+};
+
+export function landFallback(category: Category): Action | null {
+	return LAND_FALLBACK[category] ?? null;
 }
 
 /** The command the split transition queues for a "consider splitting" commit. */
@@ -115,16 +129,16 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	upstream_red: ["open_pr_link", "refresh"],
 	pr_refs_missing: ["setup_pr_refs"],
 	remote_only: ["delete_remote_branch"],
-	approved: ["open_pr_link", "refresh"],
+	approved: ["land", "open_pr_link", "refresh"],
 	changes_requested: ["open_pr_link", "refresh"],
 	review_comments: ["open_pr_link", "refresh"],
-	checks_passed: ["open_pr_link", "refresh"],
+	checks_passed: ["land", "open_pr_link", "refresh"],
 	checks_failed: ["open_pr_link", "apply_fixes", "refresh"],
-	checks_running: ["open_pr_link", "force_push", "refresh"],
+	checks_running: ["land", "open_pr_link", "force_push", "refresh"],
 	checks_unknown: ["open_pr_link", "force_push", "refresh"],
 	pushed_no_pr: ["force_push", "refresh", "rename", "delete_branch"],
 	tests_passed: ["refresh", "rename", "delete_branch"],
-	ready_to_push: ["refresh", "rename", "delete_branch"],
+	ready_to_push: ["land", "refresh", "rename", "delete_branch"],
 	pushing: ["refresh"],
 	needs_rebase: ["refresh", "rename"],
 	rebase_unknown: ["refresh", "rename"],
@@ -258,7 +272,7 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 	},
 	pushed_no_pr: {label: "Needs PR", palette: "blue", actions: buildActions("pushed_no_pr")},
 	ready_to_push: {
-		label: "Ready to Push",
+		label: "Ready to Land",
 		palette: "green",
 		actions: buildActions("ready_to_push"),
 	},

@@ -6,6 +6,8 @@ import type {GitChildResult, ProjectInfo} from "@wip/shared";
 
 import {BranchActions, PullRequestActions} from "./commit-actions.js";
 import {clearToasts, getToasts} from "../lib/toast-store.js";
+import {LandContext, type LandContextValue} from "../lib/land-context.js";
+import {readyIndex, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
 
 const serverFns = vi.hoisted(() => ({
 	testChild: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -686,5 +688,138 @@ describe("one primary action per card", () => {
 		renderBranch(branchItem({testStatus: "passed", localAhead: true}), "ready_to_push", [project(true)]);
 
 		expect(primaryButtons().map((button) => button.textContent)).toStrictEqual(["Force Push"]);
+	});
+});
+
+const readyItem = (overrides: Partial<ReadyToLandItem> = {}): ReadyToLandItem => ({
+	project: "wip",
+	id: "patch-1",
+	sha: "abc123",
+	branch: "feature/x",
+	landing: "pull-request",
+	...overrides,
+});
+
+function landContext(state: Partial<ReadyToLandState>, overrides: Partial<LandContextValue> = {}): LandContextValue {
+	return {
+		readyItemOf: readyIndex({slots: 2, ready: [], inFlight: [], next: [], stoppedProjects: [], ...state}),
+		projects: [project(true)],
+		onLand: vi.fn<LandContextValue["onLand"]>(),
+		outcomes: {},
+		onDismissOutcome: vi.fn<LandContextValue["onDismissOutcome"]>(),
+		actionsBlocked: new Set(),
+		onLandByPushing: vi.fn<LandContextValue["onLandByPushing"]>(),
+		...overrides,
+	};
+}
+
+function renderLanding(
+	item: GitChildResult,
+	category: Parameters<typeof BranchActions>[0]["category"],
+	land: LandContextValue,
+) {
+	const queryClient = new QueryClient();
+	queryClient.setQueryData(["projects"], [project(true)]);
+	return render(
+		<QueryClientProvider client={queryClient}>
+			<LandContext.Provider value={land}>
+				<BranchActions item={item} category={category} />
+			</LandContext.Provider>
+		</QueryClientProvider>,
+	);
+}
+
+describe("land action from the ready buffer", () => {
+	afterEach(() => {
+		cleanup();
+	});
+
+	it("gives the card at the buffer row's sha its land action, landing only after the confirm", () => {
+		const item = readyItem();
+		const land = landContext({ready: [item]});
+		const commit = branchItem({testStatus: "passed", patchId: "patch-1"});
+		renderLanding(commit, "ready_to_push", land);
+
+		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
+		const beforeConfirm = [...vi.mocked(land.onLand).mock.calls];
+		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
+
+		expect({
+			push: screen.queryByRole("button", {name: "Push"}),
+			beforeConfirm,
+			calls: vi.mocked(land.onLand).mock.calls,
+		}).toStrictEqual({push: null, beforeConfirm: [], calls: [[item, commit]]});
+	});
+
+	it("offers no land action on a card with the same change at another sha", () => {
+		renderLanding(
+			branchItem({sha: "def456", testStatus: "passed", patchId: "patch-1"}),
+			"ready_to_push",
+			landContext({ready: [readyItem()]}),
+		);
+
+		expect({
+			openPr: screen.queryByRole("button", {name: "Open PR"}),
+			chip: screen.getByTestId("same-change-marker").textContent,
+			primary: primaryButtons().map((button) => button.textContent),
+		}).toStrictEqual({openPr: null, chip: "same change as abc123", primary: ["Push"]});
+	});
+
+	it("shows a PR whose checks still run as waiting, with its auto-merge chip and no land button", () => {
+		renderLanding(
+			branchItem({
+				testStatus: "passed",
+				prNumber: 7,
+				prUrl: "https://github.example/wip/pull/7",
+				checkStatus: "pending",
+				autoMerge: true,
+			}),
+			"checks_running",
+			landContext({awaitingChecks: [readyItem()]}),
+		);
+
+		expect({
+			waiting: screen.getByTestId("land-waiting-chip").textContent,
+			autoMerge: screen.getByTestId("land-auto-merge-chip").textContent,
+			land: screen.queryByRole("button", {name: /Merge PR|Open PR/}),
+		}).toStrictEqual({waiting: "waiting for checks", autoMerge: "auto-merge", land: null});
+	});
+
+	it("marks a draft PR and offers Open PR, which marks it ready", () => {
+		renderLanding(
+			branchItem({
+				testStatus: "passed",
+				prNumber: 7,
+				prUrl: "https://github.example/wip/pull/7",
+				checkStatus: "passed",
+				mergeStateStatus: "DRAFT",
+			}),
+			"checks_running",
+			landContext({ready: [readyItem()]}),
+		);
+
+		expect({
+			draft: screen.getByTestId("land-draft-chip").textContent,
+			openPr: screen.getAllByRole("button", {name: "Open PR"}).length,
+		}).toStrictEqual({draft: "draft", openPr: 1});
+	});
+
+	it("links a failed PR to its failing run and offers Land by pushing when billing blocks Actions", () => {
+		renderLanding(
+			branchItem({
+				testStatus: "passed",
+				prNumber: 7,
+				prUrl: "https://github.example/wip/pull/7",
+				checkStatus: "failed",
+				failedChecks: [{name: "build", url: "https://github.example/wip/actions/runs/1"}],
+			}),
+			"checks_failed",
+			landContext({checksFailed: [readyItem()]}, {actionsBlocked: new Set(["wip:abc123"])}),
+		);
+
+		expect({
+			link: screen.getByRole("link", {name: "checks failed"}).getAttribute("href"),
+			landByPushing: screen.getAllByRole("button", {name: "Land this repo by pushing directly instead"}).length,
+		}).toStrictEqual({link: "https://github.example/wip/actions/runs/1", landByPushing: 1});
 	});
 });

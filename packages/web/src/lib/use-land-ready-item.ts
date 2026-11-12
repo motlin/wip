@@ -1,7 +1,7 @@
 import {useCallback, useMemo} from "react";
 import {useQueries, useQueryClient, type QueryClient} from "@tanstack/react-query";
-import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
-import type {ActionResult, GitChildResult} from "@wip/shared/schemas.js";
+import {readyIndex, type ReadyToLandItem, type ReadyToLandState} from "@wip/shared/ready-to-land.js";
+import type {ActionResult, GitChildResult, ProjectInfo} from "@wip/shared/schemas.js";
 import {afterPush, type MainPush} from "@wip/shared/main-push.js";
 import {billingCheckCandidates, landingAction} from "../components/land-control.js";
 import {
@@ -15,7 +15,14 @@ import {
 } from "./server-fns";
 import {actionsBillingBlockQueryOptions} from "./queries";
 import {actionResultOutcome, actionResultToast, runningOutcome} from "./action-messages";
-import {landOutcomeKey, pushOutcomeKey, setActionOutcome} from "./action-outcomes";
+import {
+	landOutcomeKey,
+	pushOutcomeKey,
+	setActionOutcome,
+	useActionOutcomes,
+	useDismissActionOutcome,
+} from "./action-outcomes";
+import type {LandContextValue} from "./land-context";
 import {pushToast} from "./toast-store";
 
 const LANDING_ACTION_NAMES = {
@@ -203,7 +210,7 @@ export function usePushUpstreamBranch(): (push: MainPush, sha: string) => void {
 }
 
 /** `project:sha` of the ready rows whose PR checks can't run because Actions are unavailable for billing. */
-export function useActionsBlocked(
+function useActionsBlocked(
 	state: ReadyToLandState | null | undefined,
 	commits: readonly GitChildResult[],
 ): ReadonlySet<string> {
@@ -217,7 +224,7 @@ export function useActionsBlocked(
 }
 
 /** Configures a repo to land by pushing directly (after the row's confirm) and toasts the result. */
-export function useLandByPushing(): (project: string) => void {
+function useLandByPushing(): (project: string) => void {
 	const queryClient = useQueryClient();
 	return useCallback(
 		(project: string) => {
@@ -240,5 +247,23 @@ export function useLandByPushing(): (project: string) => void {
 			});
 		},
 		[queryClient],
+	);
+}
+
+/** The land context /queue and /kanban provide, so each landing card offers its own land action. */
+export function useLandContextValue(
+	state: ReadyToLandState | null | undefined,
+	commits: readonly GitChildResult[],
+	projects: readonly ProjectInfo[],
+): LandContextValue {
+	const onLand = useLandReadyItem();
+	const onLandByPushing = useLandByPushing();
+	const outcomes = useActionOutcomes();
+	const onDismissOutcome = useDismissActionOutcome();
+	const actionsBlocked = useActionsBlocked(state, commits);
+	const readyItemOf = useMemo(() => readyIndex(state), [state]);
+	return useMemo(
+		() => ({readyItemOf, projects, onLand, outcomes, onDismissOutcome, actionsBlocked, onLandByPushing}),
+		[readyItemOf, projects, onLand, outcomes, onDismissOutcome, actionsBlocked, onLandByPushing],
 	);
 }

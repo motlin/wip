@@ -6,6 +6,7 @@ import {
 	TRANSITION_TO_ACTION,
 	getTransitionActions,
 	SUPPLEMENTARY_ACTIONS,
+	landFallback,
 	primaryAction,
 	type PrimaryAction,
 } from "./category-actions";
@@ -266,15 +267,15 @@ describe("primaryAction", () => {
 		pr_refs_missing: "setup_pr_refs",
 		remote_only: "restore_branch",
 		landed: null,
-		approved: "merge",
+		approved: "land",
 		changes_requested: "open_pr_link",
 		review_comments: "open_pr_link",
-		checks_passed: "open_pr_link",
+		checks_passed: "land",
 		checks_failed: "run_claude",
-		checks_running: "open_pr_link",
+		checks_running: "land",
 		checks_unknown: "refresh",
 		pushed_no_pr: "create_pr",
-		ready_to_push: "push",
+		ready_to_push: "land",
 		tests_passed: null,
 		pushing: null,
 		needs_rebase: "rebase_local",
@@ -298,6 +299,26 @@ describe("primaryAction", () => {
 		expect(Object.fromEntries(CategorySchema.options.map((cat) => [cat, primaryAction(cat)]))).toStrictEqual(
 			expected,
 		);
+	});
+
+	it("falls back to the state's own action on a landing card the buffer does not list at its sha", () => {
+		expect(
+			Object.fromEntries(
+				(["ready_to_push", "checks_running", "checks_passed", "approved"] as const).map((cat) => [
+					cat,
+					landFallback(cat),
+				]),
+			),
+		).toStrictEqual({
+			ready_to_push: "push",
+			checks_running: "open_pr_link",
+			checks_passed: "open_pr_link",
+			approved: "merge",
+		});
+	});
+
+	it("labels the ready_to_push column Ready to Land", () => {
+		expect(CATEGORIES.ready_to_push.label).toBe("Ready to Land");
 	});
 
 	it("picks a primary the category can actually perform", () => {

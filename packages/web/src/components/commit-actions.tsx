@@ -54,6 +54,7 @@ import {
 	CATEGORIES,
 	SPLIT_BRANCH_COMMAND,
 	addTestCommand,
+	landFallback,
 	primaryAction,
 	type PrimaryAction,
 } from "../lib/category-actions.js";
@@ -62,6 +63,8 @@ import {actionLogLink, actionResultToast} from "../lib/action-messages.js";
 import {runPendingAction} from "../lib/pending-action.js";
 import {unverifiedPushReason} from "../lib/push-verification.js";
 import {AutoFixReview} from "./auto-fix-review.js";
+import {CardLand} from "./card-land.js";
+import {useLandContext} from "../lib/land-context.js";
 import {SNOOZE_PRESETS, snoozeUntil} from "../lib/snooze-presets.js";
 
 type ActionableItem = GitChildResult;
@@ -215,6 +218,11 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const [splitting, setSplitting] = useState(false);
 	const [reviewOpen, setReviewOpen] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
+	const land = useLandContext();
+	// Only the card at the buffer row's sha lands; another sha with the same change says so instead.
+	const landEntry = land?.readyItemOf(item);
+	const landHere = landEntry?.item.sha === item.sha ? landEntry : undefined;
+	const sameChangeAs = landEntry !== undefined && landHere === undefined ? landEntry.item.sha : undefined;
 	const testJob = useTestJob(item.sha, item.project);
 	const mergeStatus = useMergeStatus(item.sha, item.project);
 	const commitsBehind = mergeStatus?.commitsBehind ?? item.commitsBehind;
@@ -746,7 +754,8 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 	const primary: SlotKey | null = (() => {
 		if (item.autoFixed) return "review_fix";
 		if (rebaseAgain) return "rebase_again";
-		const next = primaryAction(category);
+		const state = primaryAction(category);
+		const next = state === "land" && landHere === undefined ? landFallback(category) : state;
 		if (next === "push" && item.localAhead) return "force_push";
 		return next === "do_task" ? null : next;
 	})();
@@ -759,6 +768,18 @@ function ItemActions({item, category, layout = "column"}: ItemActionsProps) {
 			key === "marker" ? where === "primary" : (key === primary) === (where === "primary");
 		return (
 			<>
+				{/* Land: the ready buffer's landing step for the card at its row's sha */}
+				{where === "primary" && land !== null && landHere !== undefined && (
+					<CardLand commit={item} entry={landHere} land={land} />
+				)}
+				{at("marker") && sameChangeAs !== undefined && (
+					<span
+						data-testid="same-change-marker"
+						className="inline-flex items-center rounded border border-border-300/50 px-1.5 py-0.5 text-[10px] font-medium text-text-400"
+					>
+						same change as {sameChangeAs.slice(0, 7)}
+					</span>
+				)}
 				{/* Rebase again: the next action after Abort rebase, a fresh replay onto current upstream */}
 				{at("rebase_again") && rebaseAgain && (
 					<button

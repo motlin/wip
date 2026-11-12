@@ -111,13 +111,12 @@ describe("wip inventory import", () =>
 		const out = captureStdout();
 		const config = await loadTestConfig();
 		const command = new InventoryImport(["--templates-dir", templatesDir, "--dry-run", "--json"], config);
+		const runnable = command as unknown as
+		{
+			_run(): Promise<unknown>;
+		};
 		// eslint-disable-next-line no-underscore-dangle -- oclif runs the JSON wrapper through the protected _run
-		await (
-			command as unknown as
-			{
-				_run(): Promise<unknown>;
-			}
-		)._run();
+		await runnable._run();
 		expect(JSON.parse(out())).toMatchObject(
 			{
 				dryRun: true,

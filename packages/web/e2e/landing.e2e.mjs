@@ -292,8 +292,8 @@ async function missingRow(page, rows)
 			.flat()
 			.map((id) => `[data-testid="${id}"]`)
 			.join(", ");
-		// eslint-disable-next-line no-await-in-loop -- checks every row in one sample
 		if (
+			// eslint-disable-next-line no-await-in-loop -- checks every row in one sample
 			(await page
 				.locator(selector)
 				.filter(

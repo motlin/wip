@@ -107,10 +107,11 @@ export class GitHubActionsGate
 			{
 				// Sequential on purpose: one request at a time against the shared GraphQL budget.
 				// eslint-disable-next-line no-await-in-loop
+				const statuses = await this.checksSource(push);
 				observed.push(
 					{
 						push,
-						statuses: await this.checksSource(push),
+						statuses,
 					},
 				);
 			}

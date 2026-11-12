@@ -3,7 +3,7 @@ import {useQueries, useQueryClient, type QueryClient} from "@tanstack/react-quer
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {ActionResult, GitChildResult} from "@wip/shared/schemas.js";
 import {afterPush, type MainPush} from "@wip/shared/main-push.js";
-import {billingCheckCandidates, landingAction} from "../components/ready-to-land-section";
+import {billingCheckCandidates, landingAction} from "../components/land-control.js";
 import {
 	createPr,
 	getMainPushes,

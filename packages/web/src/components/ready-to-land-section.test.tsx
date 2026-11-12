@@ -5,7 +5,7 @@ import {cleanup, fireEvent, render, screen, within} from "@testing-library/react
 import type {ReadyToLandItem, ReadyToLandState} from "@wip/shared/ready-to-land.js";
 import type {GitChildResult, MainPush, ProjectInfo} from "@wip/shared";
 import {makeChild} from "../lib/test-factories";
-import {billingCheckCandidates, ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
+import {ReadyLandPanel, ReadyToLandSection} from "./ready-to-land-section";
 import {landOutcomeKey, pushOutcomeKey, type ActionOutcomes} from "../lib/action-outcomes";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -170,59 +170,6 @@ describe("ReadyToLandSection", () => {
 		expect(onLand.mock.calls).toStrictEqual([[green.ready[1], commits[2]]]);
 	});
 
-	it("offers Open PR for a ready commit in a pull-request repo that has no PR yet", () => {
-		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
-		render(
-			<ReadyToLandSection
-				state={state}
-				commits={commits}
-				projects={[project("a"), project("red"), project("plain", false)]}
-				now={now}
-				onLand={onLand}
-				onPush={() => undefined}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-
-		expect(onLand.mock.calls).toStrictEqual([[state.ready[3], commits[4]]]);
-	});
-
-	it("offers no Open PR that can't succeed, and says why instead", () => {
-		const fromBase = makeChild({project: "fork", sha: sha("f1"), subject: "On the base", branch: "avalon.cool"});
-		const fromMaster = makeChild({project: "fork", sha: sha("f2"), subject: "On master", branch: "master"});
-		render(
-			<ReadyToLandSection
-				state={{
-					...state,
-					ready: [
-						{project: "fork", id: "pf1", sha: sha("f1"), landing: "pull-request"},
-						{project: "fork", id: "pf2", sha: sha("f2"), landing: "pull-request"},
-					],
-					inFlight: [],
-					stoppedProjects: [],
-				}}
-				commits={[fromBase, fromMaster]}
-				projects={[{...project("fork"), upstreamBranch: "avalon.cool", upstreamRef: "upstream/avalon.cool"}]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
-
-		expect({
-			rows: screen.getAllByTestId("ready-to-land-row").map((row) => row.textContent),
-			buttons: screen.queryAllByRole("button", {name: "Open PR"}).length,
-		}).toStrictEqual({
-			rows: [
-				"On the baseforkReviewCan't open a PR from avalon.cool: it is the base branch, and Open PR never pushes it",
-				"On masterforkReviewCan't open a PR from master: Open PR never pushes a main branch",
-			],
-			buttons: 0,
-		});
-	});
-
 	it("renders nothing without buffer state, and nothing when the buffer holds nothing", () => {
 		const {container} = render(
 			<ReadyToLandSection
@@ -289,48 +236,6 @@ describe("ReadyToLandSection", () => {
 		expect(screen.getAllByTestId("ready-to-land-verify-notice").map((el) => el.textContent)).toStrictEqual([
 			"secret: alice/secret is private; testing locally",
 		]);
-	});
-
-	it("offers Open PR on a ready commit whose PR is the buffer's draft, marking that draft ready instead of opening another", () => {
-		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
-		const draft = makeChild({
-			project: "pub",
-			sha: sha("d1"),
-			subject: "Verified",
-			branch: "verified",
-			prNumber: 9,
-			prUrl: "https://github.com/motlin/pub/pull/9",
-			mergeStateStatus: "DRAFT",
-			commitsBehind: 0,
-			checkStatus: "passed",
-			autoMergeAllowed: true,
-		});
-		const item: ReadyToLandItem = {
-			project: "pub",
-			id: "pd1",
-			sha: sha("d1"),
-			branch: "verified",
-			landing: "pull-request",
-		};
-		render(
-			<ReadyToLandSection
-				state={{...state, ready: [item], inFlight: [], stoppedProjects: []}}
-				commits={[draft]}
-				projects={[project("pub")]}
-				now={now}
-				onLand={onLand}
-				onPush={() => undefined}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-		const prompt = screen.getByTestId("land-confirm").textContent;
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-
-		expect({prompt, landed: onLand.mock.calls}).toStrictEqual({
-			prompt: 'Mark draft PR #9 for "Verified" (d100000) ready for review in pub. It will merge itself when its checks pass.ConfirmCancel',
-			landed: [[item, draft]],
-		});
 	});
 
 	it("holds a fixed-height Loading placeholder until the buffer state has loaded", () => {
@@ -416,103 +321,6 @@ describe("ReadyToLandSection", () => {
 				["Review", `/diff/red/${sha("r2")}`],
 			],
 		]);
-	});
-
-	it("asks for confirmation naming exactly what lands, and lands nothing until confirmed", () => {
-		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
-		render(
-			<ReadyToLandSection
-				state={green}
-				commits={commits}
-				projects={[project("a"), project("red"), project("plain", false)]}
-				now={now}
-				onLand={onLand}
-				onPush={() => undefined}
-			/>,
-		);
-
-		const prompts: (string | null)[] = [];
-		for (const name of ["Fast-forward main", "Merge PR #7", "Open PR"]) {
-			fireEvent.click(screen.getAllByRole("button", {name})[0]!);
-			prompts.push(screen.getByTestId("land-confirm").textContent);
-			fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
-		}
-
-		expect({
-			prompts,
-			prLink: (() => {
-				fireEvent.click(screen.getByRole("button", {name: "Merge PR #7"}));
-				return links(screen.getByTestId("land-confirm"));
-			})(),
-			landed: onLand.mock.calls,
-		}).toStrictEqual({
-			prompts: [
-				'Fast-forward main in a to "Add parser" (a100000). Local main moves to a100000. Nothing is pushed.ConfirmCancel',
-				'Merge PR #7 for "Fix red" (r100000) in red.ConfirmCancel',
-				'Open a PR for "No tests here" (p100000) from branch no-tests in plain.ConfirmCancel',
-			],
-			prLink: [["PR #7", "https://github.com/motlin/red/pull/7"]],
-			landed: [],
-		});
-	});
-});
-
-function renderOpenPrRow() {
-	render(
-		<ReadyToLandSection
-			state={state}
-			commits={commits}
-			projects={[project("a"), project("red"), project("plain", false)]}
-			now={now}
-			onLand={() => undefined}
-			onPush={() => undefined}
-		/>,
-	);
-	const button = screen.getByRole("button", {name: "Open PR"});
-	const row = button.closest("li")!;
-	return {button, row};
-}
-
-describe("ReadyToLandSection landing overlay", () => {
-	afterEach(() => {
-		cleanup();
-	});
-
-	it("opens the confirm in an overlay anchored to the row's button, leaving the row's layout unchanged", () => {
-		const {button, row} = renderOpenPrRow();
-		const before = [...row.children].map((child) => child.tagName);
-		fireEvent.click(button);
-		const dialog = screen.getByRole("dialog", {name: "Confirm landing"});
-
-		expect({
-			after: [...row.children].map((child) => child.tagName),
-			positioned: dialog.classList.contains("absolute"),
-			anchored: dialog.parentElement?.contains(button),
-			anchorRelative: dialog.parentElement?.classList.contains("relative"),
-			confirm: dialog.contains(screen.getByTestId("land-confirm")),
-		}).toStrictEqual({
-			after: before,
-			positioned: true,
-			anchored: true,
-			anchorRelative: true,
-			confirm: true,
-		});
-	});
-
-	it("closes the confirm on Escape and on a click outside", () => {
-		const {button} = renderOpenPrRow();
-		fireEvent.click(button);
-		fireEvent.keyDown(document, {key: "Escape"});
-		const afterEscape = screen.queryByRole("dialog");
-		fireEvent.click(button);
-		const reopened = screen.queryByRole("dialog") !== null;
-		fireEvent.mouseDown(document.body);
-
-		expect({afterEscape, reopened, afterOutside: screen.queryByRole("dialog")}).toStrictEqual({
-			afterEscape: null,
-			reopened: true,
-			afterOutside: null,
-		});
 	});
 });
 
@@ -711,11 +519,7 @@ describe("ReadyToLandSection when PR checks can't run", () => {
 		stoppedProjects: [],
 	};
 
-	it("asks about billing only for a pull-request row whose PR checks failed", () => {
-		expect(billingCheckCandidates(blockedState, failed)).toStrictEqual([blockedState.ready[0]]);
-	});
-
-	it("says so in plain words and switches the repo to pushing only after a confirm", () => {
+	it("offers landing by pushing on the row whose PR checks can't run, and switches that repo", () => {
 		const onLandByPushing = vi.fn<(project: string) => void>();
 		render(
 			<ReadyToLandSection
@@ -732,17 +536,13 @@ describe("ReadyToLandSection when PR checks can't run", () => {
 
 		const rows = screen.getAllByRole("listitem").map((row) => row.textContent);
 		fireEvent.click(screen.getByRole("button", {name: "Land this repo by pushing directly instead"}));
-		const prompt = screen.getByTestId("land-by-pushing-confirm").textContent;
-		const switchedBeforeConfirm = [...onLandByPushing.mock.calls];
 		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
 
-		expect({rows, prompt, switchedBeforeConfirm, switched: onLandByPushing.mock.calls}).toStrictEqual({
+		expect({rows, switched: onLandByPushing.mock.calls}).toStrictEqual({
 			rows: [
 				"Private change · secret · PR #3 · checks failedPR checks can't run: secret is a private repo and its GitHub Actions are unavailable for billing.Land this repo by pushing directly instead",
 				"PassingsecretReviewMerge PR #4",
 			],
-			prompt: "Configure secret to land by pushing directly: its ready commits Fast-forward main, then you Push main. No pull requests. Saved to the registry.ConfirmCancel",
-			switchedBeforeConfirm: [],
 			switched: [["secret"]],
 		});
 	});
@@ -1006,47 +806,6 @@ describe("ReadyToLandSection while PR checks run", () => {
 			buttons: ["Merge PR #5"],
 		});
 	});
-
-	it("says Merge PR on running checks in an auto-merge repo merges itself when they pass", () => {
-		const onLand = vi.fn<(item: ReadyToLandItem, commit: GitChildResult | undefined) => void>();
-		renderChecks(onLand);
-
-		fireEvent.click(screen.getByRole("button", {name: "Merge PR #4"}));
-		const prompt = screen.getByTestId("land-confirm").textContent;
-		fireEvent.click(screen.getByRole("button", {name: "Confirm"}));
-
-		expect({prompt, landed: onLand.mock.calls}).toStrictEqual({
-			prompt: 'Merge PR #4 for "Allowed" (a100000) in pr. Its checks are still running: it will merge itself when they pass.ConfirmCancel',
-			landed: [[prItem("a1"), running[3]]],
-		});
-	});
-
-	it("says Open PR in an auto-merge repo merges itself when checks pass", () => {
-		render(
-			<ReadyToLandSection
-				state={{...checksState, ready: [{...prItem("o1"), branch: "open-me"}], awaitingChecks: []}}
-				commits={[
-					makeChild({
-						project: "pr",
-						sha: sha("o1"),
-						subject: "Open me",
-						branch: "open-me",
-						autoMergeAllowed: true,
-					}),
-				]}
-				projects={[project("pr")]}
-				now={now}
-				onLand={() => undefined}
-				onPush={() => undefined}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("button", {name: "Open PR"}));
-
-		expect(screen.getByTestId("land-confirm").textContent).toBe(
-			'Open a PR for "Open me" (o100000) from branch open-me in pr. It will merge itself when its checks pass.ConfirmCancel',
-		);
-	});
 });
 
 const checksBase: ReadyToLandState = {slots: 3, ready: [], inFlight: [], next: [], stoppedProjects: []};
@@ -1178,15 +937,6 @@ describe("ReadyLandPanel", () => {
 	});
 });
 
-function outcomeView() {
-	const outcome = screen.getByTestId("action-outcome");
-	return {
-		text: outcome.textContent,
-		links: links(outcome),
-		button: screen.getByRole("button", {name: "Open PR"}).hasAttribute("disabled"),
-	};
-}
-
 describe("ReadyToLandSection action outcomes", () => {
 	afterEach(() => {
 		cleanup();
@@ -1216,52 +966,16 @@ describe("ReadyToLandSection action outcomes", () => {
 		return {onDismissOutcome};
 	}
 
-	it("shows an action in progress on its row and holds the button until it finishes", () => {
-		renderOutcome({[landOutcomeKey("plain", sha("p1"))]: {status: "running", message: "Opening a pull request…"}});
-
-		expect(outcomeView()).toStrictEqual({text: "Opening a pull request…", links: [], button: true});
-	});
-
-	it("keeps a success on its row with the link to GitHub", () => {
-		renderOutcome({
-			[landOutcomeKey("plain", sha("p1"))]: {
-				status: "success",
-				message: "PR #12 opened",
-				link: {href: "https://github.com/motlin/plain/pull/12", label: "View on GitHub"},
-			},
-		});
-
-		expect(outcomeView()).toStrictEqual({
-			text: "PR #12 openedView on GitHubDismiss",
-			links: [["View on GitHub", "https://github.com/motlin/plain/pull/12"]],
-			button: false,
-		});
-	});
-
-	it("keeps a failure on its row with a short reason and the log, leaves the button to retry, and dismisses", () => {
+	it("shows each row's landing outcome by its key and dismisses that key", () => {
 		const key = landOutcomeKey("plain", sha("p1"));
 		const {onDismissOutcome} = renderOutcome({
-			[key]: {
-				status: "failure",
-				message: "Open PR failed",
-				detail: "base branch main does not exist on origin",
-				link: {href: "/debug/logs", label: "See the log"},
-			},
+			[key]: {status: "failure", message: "Open PR failed", link: {href: "/debug/logs", label: "See the log"}},
 		});
-		const view = outcomeView();
-		const inDialog = screen.getByRole("dialog").contains(screen.getByTestId("action-outcome"));
-		fireEvent.mouseDown(document.body);
-		const afterOutside = screen.queryByTestId("action-outcome") !== null;
+		const text = screen.getByTestId("action-outcome").textContent;
 		fireEvent.click(screen.getByRole("button", {name: "Dismiss"}));
 
-		expect({view, inDialog, afterOutside, dismissed: onDismissOutcome.mock.calls}).toStrictEqual({
-			inDialog: true,
-			afterOutside: true,
-			view: {
-				text: "Open PR failedbase branch main does not exist on originSee the logDismiss",
-				links: [["See the log", "/debug/logs"]],
-				button: false,
-			},
+		expect({text, dismissed: onDismissOutcome.mock.calls}).toStrictEqual({
+			text: "Open PR failedSee the logDismiss",
 			dismissed: [[key]],
 		});
 	});

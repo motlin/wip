@@ -250,6 +250,10 @@ describe("CATEGORY_PRIORITY", () => {
 		expect(cfIdx).toBeLessThan(cpIdx);
 	});
 
+	it("places tests_passed just before ready_to_push: green, but not yet listed ready by the buffer", () => {
+		expect(indexOf("tests_passed")).toBe(indexOf("ready_to_push") - 1);
+	});
+
 	it("places rebase states before push states", () => {
 		expect(indexOf("needs_rebase")).toBeLessThan(indexOf("ready_to_push"));
 		expect(indexOf("rebase_conflicts")).toBeLessThan(indexOf("ready_to_push"));
@@ -271,6 +275,7 @@ describe("primaryAction", () => {
 		checks_unknown: "refresh",
 		pushed_no_pr: "create_pr",
 		ready_to_push: "push",
+		tests_passed: null,
 		pushing: null,
 		needs_rebase: "rebase_local",
 		rebase_unknown: "rebase_local",

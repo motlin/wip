@@ -169,6 +169,40 @@ export function commitLookup(
 		byKey.get(key(item.project, item.sha)) ?? bySha.get(item.sha) ?? byChange.get(key(item.project, item.id));
 }
 
+/** The buffer list a row sits in: ready to land, its PR checks still running, or its PR checks failed. */
+export type ReadyList = "ready" | "awaitingChecks" | "checksFailed";
+
+export interface ReadyEntry {
+	item: ReadyToLandItem;
+	list: ReadyList;
+}
+
+/**
+ * Finds a child's buffer row, the only gate on ready (inFlight and next rows are not listed): by
+ * project and sha, by the same sha under another project (the children list a sha once across
+ * projects on one repo), or by the patch-id a row is keyed by (its branch moved to a new sha with the
+ * same change). Finds nothing while the buffer reports no state.
+ */
+export function readyIndex(
+	state: ReadyToLandState | null | undefined,
+): (child: Pick<GitChildResult, "project" | "sha" | "patchId">) => ReadyEntry | undefined {
+	const entries: ReadyEntry[] =
+		state === null || state === undefined
+			? []
+			: [
+					...state.ready.map((item) => ({item, list: "ready" as const})),
+					...(state.awaitingChecks ?? []).map((item) => ({item, list: "awaitingChecks" as const})),
+					...(state.checksFailed ?? []).map((item) => ({item, list: "checksFailed" as const})),
+				];
+	const byKey = new Map(entries.map((e) => [key(e.item.project, e.item.sha), e]));
+	const bySha = new Map(entries.map((e) => [e.item.sha, e]));
+	const byChange = new Map(entries.map((e) => [key(e.item.project, e.item.id), e]));
+	return (child) =>
+		byKey.get(key(child.project, child.sha)) ??
+		bySha.get(child.sha) ??
+		(child.patchId === undefined ? undefined : byChange.get(key(child.project, child.patchId)));
+}
+
 /**
  * The one "ready" count (up to date with upstream + green, as the buffer lists it): the Ready to land
  * rows whose view is "land". Both that section's heading and the queue header use it; zero while the

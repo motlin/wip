@@ -4,6 +4,7 @@ import {
 	stableRowOrder,
 	prChecksPending,
 	prChecksFailed,
+	readyIndex,
 	readyRowView,
 	ReadyToLandStateSchema,
 	type ReadyToLandItem,
@@ -180,5 +181,40 @@ describe("prChecksPending", () => {
 			prChecksPending({prNumber: 1, checkStatus: "passed"}),
 			prChecksPending({checkStatus: "running"}),
 		]).toStrictEqual([true, true, false, false, false]);
+	});
+});
+
+describe("readyIndex", () => {
+	it("finds a child's buffer row by project and sha, by sha under another project, or by patch-id, naming its list", () => {
+		const ready = item("a", "p1");
+		const waiting = item("b", "p2");
+		const failed = item("a", "p3");
+		const lookup = readyIndex({
+			slots: 2,
+			ready: [ready],
+			awaitingChecks: [waiting],
+			checksFailed: [failed],
+			inFlight: [item("a", "p4")],
+			next: [],
+			stoppedProjects: [],
+		});
+
+		expect([
+			lookup({project: "a", sha: ready.sha}),
+			lookup({project: "a", sha: waiting.sha}),
+			lookup({project: "a", sha: "9".repeat(40), patchId: "p3"}),
+			lookup({project: "a", sha: item("a", "p4").sha}),
+			lookup({project: "a", sha: "8".repeat(40)}),
+		]).toStrictEqual([
+			{item: ready, list: "ready"},
+			{item: waiting, list: "awaitingChecks"},
+			{item: failed, list: "checksFailed"},
+			undefined,
+			undefined,
+		]);
+	});
+
+	it("finds nothing while the buffer reports no state", () => {
+		expect(readyIndex(null)({project: "a", sha: "1".repeat(40)})).toBeUndefined();
 	});
 });

@@ -87,6 +87,7 @@ const CATEGORY_ORDER: Category[] = [
 	"rebase_unknown",
 	"rebase_conflicts",
 	"rebase_stuck",
+	"tests_passed",
 	"ready_to_push",
 	"pushing",
 	"pushed_no_pr",
@@ -118,6 +119,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 	rebase_unknown: "Rebase unknown",
 	rebase_conflicts: "Rebase conflicts",
 	rebase_stuck: "Rebase stuck",
+	tests_passed: "Tests passed",
 	ready_to_push: "Ready to push",
 	pushing: "Pushing",
 	pushed_no_pr: "Needs PR",
@@ -143,6 +145,7 @@ function categoryStyle(category: Category, text: string): string {
 			return chalk.magenta(text);
 		case "review_comments":
 		case "pushed_no_pr":
+		case "tests_passed":
 			return chalk.blue(text);
 		case "upstream_red":
 		case "remote_only":
@@ -232,6 +235,7 @@ export default class Report extends Command {
 			rebase_unknown: [],
 			rebase_conflicts: [],
 			rebase_stuck: [],
+			tests_passed: [],
 			ready_to_push: [],
 			pushing: [],
 			pushed_no_pr: [],

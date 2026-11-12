@@ -39,8 +39,9 @@ export const CATEGORY_COLUMNS = [
 	["ready_to_test", "test_running", "test_failed"],
 	// Rebase
 	["needs_rebase", "rebase_unknown", "rebase_conflicts", "rebase_stuck"],
-	// Push
-	["ready_to_push", "pushing", "pushed_no_pr"],
+	// Push: green but not listed ready by the buffer (own upstream red, buffer off, up to date
+	// unknown), then ready to land (the buffer lists it: tested + up to date)
+	["tests_passed", "ready_to_push", "pushing", "pushed_no_pr"],
 	// CI
 	["checks_unknown", "checks_running", "checks_failed"],
 	// Review
@@ -80,6 +81,7 @@ export const TransitionSchema = z.enum([
 	"merge",
 	"push_complete",
 	"restore_branch",
+	"buffer_ready",
 ]);
 export type Transition = z.infer<typeof TransitionSchema>;
 
@@ -100,6 +102,7 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	// Snooze — available from most states
 	{from: "ready_to_test", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "test_failed", transition: "snooze", to: "snoozed", kind: "active"},
+	{from: "tests_passed", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "ready_to_push", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "needs_rebase", transition: "snooze", to: "snoozed", kind: "active"},
 	{from: "rebase_unknown", transition: "snooze", to: "snoozed", kind: "active"},
@@ -138,6 +141,9 @@ const FLOW_TRANSITIONS: readonly StateTransition[] = [
 	{from: "ready_to_test", transition: "run_test", to: "test_running", kind: "active"},
 	{from: "test_failed", transition: "run_test", to: "test_running", kind: "active"},
 	{from: "test_running", transition: "test_pass", to: "ready_to_push", kind: "passive"},
+	{from: "test_running", transition: "test_pass", to: "tests_passed", kind: "passive"},
+	// Only the ready buffer lists a commit ready: green and up to date with upstream, on a green own upstream
+	{from: "tests_passed", transition: "buffer_ready", to: "ready_to_push", kind: "passive"},
 	{from: "test_running", transition: "test_fail", to: "test_failed", kind: "passive"},
 	{from: "test_running", transition: "cancel_test", to: "ready_to_test", kind: "active"},
 	{from: "test_running", transition: "snooze", to: "snoozed", kind: "active"},

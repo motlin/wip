@@ -56,6 +56,8 @@ const PRIMARY_ACTIONS: Record<Category, PrimaryAction | null> = {
 	checks_unknown: "refresh",
 	pushed_no_pr: "create_pr",
 	ready_to_push: "push",
+	// Green, but the buffer does not list it ready: nothing lands from here
+	tests_passed: null,
 	pushing: null,
 	needs_rebase: "rebase_local",
 	rebase_unknown: "rebase_local",
@@ -121,6 +123,7 @@ export const SUPPLEMENTARY_ACTIONS: Partial<Record<Category, readonly Action[]>>
 	checks_running: ["open_pr_link", "force_push", "refresh"],
 	checks_unknown: ["open_pr_link", "force_push", "refresh"],
 	pushed_no_pr: ["force_push", "refresh", "rename", "delete_branch"],
+	tests_passed: ["refresh", "rename", "delete_branch"],
 	ready_to_push: ["refresh", "rename", "delete_branch"],
 	pushing: ["refresh"],
 	needs_rebase: ["refresh", "rename"],
@@ -258,6 +261,11 @@ export const CATEGORIES: Record<Category, CategoryConfig> = {
 		label: "Ready to Push",
 		palette: "green",
 		actions: buildActions("ready_to_push"),
+	},
+	tests_passed: {
+		label: "Tests Passed",
+		palette: "blue",
+		actions: buildActions("tests_passed"),
 	},
 	pushing: {label: "Pushing", palette: "yellow", actions: buildActions("pushing")},
 	needs_rebase: {

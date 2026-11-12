@@ -50,8 +50,9 @@ function QueueLayout() {
 	const cardsView = Boolean(useMatchRoute()({to: "/queue"}));
 	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
+	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
 	const {grouped, totalCount, readyToTestCount, needsRebaseCount} = useMemo(() => {
-		const g = buildGrouped(workItems, projects);
+		const g = buildGrouped(workItems, projects, readyToLand);
 
 		// On hold and snoozed items are not WIP.
 		let total = 0;
@@ -63,11 +64,10 @@ function QueueLayout() {
 		const nrCount = g.needs_rebase.gitChildren?.filter((c) => c.branch !== undefined).length ?? 0;
 
 		return {grouped: g, totalCount: total, readyToTestCount: rtCount, needsRebaseCount: nrCount};
-	}, [workItems, projects]);
+	}, [workItems, projects, readyToLand]);
 
 	const {data: systemStatus} = useQuery(systemStatusQueryOptions());
 	const {data: flowMetrics} = useQuery(flowMetricsQueryOptions());
-	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
 	const {data: mainPushes} = useQuery(mainPushesQueryOptions());
 	// Ages come from the client clock, set after mount so hydration matches the server render.
 	const [now, setNow] = useState<number | null>(null);

@@ -1,10 +1,10 @@
 import {createFileRoute} from "@tanstack/react-router";
-import {useSuspenseQuery} from "@tanstack/react-query";
+import {useQuery, useSuspenseQuery} from "@tanstack/react-query";
 import {RefreshCw} from "../../components/icons.js";
 import {useState, useMemo} from "react";
 import {KanbanColumn} from "../../components/kanban-column.js";
 import {refreshAll} from "../../lib/server-fns.js";
-import {projectsQueryOptions} from "../../lib/queries.js";
+import {projectsQueryOptions, readyToLandQueryOptions} from "../../lib/queries.js";
 import {useWorkItems} from "../../lib/use-work-items.js";
 import {buildGrouped, bucketCount} from "../../lib/grouping.js";
 import {runPendingAction} from "../../lib/pending-action.js";
@@ -22,12 +22,13 @@ function Kanban() {
 	const workItems = useWorkItems(projects);
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
+	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
 	const {grouped, totalCount} = useMemo(() => {
-		const g = buildGrouped(workItems, projects);
+		const g = buildGrouped(workItems, projects, readyToLand);
 		let total = 0;
 		for (const cat of CATEGORY_PRIORITY) total += bucketCount(g[cat]);
 		return {grouped: g, totalCount: total};
-	}, [workItems, projects]);
+	}, [workItems, projects, readyToLand]);
 
 	const handleRefreshAll = async () => {
 		await runPendingAction("Refresh all", setRefreshingAll, async () => {

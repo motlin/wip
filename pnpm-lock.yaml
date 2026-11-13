@@ -269,8 +269,8 @@ importers:
         specifier: ^1.10.0
         version: 1.10.0
       '@opentelemetry/core':
-        specifier: ^3.0.0
-        version: 3.0.0(@opentelemetry/api@1.10.0)
+        specifier: ^3.1.0
+        version: 3.1.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/exporter-trace-otlp-proto':
         specifier: ^0.300.0
         version: 0.300.0(@opentelemetry/api@1.10.0)
@@ -345,8 +345,8 @@ importers:
         specifier: ^1.10.0
         version: 1.10.0
       '@opentelemetry/core':
-        specifier: ^3.0.0
-        version: 3.0.0(@opentelemetry/api@1.10.0)
+        specifier: ^3.1.0
+        version: 3.1.0(@opentelemetry/api@1.10.0)
       '@opentelemetry/exporter-trace-otlp-proto':
         specifier: ^0.300.0
         version: 0.300.0(@opentelemetry/api@1.10.0)
@@ -1078,6 +1078,12 @@ packages:
 
   '@opentelemetry/core@3.0.0':
     resolution: {integrity: sha512-whOLlww0R/RLtCWGBXhK1fdvL9t2/TL0fqdjZvcaoUUuNilRPjXecqQdzyVwV68s6XEDA5oYbm7/bZT62GXF4A==}
+    engines: {node: '>=22.15.0'}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.10.0 <1.11.0'
+
+  '@opentelemetry/core@3.1.0':
+    resolution: {integrity: sha512-TS/6jqU5gilzjvjGnsTEKVFF/0MMAtBc2psxaX39IGCBYLat83/iHxYBWn+O6WB+pnyB0SwiH46rvTEp/OeYxA==}
     engines: {node: '>=22.15.0'}
     peerDependencies:
       '@opentelemetry/api': '>=1.10.0 <1.11.0'
@@ -4264,6 +4270,10 @@ packages:
     resolution: {integrity: sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg==}
     engines: {node: '>=4'}
 
+  minimatch@11.0.5:
+    resolution: {integrity: sha512-snPlVppFcYWfLLFQGhDxUyBcHNtMlWmn3jtj7pEaO+DP8pqL0IvAzXhMYmn1z9ASNtgmwLBdFxSf4tMUB0OTKA==}
+    engines: {node: 20 || >=22}
+
   minimatch@11.0.7:
     resolution: {integrity: sha512-Tnk+M9mPjqKDZlUd77eMSjPjhnlBIa1mABOwetMryIshUwi1YmOBdGFfQnHgn4Z8A66eLT8ENzJrxwYmKfqrZg==}
     engines: {node: 20 || >=22}
@@ -5554,7 +5564,7 @@ snapshots:
     dependencies:
       '@eslint/object-schema': 3.0.5
       debug: 4.4.3(supports-color@8.1.1)
-      minimatch: 11.0.7
+      minimatch: 11.0.5
     transitivePeerDependencies:
       - supports-color
 
@@ -5822,6 +5832,11 @@ snapshots:
       '@opentelemetry/api': 1.10.0
 
   '@opentelemetry/core@3.0.0(@opentelemetry/api@1.10.0)':
+    dependencies:
+      '@opentelemetry/api': 1.10.0
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/core@3.1.0(@opentelemetry/api@1.10.0)':
     dependencies:
       '@opentelemetry/api': 1.10.0
       '@opentelemetry/semantic-conventions': 1.43.0
@@ -7896,7 +7911,7 @@ snapshots:
       imurmurhash: 0.1.4
       is-glob: 4.0.3
       json-stable-stringify-without-jsonify: 1.0.1
-      minimatch: 11.0.7
+      minimatch: 11.0.5
       natural-compare: 1.4.0
       optionator: 0.9.4
     optionalDependencies:
@@ -8708,6 +8723,11 @@ snapshots:
   mime@1.6.0: {}
 
   min-indent@1.0.1: {}
+
+  minimatch@11.0.5:
+    dependencies:
+      '@isaacs/nonrecursive-glob-match': 1.1.0
+      brace-expansion: 5.0.12
 
   minimatch@11.0.7:
     dependencies:

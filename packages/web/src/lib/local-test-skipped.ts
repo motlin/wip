@@ -14,16 +14,19 @@ export function markLocalTestSkipped(
 	project: string,
 	sha: string,
 	reason: LocalTestSkipReason = "green-before-replay",
-): void {
+): void
+{
 	const shas = skipped.get(project) ?? new Map<string, LocalTestSkipReason>();
 	shas.set(sha, reason);
 	skipped.set(project, shas);
 }
 
-export function isLocalTestSkipped(project: string, sha: string): boolean {
+export function isLocalTestSkipped(project: string, sha: string): boolean
+{
 	return skipped.get(project)?.has(sha) === true;
 }
 
-export function localTestSkipReason(project: string, sha: string): LocalTestSkipReason | undefined {
+export function localTestSkipReason(project: string, sha: string): LocalTestSkipReason | undefined
+{
 	return skipped.get(project)?.get(sha);
 }

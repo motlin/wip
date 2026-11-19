@@ -4,14 +4,22 @@ import {flowHistoryQueryOptions} from "../lib/queries";
 import {useHydrated} from "../lib/use-hydrated.js";
 import {AgingChart, ThroughputChart, TimeInStateChart} from "../components/flow-charts";
 
-export const Route = createFileRoute("/flow")({
-	head: () => ({
-		meta: [{title: "WIP Flow"}],
-	}),
-	component: FlowPage,
-});
+export const Route = createFileRoute("/flow")(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP Flow",
+				},
+			],
+		}),
+		component: FlowPage,
+	},
+);
 
-function FlowPage() {
+function FlowPage()
+{
 	// Client-only query restored by the persister before hydration; show it once hydrated
 	// so the hydration render matches the server's "Loading…".
 	const hydrated = useHydrated();

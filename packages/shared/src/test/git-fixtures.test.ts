@@ -5,7 +5,8 @@ import {join} from "node:path";
 
 import {setupGitFixtures as setupFixturesIn, type RecordedCall} from "./git-fixtures.js";
 
-describe("setupGitFixtures", () => {
+describe("setupGitFixtures", () =>
+{
 	const testName = "__test-git-fixtures__";
 	// A private fixtures root per test: concurrent runs in one checkout used to share
 	// src/__fixtures__/git/__test-git-fixtures__ and read each other's half-written files.
@@ -13,17 +14,27 @@ describe("setupGitFixtures", () => {
 	let testDir: string;
 	const setupGitFixtures = (name: string) => setupFixturesIn(name, fixturesDir);
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		fixturesDir = mkdtempSync(join(tmpdir(), "wip-git-fixtures-"));
 		testDir = join(fixturesDir, testName);
 	});
 
-	afterEach(() => {
-		rmSync(fixturesDir, {recursive: true, force: true});
+	afterEach(() =>
+	{
+		rmSync(
+			fixturesDir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("returns recorded fixture in replay mode", async () => {
-		const fixture: RecordedCall = {
+	it("returns recorded fixture in replay mode", async () =>
+	{
+		const fixture: RecordedCall =
+		{
 			command: "git",
 			args: ["-C", "/tmp/repo", "rev-parse", "HEAD"],
 			stdout: "abc123def456",
@@ -43,7 +54,8 @@ describe("setupGitFixtures", () => {
 		ctx.stop();
 	});
 
-	it("throws when no fixture found in replay mode", async () => {
+	it("throws when no fixture found in replay mode", async () =>
+	{
 		const ctx = setupGitFixtures(testName);
 
 		await expect(ctx.mock("git", ["-C", "/tmp/repo", "status"])).rejects.toThrow(
@@ -53,8 +65,10 @@ describe("setupGitFixtures", () => {
 		ctx.stop();
 	});
 
-	it("persists fixtures to disk and reloads them", async () => {
-		const fixture: RecordedCall = {
+	it("persists fixtures to disk and reloads them", async () =>
+	{
+		const fixture: RecordedCall =
+		{
 			command: "git",
 			args: ["-C", "/tmp/repo", "branch", "--list"],
 			stdout: "  main\n* feature-branch\n",
@@ -78,24 +92,29 @@ describe("setupGitFixtures", () => {
 		ctx2.stop();
 	});
 
-	it("distinguishes calls with different args", async () => {
+	it("distinguishes calls with different args", async () =>
+	{
 		const ctx = setupGitFixtures(testName);
 
-		ctx.addFixture({
-			command: "git",
-			args: ["-C", "/tmp/repo", "rev-parse", "HEAD"],
-			stdout: "sha-head",
-			stderr: "",
-			exitCode: 0,
-		});
+		ctx.addFixture(
+			{
+				command: "git",
+				args: ["-C", "/tmp/repo", "rev-parse", "HEAD"],
+				stdout: "sha-head",
+				stderr: "",
+				exitCode: 0,
+			},
+		);
 
-		ctx.addFixture({
-			command: "git",
-			args: ["-C", "/tmp/repo", "rev-parse", "main"],
-			stdout: "sha-main",
-			stderr: "",
-			exitCode: 0,
-		});
+		ctx.addFixture(
+			{
+				command: "git",
+				args: ["-C", "/tmp/repo", "rev-parse", "main"],
+				stdout: "sha-main",
+				stderr: "",
+				exitCode: 0,
+			},
+		);
 
 		const headResult = await ctx.mock("git", ["-C", "/tmp/repo", "rev-parse", "HEAD"]);
 		expect(headResult.stdout).toBe("sha-head");
@@ -106,16 +125,19 @@ describe("setupGitFixtures", () => {
 		ctx.stop();
 	});
 
-	it("handles fixtures with non-zero exit codes", async () => {
+	it("handles fixtures with non-zero exit codes", async () =>
+	{
 		const ctx = setupGitFixtures(testName);
 
-		ctx.addFixture({
-			command: "git",
-			args: ["-C", "/tmp/repo", "symbolic-ref", "-q", "HEAD"],
-			stdout: "",
-			stderr: "",
-			exitCode: 1,
-		});
+		ctx.addFixture(
+			{
+				command: "git",
+				args: ["-C", "/tmp/repo", "symbolic-ref", "-q", "HEAD"],
+				stdout: "",
+				stderr: "",
+				exitCode: 1,
+			},
+		);
 
 		const result = await ctx.mock("git", ["-C", "/tmp/repo", "symbolic-ref", "-q", "HEAD"]);
 		expect(result.exitCode).toBe(1);
@@ -124,28 +146,39 @@ describe("setupGitFixtures", () => {
 		ctx.stop();
 	});
 
-	it("handles fixtures with input (piped stdin)", async () => {
+	it("handles fixtures with input (piped stdin)", async () =>
+	{
 		const ctx = setupGitFixtures(testName);
 
-		ctx.addFixture({
-			command: "git",
-			args: ["-C", "/tmp/repo", "patch-id", "--stable"],
-			input: "diff content here",
-			stdout: "abc123 def456",
-			stderr: "",
-			exitCode: 0,
-		});
+		ctx.addFixture(
+			{
+				command: "git",
+				args: ["-C", "/tmp/repo", "patch-id", "--stable"],
+				input: "diff content here",
+				stdout: "abc123 def456",
+				stderr: "",
+				exitCode: 0,
+			},
+		);
 
-		const result = await ctx.mock("git", ["-C", "/tmp/repo", "patch-id", "--stable"], {
-			input: "diff content here",
-		});
+		const result = await ctx.mock(
+			"git",
+			["-C", "/tmp/repo", "patch-id", "--stable"],
+			{
+				input: "diff content here",
+			},
+		);
 		expect(result.stdout).toBe("abc123 def456");
 
 		// Different input should not match
 		await expect(
-			ctx.mock("git", ["-C", "/tmp/repo", "patch-id", "--stable"], {
-				input: "different content",
-			}),
+			ctx.mock(
+				"git",
+				["-C", "/tmp/repo", "patch-id", "--stable"],
+				{
+					input: "different content",
+				},
+			),
 		).rejects.toThrow("No git fixture found");
 
 		ctx.stop();

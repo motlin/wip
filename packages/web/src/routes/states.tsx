@@ -7,17 +7,26 @@ import {useHydrated} from "../lib/use-hydrated.js";
 import {CATEGORIES, CATEGORY_PRIORITY, categoryTextClass} from "../lib/category-actions";
 import {CATEGORY_COLUMNS, STATE_MACHINE, type Category} from "@wip/shared/schemas.js";
 
-const statesSearchSchema = z.object({
-	state: z.string().optional(),
-});
+const statesSearchSchema = z.object(
+	{
+		state: z.string().optional(),
+	},
+);
 
-export const Route = createFileRoute("/states")({
-	validateSearch: statesSearchSchema,
-	head: () => ({
-		meta: [{title: "WIP State Machine"}],
-	}),
-	component: StatesPage,
-});
+export const Route = createFileRoute("/states")(
+	{
+		validateSearch: statesSearchSchema,
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP State Machine",
+				},
+			],
+		}),
+		component: StatesPage,
+	},
+);
 
 // Layout: assign (x, y) positions to each state for the SVG graph.
 // States are grouped into columns by lifecycle phase.
@@ -26,7 +35,8 @@ const NODE_H = 36;
 const COL_GAP = 180;
 const ROW_GAP = 56;
 
-interface NodePos {
+interface NodePos
+{
 	x: number;
 	y: number;
 }
@@ -34,16 +44,25 @@ interface NodePos {
 // Column assignments: the canonical lifecycle-phase columns
 const COLUMNS: readonly (readonly Category[])[] = CATEGORY_COLUMNS;
 
-function computePositions(): Map<Category, NodePos> {
+function computePositions(): Map<Category, NodePos>
+{
 	const positions = new Map<Category, NodePos>();
 	const padLeft = 20;
 	const padTop = 20;
 
-	for (const [col, states] of COLUMNS.entries()) {
+	for (const [col, states] of COLUMNS.entries())
+	{
 		const colX = padLeft + col * (NODE_W + COL_GAP);
-		for (const [row, state] of states.entries()) {
+		for (const [row, state] of states.entries())
+		{
 			const rowY = padTop + row * (NODE_H + ROW_GAP);
-			positions.set(state, {x: colX, y: rowY});
+			positions.set(
+				state,
+				{
+					x: colX,
+					y: rowY,
+				},
+			);
 		}
 	}
 
@@ -55,41 +74,90 @@ const SVG_WIDTH = 20 + COLUMNS.length * (NODE_W + COL_GAP);
 const SVG_HEIGHT = 20 + Math.max(...COLUMNS.map((col) => col.length - 1)) * (NODE_H + ROW_GAP) + NODE_H;
 
 // Color mapping from Tailwind class strings to fill colors for the SVG nodes
-function nodeColor(category: Category, isActive: boolean): {fill: string; stroke: string; text: string} {
-	if (isActive) {
-		return {fill: "#fbbf24", stroke: "#f59e0b", text: "#000"};
+function nodeColor(
+	category: Category,
+	isActive: boolean,
+):
+{
+	fill: string;
+	stroke: string;
+	text: string;
+}
+{
+	if (isActive)
+	{
+		return {
+			fill: "#fbbf24",
+			stroke: "#f59e0b",
+			text: "#000",
+		};
 	}
 	const palette = CATEGORIES[category].palette;
-	switch (palette) {
+	switch (palette)
+	{
 		case "green":
-			return {fill: "#064e3b", stroke: "#059669", text: "#6ee7b7"};
+			return {
+				fill: "#064e3b",
+				stroke: "#059669",
+				text: "#6ee7b7",
+			};
 		case "red":
-			return {fill: "#450a0a", stroke: "#dc2626", text: "#fca5a5"};
+			return {
+				fill: "#450a0a",
+				stroke: "#dc2626",
+				text: "#fca5a5",
+			};
 		case "yellow":
-			return {fill: "#422006", stroke: "#ca8a04", text: "#fde68a"};
+			return {
+				fill: "#422006",
+				stroke: "#ca8a04",
+				text: "#fde68a",
+			};
 		case "blue":
-			return {fill: "#172554", stroke: "#2563eb", text: "#93c5fd"};
+			return {
+				fill: "#172554",
+				stroke: "#2563eb",
+				text: "#93c5fd",
+			};
 		case "orange":
-			return {fill: "#431407", stroke: "#ea580c", text: "#fdba74"};
+			return {
+				fill: "#431407",
+				stroke: "#ea580c",
+				text: "#fdba74",
+			};
 		case "amber":
-			return {fill: "#451a03", stroke: "#d97706", text: "#fcd34d"};
+			return {
+				fill: "#451a03",
+				stroke: "#d97706",
+				text: "#fcd34d",
+			};
 		case "purple":
-			return {fill: "#2e1065", stroke: "#7c3aed", text: "#c4b5fd"};
+			return {
+				fill: "#2e1065",
+				stroke: "#7c3aed",
+				text: "#c4b5fd",
+			};
 		case "dim":
 		case "muted":
 		default:
-			return {fill: "#1e1e2e", stroke: "#4b5563", text: "#9ca3af"};
+			return {
+				fill: "#1e1e2e",
+				stroke: "#4b5563",
+				text: "#9ca3af",
+			};
 	}
 }
 
-function edgePath(from: NodePos, to: NodePos): string {
+function edgePath(from: NodePos, to: NodePos): string
+{
 	const x1 = from.x + NODE_W;
 	const y1 = from.y + NODE_H / 2;
 	const x2 = to.x;
 	const y2 = to.y + NODE_H / 2;
 
 	// If going backwards (right-to-left), route underneath
-	if (x2 <= x1) {
+	if (x2 <= x1)
+	{
 		const midY = Math.max(y1, y2) + NODE_H + 20;
 		return `M ${x1} ${y1} C ${x1 + 40} ${y1}, ${x1 + 40} ${midY}, ${(x1 + x2) / 2} ${midY} C ${x2 - 40} ${midY}, ${x2 - 40} ${y2}, ${x2} ${y2}`;
 	}
@@ -106,29 +174,43 @@ function StateGraph({
 	activeState: string | undefined;
 	/** Live count of WIP items per state, from the ledger; states with none show no badge. */
 	stateCounts: Readonly<Record<string, number>>;
-}) {
+})
+{
 	const navigate = useNavigate();
 
 	// Deduplicate edges: group by from->to, collect transition labels and track kind
 	const edgeMap = new Map<
 		string,
-		{from: Category; to: Category; transitions: string[]; hasActive: boolean; hasPassive: boolean}
+		{
+			from: Category;
+			to: Category;
+			transitions: string[];
+			hasActive: boolean;
+			hasPassive: boolean;
+		}
 	>();
-	for (const t of STATE_MACHINE) {
+	for (const t of STATE_MACHINE)
+	{
 		const key = `${t.from}->${t.to}`;
 		const existing = edgeMap.get(key);
-		if (existing) {
+		if (existing)
+		{
 			existing.transitions.push(t.transition);
 			if (t.kind === "active") existing.hasActive = true;
 			if (t.kind === "passive") existing.hasPassive = true;
-		} else {
-			edgeMap.set(key, {
-				from: t.from,
-				to: t.to,
-				transitions: [t.transition],
-				hasActive: t.kind === "active",
-				hasPassive: t.kind === "passive",
-			});
+		}
+		else
+		{
+			edgeMap.set(
+				key,
+				{
+					from: t.from,
+					to: t.to,
+					transitions: [t.transition],
+					hasActive: t.kind === "active",
+					hasPassive: t.kind === "passive",
+				},
+			);
 		}
 	}
 	const edges = Array.from(edgeMap.values());
@@ -138,7 +220,11 @@ function StateGraph({
 			<svg
 				viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
 				className="min-w-[900px]"
-				style={{width: "100%", height: "auto"}}
+				style={
+				{
+					width: "100%",
+					height: "auto",
+				}}
 			>
 				<defs>
 					<marker
@@ -173,7 +259,8 @@ function StateGraph({
 				</defs>
 
 				{/* Edges */}
-				{edges.map(({from, to, transitions, hasActive, hasPassive}) => {
+				{edges.map(({from, to, transitions, hasActive, hasPassive}) =>
+				{
 					const fromPos = POSITIONS.get(from);
 					const toPos = POSITIONS.get(to);
 					if (!fromPos || !toPos) return null;
@@ -196,7 +283,8 @@ function StateGraph({
 				})}
 
 				{/* Nodes */}
-				{CATEGORY_PRIORITY.map((cat) => {
+				{CATEGORY_PRIORITY.map((cat) =>
+				{
 					const pos = POSITIONS.get(cat);
 					if (!pos) return null;
 					const isActive = activeState === cat;
@@ -205,8 +293,17 @@ function StateGraph({
 						<g
 							key={cat}
 							className="cursor-pointer"
-							onClick={() => {
-								void navigate({to: "/states", search: {state: cat}});
+							onClick={() =>
+							{
+								void navigate(
+									{
+										to: "/states",
+										search:
+										{
+											state: cat,
+										},
+									},
+								);
 							}}
 						>
 							{isActive && (
@@ -270,7 +367,8 @@ function StateGraph({
 	);
 }
 
-function StateTable({activeState}: {activeState: string | undefined}) {
+function StateTable({activeState}: {activeState: string | undefined})
+{
 	return (
 		<div className="overflow-x-auto rounded-lg border border-border-300/30">
 			<table className="w-full text-sm">
@@ -286,7 +384,8 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 					</tr>
 				</thead>
 				<tbody>
-					{CATEGORY_PRIORITY.map((cat, idx) => {
+					{CATEGORY_PRIORITY.map((cat, idx) =>
+					{
 						const config = CATEGORIES[cat];
 						const isActive = activeState === cat;
 						const outgoing = STATE_MACHINE.filter((t) => t.from === cat);
@@ -302,7 +401,10 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 								<td className="px-3 py-2">
 									<Link
 										to="/states"
-										search={{state: cat}}
+										search={
+										{
+											state: cat,
+										}}
 										className={`font-mono text-xs hover:underline ${isActive ? "font-bold text-amber-400" : categoryTextClass(cat)}`}
 									>
 										{cat}
@@ -334,7 +436,10 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 											<Link
 												key={`${t.transition}-${t.to}`}
 												to="/states"
-												search={{state: t.to}}
+												search={
+												{
+													state: t.to,
+												}}
 												className={`rounded px-1.5 py-0.5 font-mono text-xs hover:bg-bg-300 hover:text-text-100 ${
 													t.kind === "passive"
 														? "bg-bg-200/60 text-text-400 italic"
@@ -352,7 +457,10 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 											<Link
 												key={`${t.from}-${t.transition}`}
 												to="/states"
-												search={{state: t.from}}
+												search={
+												{
+													state: t.from,
+												}}
 												className="rounded bg-bg-200 px-1.5 py-0.5 font-mono text-xs text-text-300 hover:bg-bg-300 hover:text-text-100"
 											>
 												{t.from} &rarr; {t.transition}
@@ -369,7 +477,8 @@ function StateTable({activeState}: {activeState: string | undefined}) {
 	);
 }
 
-function StatesPage() {
+function StatesPage()
+{
 	const {state: activeState} = Route.useSearch();
 	// Client-only query restored by the persister before hydration; apply it once hydrated
 	// so the hydration render matches the server HTML.

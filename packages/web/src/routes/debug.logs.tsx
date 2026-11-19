@@ -4,27 +4,41 @@ import {z} from "zod";
 import {LogList, type KeyedEntry} from "../components/log-list.js";
 import {useAutoTail} from "../lib/use-auto-tail.js";
 
-export const Route = createFileRoute("/debug/logs")({
-	head: () => ({
-		meta: [{title: "Server Logs"}],
-	}),
-	component: DebugLogs,
-});
+export const Route = createFileRoute("/debug/logs")(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					title: "Server Logs",
+				},
+			],
+		}),
+		component: DebugLogs,
+	},
+);
 
 const LevelFilterSchema = z.enum(["all", "debug", "info", "warn", "error"]);
 type LevelFilter = z.infer<typeof LevelFilterSchema>;
 const CategoryFilterSchema = z.enum(["all", "subprocess", "progress", "general"]);
 type CategoryFilter = z.infer<typeof CategoryFilterSchema>;
 
-const ServerLogStatusSchema = z.object({loggingEnabled: z.boolean()});
-const LogEntrySchema = z.looseObject({
-	time: z.number(),
-	level: z.number(),
-	category: z.string(),
-	msg: z.string(),
-});
+const ServerLogStatusSchema = z.object(
+	{
+		loggingEnabled: z.boolean(),
+	},
+);
+const LogEntrySchema = z.looseObject(
+	{
+		time: z.number(),
+		level: z.number(),
+		category: z.string(),
+		msg: z.string(),
+	},
+);
 
-const LEVEL_MIN: Record<LevelFilter, number> = {
+const LEVEL_MIN: Record<LevelFilter, number> =
+{
 	all: 0,
 	debug: 20,
 	info: 30,
@@ -32,7 +46,8 @@ const LEVEL_MIN: Record<LevelFilter, number> = {
 	error: 50,
 };
 
-function DebugLogs() {
+function DebugLogs()
+{
 	const [entries, setEntries] = useState<KeyedEntry[]>([]);
 	const nextId = useRef(0);
 	const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
@@ -41,40 +56,53 @@ function DebugLogs() {
 	const [connected, setConnected] = useState(false);
 	const [loggingEnabled, setLoggingEnabled] = useState<boolean | null>(null);
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		const es = new EventSource("/api/server-logs");
-		es.addEventListener("open", () => {
+		es.addEventListener("open", () =>
+		{
 			setConnected(true);
 		});
-		es.addEventListener("error", () => {
+		es.addEventListener("error", () =>
+		{
 			setConnected(false);
 		});
-		const handleStatus = (event: MessageEvent<string>) => {
+		const handleStatus = (event: MessageEvent<string>) =>
+		{
 			const status = ServerLogStatusSchema.safeParse(JSON.parse(event.data));
 			if (!status.success) return;
 			setLoggingEnabled(status.data.loggingEnabled);
 			setConnected(true);
 		};
 		es.addEventListener("status", handleStatus);
-		es.addEventListener("message", (event: MessageEvent<string>) => {
+		es.addEventListener("message", (event: MessageEvent<string>) =>
+		{
 			const parsed = LogEntrySchema.safeParse(JSON.parse(event.data));
 			if (!parsed.success) return;
-			const keyed: KeyedEntry = {id: nextId.current++, entry: parsed.data};
-			setEntries((prev) => {
+			const keyed: KeyedEntry =
+			{
+				id: nextId.current++,
+				entry: parsed.data,
+			};
+			setEntries((prev) =>
+			{
 				const next = [...prev, keyed];
 				return next.length > 2000 ? next.slice(-2000) : next;
 			});
 		});
-		return () => {
+		return () =>
+		{
 			es.removeEventListener("status", handleStatus);
 			es.close();
 		};
 	}, []);
 
-	const filtered = useMemo(() => {
+	const filtered = useMemo(() =>
+	{
 		const minLevel = LEVEL_MIN[levelFilter];
 		const needle = search.trim().toLowerCase();
-		return entries.filter(({entry}) => {
+		return entries.filter(({entry}) =>
+		{
 			if (entry.level < minLevel) return false;
 			if (categoryFilter !== "all" && entry.category !== categoryFilter) return false;
 			if (needle && !entry.msg.toLowerCase().includes(needle)) return false;
@@ -84,7 +112,8 @@ function DebugLogs() {
 
 	const {containerRef, isFollowing, setFollowing, handleScroll} = useAutoTail(String(filtered.length));
 
-	const clear = () => {
+	const clear = () =>
+	{
 		setEntries([]);
 	};
 
@@ -116,7 +145,8 @@ function DebugLogs() {
 					<span className="text-text-400">Level:</span>
 					<select
 						value={levelFilter}
-						onChange={(e) => {
+						onChange={(e) =>
+						{
 							const parsed = LevelFilterSchema.safeParse(e.target.value);
 							if (parsed.success) setLevelFilter(parsed.data);
 						}}
@@ -133,7 +163,8 @@ function DebugLogs() {
 					<span className="text-text-400">Category:</span>
 					<select
 						value={categoryFilter}
-						onChange={(e) => {
+						onChange={(e) =>
+						{
 							const parsed = CategoryFilterSchema.safeParse(e.target.value);
 							if (parsed.success) setCategoryFilter(parsed.data);
 						}}
@@ -147,7 +178,8 @@ function DebugLogs() {
 				</label>
 				<input
 					value={search}
-					onChange={(e) => {
+					onChange={(e) =>
+					{
 						setSearch(e.target.value);
 					}}
 					placeholder="Search message..."
@@ -162,7 +194,8 @@ function DebugLogs() {
 				</button>
 				<button
 					type="button"
-					onClick={() => {
+					onClick={() =>
+					{
 						setFollowing(!isFollowing);
 					}}
 					className={`rounded border px-2 py-0.5 text-xs ${

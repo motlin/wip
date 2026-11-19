@@ -4,16 +4,19 @@ import {CATEGORIES} from "../lib/category-actions";
 
 /** The /flow page charts (plan step 46): one series each, so no legend; the title names it. */
 
-function stateLabel(state: string): string {
+function stateLabel(state: string): string
+{
 	const parsed = CategorySchema.safeParse(state);
 	return parsed.success ? CATEGORIES[parsed.data].label : state;
 }
 
-function pct(value: number, max: number): string {
+function pct(value: number, max: number): string
+{
 	return `${max > 0 ? (value / max) * 100 : 0}%`;
 }
 
-function ChartFrame({title, subtitle, children}: {title: string; subtitle: string; children: React.ReactNode}) {
+function ChartFrame({title, subtitle, children}: {title: string; subtitle: string; children: React.ReactNode})
+{
 	return (
 		<section className="rounded-lg border border-border-300/30 bg-bg-100 p-4">
 			<h2 className="text-sm font-semibold text-text-100">{title}</h2>
@@ -23,13 +26,15 @@ function ChartFrame({title, subtitle, children}: {title: string; subtitle: strin
 	);
 }
 
-export function ThroughputChart({days}: {days: readonly ThroughputDay[]}) {
+export function ThroughputChart({days}: {days: readonly ThroughputDay[]})
+{
 	const max = Math.max(1, ...days.map((d) => d.landings));
 	const total = days.reduce((sum, d) => sum + d.landings, 0);
 	return (
 		<ChartFrame title="Throughput" subtitle={`Landings per day, last ${days.length} days (${total} total)`}>
 			<div className="flex h-32 items-end gap-0.5">
-				{days.map((d) => {
+				{days.map((d) =>
+				{
 					const label = `${d.day}: ${d.landings} ${d.landings === 1 ? "landing" : "landings"}`;
 					return (
 						<div
@@ -41,7 +46,11 @@ export function ThroughputChart({days}: {days: readonly ThroughputDay[]}) {
 						>
 							<div
 								className="w-full rounded-t bg-blue-column"
-								style={{height: pct(d.landings, max), minHeight: d.landings > 0 ? 2 : 0}}
+								style={
+								{
+									height: pct(d.landings, max),
+									minHeight: d.landings > 0 ? 2 : 0,
+								}}
 							/>
 						</div>
 					);
@@ -67,7 +76,8 @@ function HorizontalBar({
 	text: string;
 	value: number;
 	max: number;
-}) {
+})
+{
 	return (
 		<li
 			data-testid={testId}
@@ -77,14 +87,21 @@ function HorizontalBar({
 		>
 			<span className="w-56 shrink-0 truncate text-text-300">{text}</span>
 			<span className="h-3 flex-1">
-				<span className="block h-full rounded-r bg-blue-column" style={{width: pct(value, max)}} />
+				<span
+					className="block h-full rounded-r bg-blue-column"
+					style={
+					{
+						width: pct(value, max),
+					}}
+				/>
 			</span>
 			<span className="w-12 shrink-0 text-right tabular-nums text-text-500">{value.toFixed(1)}d</span>
 		</li>
 	);
 }
 
-export function AgingChart({items}: {items: readonly AgingItem[]}) {
+export function AgingChart({items}: {items: readonly AgingItem[]})
+{
 	const max = Math.max(0, ...items.map((i) => i.ageDays));
 	return (
 		<ChartFrame title="Aging" subtitle={`Days in wip since first seen, ${items.length} items in WIP, oldest first`}>
@@ -108,7 +125,8 @@ export function AgingChart({items}: {items: readonly AgingItem[]}) {
 	);
 }
 
-export function TimeInStateChart({states}: {states: readonly StateTime[]}) {
+export function TimeInStateChart({states}: {states: readonly StateTime[]})
+{
 	const max = Math.max(0, ...states.map((s) => s.medianDays));
 	return (
 		<ChartFrame

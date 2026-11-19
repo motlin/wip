@@ -7,28 +7,42 @@ import {join} from "node:path";
 import {failureSummary, squashFixup} from "./auto-fix.js";
 import {clearAutoFix, getAutoFixes, initDb, resetDb, setAutoFix} from "./db.js";
 
-function sh(dir: string, command: string): string {
-	return execSync(command, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
+function sh(dir: string, command: string): string
+{
+	return execSync(
+		command,
+		{
+			cwd: dir,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
 
-describe("failureSummary", () => {
-	it("is the last failure line of the log without colours, else a generic label", () => {
-		expect({
-			last: failureSummary(
-				"running\n\x1b[31mFAIL src/a.test.ts\x1b[0m\n  AssertionError: expected 1 to be 2\ndone\n",
-			),
-			none: failureSummary("all good\n"),
-			long: failureSummary(`Error: ${"x".repeat(200)}`).length,
-		}).toStrictEqual({
-			last: "AssertionError: expected 1 to be 2",
-			none: "test failed",
-			long: 120,
-		});
+describe("failureSummary", () =>
+{
+	it("is the last failure line of the log without colours, else a generic label", () =>
+	{
+		expect(
+			{
+				last: failureSummary(
+					"running\n\x1b[31mFAIL src/a.test.ts\x1b[0m\n  AssertionError: expected 1 to be 2\ndone\n",
+				),
+				none: failureSummary("all good\n"),
+				long: failureSummary(`Error: ${"x".repeat(200)}`).length,
+			},
+		).toStrictEqual(
+			{
+				last: "AssertionError: expected 1 to be 2",
+				none: "test failed",
+				long: 120,
+			},
+		);
 	});
 
-	it("skips git-test's own trailer (BAD COMMIT, FAILURE!) so the test's failure is named", () => {
+	it("skips git-test's own trailer (BAD COMMIT, FAILURE!) so the test's failure is named", () =>
+	{
 		const log = [
 			"",
 			"FAIL: fragile.txt breaks the bolts test",
@@ -44,20 +58,26 @@ describe("failureSummary", () => {
 			"FAILURE!",
 			"",
 		].join("\n");
-		expect({
-			named: failureSummary(log),
-			bare: failureSummary("BAD COMMIT abc: (default:bad)\n\nFAILURE!\n"),
-		}).toStrictEqual({
-			named: "FAIL: fragile.txt breaks the bolts test",
-			bare: "test failed",
-		});
+		expect(
+			{
+				named: failureSummary(log),
+				bare: failureSummary("BAD COMMIT abc: (default:bad)\n\nFAILURE!\n"),
+			},
+		).toStrictEqual(
+			{
+				named: "FAIL: fragile.txt breaks the bolts test",
+				bare: "test failed",
+			},
+		);
 	});
 });
 
-describe("squashFixup", () => {
+describe("squashFixup", () =>
+{
 	let dir: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		dir = mkdtempSync(join(tmpdir(), "wip-auto-fix-"));
 		sh(dir, "git init -b main");
 		sh(dir, "git config user.email test@test.com");
@@ -72,77 +92,129 @@ describe("squashFixup", () => {
 		sh(dir, "git checkout --detach main");
 	});
 
-	afterEach(() => {
-		rmSync(dir, {recursive: true, force: true});
+	afterEach(() =>
+	{
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("folds the fixup into the original commit with its message and author, keeping the fixed tree", async () => {
+	it("folds the fixup into the original commit with its message and author, keeping the fixed tree", async () =>
+	{
 		const original = sh(dir, "git rev-parse feat~1");
 		const fixup = sh(dir, "git rev-parse feat");
 
 		const squashed = await squashFixup(dir, "feat", original, fixup);
 
-		expect({
-			tip: sh(dir, "git rev-parse feat"),
-			parent: sh(dir, "git rev-parse feat~1"),
-			message: sh(dir, "git log -1 --format=%B feat"),
-			author: sh(dir, "git log -1 --format='%an <%ae>' feat"),
-			file: sh(dir, "git show feat:a.txt"),
-		}).toStrictEqual({
-			tip: squashed,
-			parent: sh(dir, "git rev-parse main"),
-			message: "Add a\n\nBody text",
-			author: "Author <author@test.com>",
-			file: "fixed",
-		});
+		expect(
+			{
+				tip: sh(dir, "git rev-parse feat"),
+				parent: sh(dir, "git rev-parse feat~1"),
+				message: sh(dir, "git log -1 --format=%B feat"),
+				author: sh(dir, "git log -1 --format='%an <%ae>' feat"),
+				file: sh(dir, "git show feat:a.txt"),
+			},
+		).toStrictEqual(
+			{
+				tip: squashed,
+				parent: sh(dir, "git rev-parse main"),
+				message: "Add a\n\nBody text",
+				author: "Author <author@test.com>",
+				file: "fixed",
+			},
+		);
 	});
 
-	it.each(["relative", "short"])(
-		"keeps the original author date to the second under log.date=%s",
-		async (logDate) => {
-			sh(dir, `git config log.date ${logDate}`);
-			const original = sh(dir, "git rev-parse feat~1");
-			const fixup = sh(dir, "git rev-parse feat");
-			const authorDate = sh(dir, "git log -1 --format=%aI feat~1");
+	it.each(["relative", "short"])("keeps the original author date to the second under log.date=%s", async (logDate) =>
+	{
+		sh(dir, `git config log.date ${logDate}`);
+		const original = sh(dir, "git rev-parse feat~1");
+		const fixup = sh(dir, "git rev-parse feat");
+		const authorDate = sh(dir, "git log -1 --format=%aI feat~1");
 
-			const squashed = await squashFixup(dir, "feat", original, fixup);
+		const squashed = await squashFixup(dir, "feat", original, fixup);
 
-			expect({
+		expect(
+			{
 				tip: sh(dir, "git rev-parse feat"),
 				authorDate: sh(dir, "git log -1 --format=%aI feat"),
-			}).toStrictEqual({tip: squashed, authorDate});
-		},
-	);
+			},
+		).toStrictEqual(
+			{
+				tip: squashed,
+				authorDate,
+			},
+		);
+	});
 
-	it("leaves the branch alone when the fixup does not sit directly on the original", async () => {
+	it("leaves the branch alone when the fixup does not sit directly on the original", async () =>
+	{
 		const fixup = sh(dir, "git rev-parse feat");
 		const before = sh(dir, "git rev-parse feat");
 
-		expect({
-			result: await squashFixup(dir, "feat", sh(dir, "git rev-parse main"), fixup),
-			tip: sh(dir, "git rev-parse feat"),
-		}).toStrictEqual({result: null, tip: before});
+		expect(
+			{
+				result: await squashFixup(dir, "feat", sh(dir, "git rev-parse main"), fixup),
+				tip: sh(dir, "git rev-parse feat"),
+			},
+		).toStrictEqual(
+			{
+				result: null,
+				tip: before,
+			},
+		);
 	});
 });
 
-describe("auto-fix records", () => {
-	beforeEach(() => {
+describe("auto-fix records", () =>
+{
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetDb();
 	});
 
-	it("stores one auto-fix per patch-id and clears it on accept", () => {
+	it("stores one auto-fix per patch-id and clears it on accept", () =>
+	{
 		const fixupSha = "f".repeat(40);
-		setAutoFix("p", "patch-1", {branch: "feat", fixupSha, failure: "FAIL a.test.ts"});
+		setAutoFix(
+			"p",
+			"patch-1",
+			{
+				branch: "feat",
+				fixupSha,
+				failure: "FAIL a.test.ts",
+			},
+		);
 		const stored = getAutoFixes("p");
 		clearAutoFix("p", "patch-1");
 
-		expect({stored: Object.fromEntries(stored), cleared: Object.fromEntries(getAutoFixes("p"))}).toStrictEqual({
-			stored: {"patch-1": {branch: "feat", fixupSha, failure: "FAIL a.test.ts"}},
-			cleared: {},
-		});
+		expect(
+			{
+				stored: Object.fromEntries(stored),
+				cleared: Object.fromEntries(getAutoFixes("p")),
+			},
+		).toStrictEqual(
+			{
+				stored:
+				{
+					"patch-1":
+					{
+						branch: "feat",
+						fixupSha,
+						failure: "FAIL a.test.ts",
+					},
+				},
+				cleared: {},
+			},
+		);
 	});
 });

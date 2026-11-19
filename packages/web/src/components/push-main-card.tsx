@@ -6,7 +6,12 @@ import {ActionOutcomeLine, ActionSlot, CANCEL_CLASS} from "./land-control.js";
 
 const CARD_CLASS = "rounded-md border border-border-300/50 bg-bg-000 px-3 py-2 text-xs shadow-sm";
 
-const STATUS_WORDS = {good: "green", bad: "red", unknown: "unknown"} as const;
+const STATUS_WORDS =
+{
+	good: "green",
+	bad: "red",
+	unknown: "unknown",
+} as const;
 
 const commitLabel = (c: MainPushCommit): string => `"${c.subject}" (${c.sha.slice(0, 7)})`;
 
@@ -16,7 +21,8 @@ const statusLabel = (c: MainPushCommit): string => `${commitLabel(c)} ${STATUS_W
  * The commits after the green prefix, as one line: how many, how many unknown and red, and the first
  * (never green) by name. The full list sits behind a disclosure so a long tail never floods the row.
  */
-function NotPushed({rest}: {rest: readonly MainPushCommit[]}) {
+function NotPushed({rest}: {rest: readonly MainPushCommit[]})
+{
 	const [first] = rest;
 	const unknown = rest.filter((c) => c.status === "unknown").length;
 	const red = rest.filter((c) => c.status === "bad").length;
@@ -56,11 +62,13 @@ function PushMainCard({
 	onPush: (push: MainPush, sha: string) => void;
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
-}) {
+})
+{
 	const [confirming, setConfirming] = useState(false);
 	const {project, branch, remote} = push;
 	const target = `${remote}/${branch}`;
-	if (push.diverged) {
+	if (push.diverged)
+	{
 		return (
 			<div data-testid="push-row" className={`${CARD_CLASS} text-text-300`}>
 				{project}: local {branch} has diverged from {target}; rebase first
@@ -82,7 +90,8 @@ function PushMainCard({
 					<button
 						type="button"
 						disabled={outcome?.status === "running"}
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirming(false);
 							onPush(push, last.sha);
 						}}
@@ -92,7 +101,8 @@ function PushMainCard({
 					</button>
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirming(false);
 						}}
 						className={CANCEL_CLASS}
@@ -113,7 +123,8 @@ function PushMainCard({
 					<ActionSlot
 						confirm={confirm}
 						confirmLabel="Confirm push"
-						onCancel={() => {
+						onCancel={() =>
+						{
 							setConfirming(false);
 						}}
 						outcome={outcome}
@@ -125,7 +136,8 @@ function PushMainCard({
 								type="button"
 								disabled={outcome?.status === "running"}
 								aria-expanded={confirming}
-								onClick={() => {
+								onClick={() =>
+								{
 									setConfirming(true);
 								}}
 								className="rounded-md bg-status-green px-2 py-0.5 font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -161,7 +173,8 @@ export function PushMainCards({
 	onPush: (push: MainPush, sha: string) => void;
 	outcomes: ActionOutcomes;
 	onDismissOutcome: (key: string) => void;
-}) {
+})
+{
 	const included = (name: string): boolean => project === null || name === project;
 	const shown = visiblePushes(pushes).filter((push) => included(push.project));
 	const shownProjects = new Set(shown.map((push) => push.project));
@@ -169,7 +182,8 @@ export function PushMainCards({
 		.filter((key) => key.startsWith("push:"))
 		.map((key) => key.slice("push:".length))
 		.filter((name) => !shownProjects.has(name) && included(name));
-	const dismiss = (key: string) => () => {
+	const dismiss = (key: string) => () =>
+	{
 		onDismissOutcome(key);
 	};
 	return (

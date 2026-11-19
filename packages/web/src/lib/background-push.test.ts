@@ -6,33 +6,80 @@ import {createBackgroundPusher, publishAfterAdvance, type PushRequest} from "./b
 const SHA = "a".repeat(40);
 const OLD = "b".repeat(40);
 
-const request: PushRequest = {project: "wip", dir: "/p/wip", repository: "motlin/wip", branch: "feature", sha: SHA};
+const request: PushRequest =
+{
+	project: "wip",
+	dir: "/p/wip",
+	repository: "motlin/wip",
+	branch: "feature",
+	sha: SHA,
+};
 
-function fakes(options: {remoteSha?: string; gate?: PushGateDecision[]; pushExit?: number} = {}) {
+function fakes(
+	options:
+	{
+		remoteSha?: string;
+		gate?: PushGateDecision[];
+		pushExit?: number;
+	} = {},
+)
+{
 	const commands: string[][] = [];
 	const recorded: BackgroundPush[] = [];
 	const decisions = [...(options.gate ?? [])];
-	const pusher = createBackgroundPusher({
-		gate: {
-			check: async () => Promise.resolve(decisions.shift() ?? {open: true}),
-			recordPush: (push) => {
-				recorded.push(push);
+	const pusher = createBackgroundPusher(
+		{
+			gate:
+			{
+				check: async () =>
+					Promise.resolve(
+						decisions.shift() ??
+						{
+							open: true,
+						},
+					),
+				recordPush: (push) =>
+				{
+					recorded.push(push);
+				},
 			},
-		},
-		git: async (args) => {
-			commands.push([...args]);
-			if (args.includes("rev-parse")) {
+			git: async (args) =>
+			{
+				commands.push([...args]);
+				if (args.includes("rev-parse"))
+				{
+					return Promise.resolve(
+						options.remoteSha === undefined
+							?
+								{
+									exitCode: 1,
+									stdout: "",
+									stderr: "",
+								}
+							:
+								{
+									exitCode: 0,
+									stdout: `${options.remoteSha}\n`,
+									stderr: "",
+								},
+					);
+				}
 				return Promise.resolve(
-					options.remoteSha === undefined
-						? {exitCode: 1, stdout: "", stderr: ""}
-						: {exitCode: 0, stdout: `${options.remoteSha}\n`, stderr: ""},
+					{
+						exitCode: options.pushExit ?? 0,
+						stdout: "",
+						stderr: "rejected",
+					},
 				);
-			}
-			return Promise.resolve({exitCode: options.pushExit ?? 0, stdout: "", stderr: "rejected"});
+			},
+			now: () => 5_000,
 		},
-		now: () => 5_000,
-	});
-	return {pusher, commands, recorded};
+	);
+	return {
+		pusher,
+		commands,
+		recorded,
+	};
 }
 
 const REV_PARSE = ["-C", "/p/wip", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/feature"];
@@ -45,189 +92,593 @@ const PUSH = [
 	`${SHA}:refs/heads/feature`,
 ];
 
-describe("publishAfterAdvance", () => {
-	it("force-pushes a ready pull-request-repo candidate once with lease and records it on the gate", async () => {
-		const {pusher, commands, recorded} = fakes({remoteSha: OLD});
-		const outcome = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
-		expect({outcome, commands, recorded, pending: pusher.pending()}).toStrictEqual({
-			outcome: {status: "pushed"},
-			commands: [REV_PARSE, PUSH],
-			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
-			pending: [],
-		});
+describe("publishAfterAdvance", () =>
+{
+	it("force-pushes a ready pull-request-repo candidate once with lease and records it on the gate", async () =>
+	{
+		const {pusher, commands, recorded} = fakes(
+			{
+				remoteSha: OLD,
+			},
+		);
+		const outcome = await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
+		expect(
+			{
+				outcome,
+				commands,
+				recorded,
+				pending: pusher.pending(),
+			},
+		).toStrictEqual(
+			{
+				outcome:
+				{
+					status: "pushed",
+				},
+				commands: [REV_PARSE, PUSH],
+				recorded: [
+					{
+						repository: "motlin/wip",
+						sha: SHA,
+						pushedAt: 5_000,
+					},
+				],
+				pending: [],
+			},
+		);
 	});
 
-	it("never pushes unless the repo is explicitly set to land by pull request", async () => {
-		const {pusher, commands} = fakes({remoteSha: OLD});
-		const outcomes = {
-			fastForwardOrUnset: await publishAfterAdvance({backgroundPush: false, outcome: "ready", request}, pusher),
-			unregistered: await publishAfterAdvance({backgroundPush: undefined, outcome: "ready", request}, pusher),
+	it("never pushes unless the repo is explicitly set to land by pull request", async () =>
+	{
+		const {pusher, commands} = fakes(
+			{
+				remoteSha: OLD,
+			},
+		);
+		const outcomes =
+		{
+			fastForwardOrUnset: await publishAfterAdvance(
+				{
+					backgroundPush: false,
+					outcome: "ready",
+					request,
+				},
+				pusher,
+			),
+			unregistered: await publishAfterAdvance(
+				{
+					backgroundPush: undefined,
+					outcome: "ready",
+					request,
+				},
+				pusher,
+			),
 		};
-		expect({outcomes, commands}).toStrictEqual({
-			outcomes: {fastForwardOrUnset: null, unregistered: null},
-			commands: [],
-		});
+		expect(
+			{
+				outcomes,
+				commands,
+			},
+		).toStrictEqual(
+			{
+				outcomes:
+				{
+					fastForwardOrUnset: null,
+					unregistered: null,
+				},
+				commands: [],
+			},
+		);
 	});
 
-	it("never pushes an item that is not ready", async () => {
-		const {pusher, commands} = fakes({remoteSha: OLD});
+	it("never pushes an item that is not ready", async () =>
+	{
+		const {pusher, commands} = fakes(
+			{
+				remoteSha: OLD,
+			},
+		);
 		const outcomes = [];
-		for (const outcome of ["test_failed", "rebase_conflicts", "checks_pending", "skipped"] as const) {
+		for (const outcome of ["test_failed", "rebase_conflicts", "checks_pending", "skipped"] as const)
+		{
 			// eslint-disable-next-line no-await-in-loop
-			outcomes.push(await publishAfterAdvance({backgroundPush: true, outcome, request}, pusher));
+			outcomes.push(
+				await publishAfterAdvance(
+					{
+						backgroundPush: true,
+						outcome,
+						request,
+					},
+					pusher,
+				),
+			);
 		}
-		expect({outcomes, commands}).toStrictEqual({outcomes: [null, null, null, null], commands: []});
+		expect(
+			{
+				outcomes,
+				commands,
+			},
+		).toStrictEqual(
+			{
+				outcomes: [null, null, null, null],
+				commands: [],
+			},
+		);
 	});
 
-	it("skips the push when origin already has the sha", async () => {
-		const {pusher, commands, recorded} = fakes({remoteSha: SHA});
-		const outcome = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
-		expect({outcome, commands, recorded}).toStrictEqual({
-			outcome: {status: "up_to_date"},
-			commands: [REV_PARSE],
-			recorded: [],
-		});
+	it("skips the push when origin already has the sha", async () =>
+	{
+		const {pusher, commands, recorded} = fakes(
+			{
+				remoteSha: SHA,
+			},
+		);
+		const outcome = await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
+		expect(
+			{
+				outcome,
+				commands,
+				recorded,
+			},
+		).toStrictEqual(
+			{
+				outcome:
+				{
+					status: "up_to_date",
+				},
+				commands: [REV_PARSE],
+				recorded: [],
+			},
+		);
 	});
 
-	it("defers the push while the gate is held, and pushes it once the gate opens", async () => {
-		const {pusher, commands, recorded} = fakes({
-			remoteSha: OLD,
-			gate: [{open: false, reason: "GitHub Actions queued on motlin/other@ccc"}, {open: true}],
-		});
-		const held = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
-		const afterHeld = {commands: [...commands], pending: pusher.pending()};
+	it("defers the push while the gate is held, and pushes it once the gate opens", async () =>
+	{
+		const {pusher, commands, recorded} = fakes(
+			{
+				remoteSha: OLD,
+				gate: [
+					{
+						open: false,
+						reason: "GitHub Actions queued on motlin/other@ccc",
+					},
+					{
+						open: true,
+					},
+				],
+			},
+		);
+		const held = await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
+		const afterHeld =
+		{
+			commands: [...commands],
+			pending: pusher.pending(),
+		};
 		await pusher.flush();
-		expect({held, afterHeld, commands, recorded, pending: pusher.pending()}).toStrictEqual({
-			held: {status: "held", reason: "GitHub Actions queued on motlin/other@ccc"},
-			afterHeld: {commands: [REV_PARSE], pending: [request]},
-			commands: [REV_PARSE, REV_PARSE, PUSH],
-			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
-			pending: [],
-		});
+		expect(
+			{
+				held,
+				afterHeld,
+				commands,
+				recorded,
+				pending: pusher.pending(),
+			},
+		).toStrictEqual(
+			{
+				held:
+				{
+					status: "held",
+					reason: "GitHub Actions queued on motlin/other@ccc",
+				},
+				afterHeld:
+				{
+					commands: [REV_PARSE],
+					pending: [request],
+				},
+				commands: [REV_PARSE, REV_PARSE, PUSH],
+				recorded: [
+					{
+						repository: "motlin/wip",
+						sha: SHA,
+						pushedAt: 5_000,
+					},
+				],
+				pending: [],
+			},
+		);
 	});
 
-	it("pushes the deferred ready sha, not whatever the branch points at when the gate opens", async () => {
-		const {pusher, commands, recorded} = fakes({
-			remoteSha: OLD,
-			gate: [{open: false, reason: "held"}, {open: true}],
-		});
-		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
+	it("pushes the deferred ready sha, not whatever the branch points at when the gate opens", async () =>
+	{
+		const {pusher, commands, recorded} = fakes(
+			{
+				remoteSha: OLD,
+				gate: [
+					{
+						open: false,
+						reason: "held",
+					},
+					{
+						open: true,
+					},
+				],
+			},
+		);
+		await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
 		// The user commits on the branch while the push is held; the untested tip must not be pushed.
 		await pusher.flush();
-		expect({pushes: commands.filter((args) => args.includes("push")), recorded}).toStrictEqual({
-			pushes: [PUSH],
-			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
-		});
+		expect(
+			{
+				pushes: commands.filter((args) => args.includes("push")),
+				recorded,
+			},
+		).toStrictEqual(
+			{
+				pushes: [PUSH],
+				recorded: [
+					{
+						repository: "motlin/wip",
+						sha: SHA,
+						pushedAt: 5_000,
+					},
+				],
+			},
+		);
 	});
 
-	it("leases a deferred push on what origin held when it was deferred, so a push made meanwhile is never overwritten", async () => {
+	it("leases a deferred push on what origin held when it was deferred, so a push made meanwhile is never overwritten", async () =>
+	{
 		const NEWER = "c".repeat(40);
-		const remote: {remoteSha?: string} = {remoteSha: OLD};
-		const options: Parameters<typeof fakes>[0] = {gate: [{open: false, reason: "held"}, {open: true}]};
+		const remote:
+		{
+			remoteSha?: string;
+		} =
+		{
+			remoteSha: OLD,
+		};
+		const options: Parameters<typeof fakes>[0] =
+		{
+			gate: [
+				{
+					open: false,
+					reason: "held",
+				},
+				{
+					open: true,
+				},
+			],
+		};
 		const {pusher, commands} = fakes(
-			Object.defineProperty(options, "remoteSha", {get: () => remote.remoteSha, enumerable: true}),
+			Object.defineProperty(
+				options,
+				"remoteSha",
+				{
+					get: () => remote.remoteSha,
+					enumerable: true,
+				},
+			),
 		);
-		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
+		await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
 		// Open PR rebased the branch and pushed its new tip while this push was held.
 		remote.remoteSha = NEWER;
 		await pusher.flush();
 		expect(commands.filter((args) => args.includes("push"))).toStrictEqual([PUSH]);
 	});
 
-	it("leases on the branch being absent from origin when origin has no such branch", async () => {
+	it("leases on the branch being absent from origin when origin has no such branch", async () =>
+	{
 		const {pusher, commands} = fakes();
-		await pusher.push(request, {defer: true});
+		await pusher.push(
+			request,
+			{
+				defer: true,
+			},
+		);
 		expect(commands).toStrictEqual([
 			REV_PARSE,
 			["-C", "/p/wip", "push", "--force-with-lease=refs/heads/feature:", "origin", `${SHA}:refs/heads/feature`],
 		]);
 	});
 
-	it("drops a deferred push when the branch's next advance is not ready", async () => {
-		const {pusher, commands} = fakes({
-			remoteSha: OLD,
-			gate: [{open: false, reason: "held"}],
-		});
-		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
-		await publishAfterAdvance({backgroundPush: true, outcome: "test_failed", request}, pusher);
+	it("drops a deferred push when the branch's next advance is not ready", async () =>
+	{
+		const {pusher, commands} = fakes(
+			{
+				remoteSha: OLD,
+				gate: [
+					{
+						open: false,
+						reason: "held",
+					},
+				],
+			},
+		);
+		await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
+		await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "test_failed",
+				request,
+			},
+			pusher,
+		);
 		await pusher.flush();
-		expect({commands, pending: pusher.pending()}).toStrictEqual({commands: [REV_PARSE], pending: []});
+		expect(
+			{
+				commands,
+				pending: pusher.pending(),
+			},
+		).toStrictEqual(
+			{
+				commands: [REV_PARSE],
+				pending: [],
+			},
+		);
 	});
 });
 
-describe("publishAfterAdvance with an unaccepted AI fixup", () => {
-	it("never pushes a ready item whose auto-fix awaits review, and drops its deferred push", async () => {
-		const {pusher, commands} = fakes({remoteSha: OLD, gate: [{open: false, reason: "held"}]});
-		await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
+describe("publishAfterAdvance with an unaccepted AI fixup", () =>
+{
+	it("never pushes a ready item whose auto-fix awaits review, and drops its deferred push", async () =>
+	{
+		const {pusher, commands} = fakes(
+			{
+				remoteSha: OLD,
+				gate: [
+					{
+						open: false,
+						reason: "held",
+					},
+				],
+			},
+		);
+		await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
 		const outcome = await publishAfterAdvance(
-			{backgroundPush: true, outcome: "ready", request, autoFixed: true},
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+				autoFixed: true,
+			},
 			pusher,
 		);
 		await pusher.flush();
-		expect({outcome, commands, pending: pusher.pending()}).toStrictEqual({
-			outcome: null,
-			commands: [REV_PARSE],
-			pending: [],
-		});
+		expect(
+			{
+				outcome,
+				commands,
+				pending: pusher.pending(),
+			},
+		).toStrictEqual(
+			{
+				outcome: null,
+				commands: [REV_PARSE],
+				pending: [],
+			},
+		);
 	});
 
-	it("pushes once after the fix is accepted and the item is ready again", async () => {
-		const {pusher, commands, recorded} = fakes({remoteSha: OLD});
+	it("pushes once after the fix is accepted and the item is ready again", async () =>
+	{
+		const {pusher, commands, recorded} = fakes(
+			{
+				remoteSha: OLD,
+			},
+		);
 		const unaccepted = await publishAfterAdvance(
-			{backgroundPush: true, outcome: "ready", request, autoFixed: true},
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+				autoFixed: true,
+			},
 			pusher,
 		);
-		const accepted = await publishAfterAdvance({backgroundPush: true, outcome: "ready", request}, pusher);
-		expect({unaccepted, accepted, commands, recorded}).toStrictEqual({
-			unaccepted: null,
-			accepted: {status: "pushed"},
-			commands: [REV_PARSE, PUSH],
-			recorded: [{repository: "motlin/wip", sha: SHA, pushedAt: 5_000}],
-		});
+		const accepted = await publishAfterAdvance(
+			{
+				backgroundPush: true,
+				outcome: "ready",
+				request,
+			},
+			pusher,
+		);
+		expect(
+			{
+				unaccepted,
+				accepted,
+				commands,
+				recorded,
+			},
+		).toStrictEqual(
+			{
+				unaccepted: null,
+				accepted:
+				{
+					status: "pushed",
+				},
+				commands: [REV_PARSE, PUSH],
+				recorded: [
+					{
+						repository: "motlin/wip",
+						sha: SHA,
+						pushedAt: 5_000,
+					},
+				],
+			},
+		);
 	});
 });
 
-describe("createBackgroundPusher", () => {
-	it("does not defer a push asked without deferral (the patch-id fast path) when the gate is held", async () => {
-		const {pusher, commands} = fakes({remoteSha: OLD, gate: [{open: false, reason: "held"}]});
-		const outcome = await pusher.push(request, {defer: false});
-		expect({outcome, commands, pending: pusher.pending()}).toStrictEqual({
-			outcome: {status: "held", reason: "held"},
-			commands: [REV_PARSE],
-			pending: [],
-		});
+describe("createBackgroundPusher", () =>
+{
+	it("does not defer a push asked without deferral (the patch-id fast path) when the gate is held", async () =>
+	{
+		const {pusher, commands} = fakes(
+			{
+				remoteSha: OLD,
+				gate: [
+					{
+						open: false,
+						reason: "held",
+					},
+				],
+			},
+		);
+		const outcome = await pusher.push(
+			request,
+			{
+				defer: false,
+			},
+		);
+		expect(
+			{
+				outcome,
+				commands,
+				pending: pusher.pending(),
+			},
+		).toStrictEqual(
+			{
+				outcome:
+				{
+					status: "held",
+					reason: "held",
+				},
+				commands: [REV_PARSE],
+				pending: [],
+			},
+		);
 	});
 
-	it("reports a rejected push as failed without recording it on the gate", async () => {
-		const {pusher, recorded} = fakes({remoteSha: OLD, pushExit: 1});
-		expect({outcome: await pusher.push(request, {defer: true}), recorded}).toStrictEqual({
-			outcome: {status: "failed", stderr: "rejected"},
-			recorded: [],
-		});
+	it("reports a rejected push as failed without recording it on the gate", async () =>
+	{
+		const {pusher, recorded} = fakes(
+			{
+				remoteSha: OLD,
+				pushExit: 1,
+			},
+		);
+		expect(
+			{
+				outcome: await pusher.push(
+					request,
+					{
+						defer: true,
+					},
+				),
+				recorded,
+			},
+		).toStrictEqual(
+			{
+				outcome:
+				{
+					status: "failed",
+					stderr: "rejected",
+				},
+				recorded: [],
+			},
+		);
 	});
 
-	it("asks the gate about the request's repo, and a flush pushes another repo past one the gate still holds", async () => {
+	it("asks the gate about the request's repo, and a flush pushes another repo past one the gate still holds", async () =>
+	{
 		const asked: string[] = [];
 		const held = new Set(["acme/cogs"]);
 		const pushes: string[] = [];
-		const pusher = createBackgroundPusher({
-			gate: {
-				check: async (repository) => {
-					asked.push(repository);
+		const pusher = createBackgroundPusher(
+			{
+				gate:
+				{
+					check: async (repository) =>
+					{
+						asked.push(repository);
+						return Promise.resolve(
+							held.has(repository)
+								?
+									{
+										open: false,
+										reason: `held on ${repository}`,
+									}
+								:
+									{
+										open: true,
+									},
+						);
+					},
+					recordPush: () => undefined,
+				},
+				git: async (args) =>
+				{
+					if (args.includes("push")) pushes.push(String(args[1]));
 					return Promise.resolve(
-						held.has(repository) ? {open: false, reason: `held on ${repository}`} : {open: true},
+						{
+							exitCode: args.includes("rev-parse") ? 1 : 0,
+							stdout: "",
+							stderr: "",
+						},
 					);
 				},
-				recordPush: () => undefined,
+				now: () => 1,
 			},
-			git: async (args) => {
-				if (args.includes("push")) pushes.push(String(args[1]));
-				return Promise.resolve({exitCode: args.includes("rev-parse") ? 1 : 0, stdout: "", stderr: ""});
-			},
-			now: () => 1,
-		});
-		const cogs: PushRequest = {project: "cogs", dir: "/p/cogs", repository: "acme/cogs", branch: "f", sha: SHA};
-		const widgets: PushRequest = {
+		);
+		const cogs: PushRequest =
+		{
+			project: "cogs",
+			dir: "/p/cogs",
+			repository: "acme/cogs",
+			branch: "f",
+			sha: SHA,
+		};
+		const widgets: PushRequest =
+		{
 			project: "widgets",
 			dir: "/p/widgets",
 			repository: "acme/widgets",
@@ -235,44 +686,112 @@ describe("createBackgroundPusher", () => {
 			sha: OLD,
 		};
 		held.add("acme/widgets");
-		await pusher.push(cogs, {defer: true});
-		await pusher.push(widgets, {defer: true});
+		await pusher.push(
+			cogs,
+			{
+				defer: true,
+			},
+		);
+		await pusher.push(
+			widgets,
+			{
+				defer: true,
+			},
+		);
 		held.delete("acme/widgets");
 		await pusher.flush();
-		expect({asked, pushes, pending: pusher.pending()}).toStrictEqual({
-			asked: ["acme/cogs", "acme/widgets", "acme/cogs", "acme/widgets"],
-			pushes: ["/p/widgets"],
-			pending: [cogs],
-		});
+		expect(
+			{
+				asked,
+				pushes,
+				pending: pusher.pending(),
+			},
+		).toStrictEqual(
+			{
+				asked: ["acme/cogs", "acme/widgets", "acme/cogs", "acme/widgets"],
+				pushes: ["/p/widgets"],
+				pending: [cogs],
+			},
+		);
 	});
 
-	it("serializes pushes, so a second push sees the gate after the first one recorded", async () => {
+	it("serializes pushes, so a second push sees the gate after the first one recorded", async () =>
+	{
 		const order: string[] = [];
 		let last: BackgroundPush | undefined;
-		const pusher = createBackgroundPusher({
-			gate: {
-				check: async () => {
-					order.push("check");
-					return Promise.resolve(
-						last === undefined ? {open: true} : {open: false, reason: `held on ${last.sha.slice(0, 1)}`},
-					);
+		const pusher = createBackgroundPusher(
+			{
+				gate:
+				{
+					check: async () =>
+					{
+						order.push("check");
+						return Promise.resolve(
+							last === undefined
+								?
+									{
+										open: true,
+									}
+								:
+									{
+										open: false,
+										reason: `held on ${last.sha.slice(0, 1)}`,
+									},
+						);
+					},
+					recordPush: (push) =>
+					{
+						order.push("record");
+						last = push;
+					},
 				},
-				recordPush: (push) => {
-					order.push("record");
-					last = push;
-				},
+				git: async (args) =>
+					Promise.resolve(
+						{
+							exitCode: args.includes("rev-parse") ? 1 : 0,
+							stdout: "",
+							stderr: "",
+						},
+					),
+				now: () => 1,
 			},
-			git: async (args) =>
-				Promise.resolve({exitCode: args.includes("rev-parse") ? 1 : 0, stdout: "", stderr: ""}),
-			now: () => 1,
-		});
+		);
 		const outcomes = await Promise.all([
-			pusher.push(request, {defer: true}),
-			pusher.push({...request, branch: "other", sha: OLD}, {defer: true}),
+			pusher.push(
+				request,
+				{
+					defer: true,
+				},
+			),
+			pusher.push(
+				{
+					...request,
+					branch: "other",
+					sha: OLD,
+				},
+				{
+					defer: true,
+				},
+			),
 		]);
-		expect({outcomes, order}).toStrictEqual({
-			outcomes: [{status: "pushed"}, {status: "held", reason: "held on a"}],
-			order: ["check", "record", "check"],
-		});
+		expect(
+			{
+				outcomes,
+				order,
+			},
+		).toStrictEqual(
+			{
+				outcomes: [
+					{
+						status: "pushed",
+					},
+					{
+						status: "held",
+						reason: "held on a",
+					},
+				],
+				order: ["check", "record", "check"],
+			},
+		);
 	});
 });

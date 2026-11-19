@@ -10,20 +10,43 @@ import {Toaster} from "../components/toaster";
 
 type AgentationComponent = typeof import("agentation").Agentation;
 
-export const Route = createRootRouteWithContext<{queryClient: QueryClient; cacheRestored: Promise<void>}>()({
-	head: () => ({
-		meta: [{charSet: "utf-8"}, {name: "viewport", content: "width=device-width, initial-scale=1"}],
-		links: [
-			{rel: "icon", type: "image/svg+xml", href: "/favicon.svg"},
-			{rel: "stylesheet", href: appCss},
-		],
-	}),
-	component: RootComponent,
-	errorComponent: RootError,
-	notFoundComponent: NotFound,
-});
+export const Route = createRootRouteWithContext<
+{
+	queryClient: QueryClient;
+	cacheRestored: Promise<void>;
+}>()(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					charSet: "utf-8",
+				},
+				{
+					name: "viewport",
+					content: "width=device-width, initial-scale=1",
+				},
+			],
+			links: [
+				{
+					rel: "icon",
+					type: "image/svg+xml",
+					href: "/favicon.svg",
+				},
+				{
+					rel: "stylesheet",
+					href: appCss,
+				},
+			],
+		}),
+		component: RootComponent,
+		errorComponent: RootError,
+		notFoundComponent: NotFound,
+	},
+);
 
-function RootComponent() {
+function RootComponent()
+{
 	const {theme, toggle} = useTheme();
 
 	return (
@@ -94,36 +117,44 @@ function RootComponent() {
 	);
 }
 
-function DevelopmentAgentation() {
+function DevelopmentAgentation()
+{
 	const [AgentationComponent, setAgentationComponent] = useState<AgentationComponent | null>(null);
 
-	useEffect(() => {
-		if (!import.meta.env.DEV) {
+	useEffect(() =>
+	{
+		if (!import.meta.env.DEV)
+		{
 			return undefined;
 		}
 
 		let isMounted = true;
 
-		void import("agentation").then(({Agentation}) => {
-			if (isMounted) {
+		void import("agentation").then(({Agentation}) =>
+		{
+			if (isMounted)
+			{
 				setAgentationComponent(() => Agentation);
 			}
 			return undefined;
 		});
 
-		return () => {
+		return () =>
+		{
 			isMounted = false;
 		};
 	}, []);
 
-	if (!AgentationComponent) {
+	if (!AgentationComponent)
+	{
 		return null;
 	}
 
 	return <AgentationComponent />;
 }
 
-function RootError({error}: {error: unknown}) {
+function RootError({error}: {error: unknown})
+{
 	return (
 		<RootDocument>
 			<div className="min-h-screen bg-bg-000 p-8">
@@ -138,7 +169,8 @@ function RootError({error}: {error: unknown}) {
 	);
 }
 
-function NotFound() {
+function NotFound()
+{
 	return (
 		<div className="p-8">
 			<h1 className="text-lg font-semibold">404 &mdash; Not Found</h1>
@@ -148,11 +180,22 @@ function NotFound() {
 
 const themeScript = `(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;if(t==='dark')d.classList.add('dark');else if(t==='light')d.classList.add('light');else{d.classList.add(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}}catch(e){}})()`;
 
-function RootDocument({children}: Readonly<{children: ReactNode}>) {
+function RootDocument({
+	children,
+}: Readonly<
+{
+	children: ReactNode;
+}>)
+{
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>
-				<script dangerouslySetInnerHTML={{__html: themeScript}} />
+				<script
+					dangerouslySetInnerHTML={
+					{
+						__html: themeScript,
+					}}
+				/>
 				<HeadContent />
 			</head>
 			<body>

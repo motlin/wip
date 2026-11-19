@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
+import
+{
 	changeIdentity,
 	DEFAULT_GIT_TEST,
 	getAiMaxAttempts,
@@ -33,7 +34,8 @@ import {waitForHerdrAgent, type HerdrWaitOptions, type HerdrWaitResult} from "./
  * holding a queue slot until the agent finishes. Server-only.
  */
 
-export interface AiRungDeps {
+export interface AiRungDeps
+{
 	queue: WorkQueue;
 	launch: (request: HerdrLaunchRequest) => Promise<HerdrResult<HerdrLaunchResult>>;
 	wait: (paneId: string, options: HerdrWaitOptions) => Promise<HerdrWaitResult>;
@@ -73,7 +75,8 @@ export interface AiRungDeps {
  * Whether Claude trusts the project's throwaway worktrees, so an agent there starts instead of
  * waiting at the folder-trust prompt; reports the check through onTrust either way.
  */
-function claudeTrusts(project: LadderRunProject, deps: AiRungDeps): boolean {
+function claudeTrusts(project: LadderRunProject, deps: AiRungDeps): boolean
+{
 	const folder = deps.untrustedFolder?.(project) ?? null;
 	deps.onTrust?.(project.name, folder);
 	return folder === null;
@@ -95,16 +98,22 @@ async function repeatedFailure(
 	identity: () => Promise<string>,
 	kind: "test" | "conflicts",
 	log: string,
-): Promise<string | null> {
+): Promise<string | null>
+{
 	const signature = normalizeFailureSignature(log);
 	if (signature === EMPTY_SIGNATURE) return null;
-	const unit = {project, changeIdentity: await identity()};
+	const unit =
+	{
+		project,
+		changeIdentity: await identity(),
+	};
 	if (memory.seen(unit, kind, signature)) return signature;
 	memory.record(unit, kind, signature);
 	return null;
 }
 
-export interface PreparedConflictWorktree {
+export interface PreparedConflictWorktree
+{
 	/** Worktree directory holding the stopped rebase; the agent's cwd. */
 	cwd: string;
 	/** False when the rebase finished without conflict, so no agent is needed. */
@@ -115,15 +124,23 @@ export interface PreparedConflictWorktree {
 	finish: () => Promise<boolean>;
 }
 
-export interface PreparedTestFixWorktree {
+export interface PreparedTestFixWorktree
+{
 	/** Worktree directory with the branch checked out; the agent's cwd. */
 	cwd: string;
 	/** Detaches and removes the worktree without --force, so one the agent left dirty stays. */
 	finish: () => Promise<void>;
 }
 
-async function git(dir: string, args: string[]) {
-	return tracedExeca("git", ["-C", dir, ...args], {reject: false});
+async function git(dir: string, args: string[])
+{
+	return tracedExeca(
+		"git",
+		["-C", dir, ...args],
+		{
+			reject: false,
+		},
+	);
 }
 
 /**
@@ -134,20 +151,35 @@ async function git(dir: string, args: string[]) {
 async function prepareConflictWorktree(
 	project: LadderRunProject,
 	branch: string,
-): Promise<PreparedConflictWorktree | null> {
+): Promise<PreparedConflictWorktree | null>
+{
 	const base = path.join(getCacheDir(), "conflict-worktrees", project.name);
-	fs.mkdirSync(base, {recursive: true});
+	fs.mkdirSync(
+		base,
+		{
+			recursive: true,
+		},
+	);
 	const dir = fs.mkdtempSync(path.join(base, "wt-"));
 	const added = await git(project.path, ["worktree", "add", "--detach", dir, branch]);
-	if (added.exitCode !== 0) {
-		fs.rmSync(dir, {recursive: true, force: true});
+	if (added.exitCode !== 0)
+	{
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 		return null;
 	}
 	const upstream = `${project.upstreamRemote}/${project.upstreamBranch}`;
 	const rebase = await git(dir, ["rebase", "--rebase-merges", "--update-refs", upstream, branch]);
-	const finish = async (): Promise<boolean> => {
+	const finish = async (): Promise<boolean> =>
+	{
 		const inProgress = await Promise.all(
-			["rebase-merge", "rebase-apply"].map(async (name) => {
+			["rebase-merge", "rebase-apply"].map(async (name) =>
+			{
 				const out = await git(dir, ["rev-parse", "--git-path", name]);
 				return fs.existsSync(path.resolve(dir, out.stdout.trim()));
 			}),
@@ -160,7 +192,12 @@ async function prepareConflictWorktree(
 		return !unfinished;
 	};
 	const log = [rebase.stdout, rebase.stderr].filter(Boolean).join("\n");
-	return {cwd: dir, conflicted: rebase.exitCode !== 0, log, finish};
+	return {
+		cwd: dir,
+		conflicted: rebase.exitCode !== 0,
+		log,
+		finish,
+	};
 }
 
 /**
@@ -171,59 +208,92 @@ async function prepareConflictWorktree(
 export async function prepareTestFixWorktree(
 	project: LadderRunProject,
 	branch: string,
-): Promise<PreparedTestFixWorktree | null> {
+): Promise<PreparedTestFixWorktree | null>
+{
 	const base = path.join(getCacheDir(), "test-fix-worktrees", project.name);
-	fs.mkdirSync(base, {recursive: true});
+	fs.mkdirSync(
+		base,
+		{
+			recursive: true,
+		},
+	);
 	const dir = fs.mkdtempSync(path.join(base, "wt-"));
 	const added = await git(project.path, ["worktree", "add", dir, branch]);
-	if (added.exitCode !== 0) {
-		fs.rmSync(dir, {recursive: true, force: true});
+	if (added.exitCode !== 0)
+	{
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 		return null;
 	}
-	const finish = async (): Promise<void> => {
+	const finish = async (): Promise<void> =>
+	{
 		await git(dir, ["checkout", "--detach", "-q"]);
 		await git(project.path, ["worktree", "remove", dir]);
 		await git(project.path, ["worktree", "prune"]);
 	};
-	return {cwd: dir, finish};
+	return {
+		cwd: dir,
+		finish,
+	};
 }
 
 const noop = async (project: {name: string}): Promise<LadderResult> =>
-	Promise.resolve({project: project.name, rungs: []});
-
-async function defaultRerun(project: LadderRunProject, signal: AbortSignal): Promise<LadderResult> {
-	return runLadder(project, {
-		signal,
-		runners: {
-			fetch: noop,
-			"worktree-prune": noop,
-			"delete-merged-local": noop,
-			replay: runReplayRung,
-			"rebase-leftovers": runRebaseLeftoversRung,
+	Promise.resolve(
+		{
+			project: project.name,
+			rungs: [],
 		},
-	});
+	);
+
+async function defaultRerun(project: LadderRunProject, signal: AbortSignal): Promise<LadderResult>
+{
+	return runLadder(
+		project,
+		{
+			signal,
+			runners:
+			{
+				fetch: noop,
+				"worktree-prune": noop,
+				"delete-merged-local": noop,
+				replay: runReplayRung,
+				"rebase-leftovers": runRebaseLeftoversRung,
+			},
+		},
+	);
 }
 
 /** Green only when at least one commit is listed and git-test reports every one good. */
-export function branchVerdict(statuses: ReadonlyMap<string, GitTestStatus>): "green" | "red" {
+export function branchVerdict(statuses: ReadonlyMap<string, GitTestStatus>): "green" | "red"
+{
 	return statuses.size > 0 && [...statuses.values()].every((status) => status === "good") ? "green" : "red";
 }
 
-async function defaultResults(project: LadderRunProject, branch: string): Promise<"green" | "red"> {
+async function defaultResults(project: LadderRunProject, branch: string): Promise<"green" | "red">
+{
 	const range = `${project.upstreamRemote}/${project.upstreamBranch}..${branch}`;
 	const revList = await git(project.path, ["rev-list", range]);
 	if (revList.exitCode !== 0) return "red";
 	const shas = revList.stdout.split("\n").filter((sha) => sha.length > 0);
 	// A branch with no commits beyond upstream has nothing to test.
 	if (shas.length === 0) return "green";
-	try {
+	try
+	{
 		return branchVerdict(await gitTestResults(project.path, DEFAULT_GIT_TEST, shas));
-	} catch {
+	}
+	catch
+	{
 		return "red";
 	}
 }
 
-async function branchShas(project: LadderRunProject, branch: string): Promise<string[]> {
+async function branchShas(project: LadderRunProject, branch: string): Promise<string[]>
+{
 	const range = `${project.upstreamRemote}/${project.upstreamBranch}..${branch}`;
 	const revList = await git(project.path, ["rev-list", "--reverse", range]);
 	if (revList.exitCode !== 0) return [];
@@ -231,40 +301,57 @@ async function branchShas(project: LadderRunProject, branch: string): Promise<st
 }
 
 /** The oldest commit on the branch that git-test does not report good; null when all are good. */
-async function firstNonGood(project: LadderRunProject, branch: string): Promise<string | null> {
+async function firstNonGood(project: LadderRunProject, branch: string): Promise<string | null>
+{
 	const shas = await branchShas(project, branch);
 	if (shas.length === 0) return null;
-	try {
+	try
+	{
 		const statuses = await gitTestResults(project.path, DEFAULT_GIT_TEST, shas);
 		return shas.find((sha) => statuses.get(sha) !== "good") ?? null;
-	} catch {
+	}
+	catch
+	{
 		return shas[0] ?? null;
 	}
 }
 
-async function defaultIdentity(project: LadderRunProject, branch: string): Promise<string> {
+async function defaultIdentity(project: LadderRunProject, branch: string): Promise<string>
+{
 	const sha = (await firstNonGood(project, branch)) ?? (await branchShas(project, branch)).at(-1);
 	if (!sha) return branch;
 	const facts = await getCommitFacts(project.path, project.name, [sha]);
-	return changeIdentity({patchId: facts.get(sha)?.patchId ?? "", branch, sha});
+	return changeIdentity(
+		{
+			patchId: facts.get(sha)?.patchId ?? "",
+			branch,
+			sha,
+		},
+	);
 }
 
-async function defaultFailureLog(project: LadderRunProject, branch: string): Promise<string> {
+async function defaultFailureLog(project: LadderRunProject, branch: string): Promise<string>
+{
 	const sha = await firstNonGood(project, branch);
 	if (!sha) return "";
-	try {
+	try
+	{
 		return fs.readFileSync(path.join(getTestLogDir(project.name), `${sha}.log`), "utf8");
-	} catch {
+	}
+	catch
+	{
 		return "";
 	}
 }
 
-function shellQuote(text: string): string {
+function shellQuote(text: string): string
+{
 	return `"${text.replace(/(["\\$`])/g, "\\$1")}"`;
 }
 
 /** Production rung deps with optional overrides. */
-export function aiRungDeps(overrides: Partial<AiRungDeps> = {}): AiRungDeps {
+export function aiRungDeps(overrides: Partial<AiRungDeps> = {}): AiRungDeps
+{
 	return {
 		queue: workQueue,
 		launch: launchInHerdr,
@@ -291,15 +378,19 @@ export async function resolveBranchConflict(
 	branch: string,
 	deps: AiRungDeps,
 	signal: AbortSignal,
-): Promise<"resolved" | "stuck"> {
+): Promise<"resolved" | "stuck">
+{
 	if (!claudeTrusts(project, deps)) return "stuck";
 	const prepared = await deps.prepare(project, branch);
 	if (!prepared) return "stuck";
 	let agentDone = false;
 	let completed = false;
-	try {
+	try
+	{
 		agentDone = !prepared.conflicted || (await runConflictAgent(project, branch, prepared, deps, signal));
-	} finally {
+	}
+	finally
+	{
 		completed = await prepared.finish();
 	}
 	return agentDone && completed ? "resolved" : "stuck";
@@ -311,23 +402,35 @@ async function runConflictAgent(
 	prepared: PreparedConflictWorktree,
 	deps: AiRungDeps,
 	signal: AbortSignal,
-): Promise<boolean> {
+): Promise<boolean>
+{
 	const memory = deps.memory ?? aiRunMemory;
 	const identity = async () => (deps.identity ?? defaultIdentity)(project, branch);
 	const repeated = await repeatedFailure(memory, project.name, identity, "conflicts", prepared.log);
-	if (repeated) {
+	if (repeated)
+	{
 		deps.onRepeatedFailure?.(branch, repeated);
 		return false;
 	}
-	const launched = await deps.launch({
-		cwd: prepared.cwd,
-		label: `wip:${project.name}:conflicts`,
-		command: `claude ${shellQuote(`/git:conflicts ${branch}`)}`,
-		focus: false,
-	});
+	const launched = await deps.launch(
+		{
+			cwd: prepared.cwd,
+			label: `wip:${project.name}:conflicts`,
+			command: `claude ${shellQuote(`/git:conflicts ${branch}`)}`,
+			focus: false,
+		},
+	);
 	if (!launched.ok) return false;
 	deps.onLaunched?.(launched.value);
-	return (await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal})) === "done";
+	return (
+		(await deps.wait(
+			launched.value.paneId,
+			{
+				timeoutMs: deps.timeoutMs,
+				signal,
+			},
+		)) === "done"
+	);
 }
 
 /**
@@ -339,27 +442,33 @@ export async function runAiConflictRung(
 	project: LadderRunProject,
 	stop: LadderStopInfo,
 	overrides: Partial<AiRungDeps> = {},
-): Promise<LadderResult | "stuck"> {
+): Promise<LadderResult | "stuck">
+{
 	const deps = aiRungDeps(overrides);
 	let outcome: LadderResult | "stuck" = "stuck";
-	const handle = deps.queue.enqueue({
-		coalesceKey: `ai-rung:conflicts:${project.name}`,
-		resources: [repoResource(project.name)],
-		kind: "ai-conflicts",
-		project: project.name,
-		costClass: "ai",
-		run: async (signal) => {
-			// One branch per launch, each in its own throwaway worktree stopped on the rebase conflict.
-			/* oxlint-disable no-await-in-loop -- one agent at a time per project */
-			for (const branch of stop.branches) {
-				if ((await resolveBranchConflict(project, branch, deps, signal)) === "stuck") return;
-			}
-			/* oxlint-enable no-await-in-loop */
-			const next = await deps.rerun(project, signal);
-			const again = next.stop?.stop === "conflict" && next.stop.branches.some((b) => stop.branches.includes(b));
-			outcome = again ? "stuck" : next;
+	const handle = deps.queue.enqueue(
+		{
+			coalesceKey: `ai-rung:conflicts:${project.name}`,
+			resources: [repoResource(project.name)],
+			kind: "ai-conflicts",
+			project: project.name,
+			costClass: "ai",
+			run: async (signal) =>
+			{
+				// One branch per launch, each in its own throwaway worktree stopped on the rebase conflict.
+				/* oxlint-disable no-await-in-loop -- one agent at a time per project */
+				for (const branch of stop.branches)
+				{
+					if ((await resolveBranchConflict(project, branch, deps, signal)) === "stuck") return;
+				}
+				/* oxlint-enable no-await-in-loop */
+				const next = await deps.rerun(project, signal);
+				const again =
+					next.stop?.stop === "conflict" && next.stop.branches.some((b) => stop.branches.includes(b));
+				outcome = again ? "stuck" : next;
+			},
 		},
-	});
+	);
 	await handle.settled;
 	return outcome;
 }
@@ -374,43 +483,59 @@ export async function runAiTestFixRung(
 	project: LadderRunProject,
 	branch: string,
 	overrides: Partial<AiRungDeps> = {},
-): Promise<"green" | "red" | "stuck"> {
+): Promise<"green" | "red" | "stuck">
+{
 	const deps = aiRungDeps(overrides);
 
 	let outcome: "green" | "red" | "stuck" = "stuck";
-	const handle = deps.queue.enqueue({
-		coalesceKey: `ai-rung:test-fix:${project.name}:${branch}`,
-		resources: [repoResource(project.name)],
-		kind: "ai-test-fix",
-		project: project.name,
-		costClass: "ai",
-		run: async (signal) => {
-			if (!claudeTrusts(project, deps)) return;
-			const prepared = await deps.prepareTestFix(project, branch);
-			if (!prepared) return;
-			try {
-				const launched = await deps.launch({
-					cwd: prepared.cwd,
-					label: `wip:${project.name}:test-fix:${branch}`,
-					command: `claude ${shellQuote("/build:test-branch")}`,
-					focus: false,
-				});
-				if (!launched.ok) return;
-				deps.onLaunched?.(launched.value);
-				const waited = await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal});
-				if (waited !== "done") return;
-				outcome = await deps.results(project, branch);
-			} finally {
-				await prepared.finish();
-			}
+	const handle = deps.queue.enqueue(
+		{
+			coalesceKey: `ai-rung:test-fix:${project.name}:${branch}`,
+			resources: [repoResource(project.name)],
+			kind: "ai-test-fix",
+			project: project.name,
+			costClass: "ai",
+			run: async (signal) =>
+			{
+				if (!claudeTrusts(project, deps)) return;
+				const prepared = await deps.prepareTestFix(project, branch);
+				if (!prepared) return;
+				try
+				{
+					const launched = await deps.launch(
+						{
+							cwd: prepared.cwd,
+							label: `wip:${project.name}:test-fix:${branch}`,
+							command: `claude ${shellQuote("/build:test-branch")}`,
+							focus: false,
+						},
+					);
+					if (!launched.ok) return;
+					deps.onLaunched?.(launched.value);
+					const waited = await deps.wait(
+						launched.value.paneId,
+						{
+							timeoutMs: deps.timeoutMs,
+							signal,
+						},
+					);
+					if (waited !== "done") return;
+					outcome = await deps.results(project, branch);
+				}
+				finally
+				{
+					await prepared.finish();
+				}
+			},
 		},
-	});
+	);
 	await handle.settled;
 	return outcome;
 }
 
 /** The /build:fix prompt override: the fix must land as a separate fixup commit, never folded in. */
-function fixupPrompt(failingSha: string, logPath: string): string {
+function fixupPrompt(failingSha: string, logPath: string): string
+{
 	return [
 		`/build:fix The test fails at commit ${failingSha} (log: ${logPath}).`,
 		`Commit the fix as a separate commit with git commit --fixup=${failingSha} on top of it.`,
@@ -433,29 +558,45 @@ export async function fixTestAsFixup(
 	logPath: string,
 	deps: AiRungDeps,
 	signal: AbortSignal,
-): Promise<string | null> {
+): Promise<string | null>
+{
 	const memory = deps.memory ?? aiRunMemory;
 	const identity = async () => (deps.identity ?? defaultIdentity)(project, branch);
 	const log = deps.failureLog ? await deps.failureLog(project, branch) : readLog(logPath);
 	const repeated = await repeatedFailure(memory, project.name, identity, "test", log);
-	if (repeated) {
+	if (repeated)
+	{
 		deps.onRepeatedFailure?.(branch, repeated);
 		return null;
 	}
 	if (!claudeTrusts(project, deps)) return null;
 	const prepared = await deps.prepareTestFix(project, branch);
 	if (!prepared) return null;
-	try {
-		const launched = await deps.launch({
-			cwd: prepared.cwd,
-			label: `wip:${project.name}:test-fix:${branch}`,
-			command: `claude ${shellQuote(fixupPrompt(failingSha, logPath))}`,
-			focus: false,
-		});
+	try
+	{
+		const launched = await deps.launch(
+			{
+				cwd: prepared.cwd,
+				label: `wip:${project.name}:test-fix:${branch}`,
+				command: `claude ${shellQuote(fixupPrompt(failingSha, logPath))}`,
+				focus: false,
+			},
+		);
 		if (!launched.ok) return null;
 		deps.onLaunched?.(launched.value);
-		if ((await deps.wait(launched.value.paneId, {timeoutMs: deps.timeoutMs, signal})) !== "done") return null;
-	} finally {
+		if (
+			(await deps.wait(
+				launched.value.paneId,
+				{
+					timeoutMs: deps.timeoutMs,
+					signal,
+				},
+			)) !== "done"
+		)
+			return null;
+	}
+	finally
+	{
 		await prepared.finish();
 	}
 	const tip = await git(project.path, ["log", "-1", "--format=%H%x00%P%x00%s", branch]);
@@ -464,20 +605,26 @@ export async function fixTestAsFixup(
 	return isFixup ? sha : null;
 }
 
-function readLog(logPath: string): string {
-	try {
+function readLog(logPath: string): string
+{
+	try
+	{
 		return fs.readFileSync(logPath, "utf8");
-	} catch {
+	}
+	catch
+	{
 		return "";
 	}
 }
 
-async function defaultTip(project: LadderRunProject, branch: string): Promise<string> {
+async function defaultTip(project: LadderRunProject, branch: string): Promise<string>
+{
 	const out = await git(project.path, ["rev-parse", branch]);
 	return out.stdout.trim();
 }
 
-export interface AiTestFixLoopResult {
+export interface AiTestFixLoopResult
+{
 	status: "green" | "stuck";
 	attempts: number;
 	/** The normalized failure signature when a repeat of it stopped the loop. */
@@ -495,31 +642,63 @@ export async function runAiTestFixLoop(
 	branch: string,
 	overrides: Partial<AiRungDeps> = {},
 	onAttempt?: (progress: {status: "running" | "red"; attempts: number}) => void,
-): Promise<AiTestFixLoopResult> {
+): Promise<AiTestFixLoopResult>
+{
 	const tip = overrides.tip ?? defaultTip;
 	const cap = overrides.maxAttempts ?? getAiMaxAttempts();
 	const memory = overrides.memory ?? aiRunMemory;
 	let lastRedTip: string | undefined;
 	let attempts = 0;
 	/* oxlint-disable no-await-in-loop -- attempts are sequential: each depends on the previous tip */
-	while (attempts < cap) {
+	while (attempts < cap)
+	{
 		attempts += 1;
-		onAttempt?.({status: "running", attempts});
+		onAttempt?.(
+			{
+				status: "running",
+				attempts,
+			},
+		);
 		const outcome = await runAiTestFixRung(project, branch, overrides);
-		if (outcome === "green") return {status: "green", attempts};
-		if (outcome === "stuck") return {status: "stuck", attempts};
+		if (outcome === "green")
+			return {
+				status: "green",
+				attempts,
+			};
+		if (outcome === "stuck")
+			return {
+				status: "stuck",
+				attempts,
+			};
 		const identity = async () => (overrides.identity ?? defaultIdentity)(project, branch);
 		const log = await (overrides.failureLog ?? defaultFailureLog)(project, branch);
 		const signature = await repeatedFailure(memory, project.name, identity, "test", log);
-		if (signature) {
+		if (signature)
+		{
 			overrides.onRepeatedFailure?.(branch, signature);
-			return {status: "stuck", attempts, signature};
+			return {
+				status: "stuck",
+				attempts,
+				signature,
+			};
 		}
 		const redTip = await tip(project, branch);
-		if (redTip === lastRedTip) return {status: "stuck", attempts};
+		if (redTip === lastRedTip)
+			return {
+				status: "stuck",
+				attempts,
+			};
 		lastRedTip = redTip;
-		onAttempt?.({status: "red", attempts});
+		onAttempt?.(
+			{
+				status: "red",
+				attempts,
+			},
+		);
 	}
 	/* oxlint-enable no-await-in-loop */
-	return {status: "stuck", attempts};
+	return {
+		status: "stuck",
+		attempts,
+	};
 }

@@ -3,21 +3,28 @@ import {afterEach, describe, expect, it} from "vite-plus/test";
 import {cleanup, render, screen} from "@testing-library/react";
 import {FlowMetricsStrip} from "./flow-metrics-strip";
 
-describe("FlowMetricsStrip", () => {
-	afterEach(() => {
+describe("FlowMetricsStrip", () =>
+{
+	afterEach(() =>
+	{
 		cleanup();
 	});
 
-	it("shows landings per day over 7 and 28 days, median lead time and the Little's-law estimate, but no second WIP beside the flow strip's", () => {
+	it("shows landings per day over 7 and 28 days, median lead time and the Little's-law estimate, but no second WIP beside the flow strip's", () =>
+	{
 		render(
 			<FlowMetricsStrip
-				metrics={{
+				metrics={
+				{
 					wip: 6,
 					landingsPerDay7d: 3 / 7,
 					landingsPerDay28d: 8 / 28,
 					medianLeadTimeDays: 2.25,
 					littlesLawDays: 6 / (8 / 28),
-					stateCounts: {test_failed: 6},
+					stateCounts:
+					{
+						test_failed: 6,
+					},
 				}}
 			/>,
 		);
@@ -26,16 +33,21 @@ describe("FlowMetricsStrip", () => {
 		);
 	});
 
-	it("shows dashes for lead time and Little's law with no landings", () => {
+	it("shows dashes for lead time and Little's law with no landings", () =>
+	{
 		render(
 			<FlowMetricsStrip
-				metrics={{
+				metrics={
+				{
 					wip: 2,
 					landingsPerDay7d: 0,
 					landingsPerDay28d: 0,
 					medianLeadTimeDays: null,
 					littlesLawDays: null,
-					stateCounts: {ready_to_test: 2},
+					stateCounts:
+					{
+						ready_to_test: 2,
+					},
 				}}
 			/>,
 		);

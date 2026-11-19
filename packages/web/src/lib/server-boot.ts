@@ -7,7 +7,8 @@ import {installResourceProbeAtBoot} from "./resource-probe.js";
  * The ready buffer still honors WIP_READY_BUFFER, its process lock, battery pause and load caps.
  * /api/events only subscribes. Never rejects.
  */
-export async function bootServer(): Promise<void> {
+export async function bootServer(): Promise<void>
+{
 	await installResourceProbeAtBoot();
 	ensureBackgroundRefresh();
 }

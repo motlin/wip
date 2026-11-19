@@ -1,4 +1,5 @@
-import {
+import
+{
 	createMachineBuildLock,
 	createRepoResourceLock,
 	createSystemProbe,
@@ -14,13 +15,16 @@ import {
  */
 let queue: WorkQueue | undefined;
 
-function getQueue(): WorkQueue {
-	queue ??= createWorkQueue({
-		globalConcurrency: 2,
-		probe: createSystemProbe(),
-		resourceLock: createRepoResourceLock(),
-		buildLock: createMachineBuildLock(),
-	});
+function getQueue(): WorkQueue
+{
+	queue ??= createWorkQueue(
+		{
+			globalConcurrency: 2,
+			probe: createSystemProbe(),
+			resourceLock: createRepoResourceLock(),
+			buildLock: createMachineBuildLock(),
+		},
+	);
 	return queue;
 }
 
@@ -32,25 +36,41 @@ export async function runInRepoQueue<T>(
 	kind: string,
 	costClass: CostClass,
 	fn: () => Promise<T>,
-): Promise<T> {
-	let finish!: {resolve: (value: T) => void; reject: (reason: unknown) => void};
-	const outcome = new Promise<T>((resolve, reject) => {
-		finish = {resolve, reject};
+): Promise<T>
+{
+	let finish!:
+	{
+		resolve: (value: T) => void;
+		reject: (reason: unknown) => void;
+	};
+	const outcome = new Promise<T>((resolve, reject) =>
+	{
+		finish =
+		{
+			resolve,
+			reject,
+		};
 	});
-	getQueue().enqueue({
-		coalesceKey: `cli:${kind}:${project}:${nextKey++}`,
-		resources: [`repo:${project}`],
-		kind,
-		project,
-		costClass,
-		priority: "foreground",
-		run: async () => {
-			try {
-				finish.resolve(await fn());
-			} catch (error) {
-				finish.reject(error);
-			}
+	getQueue().enqueue(
+		{
+			coalesceKey: `cli:${kind}:${project}:${nextKey++}`,
+			resources: [`repo:${project}`],
+			kind,
+			project,
+			costClass,
+			priority: "foreground",
+			run: async () =>
+			{
+				try
+				{
+					finish.resolve(await fn());
+				}
+				catch (error)
+				{
+					finish.reject(error);
+				}
+			},
 		},
-	});
+	);
 	return outcome;
 }

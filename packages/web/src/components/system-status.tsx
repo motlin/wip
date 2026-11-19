@@ -9,17 +9,21 @@ import {StalenessIndicator} from "./staleness-indicator";
  * client clock, so everything renders only after mount (SSR renders nothing)
  * to keep hydration deterministic.
  */
-export function SystemStatus() {
+export function SystemStatus()
+{
 	const {data: status} = useQuery(systemStatusQueryOptions());
 	const [nowMs, setNowMs] = useState<number | null>(null);
 
-	useEffect(() => {
-		const tick = () => {
+	useEffect(() =>
+	{
+		const tick = () =>
+		{
 			setNowMs(Date.now());
 		};
 		const first = setTimeout(tick, 0);
 		const timer = setInterval(tick, 30_000);
-		return () => {
+		return () =>
+		{
 			clearTimeout(first);
 			clearInterval(timer);
 		};
@@ -35,10 +39,13 @@ export function SystemStatus() {
 			{rateLimitedUntil !== null && (
 				<div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
 					GitHub rate-limited until{" "}
-					{new Date(rateLimitedUntil).toLocaleTimeString([], {
-						hour: "2-digit",
-						minute: "2-digit",
-					})}{" "}
+					{new Date(rateLimitedUntil).toLocaleTimeString(
+						[],
+						{
+							hour: "2-digit",
+							minute: "2-digit",
+						},
+					)}{" "}
 					— showing cached data
 				</div>
 			)}

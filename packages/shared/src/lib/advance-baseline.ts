@@ -10,15 +10,24 @@ import {getMiseEnv} from "./git.js";
  * a local base commit and rebases every branch onto it.
  */
 
-export interface BaselineCheck {
+export interface BaselineCheck
+{
 	sha: string;
 	green: boolean;
 }
 
 /** Run git-test on a single commit; the exit code decides. The log stays as a file. */
-async function defaultRunTest(dir: string, sha: string, project: string): Promise<boolean> {
+async function defaultRunTest(dir: string, sha: string, project: string): Promise<boolean>
+{
 	const env = await getMiseEnv(dir);
-	const {exitCode} = await gitTestRun(dir, sha, {logDir: getTestLogDir(project), env});
+	const {exitCode} = await gitTestRun(
+		dir,
+		sha,
+		{
+			logDir: getTestLogDir(project),
+			env,
+		},
+	);
 	return exitCode === 0;
 }
 
@@ -27,13 +36,21 @@ export async function checkBaseline(opts: {
 	dir: string;
 	upstreamRef: string;
 	runTest?: (sha: string) => Promise<boolean>;
-}): Promise<BaselineCheck> {
+}): Promise<BaselineCheck>
+{
 	const {project, dir, upstreamRef} = opts;
-	const revParse = await tracedExeca("git", ["-C", dir, "rev-parse", upstreamRef], {
-		reject: false,
-	});
+	const revParse = await tracedExeca(
+		"git",
+		["-C", dir, "rev-parse", upstreamRef],
+		{
+			reject: false,
+		},
+	);
 	const sha = revParse.stdout.trim();
 	const runTest = opts.runTest ?? (async (s: string) => defaultRunTest(dir, s, project));
 	const green = await runTest(sha);
-	return {sha, green};
+	return {
+		sha,
+		green,
+	};
 }

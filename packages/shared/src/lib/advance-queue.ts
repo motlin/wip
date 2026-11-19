@@ -12,13 +12,15 @@ import {createWorkQueue, type ResourceLock, type WorkResourceProbe} from "./work
 
 export type UnitOutcome = "green" | "red" | "skipped";
 
-export interface SchedulableUnit {
+export interface SchedulableUnit
+{
 	id: string;
 	project: string;
 	dependsOn: string[];
 }
 
-export interface AdvanceQueueOptions {
+export interface AdvanceQueueOptions
+{
 	globalConcurrency: number;
 	loadThreshold: number;
 	memFloor: number;
@@ -41,39 +43,53 @@ export async function runAdvanceUnits(
 	units: SchedulableUnit[],
 	run: (unit: SchedulableUnit) => Promise<boolean>,
 	options: AdvanceQueueOptions,
-): Promise<Record<string, UnitOutcome>> {
+): Promise<Record<string, UnitOutcome>>
+{
 	const projectCaps = new Map<string, string>(
 		units.map((unit) => [`${REPO_RESOURCE_PREFIX}${unit.project}`, unit.project]),
 	);
-	const queue = createWorkQueue({
-		globalConcurrency: options.globalConcurrency,
-		// Each unit is one "build" job; the global cap is the only class limit, preserving prior concurrency.
-		classCaps: {build: options.globalConcurrency, "git-write": options.globalConcurrency},
-		resourceCapacity: (key) => {
-			const project = projectCaps.get(key);
-			return project === undefined ? 1 : options.perRepoConcurrency(project);
+	const queue = createWorkQueue(
+		{
+			globalConcurrency: options.globalConcurrency,
+			// Each unit is one "build" job; the global cap is the only class limit, preserving prior concurrency.
+			classCaps:
+			{
+				build: options.globalConcurrency,
+				"git-write": options.globalConcurrency,
+			},
+			resourceCapacity: (key) =>
+			{
+				const project = projectCaps.get(key);
+				return project === undefined ? 1 : options.perRepoConcurrency(project);
+			},
+			probe: options.probe,
+			resourceLock: options.resourceLock ?? null,
+			buildLock: options.buildLock ?? null,
+			loadThreshold: options.loadThreshold,
+			memFloor: options.memFloor,
 		},
-		probe: options.probe,
-		resourceLock: options.resourceLock ?? null,
-		buildLock: options.buildLock ?? null,
-		loadThreshold: options.loadThreshold,
-		memFloor: options.memFloor,
-	});
+	);
 
 	const errors: unknown[] = [];
-	try {
+	try
+	{
 		const results = await runWorkGraph(
 			queue,
-			units.map((unit) => ({
+			units.map((unit) => (
+			{
 				id: unit.id,
 				dependsOn: unit.dependsOn,
 				costClass: "build" as const,
 				resources: [`${REPO_RESOURCE_PREFIX}${unit.project}`],
-				run: async () => {
+				run: async () =>
+				{
 					let ok: boolean;
-					try {
+					try
+					{
 						ok = await run(unit);
-					} catch (error) {
+					}
+					catch (error)
+					{
 						errors.push(error);
 						throw error;
 					}
@@ -83,11 +99,14 @@ export async function runAdvanceUnits(
 		);
 		if (errors.length > 0) throw errors[0];
 		const outcomes: Record<string, UnitOutcome> = {};
-		for (const [id, result] of Object.entries(results)) {
+		for (const [id, result] of Object.entries(results))
+		{
 			outcomes[id] = result === "passed" ? "green" : result === "failed" ? "red" : "skipped";
 		}
 		return outcomes;
-	} finally {
+	}
+	finally
+	{
 		await queue.reset();
 	}
 }

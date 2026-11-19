@@ -10,7 +10,8 @@ import type {ActionOutcomes} from "./action-outcomes";
  * plus what heads the Ready to Land column: the buffer's counts and notices and the Push main cards.
  * Pages without it (item, diff) keep each state's own next step.
  */
-export interface LandContextValue {
+export interface LandContextValue
+{
 	readyItemOf: (child: Pick<GitChildResult, "project" | "sha" | "patchId">) => ReadyEntry | undefined;
 	/** The ready buffer's state: undefined until loaded, null when the buffer is off. */
 	state: ReadyToLandState | null | undefined;
@@ -32,6 +33,7 @@ export interface LandContextValue {
 
 export const LandContext = createContext<LandContextValue | null>(null);
 
-export function useLandContext(): LandContextValue | null {
+export function useLandContext(): LandContextValue | null
+{
 	return useContext(LandContext);
 }

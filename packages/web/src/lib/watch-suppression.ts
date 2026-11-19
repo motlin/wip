@@ -13,22 +13,30 @@ const COOLDOWN_MS = 1000;
 const activeCounts = new Map<string, number>();
 const cooldownUntil = new Map<string, number>();
 
-export async function suppressWatcherEvents<T>(project: string, work: () => Promise<T>): Promise<T> {
+export async function suppressWatcherEvents<T>(project: string, work: () => Promise<T>): Promise<T>
+{
 	activeCounts.set(project, (activeCounts.get(project) ?? 0) + 1);
-	try {
+	try
+	{
 		return await work();
-	} finally {
+	}
+	finally
+	{
 		const count = activeCounts.get(project) ?? 1;
-		if (count <= 1) {
+		if (count <= 1)
+		{
 			activeCounts.delete(project);
 			cooldownUntil.set(project, Date.now() + COOLDOWN_MS);
-		} else {
+		}
+		else
+		{
 			activeCounts.set(project, count - 1);
 		}
 	}
 }
 
-export function isWatcherSuppressed(project: string): boolean {
+export function isWatcherSuppressed(project: string): boolean
+{
 	if (activeCounts.has(project)) return true;
 	const until = cooldownUntil.get(project);
 	if (until === undefined) return false;
@@ -38,7 +46,8 @@ export function isWatcherSuppressed(project: string): boolean {
 }
 
 /** Test-only: clear all suppression state. */
-export function resetWatcherSuppression(): void {
+export function resetWatcherSuppression(): void
+{
 	activeCounts.clear();
 	cooldownUntil.clear();
 }

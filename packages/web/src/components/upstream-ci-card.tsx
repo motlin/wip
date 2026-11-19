@@ -11,20 +11,25 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FAILURE_CLASS = "rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-400";
 
 /** The anchor of a repo's upstream_red item on /queue, which its blocked commits link to. */
-function upstreamRedAnchor(project: string): string {
+function upstreamRedAnchor(project: string): string
+{
 	return `upstream-red-${project}`;
 }
 
 /** Days since the failing upstream commit, from the client clock after mount so hydration matches. */
-function useDaysSince(date: string): number | null {
+function useDaysSince(date: string): number | null
+{
 	const [now, setNow] = useState<number | null>(null);
-	useEffect(() => {
-		const tick = () => {
+	useEffect(() =>
+	{
+		const tick = () =>
+		{
 			setNow(Date.now());
 		};
 		const first = setTimeout(tick, 0);
 		const timer = setInterval(tick, 60 * 60_000);
-		return () => {
+		return () =>
+		{
 			clearTimeout(first);
 			clearInterval(timer);
 		};
@@ -37,23 +42,42 @@ function useDaysSince(date: string): number | null {
  * check runs on the upstream tip, or the local baseline test), how long it has been red, and the
  * one next step: /github:gha for CI, /build:fix for a red local baseline.
  */
-export function UpstreamCiCard({item, category}: {item: GitChildResult; category?: Category}) {
+export function UpstreamCiCard({item, category}: {item: GitChildResult; category?: Category})
+{
 	const command = upstreamRedCommand(item);
 	const days = useDaysSince(item.date);
 	const [running, setRunning] = useState(false);
 	const checks = item.failedChecks ?? [];
 
-	const run = async () => {
+	const run = async () =>
+	{
 		setRunning(true);
-		try {
-			await runClaudeCommand({data: {project: item.project, sha: item.sha, branch: item.branch, command}});
-		} catch (error) {
-			pushToast({
-				level: "error",
-				message: command,
-				detail: error instanceof Error ? error.message : String(error),
-			});
-		} finally {
+		try
+		{
+			await runClaudeCommand(
+				{
+					data:
+					{
+						project: item.project,
+						sha: item.sha,
+						branch: item.branch,
+						command,
+					},
+				},
+			);
+		}
+		catch (error)
+		{
+			pushToast(
+				{
+					level: "error",
+					message: command,
+					detail: error instanceof Error ? error.message : String(error),
+				},
+			);
+		}
+		finally
+		{
 			setRunning(false);
 		}
 	};
@@ -115,7 +139,8 @@ export function UpstreamCiCard({item, category}: {item: GitChildResult; category
 				</span>
 				<button
 					type="button"
-					onClick={() => {
+					onClick={() =>
+					{
 						void run();
 					}}
 					disabled={running}
@@ -135,7 +160,8 @@ export function UpstreamCiCard({item, category}: {item: GitChildResult; category
 }
 
 /** On a commit in a repo whose own upstream is red: nothing in it lands until that item is fixed. */
-export function UpstreamRedBlockedMarker({project}: {project: string}) {
+export function UpstreamRedBlockedMarker({project}: {project: string})
+{
 	return (
 		<span
 			data-testid="upstream-red-blocked"
@@ -145,7 +171,8 @@ export function UpstreamRedBlockedMarker({project}: {project: string}) {
 				to="/queue"
 				hash={upstreamRedAnchor(project)}
 				className="hover:underline"
-				onClick={(e: {stopPropagation: () => void}) => {
+				onClick={(e: {stopPropagation: () => void}) =>
+				{
 					e.stopPropagation();
 				}}
 			>

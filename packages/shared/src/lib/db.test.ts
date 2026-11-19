@@ -8,7 +8,8 @@ import * as path from "node:path";
 
 import {sorted} from "../test/sorted.js";
 
-import {
+import
+{
 	initDb,
 	resetDb,
 	getDb,
@@ -58,15 +59,18 @@ import {
 import type {GitHubIssue} from "./github-issues.js";
 import type {GitHubProjectItem} from "./github-projects.js";
 
-beforeEach(() => {
+beforeEach(() =>
+{
 	initDb(":memory:");
 });
 
-afterEach(() => {
+afterEach(() =>
+{
 	resetDb();
 });
 
-describe("PR status cache", () => {
+describe("PR status cache", () =>
+{
 	const sampleStatuses: CachedPrStatus[] = [
 		{
 			branch: "feature/one",
@@ -86,17 +90,28 @@ describe("PR status cache", () => {
 		},
 	];
 
-	it("round-trips PR statuses through cache", () => {
+	it("round-trips PR statuses through cache", () =>
+	{
 		cachePrStatuses("test-project", sampleStatuses);
 		const cached = getCachedPrStatuses("test-project");
 		expect(cached).not.toBeNull();
 		expect(cached).toHaveLength(2);
 		expect(cached).toStrictEqual(
-			sampleStatuses.map((s) => Object.assign({}, s, {failedChecks: undefined, mergeStateStatus: undefined})),
+			sampleStatuses.map((s) =>
+				Object.assign(
+					{},
+					s,
+					{
+						failedChecks: undefined,
+						mergeStateStatus: undefined,
+					},
+				),
+			),
 		);
 	});
 
-	it("round-trips mergeStateStatus through cache", () => {
+	it("round-trips mergeStateStatus through cache", () =>
+	{
 		const statuses: CachedPrStatus[] = [
 			{
 				branch: "feature/merge-state",
@@ -114,7 +129,8 @@ describe("PR status cache", () => {
 		expect(cached![0]!.mergeStateStatus).toBe("BLOCKED");
 	});
 
-	it("round-trips PR statuses with failed checks", () => {
+	it("round-trips PR statuses with failed checks", () =>
+	{
 		const statuses: CachedPrStatus[] = [
 			{
 				branch: "feature/checks",
@@ -123,8 +139,14 @@ describe("PR status cache", () => {
 				prUrl: "https://github.com/owner/repo/pull/3",
 				prNumber: 3,
 				failedChecks: [
-					{name: "ci/lint", url: "https://example.com/lint"},
-					{name: "ci/test", url: "https://example.com/test"},
+					{
+						name: "ci/lint",
+						url: "https://example.com/lint",
+					},
+					{
+						name: "ci/test",
+						url: "https://example.com/test",
+					},
 				],
 				behind: false,
 			},
@@ -134,12 +156,19 @@ describe("PR status cache", () => {
 		expect(cached).not.toBeNull();
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.failedChecks).toStrictEqual([
-			{name: "ci/lint", url: "https://example.com/lint"},
-			{name: "ci/test", url: "https://example.com/test"},
+			{
+				name: "ci/lint",
+				url: "https://example.com/lint",
+			},
+			{
+				name: "ci/test",
+				url: "https://example.com/test",
+			},
 		]);
 	});
 
-	it("handles duplicate check names without UNIQUE constraint error", () => {
+	it("handles duplicate check names without UNIQUE constraint error", () =>
+	{
 		const statuses: CachedPrStatus[] = [
 			{
 				branch: "feature/dupes",
@@ -147,14 +176,23 @@ describe("PR status cache", () => {
 				checkStatus: "failed",
 				prUrl: null,
 				failedChecks: [
-					{name: "ci/test", url: "https://example.com/run1"},
-					{name: "ci/test", url: "https://example.com/run2"},
-					{name: "ci/lint"},
+					{
+						name: "ci/test",
+						url: "https://example.com/run1",
+					},
+					{
+						name: "ci/test",
+						url: "https://example.com/run2",
+					},
+					{
+						name: "ci/lint",
+					},
 				],
 				behind: false,
 			},
 		];
-		expect(() => {
+		expect(() =>
+		{
 			cachePrStatuses("test-project", statuses);
 		}).not.toThrow();
 		const cached = getCachedPrStatuses("test-project");
@@ -164,14 +202,19 @@ describe("PR status cache", () => {
 		expect(sorted(cached![0]!.failedChecks!.map((c) => c.name))).toStrictEqual(["ci/lint", "ci/test"]);
 	});
 
-	it("invalidates both pr_status_cache and pr_failed_checks", () => {
+	it("invalidates both pr_status_cache and pr_failed_checks", () =>
+	{
 		const statuses: CachedPrStatus[] = [
 			{
 				branch: "feature/inv",
 				reviewStatus: "approved",
 				checkStatus: "failed",
 				prUrl: null,
-				failedChecks: [{name: "ci/test"}],
+				failedChecks: [
+					{
+						name: "ci/test",
+					},
+				],
 				behind: false,
 			},
 		];
@@ -181,7 +224,8 @@ describe("PR status cache", () => {
 		expect(cached).toBeNull();
 	});
 
-	it("reuses parent row when only failed checks change", () => {
+	it("reuses parent row when only failed checks change", () =>
+	{
 		const initial: CachedPrStatus[] = [
 			{
 				branch: "feature/reuse",
@@ -189,7 +233,11 @@ describe("PR status cache", () => {
 				checkStatus: "failed",
 				prUrl: "https://github.com/owner/repo/pull/5",
 				prNumber: 5,
-				failedChecks: [{name: "ci/old-check"}],
+				failedChecks: [
+					{
+						name: "ci/old-check",
+					},
+				],
 				behind: false,
 			},
 		];
@@ -203,7 +251,11 @@ describe("PR status cache", () => {
 				checkStatus: "failed",
 				prUrl: "https://github.com/owner/repo/pull/5",
 				prNumber: 5,
-				failedChecks: [{name: "ci/new-check"}],
+				failedChecks: [
+					{
+						name: "ci/new-check",
+					},
+				],
 				behind: false,
 			},
 		];
@@ -212,10 +264,16 @@ describe("PR status cache", () => {
 		const cached = getCachedPrStatuses("test-project");
 		expect(cached).not.toBeNull();
 		expect(cached).toHaveLength(1);
-		expect(cached![0]!.failedChecks).toStrictEqual([{name: "ci/new-check", url: undefined}]);
+		expect(cached![0]!.failedChecks).toStrictEqual([
+			{
+				name: "ci/new-check",
+				url: undefined,
+			},
+		]);
 	});
 
-	it("does not churn failed checks rows when checks are unchanged", () => {
+	it("does not churn failed checks rows when checks are unchanged", () =>
+	{
 		const statuses: CachedPrStatus[] = [
 			{
 				branch: "feature/stable-checks",
@@ -224,8 +282,14 @@ describe("PR status cache", () => {
 				prUrl: "https://github.com/owner/repo/pull/10",
 				prNumber: 10,
 				failedChecks: [
-					{name: "ci/lint", url: "https://example.com/lint"},
-					{name: "ci/test", url: "https://example.com/test"},
+					{
+						name: "ci/lint",
+						url: "https://example.com/lint",
+					},
+					{
+						name: "ci/test",
+						url: "https://example.com/test",
+					},
 				],
 				behind: false,
 			},
@@ -245,14 +309,19 @@ describe("PR status cache", () => {
 		expect(afterSecond).toStrictEqual(afterFirst);
 	});
 
-	it("closes failed checks for branches no longer present", () => {
+	it("closes failed checks for branches no longer present", () =>
+	{
 		const statuses: CachedPrStatus[] = [
 			{
 				branch: "feature/removed",
 				reviewStatus: "clean",
 				checkStatus: "failed",
 				prUrl: null,
-				failedChecks: [{name: "ci/test"}],
+				failedChecks: [
+					{
+						name: "ci/test",
+					},
+				],
 				behind: false,
 			},
 		];
@@ -271,28 +340,34 @@ describe("PR status cache", () => {
 	});
 });
 
-describe("Merge status cache", () => {
-	it("round-trips merge status with boolean rebaseable", () => {
+describe("Merge status cache", () =>
+{
+	it("round-trips merge status with boolean rebaseable", () =>
+	{
 		cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 1, true);
 		const cached = getCachedMergeStatuses("test-project", "upstream-sha");
 		expect(cached).toHaveLength(1);
-		expect(cached[0]).toStrictEqual({
-			sha: "abc123",
-			upstreamSha: "upstream-sha",
-			commitsAhead: 3,
-			commitsBehind: 1,
-			rebaseable: true,
-		});
+		expect(cached[0]).toStrictEqual(
+			{
+				sha: "abc123",
+				upstreamSha: "upstream-sha",
+				commitsAhead: 3,
+				commitsBehind: 1,
+				rebaseable: true,
+			},
+		);
 	});
 
-	it("round-trips merge status with rebaseable=false", () => {
+	it("round-trips merge status with rebaseable=false", () =>
+	{
 		cacheMergeStatus("test-project", "def456", "upstream-sha", 0, 5, false);
 		const cached = getCachedMergeStatuses("test-project", "upstream-sha");
 		expect(cached).toHaveLength(1);
 		expect(cached[0]!.rebaseable).toBe(false);
 	});
 
-	it("round-trips merge status with rebaseable=null", () => {
+	it("round-trips merge status with rebaseable=null", () =>
+	{
 		cacheMergeStatus("test-project", "ghi789", "upstream-sha", 1, 0, null);
 		const cached = getCachedMergeStatuses("test-project", "upstream-sha");
 		expect(cached).toHaveLength(1);
@@ -300,8 +375,10 @@ describe("Merge status cache", () => {
 	});
 });
 
-describe("Snoozed items", () => {
-	it("round-trips through getAllSnoozed", () => {
+describe("Snoozed items", () =>
+{
+	it("round-trips through getAllSnoozed", () =>
+	{
 		snoozeItem("sha1", "project-a", "sha1abc", "Fix the thing", null);
 		const all = getAllSnoozed();
 		expect(all).toHaveLength(1);
@@ -312,75 +389,109 @@ describe("Snoozed items", () => {
 		expect(all[0]!.until).toBeNull();
 	});
 
-	it("getAllSnoozedForDisplay omits temporal fields", () => {
+	it("getAllSnoozedForDisplay omits temporal fields", () =>
+	{
 		snoozeItem("sha2", "project-b", "sha2def", "Another fix", "2099-01-01");
 		const display = getAllSnoozedForDisplay();
 		expect(display).toHaveLength(1);
-		expect(display[0]!).toStrictEqual({
-			sha: "sha2",
-			project: "project-b",
-			shortSha: "sha2def",
-			subject: "Another fix",
-			until: "2099-01-01",
-			patchId: null,
-			orphaned: false,
-		});
+		expect(display[0]!).toStrictEqual(
+			{
+				sha: "sha2",
+				project: "project-b",
+				shortSha: "sha2def",
+				subject: "Another fix",
+				until: "2099-01-01",
+				patchId: null,
+				orphaned: false,
+			},
+		);
 		// Verify no temporal fields
 		expect("systemFrom" in display[0]!).toBe(false);
 		expect("systemTo" in display[0]!).toBe(false);
 	});
 });
 
-describe("Snooze expiry on the same day", () => {
-	beforeEach(() => {
+describe("Snooze expiry on the same day", () =>
+{
+	beforeEach(() =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-11-03T10:00:00.000Z"));
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.useRealTimers();
 	});
 
-	it("expires a one-hour commit snooze an hour later, not after the UTC date passes", () => {
+	it("expires a one-hour commit snooze an hour later, not after the UTC date passes", () =>
+	{
 		snoozeItem("sha1", "project-a", "sha1abc", "Fix the thing", "2026-11-03T11:00:00.000Z");
 		const activeBefore = getActiveSnoozed().map((row) => row.sha);
 		vi.setSystemTime(new Date("2026-11-03T12:00:00.000Z"));
 
-		expect({
-			activeBefore,
-			activeAfter: getActiveSnoozed().map((row) => row.sha),
-			cleared: clearExpiredSnoozes(),
-			remaining: getAllSnoozed().map((row) => row.sha),
-		}).toStrictEqual({activeBefore: ["sha1"], activeAfter: [], cleared: 1, remaining: []});
+		expect(
+			{
+				activeBefore,
+				activeAfter: getActiveSnoozed().map((row) => row.sha),
+				cleared: clearExpiredSnoozes(),
+				remaining: getAllSnoozed().map((row) => row.sha),
+			},
+		).toStrictEqual(
+			{
+				activeBefore: ["sha1"],
+				activeAfter: [],
+				cleared: 1,
+				remaining: [],
+			},
+		);
 	});
 
-	it("expires a one-hour todo snooze an hour later", () => {
+	it("expires a one-hour todo snooze an hour later", () =>
+	{
 		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Later", "2026-11-03T11:00:00.000Z");
 		const before = [...getActiveSnoozedTodoKeys("project-a")];
 		vi.setSystemTime(new Date("2026-11-03T12:00:00.000Z"));
 
-		expect({before, after: [...getActiveSnoozedTodoKeys("project-a")]}).toStrictEqual({
-			before: ["/a/.llm/todo.md\u0000Later"],
-			after: [],
-		});
+		expect(
+			{
+				before,
+				after: [...getActiveSnoozedTodoKeys("project-a")],
+			},
+		).toStrictEqual(
+			{
+				before: ["/a/.llm/todo.md\u0000Later"],
+				after: [],
+			},
+		);
 	});
 });
 
-describe("Snoozed todos", () => {
-	it("holds a todo by its key until it is unsnoozed, per project", () => {
+describe("Snoozed todos", () =>
+{
+	it("holds a todo by its key until it is unsnoozed, per project", () =>
+	{
 		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Held", null);
 		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Later", "2099-01-01T00:00:00.000Z");
 		snoozeTodo("project-b", "/b/.llm/todo.md\u0000Other", null);
 		const before = sorted([...getActiveSnoozedTodoKeys("project-a")]);
 		unsnoozeTodo("project-a", "/a/.llm/todo.md\u0000Held");
 
-		expect({before, after: [...getActiveSnoozedTodoKeys("project-a")]}).toStrictEqual({
-			before: ["/a/.llm/todo.md\u0000Held", "/a/.llm/todo.md\u0000Later"],
-			after: ["/a/.llm/todo.md\u0000Later"],
-		});
+		expect(
+			{
+				before,
+				after: [...getActiveSnoozedTodoKeys("project-a")],
+			},
+		).toStrictEqual(
+			{
+				before: ["/a/.llm/todo.md\u0000Held", "/a/.llm/todo.md\u0000Later"],
+				after: ["/a/.llm/todo.md\u0000Later"],
+			},
+		);
 	});
 
-	it("drops an expired snooze and replaces an earlier snooze of the same todo", () => {
+	it("drops an expired snooze and replaces an earlier snooze of the same todo", () =>
+	{
 		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Expired", "2000-01-01T00:00:00.000Z");
 		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Again", "2000-01-01T00:00:00.000Z");
 		snoozeTodo("project-a", "/a/.llm/todo.md\u0000Again", null);
@@ -389,47 +500,78 @@ describe("Snoozed todos", () => {
 	});
 });
 
-describe("Mise env cache", () => {
-	it("round-trips a Record<string, string>", () => {
-		const env = {PATH: "/usr/bin", HOME: "/home/user", CUSTOM: "value"};
+describe("Mise env cache", () =>
+{
+	it("round-trips a Record<string, string>", () =>
+	{
+		const env =
+		{
+			PATH: "/usr/bin",
+			HOME: "/home/user",
+			CUSTOM: "value",
+		};
 		cacheMiseEnv("/projects/test", env, "fp");
 		const cached = getCachedMiseEnv("/projects/test", "fp");
 		expect(cached).toStrictEqual(env);
 	});
 
-	it("returns null for uncached directory", () => {
+	it("returns null for uncached directory", () =>
+	{
 		const cached = getCachedMiseEnv("/nonexistent", "fp");
 		expect(cached).toBeNull();
 	});
 
-	it("returns null when the mise config fingerprint changed since the env was cached", () => {
-		cacheMiseEnv("/projects/test", {PATH: "/usr/bin"}, "before");
+	it("returns null when the mise config fingerprint changed since the env was cached", () =>
+	{
+		cacheMiseEnv(
+			"/projects/test",
+			{
+				PATH: "/usr/bin",
+			},
+			"before",
+		);
 		expect(getCachedMiseEnv("/projects/test", "after")).toBeNull();
 	});
 });
 
-describe("GitHub issues cache", () => {
+describe("GitHub issues cache", () =>
+{
 	const sampleIssues: GitHubIssue[] = [
 		{
 			number: 42,
 			title: "Fix the thing",
 			url: "https://github.com/owner/repo/issues/42",
 			labels: [
-				{name: "bug", color: "d73a4a"},
-				{name: "priority", color: "ff0000"},
+				{
+					name: "bug",
+					color: "d73a4a",
+				},
+				{
+					name: "priority",
+					color: "ff0000",
+				},
 			],
-			repository: {name: "repo", nameWithOwner: "owner/repo"},
+			repository:
+			{
+				name: "repo",
+				nameWithOwner: "owner/repo",
+			},
 		},
 		{
 			number: 99,
 			title: "Add feature",
 			url: "https://github.com/owner/other/issues/99",
 			labels: [],
-			repository: {name: "other", nameWithOwner: "owner/other"},
+			repository:
+			{
+				name: "other",
+				nameWithOwner: "owner/other",
+			},
 		},
 	];
 
-	it("round-trips issues with labels reconstructed", () => {
+	it("round-trips issues with labels reconstructed", () =>
+	{
 		cacheIssues(sampleIssues);
 		// Use a large TTL so the just-cached data is within range
 		const cached = getCachedIssues();
@@ -440,10 +582,21 @@ describe("GitHub issues cache", () => {
 		expect(issue42).toBeDefined();
 		expect(issue42!.title).toBe("Fix the thing");
 		expect(issue42!.labels).toStrictEqual([
-			{name: "bug", color: "d73a4a"},
-			{name: "priority", color: "ff0000"},
+			{
+				name: "bug",
+				color: "d73a4a",
+			},
+			{
+				name: "priority",
+				color: "ff0000",
+			},
 		]);
-		expect(issue42!.repository).toStrictEqual({name: "repo", nameWithOwner: "owner/repo"});
+		expect(issue42!.repository).toStrictEqual(
+			{
+				name: "repo",
+				nameWithOwner: "owner/repo",
+			},
+		);
 
 		const issue99 = cached!.find((i) => i.number === 99);
 		expect(issue99).toBeDefined();
@@ -451,7 +604,8 @@ describe("GitHub issues cache", () => {
 	});
 });
 
-describe("GitHub project items cache", () => {
+describe("GitHub project items cache", () =>
+{
 	const sampleItems: GitHubProjectItem[] = [
 		{
 			id: "PVTI_abc",
@@ -461,7 +615,12 @@ describe("GitHub project items cache", () => {
 			url: "https://github.com/owner/repo/issues/1",
 			number: 1,
 			repository: "owner/repo",
-			labels: [{name: "enhancement", color: "a2eeef"}],
+			labels: [
+				{
+					name: "enhancement",
+					color: "a2eeef",
+				},
+			],
 		},
 		{
 			id: "PVTI_def",
@@ -472,7 +631,8 @@ describe("GitHub project items cache", () => {
 		},
 	];
 
-	it("round-trips project items with labels reconstructed", () => {
+	it("round-trips project items with labels reconstructed", () =>
+	{
 		cacheProjectItems(sampleItems);
 		const cached = getCachedProjectItems();
 		expect(cached).not.toBeNull();
@@ -486,7 +646,12 @@ describe("GitHub project items cache", () => {
 		expect(issue!.url).toBe("https://github.com/owner/repo/issues/1");
 		expect(issue!.number).toBe(1);
 		expect(issue!.repository).toBe("owner/repo");
-		expect(issue!.labels).toStrictEqual([{name: "enhancement", color: "a2eeef"}]);
+		expect(issue!.labels).toStrictEqual([
+			{
+				name: "enhancement",
+				color: "a2eeef",
+			},
+		]);
 
 		const draft = cached!.find((i) => i.id === "PVTI_def");
 		expect(draft).toBeDefined();
@@ -497,8 +662,10 @@ describe("GitHub project items cache", () => {
 	});
 });
 
-describe("GitHub issues cache cleans up old label rows", () => {
-	it("deletes old label rows when caching new issues", () => {
+describe("GitHub issues cache cleans up old label rows", () =>
+{
+	it("deletes old label rows when caching new issues", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -507,8 +674,17 @@ describe("GitHub issues cache cleans up old label rows", () => {
 				number: 1,
 				title: "Issue one",
 				url: "https://github.com/owner/repo/issues/1",
-				labels: [{name: "bug", color: "d73a4a"}],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				labels: [
+					{
+						name: "bug",
+						color: "d73a4a",
+					},
+				],
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -520,25 +696,42 @@ describe("GitHub issues cache cleans up old label rows", () => {
 				number: 1,
 				title: "Issue one",
 				url: "https://github.com/owner/repo/issues/1",
-				labels: [{name: "feature", color: "0075ca"}],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				labels: [
+					{
+						name: "feature",
+						color: "0075ca",
+					},
+				],
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
-		const totalLabelRows = getDb().all<{
+		const totalLabelRows = getDb().all<
+		{
 			cnt: number;
 		}>(sql`SELECT count(*) as cnt FROM github_issue_labels`);
 		expect(totalLabelRows[0]!.cnt).toBe(1);
 
 		const cached = getCachedIssues();
-		expect(cached![0]!.labels).toStrictEqual([{name: "feature", color: "0075ca"}]);
+		expect(cached![0]!.labels).toStrictEqual([
+			{
+				name: "feature",
+				color: "0075ca",
+			},
+		]);
 
 		vi.useRealTimers();
 	});
 });
 
-describe("GitHub project items cache cleans up old label rows", () => {
-	it("deletes old label rows when caching new project items", () => {
+describe("GitHub project items cache cleans up old label rows", () =>
+{
+	it("deletes old label rows when caching new project items", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -548,7 +741,12 @@ describe("GitHub project items cache cleans up old label rows", () => {
 				title: "Task",
 				status: "In Progress",
 				type: "ISSUE",
-				labels: [{name: "enhancement", color: "a2eeef"}],
+				labels: [
+					{
+						name: "enhancement",
+						color: "a2eeef",
+					},
+				],
 			},
 		]);
 
@@ -561,31 +759,48 @@ describe("GitHub project items cache cleans up old label rows", () => {
 				title: "Task",
 				status: "In Progress",
 				type: "ISSUE",
-				labels: [{name: "bug", color: "d73a4a"}],
+				labels: [
+					{
+						name: "bug",
+						color: "d73a4a",
+					},
+				],
 			},
 		]);
 
-		const totalLabelRows = getDb().all<{
+		const totalLabelRows = getDb().all<
+		{
 			cnt: number;
 		}>(sql`SELECT count(*) as cnt FROM github_project_item_labels`);
 		expect(totalLabelRows[0]!.cnt).toBe(1);
 
 		const cached = getCachedProjectItems();
-		expect(cached![0]!.labels).toStrictEqual([{name: "bug", color: "d73a4a"}]);
+		expect(cached![0]!.labels).toStrictEqual([
+			{
+				name: "bug",
+				color: "d73a4a",
+			},
+		]);
 
 		vi.useRealTimers();
 	});
 });
 
-describe("Cache TTL expiry", () => {
-	it("getCachedIssues always returns current state regardless of age", () => {
+describe("Cache TTL expiry", () =>
+{
+	it("getCachedIssues always returns current state regardless of age", () =>
+	{
 		cacheIssues([
 			{
 				number: 1,
 				title: "Old issue",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 		const cached = getCachedIssues();
@@ -593,7 +808,8 @@ describe("Cache TTL expiry", () => {
 		expect(cached).toHaveLength(1);
 	});
 
-	it("getCachedProjectItems always returns current state regardless of age", () => {
+	it("getCachedProjectItems always returns current state regardless of age", () =>
+	{
 		cacheProjectItems([
 			{
 				id: "PVTI_old",
@@ -608,7 +824,8 @@ describe("Cache TTL expiry", () => {
 		expect(cached).toHaveLength(1);
 	});
 
-	it("getCachedPrStatuses always returns current state regardless of age", () => {
+	it("getCachedPrStatuses always returns current state regardless of age", () =>
+	{
 		cachePrStatuses("test-project", [
 			{
 				branch: "feature/old",
@@ -630,7 +847,8 @@ describe("Cache TTL expiry", () => {
 		expect(cached).toHaveLength(1);
 	});
 
-	it("isCacheFresh tracks polling freshness separately from temporal data", () => {
+	it("isCacheFresh tracks polling freshness separately from temporal data", () =>
+	{
 		cachePrStatuses("test-project", [
 			{
 				branch: "feature/a",
@@ -654,7 +872,8 @@ describe("Cache TTL expiry", () => {
 		expect(getCachedPrStatuses("test-project")).not.toBeNull();
 	});
 
-	it("getCacheFreshnessByPrefix returns matching keys with the prefix stripped", () => {
+	it("getCacheFreshnessByPrefix returns matching keys with the prefix stripped", () =>
+	{
 		markCacheFresh("children:alpha");
 		markCacheFresh("children:beta");
 		markCacheFresh("todos:alpha");
@@ -665,13 +884,16 @@ describe("Cache TTL expiry", () => {
 		expect(freshness.get("alpha")).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
 	});
 
-	it("getCacheFreshnessByPrefix returns an empty map when nothing matches", () => {
+	it("getCacheFreshnessByPrefix returns an empty map when nothing matches", () =>
+	{
 		expect(getCacheFreshnessByPrefix("children:")).toStrictEqual(new Map());
 	});
 });
 
-describe("Migration: old schema to new", () => {
-	it("handles the failed_checks column migration", () => {
+describe("Migration: old schema to new", () =>
+{
+	it("handles the failed_checks column migration", () =>
+	{
 		// This test verifies that getDb() (called implicitly by initDb + first operation)
 		// handles the migration from old schema with failed_checks column on pr_status_cache.
 		// Since we use :memory:, we start fresh each time and the CREATE TABLE IF NOT EXISTS
@@ -687,7 +909,15 @@ describe("Migration: old schema to new", () => {
 				reviewStatus: "approved",
 				checkStatus: "failed",
 				prUrl: null,
-				failedChecks: [{name: "ci/check-1", url: "https://example.com/1"}, {name: "ci/check-2"}],
+				failedChecks: [
+					{
+						name: "ci/check-1",
+						url: "https://example.com/1",
+					},
+					{
+						name: "ci/check-2",
+					},
+				],
 				behind: true,
 			},
 		];
@@ -700,7 +930,8 @@ describe("Migration: old schema to new", () => {
 	});
 });
 
-describe("Children cache", () => {
+describe("Children cache", () =>
+{
 	const sampleChildren = [
 		{
 			project: "test-project",
@@ -719,65 +950,100 @@ describe("Children cache", () => {
 		},
 	];
 
-	it("returns null on empty cache", () => {
+	it("returns null on empty cache", () =>
+	{
 		expect(getCachedChildren("test-project")).toBeNull();
 	});
 
-	it("caches and retrieves children", () => {
+	it("caches and retrieves children", () =>
+	{
 		cacheChildren("test-project", sampleChildren);
 		const cached = getCachedChildren("test-project");
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.sha).toBe("abc123");
 	});
 
-	it("isCacheFresh tracks children freshness separately from data", () => {
+	it("isCacheFresh tracks children freshness separately from data", () =>
+	{
 		cacheChildren("test-project", sampleChildren);
 		expect(isCacheFresh("children:test-project", 10 * 60 * 1000)).toBe(true);
 		expect(getCachedChildren("test-project")).toHaveLength(1);
 	});
 
-	it("invalidates cache", () => {
+	it("invalidates cache", () =>
+	{
 		cacheChildren("test-project", sampleChildren);
 		invalidateChildrenCache("test-project");
 		expect(getCachedChildren("test-project")).toBeNull();
 		expect(getCachedChildren("test-project")).toBeNull();
 	});
 
-	it("the refs recorded with a project's children match only those refs, so a restart can tell the cache is stale", () => {
+	it("the refs recorded with a project's children match only those refs, so a restart can tell the cache is stale", () =>
+	{
 		// A branch deleted while the server is down leaves the children cache fresh; the refs it was read from
 		// are what tell a restarted server to reread it.
 		const read = "head-sha\nrefs/heads/vault-feature 1111111\nrefs/remotes/origin/vault-feature 1111111";
 		const deleted = "head-sha";
-		expect({
-			beforeAnyRecord: childrenRefsMatch("test-project", read),
-		}).toEqual({beforeAnyRecord: false});
+		expect(
+			{
+				beforeAnyRecord: childrenRefsMatch("test-project", read),
+			},
+		).toEqual(
+			{
+				beforeAnyRecord: false,
+			},
+		);
 		recordChildrenRefs("test-project", read);
 		recordChildrenRefs("other-project", deleted);
-		expect({
-			same: childrenRefsMatch("test-project", read),
-			deleted: childrenRefsMatch("test-project", deleted),
-			other: childrenRefsMatch("other-project", read),
-		}).toEqual({same: true, deleted: false, other: false});
+		expect(
+			{
+				same: childrenRefsMatch("test-project", read),
+				deleted: childrenRefsMatch("test-project", deleted),
+				other: childrenRefsMatch("other-project", read),
+			},
+		).toEqual(
+			{
+				same: true,
+				deleted: false,
+				other: false,
+			},
+		);
 		recordChildrenRefs("test-project", deleted);
-		expect({
-			old: childrenRefsMatch("test-project", read),
-			rerecorded: childrenRefsMatch("test-project", deleted),
-		}).toEqual({old: false, rerecorded: true});
+		expect(
+			{
+				old: childrenRefsMatch("test-project", read),
+				rerecorded: childrenRefsMatch("test-project", deleted),
+			},
+		).toEqual(
+			{
+				old: false,
+				rerecorded: true,
+			},
+		);
 	});
 
-	it("an invalidated children cache is no longer fresh, so the next unforced refresh rereads it", () => {
+	it("an invalidated children cache is no longer fresh, so the next unforced refresh rereads it", () =>
+	{
 		// Push main invalidates the cache; a server restart before the refresh lands leaves only the
 		// sweep's unforced refresh, which skipped a fresh key and left the landed commit counted ready.
 		cacheChildren("test-project", sampleChildren);
 		markCacheFresh("children:other-project");
 		invalidateChildrenCache("test-project");
-		expect({
-			invalidated: isCacheFresh("children:test-project", 10 * 60 * 1000),
-			other: isCacheFresh("children:other-project", 10 * 60 * 1000),
-		}).toEqual({invalidated: false, other: true});
+		expect(
+			{
+				invalidated: isCacheFresh("children:test-project", 10 * 60 * 1000),
+				other: isCacheFresh("children:other-project", 10 * 60 * 1000),
+			},
+		).toEqual(
+			{
+				invalidated: false,
+				other: true,
+			},
+		);
 	});
 
-	it("getLastKnownChildren keeps the last cached children through an invalidation", () => {
+	it("getLastKnownChildren keeps the last cached children through an invalidation", () =>
+	{
 		expect(getLastKnownChildren("test-project")).toBeNull();
 		cacheChildren("test-project", sampleChildren);
 		expect(getLastKnownChildren("test-project")).toEqual(sampleChildren);
@@ -787,29 +1053,44 @@ describe("Children cache", () => {
 		expect(getLastKnownChildren("other-project")).toBeNull();
 	});
 
-	it("getLastKnownChildren returns the newest children once recached", async () => {
+	it("getLastKnownChildren returns the newest children once recached", async () =>
+	{
 		cacheChildren("test-project", sampleChildren);
-		await new Promise((r) => {
+		await new Promise((r) =>
+		{
 			setTimeout(r, 2);
 		});
 		invalidateChildrenCache("test-project");
-		const updated = [{...sampleChildren[0]!, sha: "def456"}];
+		const updated = [
+			{
+				...sampleChildren[0]!,
+				sha: "def456",
+			},
+		];
 		cacheChildren("test-project", updated);
-		await new Promise((r) => {
+		await new Promise((r) =>
+		{
 			setTimeout(r, 2);
 		});
 		invalidateChildrenCache("test-project");
 		expect(getLastKnownChildren("test-project")).toEqual(updated);
 	});
 
-	it("overwrites previous cache entry after invalidation", async () => {
+	it("overwrites previous cache entry after invalidation", async () =>
+	{
 		cacheChildren("test-project", sampleChildren);
 		// Ensure different timestamp for next write
-		await new Promise((r) => {
+		await new Promise((r) =>
+		{
 			setTimeout(r, 2);
 		});
 		invalidateChildrenCache("test-project");
-		const updated = [{...sampleChildren[0]!, sha: "def456"}];
+		const updated = [
+			{
+				...sampleChildren[0]!,
+				sha: "def456",
+			},
+		];
 		cacheChildren("test-project", updated);
 		const cached = getCachedChildren("test-project");
 		expect(cached).toHaveLength(1);
@@ -817,7 +1098,8 @@ describe("Children cache", () => {
 	});
 });
 
-describe("Todos cache", () => {
+describe("Todos cache", () =>
+{
 	const sampleTodos = [
 		{
 			project: "test-project",
@@ -827,24 +1109,28 @@ describe("Todos cache", () => {
 		},
 	];
 
-	it("returns null on empty cache", () => {
+	it("returns null on empty cache", () =>
+	{
 		expect(getCachedTodos("test-project")).toBeNull();
 	});
 
-	it("caches and retrieves todos", () => {
+	it("caches and retrieves todos", () =>
+	{
 		cacheTodos("test-project", sampleTodos);
 		const cached = getCachedTodos("test-project");
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.title).toBe("Fix the thing");
 	});
 
-	it("isCacheFresh tracks todos freshness separately from data", () => {
+	it("isCacheFresh tracks todos freshness separately from data", () =>
+	{
 		cacheTodos("test-project", sampleTodos);
 		expect(isCacheFresh("todos:test-project", 10 * 60 * 1000)).toBe(true);
 		expect(getCachedTodos("test-project")).toHaveLength(1);
 	});
 
-	it("invalidates cache", () => {
+	it("invalidates cache", () =>
+	{
 		cacheTodos("test-project", sampleTodos);
 		invalidateTodosCache("test-project");
 		expect(getCachedTodos("test-project")).toBeNull();
@@ -852,8 +1138,10 @@ describe("Todos cache", () => {
 	});
 });
 
-describe("cacheIssues deduplication", () => {
-	it("skips re-insert when issue data is unchanged", () => {
+describe("cacheIssues deduplication", () =>
+{
+	it("skips re-insert when issue data is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -862,8 +1150,17 @@ describe("cacheIssues deduplication", () => {
 				number: 1,
 				title: "Issue one",
 				url: "https://github.com/owner/repo/issues/1",
-				labels: [{name: "bug", color: "d73a4a"}],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				labels: [
+					{
+						name: "bug",
+						color: "d73a4a",
+					},
+				],
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		];
 		cacheIssues(issues);
@@ -871,7 +1168,8 @@ describe("cacheIssues deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheIssues(issues);
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM github_issues`);
@@ -882,7 +1180,8 @@ describe("cacheIssues deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("phases out removed issues and keeps unchanged ones", () => {
+	it("phases out removed issues and keeps unchanged ones", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -892,14 +1191,22 @@ describe("cacheIssues deduplication", () => {
 				title: "Issue one",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 			{
 				number: 2,
 				title: "Issue two",
 				url: "https://github.com/owner/repo/issues/2",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -911,7 +1218,11 @@ describe("cacheIssues deduplication", () => {
 				title: "Issue one",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -919,7 +1230,8 @@ describe("cacheIssues deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.number).toBe(1);
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			number: number;
 			system_to: string;
 		}>(sql`SELECT * FROM github_issues`);
@@ -930,7 +1242,8 @@ describe("cacheIssues deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when issue title changes", () => {
+	it("replaces row when issue title changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -940,7 +1253,11 @@ describe("cacheIssues deduplication", () => {
 				title: "Old title",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -952,7 +1269,11 @@ describe("cacheIssues deduplication", () => {
 				title: "New title",
 				url: "https://github.com/owner/repo/issues/1",
 				labels: [],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -960,7 +1281,8 @@ describe("cacheIssues deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.title).toBe("New title");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM github_issues`);
 		expect(allRows).toHaveLength(2);
@@ -968,7 +1290,8 @@ describe("cacheIssues deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when labels change", () => {
+	it("replaces row when labels change", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -977,8 +1300,17 @@ describe("cacheIssues deduplication", () => {
 				number: 1,
 				title: "Issue",
 				url: "https://github.com/owner/repo/issues/1",
-				labels: [{name: "bug", color: "d73a4a"}],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				labels: [
+					{
+						name: "bug",
+						color: "d73a4a",
+					},
+				],
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
@@ -989,15 +1321,30 @@ describe("cacheIssues deduplication", () => {
 				number: 1,
 				title: "Issue",
 				url: "https://github.com/owner/repo/issues/1",
-				labels: [{name: "feature", color: "0075ca"}],
-				repository: {name: "repo", nameWithOwner: "owner/repo"},
+				labels: [
+					{
+						name: "feature",
+						color: "0075ca",
+					},
+				],
+				repository:
+				{
+					name: "repo",
+					nameWithOwner: "owner/repo",
+				},
 			},
 		]);
 
 		const cached = getCachedIssues();
-		expect(cached![0]!.labels).toStrictEqual([{name: "feature", color: "0075ca"}]);
+		expect(cached![0]!.labels).toStrictEqual([
+			{
+				name: "feature",
+				color: "0075ca",
+			},
+		]);
 
-		const labelRows = getDb().all<{
+		const labelRows = getDb().all<
+		{
 			label_name: string;
 		}>(sql`SELECT * FROM github_issue_labels`);
 		expect(labelRows).toHaveLength(1);
@@ -1007,8 +1354,10 @@ describe("cacheIssues deduplication", () => {
 	});
 });
 
-describe("cacheProjectItems deduplication", () => {
-	it("skips re-insert when item data is unchanged", () => {
+describe("cacheProjectItems deduplication", () =>
+{
+	it("skips re-insert when item data is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1018,7 +1367,12 @@ describe("cacheProjectItems deduplication", () => {
 				title: "Task",
 				status: "In Progress",
 				type: "ISSUE",
-				labels: [{name: "enhancement", color: "a2eeef"}],
+				labels: [
+					{
+						name: "enhancement",
+						color: "a2eeef",
+					},
+				],
 			},
 		];
 		cacheProjectItems(items);
@@ -1026,7 +1380,8 @@ describe("cacheProjectItems deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheProjectItems(items);
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM github_project_items`);
@@ -1036,18 +1391,39 @@ describe("cacheProjectItems deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("phases out removed items and keeps unchanged ones", () => {
+	it("phases out removed items and keeps unchanged ones", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
 		cacheProjectItems([
-			{id: "PVTI_a", title: "A", status: "Todo", type: "ISSUE", labels: []},
-			{id: "PVTI_b", title: "B", status: "Todo", type: "ISSUE", labels: []},
+			{
+				id: "PVTI_a",
+				title: "A",
+				status: "Todo",
+				type: "ISSUE",
+				labels: [],
+			},
+			{
+				id: "PVTI_b",
+				title: "B",
+				status: "Todo",
+				type: "ISSUE",
+				labels: [],
+			},
 		]);
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 
-		cacheProjectItems([{id: "PVTI_a", title: "A", status: "Todo", type: "ISSUE", labels: []}]);
+		cacheProjectItems([
+			{
+				id: "PVTI_a",
+				title: "A",
+				status: "Todo",
+				type: "ISSUE",
+				labels: [],
+			},
+		]);
 
 		const cached = getCachedProjectItems();
 		expect(cached).toHaveLength(1);
@@ -1056,20 +1432,38 @@ describe("cacheProjectItems deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when item status changes", () => {
+	it("replaces row when item status changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
-		cacheProjectItems([{id: "PVTI_a", title: "Task", status: "Todo", type: "ISSUE", labels: []}]);
+		cacheProjectItems([
+			{
+				id: "PVTI_a",
+				title: "Task",
+				status: "Todo",
+				type: "ISSUE",
+				labels: [],
+			},
+		]);
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 
-		cacheProjectItems([{id: "PVTI_a", title: "Task", status: "In Progress", type: "ISSUE", labels: []}]);
+		cacheProjectItems([
+			{
+				id: "PVTI_a",
+				title: "Task",
+				status: "In Progress",
+				type: "ISSUE",
+				labels: [],
+			},
+		]);
 
 		const cached = getCachedProjectItems();
 		expect(cached![0]!.status).toBe("In Progress");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM github_project_items`);
 		expect(allRows).toHaveLength(2);
@@ -1078,8 +1472,10 @@ describe("cacheProjectItems deduplication", () => {
 	});
 });
 
-describe("setBranchName deduplication", () => {
-	it("skips re-insert when branch name is unchanged", () => {
+describe("setBranchName deduplication", () =>
+{
+	it("skips re-insert when branch name is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1088,7 +1484,8 @@ describe("setBranchName deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		setBranchName("abc123", "test-project", "feature/foo");
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM branch_names`);
@@ -1098,7 +1495,8 @@ describe("setBranchName deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when branch name changes", () => {
+	it("replaces row when branch name changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1110,7 +1508,8 @@ describe("setBranchName deduplication", () => {
 		const cached = getBranchName("abc123", "test-project");
 		expect(cached).toBe("feature/bar");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM branch_names`);
 		expect(allRows).toHaveLength(2);
@@ -1119,19 +1518,29 @@ describe("setBranchName deduplication", () => {
 	});
 });
 
-describe("test_results migration", () => {
+describe("test_results migration", () =>
+{
 	let dir: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		resetDb();
 		dir = fs.mkdtempSync(path.join(os.tmpdir(), "wip-db-migration-"));
 	});
 
-	afterEach(() => {
-		fs.rmSync(dir, {recursive: true, force: true});
+	afterEach(() =>
+	{
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("drops an existing test_results table and leaves other tables intact", () => {
+	it("drops an existing test_results table and leaves other tables intact", () =>
+	{
 		const dbPath = path.join(dir, "wip.db");
 		const legacy = new DatabaseConstructor(dbPath);
 		legacy.exec(`
@@ -1165,7 +1574,10 @@ describe("test_results migration", () => {
 
 		initDb(dbPath);
 		const tables = getDb()
-			.all<{name: string}>(sql`SELECT name FROM sqlite_master WHERE type='table'`)
+			.all<
+			{
+				name: string;
+			}>(sql`SELECT name FROM sqlite_master WHERE type='table'`)
 			.map((row) => row.name);
 
 		expect(tables).not.toContain("test_results");
@@ -1174,27 +1586,38 @@ describe("test_results migration", () => {
 		expect(getBranchName("abc123", "p")).toBe("feature");
 	});
 
-	it("never creates a test_results table in a fresh database", () => {
+	it("never creates a test_results table in a fresh database", () =>
+	{
 		initDb(":memory:");
 		const tables = getDb()
-			.all<{name: string}>(sql`SELECT name FROM sqlite_master WHERE type='table'`)
+			.all<
+			{
+				name: string;
+			}>(sql`SELECT name FROM sqlite_master WHERE type='table'`)
 			.map((row) => row.name);
 		expect(tables).not.toContain("test_results");
 	});
 });
 
-describe("cacheMiseEnv deduplication", () => {
-	it("skips re-insert when env is unchanged", () => {
+describe("cacheMiseEnv deduplication", () =>
+{
+	it("skips re-insert when env is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
-		const env = {PATH: "/usr/bin", HOME: "/home/user"};
+		const env =
+		{
+			PATH: "/usr/bin",
+			HOME: "/home/user",
+		};
 		cacheMiseEnv("/projects/test", env, "fp");
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheMiseEnv("/projects/test", env, "fp");
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM mise_env_cache`);
@@ -1204,19 +1627,37 @@ describe("cacheMiseEnv deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when env changes", () => {
+	it("replaces row when env changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
-		cacheMiseEnv("/projects/test", {PATH: "/usr/bin"}, "fp");
+		cacheMiseEnv(
+			"/projects/test",
+			{
+				PATH: "/usr/bin",
+			},
+			"fp",
+		);
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		cacheMiseEnv("/projects/test", {PATH: "/usr/local/bin"}, "fp");
+		cacheMiseEnv(
+			"/projects/test",
+			{
+				PATH: "/usr/local/bin",
+			},
+			"fp",
+		);
 
 		const cached = getCachedMiseEnv("/projects/test", "fp");
-		expect(cached).toStrictEqual({PATH: "/usr/local/bin"});
+		expect(cached).toStrictEqual(
+			{
+				PATH: "/usr/local/bin",
+			},
+		);
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM mise_env_cache`);
 		expect(allRows).toHaveLength(2);
@@ -1225,8 +1666,10 @@ describe("cacheMiseEnv deduplication", () => {
 	});
 });
 
-describe("cacheGhLogin deduplication", () => {
-	it("skips re-insert when login is unchanged", () => {
+describe("cacheGhLogin deduplication", () =>
+{
+	it("skips re-insert when login is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1235,7 +1678,8 @@ describe("cacheGhLogin deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheGhLogin("octocat");
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM gh_login_cache`);
@@ -1245,7 +1689,8 @@ describe("cacheGhLogin deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when login changes", () => {
+	it("replaces row when login changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1257,7 +1702,8 @@ describe("cacheGhLogin deduplication", () => {
 		const cached = getCachedGhLogin();
 		expect(cached).toBe("newuser");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM gh_login_cache`);
 		expect(allRows).toHaveLength(2);
@@ -1266,8 +1712,10 @@ describe("cacheGhLogin deduplication", () => {
 	});
 });
 
-describe("cacheUpstreamSha deduplication", () => {
-	it("skips re-insert when ref and sha are unchanged", () => {
+describe("cacheUpstreamSha deduplication", () =>
+{
+	it("skips re-insert when ref and sha are unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1276,7 +1724,8 @@ describe("cacheUpstreamSha deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheUpstreamSha("test-project", "upstream/main", "abc123");
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM upstream_refs`);
@@ -1286,7 +1735,8 @@ describe("cacheUpstreamSha deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when sha changes", () => {
+	it("replaces row when sha changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1298,7 +1748,8 @@ describe("cacheUpstreamSha deduplication", () => {
 		const cached = getCachedUpstreamSha("test-project");
 		expect(cached).toBe("def456");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM upstream_refs`);
 		expect(allRows).toHaveLength(2);
@@ -1307,8 +1758,10 @@ describe("cacheUpstreamSha deduplication", () => {
 	});
 });
 
-describe("cacheMergeStatus deduplication", () => {
-	it("skips re-insert when merge status is unchanged", () => {
+describe("cacheMergeStatus deduplication", () =>
+{
+	it("skips re-insert when merge status is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1317,7 +1770,8 @@ describe("cacheMergeStatus deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheMergeStatus("test-project", "abc123", "upstream-sha", 3, 1, true);
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM merge_status`);
@@ -1327,7 +1781,8 @@ describe("cacheMergeStatus deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when commits behind changes", () => {
+	it("replaces row when commits behind changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1340,7 +1795,8 @@ describe("cacheMergeStatus deduplication", () => {
 		expect(cached).toHaveLength(1);
 		expect(cached[0]!.commitsBehind).toBe(5);
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM merge_status`);
 		expect(allRows).toHaveLength(2);
@@ -1349,8 +1805,10 @@ describe("cacheMergeStatus deduplication", () => {
 	});
 });
 
-describe("cacheChildren deduplication", () => {
-	it("skips re-insert when children JSON is unchanged", () => {
+describe("cacheChildren deduplication", () =>
+{
+	it("skips re-insert when children JSON is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1376,7 +1834,8 @@ describe("cacheChildren deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheChildren("test-project", children);
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM children_cache`);
@@ -1386,7 +1845,8 @@ describe("cacheChildren deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when children data changes", () => {
+	it("replaces row when children data changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1410,12 +1870,18 @@ describe("cacheChildren deduplication", () => {
 		cacheChildren("test-project", children);
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		cacheChildren("test-project", [{...children[0]!, sha: "def456"}]);
+		cacheChildren("test-project", [
+			{
+				...children[0]!,
+				sha: "def456",
+			},
+		]);
 
 		const cached = getCachedChildren("test-project");
 		expect(cached![0]!.sha).toBe("def456");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM children_cache`);
 		expect(allRows).toHaveLength(2);
@@ -1424,8 +1890,10 @@ describe("cacheChildren deduplication", () => {
 	});
 });
 
-describe("cacheTodos deduplication", () => {
-	it("skips re-insert when todos JSON is unchanged", () => {
+describe("cacheTodos deduplication", () =>
+{
+	it("skips re-insert when todos JSON is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1442,7 +1910,8 @@ describe("cacheTodos deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		cacheTodos("test-project", todos);
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM todos_cache`);
@@ -1452,7 +1921,8 @@ describe("cacheTodos deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when todos data changes", () => {
+	it("replaces row when todos data changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1478,7 +1948,8 @@ describe("cacheTodos deduplication", () => {
 		const cached = getCachedTodos("test-project");
 		expect(cached![0]!.title).toBe("New todo");
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM todos_cache`);
 		expect(allRows).toHaveLength(2);
@@ -1487,8 +1958,10 @@ describe("cacheTodos deduplication", () => {
 	});
 });
 
-describe("setCachedProjectList deduplication", () => {
-	const sampleProject = {
+describe("setCachedProjectList deduplication", () =>
+{
+	const sampleProject =
+	{
 		name: "test-project",
 		dir: "/home/user/projects/test",
 		remote: "origin",
@@ -1503,7 +1976,8 @@ describe("setCachedProjectList deduplication", () => {
 		rebaseInProgress: false,
 	};
 
-	it("skips re-insert when project data is unchanged", () => {
+	it("skips re-insert when project data is unchanged", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
@@ -1512,7 +1986,8 @@ describe("setCachedProjectList deduplication", () => {
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
 		setCachedProjectList([sampleProject]);
 
-		const rows = getDb().all<{
+		const rows = getDb().all<
+		{
 			system_from: string;
 			system_to: string;
 		}>(sql`SELECT * FROM project_cache`);
@@ -1522,13 +1997,18 @@ describe("setCachedProjectList deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("phases out removed projects and keeps unchanged ones", () => {
+	it("phases out removed projects and keeps unchanged ones", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
 		setCachedProjectList([
 			sampleProject,
-			{...sampleProject, name: "other-project", dir: "/home/user/projects/other"},
+			{
+				...sampleProject,
+				name: "other-project",
+				dir: "/home/user/projects/other",
+			},
 		]);
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
@@ -1541,20 +2021,27 @@ describe("setCachedProjectList deduplication", () => {
 		vi.useRealTimers();
 	});
 
-	it("replaces row when project dirty flag changes", () => {
+	it("replaces row when project dirty flag changes", () =>
+	{
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
 
 		setCachedProjectList([sampleProject]);
 
 		vi.setSystemTime(new Date("2025-01-01T00:01:00Z"));
-		setCachedProjectList([{...sampleProject, dirty: true}]);
+		setCachedProjectList([
+			{
+				...sampleProject,
+				dirty: true,
+			},
+		]);
 
 		const cached = getCachedProjectList();
 		expect(cached).toHaveLength(1);
 		expect(cached![0]!.dirty).toBe(true);
 
-		const allRows = getDb().all<{
+		const allRows = getDb().all<
+		{
 			system_to: string;
 		}>(sql`SELECT * FROM project_cache`);
 		expect(allRows).toHaveLength(2);
@@ -1563,8 +2050,10 @@ describe("setCachedProjectList deduplication", () => {
 	});
 });
 
-describe("task records", () => {
-	const base = {
+describe("task records", () =>
+{
+	const base =
+	{
 		id: "t1",
 		kind: "test",
 		project: "alpha",
@@ -1576,14 +2065,17 @@ describe("task records", () => {
 		error: null,
 	};
 
-	it("round-trips a task record", () => {
+	it("round-trips a task record", () =>
+	{
 		upsertTaskRecord(base);
 		expect(loadRecentTaskRecords()).toEqual([base]);
 	});
 
-	it("overwrites the record on status transitions", () => {
+	it("overwrites the record on status transitions", () =>
+	{
 		upsertTaskRecord(base);
-		const finished = {
+		const finished =
+		{
 			...base,
 			status: "failed" as const,
 			outcome: "conflicts",
@@ -1594,10 +2086,18 @@ describe("task records", () => {
 		expect(loadRecentTaskRecords()).toEqual([finished]);
 	});
 
-	it("returns newest first and caps at 200", () => {
-		for (let i = 0; i < 205; i++) {
+	it("returns newest first and caps at 200", () =>
+	{
+		for (let i = 0; i < 205; i++)
+		{
 			const createdAt = `2026-10-21 10:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000`;
-			upsertTaskRecord({...base, id: `t${i}`, createdAt});
+			upsertTaskRecord(
+				{
+					...base,
+					id: `t${i}`,
+					createdAt,
+				},
+			);
 		}
 		const loaded = loadRecentTaskRecords();
 		expect(loaded).toHaveLength(200);

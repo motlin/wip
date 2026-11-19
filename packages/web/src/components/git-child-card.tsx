@@ -1,6 +1,7 @@
 import type {ReactElement} from "react";
 import type {Category} from "@wip/shared";
-import {
+import
+{
 	isGitChildPullRequest,
 	isGitChildBranch,
 	isGitChildPrRefsMissing,
@@ -15,11 +16,14 @@ import {UpstreamCiCard} from "./upstream-ci-card.js";
 import {PrRefsMissingCard, RemoteOnlyCard} from "./remote-only-card.js";
 
 /** A git child's card, by its kind. */
-export function gitChildCard(child: GitChildResult, category: Category): ReactElement {
-	if (isGitChildUpstreamCi(child)) {
+export function gitChildCard(child: GitChildResult, category: Category): ReactElement
+{
+	if (isGitChildUpstreamCi(child))
+	{
 		return <UpstreamCiCard key={`${child.remote}-${child.sha}`} item={child} category={category} />;
 	}
-	if (isGitChildPrRefsMissing(child)) {
+	if (isGitChildPrRefsMissing(child))
+	{
 		return <PrRefsMissingCard key={`pr-refs-${child.project}`} item={child} category={category} />;
 	}
 	if (isGitChildRemoteOnly(child)) return <RemoteOnlyCard key={child.sha} commit={child} category={category} />;

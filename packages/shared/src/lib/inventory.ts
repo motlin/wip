@@ -11,28 +11,30 @@ import type {PrTokenShortfall} from "./github-viewer-permission.js";
 
 export {diffInventories, type InventoryDiff} from "./inventory-import.js";
 
-export const ProjectRecordSchema = z.object({
-	name: z.string().min(1),
-	dir: z.string().refine((dir) => path.isAbsolute(dir), "dir must be an absolute path"),
-	template: z.enum(["project", "typescript", "java", "rust", "playdate", "unknown"]),
-	kind: z.enum(["own", "fork", "nested", "skip"]),
-	upstreamRemote: z.string().optional(),
-	upstreamBranch: z.string().optional(),
-	notes: z.string().optional(),
-	/** The user's own words for why they skipped this project by hand. */
-	skipNote: z.string().optional(),
-	/** Ready-slot tier; unset reads as medium (see effectivePriority). */
-	priority: PrioritySchema.optional(),
-	/** How finished work lands; unset lands via pull request (see landingMode). */
-	landing: z.enum(["pull-request", "fast-forward"]).optional(),
-	/** Ready-buffer patch-id fast path (lean plan 4.2): off unless set, and only in pull-request repos. */
-	trustPatchIdGreen: z.boolean().optional(),
-	/**
-	 * How the ready buffer verifies a commit: unset or "local" runs git test here; "draft-pr" pushes it
-	 * as a draft PR and follows its GitHub Actions checks instead (see draftPrVerification).
-	 */
-	verify: z.enum(["local", "draft-pr"]).optional(),
-});
+export const ProjectRecordSchema = z.object(
+	{
+		name: z.string().min(1),
+		dir: z.string().refine((dir) => path.isAbsolute(dir), "dir must be an absolute path"),
+		template: z.enum(["project", "typescript", "java", "rust", "playdate", "unknown"]),
+		kind: z.enum(["own", "fork", "nested", "skip"]),
+		upstreamRemote: z.string().optional(),
+		upstreamBranch: z.string().optional(),
+		notes: z.string().optional(),
+		/** The user's own words for why they skipped this project by hand. */
+		skipNote: z.string().optional(),
+		/** Ready-slot tier; unset reads as medium (see effectivePriority). */
+		priority: PrioritySchema.optional(),
+		/** How finished work lands; unset lands via pull request (see landingMode). */
+		landing: z.enum(["pull-request", "fast-forward"]).optional(),
+		/** Ready-buffer patch-id fast path (lean plan 4.2): off unless set, and only in pull-request repos. */
+		trustPatchIdGreen: z.boolean().optional(),
+		/**
+		 * How the ready buffer verifies a commit: unset or "local" runs git test here; "draft-pr" pushes it
+		 * as a draft PR and follows its GitHub Actions checks instead (see draftPrVerification).
+		 */
+		verify: z.enum(["local", "draft-pr"]).optional(),
+	},
+);
 export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
 
 export {landingMode, type LandingMode} from "./inventory-import.js";
@@ -42,7 +44,8 @@ export {landingMode, type LandingMode} from "./inventory-import.js";
  * registry explicitly says it lands by pull request. An unconfigured repo still lands by pull request
  * when the user acts (see landingMode), but nothing pushes it unasked; neither does an unregistered one.
  */
-export function pushesInBackground(record: Pick<ProjectRecord, "landing"> | undefined): boolean {
+export function pushesInBackground(record: Pick<ProjectRecord, "landing"> | undefined): boolean
+{
 	return record?.landing === "pull-request";
 }
 
@@ -51,12 +54,14 @@ export function pushesInBackground(record: Pick<ProjectRecord, "landing"> | unde
  * checks verify it: the per-repo setting is on and the repo is explicitly set to land by pull
  * request, since the fast path pushes in the background.
  */
-export function trustsPatchIdGreen(record: Pick<ProjectRecord, "landing" | "trustPatchIdGreen">): boolean {
+export function trustsPatchIdGreen(record: Pick<ProjectRecord, "landing" | "trustPatchIdGreen">): boolean
+{
 	return record.trustPatchIdGreen === true && pushesInBackground(record);
 }
 
 /** What draft-PR verification needs to know about a repo's PR target, as read from GitHub and its workflows. */
-export interface DraftPrRepoFacts {
+export interface DraftPrRepoFacts
+{
 	/** `owner/name` of the repo the PRs open in (see prRepository). */
 	repository: string;
 	isPrivate: boolean;
@@ -66,7 +71,16 @@ export interface DraftPrRepoFacts {
 	tokenShortfall: PrTokenShortfall | null;
 }
 
-export type DraftPrVerification = {active: true} | {active: false; reason: string};
+export type DraftPrVerification =
+	|
+	  {
+			active: true;
+	  }
+	|
+	  {
+			active: false;
+			reason: string;
+	  };
 
 /**
  * Whether the ready buffer verifies this repo's commits with draft PRs on GitHub Actions instead of a
@@ -78,89 +92,132 @@ export type DraftPrVerification = {active: true} | {active: false; reason: strin
 export function draftPrVerification(
 	record: Pick<ProjectRecord, "landing" | "verify"> | undefined,
 	facts: DraftPrRepoFacts | null,
-): DraftPrVerification | null {
+): DraftPrVerification | null
+{
 	if (record?.verify !== "draft-pr") return null;
 	const testingLocally = "testing locally";
-	if (!pushesInBackground(record)) {
+	if (!pushesInBackground(record))
+	{
 		return {
 			active: false,
 			reason: `verify: "draft-pr" needs landing: "pull-request" in the registry; ${testingLocally}`,
 		};
 	}
-	if (facts === null) {
+	if (facts === null)
+	{
 		return {
 			active: false,
 			reason: `Can't tell yet whether the PR repo is public with pull_request checks; ${testingLocally}`,
 		};
 	}
-	if (facts.isPrivate) {
+	if (facts.isPrivate)
+	{
 		return {
 			active: false,
 			reason: `${facts.repository} is private (GitHub Actions minutes cost money); ${testingLocally}`,
 		};
 	}
-	if (!facts.hasPullRequestWorkflows) {
+	if (!facts.hasPullRequestWorkflows)
+	{
 		return {
 			active: false,
 			reason: `${facts.repository} has no GitHub Actions workflow that runs on pull_request; ${testingLocally}`,
 		};
 	}
-	if (facts.tokenShortfall !== null) {
+	if (facts.tokenShortfall !== null)
+	{
 		return {
 			active: false,
 			reason: `your GitHub token has ${facts.tokenShortfall} access to ${facts.repository}; grant it access to open PRs; ${testingLocally}`,
 		};
 	}
-	return {active: true};
+	return {
+		active: true,
+	};
 }
 
-export interface InventoryError {
+export interface InventoryError
+{
 	index: number;
 	message: string;
 }
 
-export interface Inventory {
+export interface Inventory
+{
 	projects: ProjectRecord[];
 	errors: InventoryError[];
 }
 
-export function getInventoryPath(): string {
+export function getInventoryPath(): string
+{
 	return path.join(getConfigDir(), "projects.json5");
 }
 
-function byName(a: ProjectRecord, b: ProjectRecord): number {
+function byName(a: ProjectRecord, b: ProjectRecord): number
+{
 	return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
-export function loadInventory(): Inventory {
+export function loadInventory(): Inventory
+{
 	const inventoryPath = getInventoryPath();
-	if (!fs.existsSync(inventoryPath)) return {projects: [], errors: []};
+	if (!fs.existsSync(inventoryPath))
+		return {
+			projects: [],
+			errors: [],
+		};
 	const raw: unknown = JSON5.parse(fs.readFileSync(inventoryPath, "utf-8"));
-	if (!Array.isArray(raw)) {
-		return {projects: [], errors: [{index: -1, message: "inventory must be an array"}]};
+	if (!Array.isArray(raw))
+	{
+		return {
+			projects: [],
+			errors: [
+				{
+					index: -1,
+					message: "inventory must be an array",
+				},
+			],
+		};
 	}
 	const projects: ProjectRecord[] = [];
 	const errors: InventoryError[] = [];
-	raw.forEach((entry, index) => {
+	raw.forEach((entry, index) =>
+	{
 		const parsed = ProjectRecordSchema.safeParse(entry);
 		if (parsed.success) projects.push(parsed.data);
-		else errors.push({index, message: parsed.error.message});
+		else
+			errors.push(
+				{
+					index,
+					message: parsed.error.message,
+				},
+			);
 	});
 	// tsconfig targets es2022, so Array#toSorted is not in the lib typings.
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a local array
 	projects.sort(byName);
-	return {projects, errors};
+	return {
+		projects,
+		errors,
+	};
 }
 
-export function saveInventory(projects: ProjectRecord[]): void {
+export function saveInventory(projects: ProjectRecord[]): void
+{
 	const validated = projects.map((project) => ProjectRecordSchema.parse(project));
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts the fresh array produced by map
 	validated.sort(byName);
-	fs.mkdirSync(getConfigDir(), {recursive: true});
+	fs.mkdirSync(
+		getConfigDir(),
+		{
+			recursive: true,
+		},
+	);
 	fs.writeFileSync(getInventoryPath(), JSON5.stringify(validated, null, "\t") + "\n");
 }
 
-function normalizeDir(dir: string): string {
+function normalizeDir(dir: string): string
+{
 	return path.resolve(dir);
 }
 
@@ -168,26 +225,32 @@ function normalizeDir(dir: string): string {
  * The discovered projects the registry tracks: those whose directory has an own, fork, or nested
  * entry. Skip entries and directories missing from the registry are never acted on in bulk.
  */
-export function selectTrackedProjects<T extends {dir: string}>(
-	discovered: readonly T[],
-	records: readonly ProjectRecord[],
-): T[] {
+export function selectTrackedProjects<
+	T extends
+	{
+		dir: string;
+	},
+>(discovered: readonly T[], records: readonly ProjectRecord[]): T[]
+{
 	const tracked = new Set(
 		records.filter((record) => record.kind !== "skip").map((record) => normalizeDir(record.dir)),
 	);
 	return discovered.filter((project) => tracked.has(normalizeDir(project.dir)));
 }
 
-export function inventoryExists(): boolean {
+export function inventoryExists(): boolean
+{
 	return fs.existsSync(getInventoryPath());
 }
 
 const TEMPLATE_NAMES = ["project", "typescript", "java", "rust", "playdate"] as const;
 
 /** Reads each `<name>-template/.llm/projects.yaml` under templatesDir that exists. */
-export function readTemplateTexts(templatesDir: string): TemplateTexts {
+export function readTemplateTexts(templatesDir: string): TemplateTexts
+{
 	const texts: TemplateTexts = {};
-	for (const name of TEMPLATE_NAMES) {
+	for (const name of TEMPLATE_NAMES)
+	{
 		const file = path.join(templatesDir, `${name}-template`, ".llm", "projects.yaml");
 		if (fs.existsSync(file)) texts[name] = fs.readFileSync(file, "utf-8");
 	}

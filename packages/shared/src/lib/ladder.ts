@@ -9,7 +9,8 @@ export type LadderRungName = "fetch" | "replay" | "rebase-leftovers" | "worktree
 
 export type LadderCost = "cheap" | "network" | "expensive";
 
-export interface LadderRung {
+export interface LadderRung
+{
 	rung: LadderRungName;
 	cost: LadderCost;
 	needsCleanTree: boolean;
@@ -17,35 +18,65 @@ export interface LadderRung {
 
 /** Cheapest first. */
 export const LADDER_RUNGS: readonly LadderRung[] = [
-	{rung: "fetch", cost: "network", needsCleanTree: false},
-	{rung: "replay", cost: "cheap", needsCleanTree: false},
-	{rung: "rebase-leftovers", cost: "expensive", needsCleanTree: true},
-	{rung: "worktree-prune", cost: "cheap", needsCleanTree: false},
-	{rung: "delete-merged-local", cost: "cheap", needsCleanTree: true},
+	{
+		rung: "fetch",
+		cost: "network",
+		needsCleanTree: false,
+	},
+	{
+		rung: "replay",
+		cost: "cheap",
+		needsCleanTree: false,
+	},
+	{
+		rung: "rebase-leftovers",
+		cost: "expensive",
+		needsCleanTree: true,
+	},
+	{
+		rung: "worktree-prune",
+		cost: "cheap",
+		needsCleanTree: false,
+	},
+	{
+		rung: "delete-merged-local",
+		cost: "cheap",
+		needsCleanTree: true,
+	},
 ];
 
 export type LadderStop = "conflict" | "dirty" | "detached" | "rebase-in-progress" | "offline" | "error";
 
-export interface LadderStopInfo {
+export interface LadderStopInfo
+{
 	stop: LadderStop;
 	/** Branches affected by the stop. */
 	branches: string[];
 }
 
-export interface LadderRungResult {
+export interface LadderRungResult
+{
 	rung: LadderRungName;
 	status: "passed" | "skipped" | "stopped";
 	detail: string;
 }
 
-export interface LadderResult {
+export interface LadderResult
+{
 	project: string;
 	rungs: LadderRungResult[];
 	stop?: LadderStopInfo;
 	/** Set when an AI rung is needed but herdr is unavailable: the exact command to run by hand. */
-	needsAi?: {command: string};
+	needsAi?:
+	{
+		command: string;
+	};
 	/** The herdr tab and pane the AI rung ran in, so the UI can offer a focus link. */
-	herdr?: {tabId: string; paneId: string};
+	herdr?:
+	{
+		tabId: string;
+		paneId: string;
+	};
 	/** Progress of the AI rung that follows a conflict stop. */
 	aiStatus?: LadderAiStatus;
 	/** The conflict signature that stopped the AI rung because the same change conflicted that way before. */
@@ -56,7 +87,8 @@ export interface LadderResult {
 	testFix?: LadderTestFix[];
 }
 
-export interface LadderTestFix {
+export interface LadderTestFix
+{
 	branch: string;
 	/** running: agent working; red: tests failed, will retry; green: passing; stuck: gave up. */
 	status: "running" | "green" | "red" | "stuck";
@@ -67,7 +99,8 @@ export interface LadderTestFix {
 
 export type LadderAiStatus = "queued" | "running" | "done" | "stuck";
 
-export interface LadderProjectInfo {
+export interface LadderProjectInfo
+{
 	project: string;
 	dirty: boolean;
 	detached: boolean;
@@ -83,9 +116,11 @@ export interface LadderProjectInfo {
 const REBASE_RUNGS: ReadonlySet<LadderRungName> = new Set(["replay", "rebase-leftovers"]);
 
 /** Returns the rungs that apply to a project, in ladder order. */
-export function planLadder(info: LadderProjectInfo): LadderRung[] {
+export function planLadder(info: LadderProjectInfo): LadderRung[]
+{
 	const treeUnsafe = info.dirty || info.detached || info.rebaseInProgress;
-	return LADDER_RUNGS.filter((r) => {
+	return LADDER_RUNGS.filter((r) =>
+	{
 		if (REBASE_RUNGS.has(r.rung) && info.backgroundRebase !== true) return false;
 		if (r.rung === "fetch" && info.offline) return false;
 		if (r.rung === "replay" && info.rebaseInProgress) return false;
@@ -97,32 +132,53 @@ export function planLadder(info: LadderProjectInfo): LadderRung[] {
 const LadderRungNameSchema = z.enum(["fetch", "replay", "rebase-leftovers", "worktree-prune", "delete-merged-local"]);
 
 /** Validates a persisted ladder result. */
-export const LadderResultSchema = z.object({
-	project: z.string(),
-	rungs: z.array(
-		z.object({
-			rung: LadderRungNameSchema,
-			status: z.enum(["passed", "skipped", "stopped"]),
-			detail: z.string(),
-		}),
-	),
-	stop: z
-		.object({
-			stop: z.enum(["conflict", "dirty", "detached", "rebase-in-progress", "offline", "error"]),
-			branches: z.array(z.string()),
-		})
-		.optional(),
-	needsAi: z.object({command: z.string()}).optional(),
-	herdr: z.object({tabId: z.string(), paneId: z.string()}).optional(),
-	aiStatus: z.enum(["queued", "running", "done", "stuck"]).optional(),
-	rebased: z.array(z.string()).optional(),
-	testFix: z
-		.array(
-			z.object({
-				branch: z.string(),
-				status: z.enum(["running", "green", "red", "stuck"]),
-				attempts: z.number(),
-			}),
-		)
-		.optional(),
-});
+export const LadderResultSchema = z.object(
+	{
+		project: z.string(),
+		rungs: z.array(
+			z.object(
+				{
+					rung: LadderRungNameSchema,
+					status: z.enum(["passed", "skipped", "stopped"]),
+					detail: z.string(),
+				},
+			),
+		),
+		stop: z
+			.object(
+				{
+					stop: z.enum(["conflict", "dirty", "detached", "rebase-in-progress", "offline", "error"]),
+					branches: z.array(z.string()),
+				},
+			)
+			.optional(),
+		needsAi: z
+			.object(
+				{
+					command: z.string(),
+				},
+			)
+			.optional(),
+		herdr: z
+			.object(
+				{
+					tabId: z.string(),
+					paneId: z.string(),
+				},
+			)
+			.optional(),
+		aiStatus: z.enum(["queued", "running", "done", "stuck"]).optional(),
+		rebased: z.array(z.string()).optional(),
+		testFix: z
+			.array(
+				z.object(
+					{
+						branch: z.string(),
+						status: z.enum(["running", "green", "red", "stuck"]),
+						attempts: z.number(),
+					},
+				),
+			)
+			.optional(),
+	},
+);

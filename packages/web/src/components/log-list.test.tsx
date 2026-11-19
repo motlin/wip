@@ -4,19 +4,59 @@ import {cleanup, render, waitFor} from "@testing-library/react";
 import type {LogEntry} from "@wip/shared";
 import {LogList, type KeyedEntry} from "./log-list.js";
 
-function makeEntries(count: number): KeyedEntry[] {
-	return Array.from({length: count}, (_, id) => {
-		const entry: LogEntry = {time: 1_700_000_000_000 + id, level: 30, category: "general", msg: `message ${id}`};
-		return {id, entry};
-	});
+function makeEntries(count: number): KeyedEntry[]
+{
+	return Array.from(
+		{
+			length: count,
+		},
+		(_, id) =>
+		{
+			const entry: LogEntry =
+			{
+				time: 1_700_000_000_000 + id,
+				level: 30,
+				category: "general",
+				msg: `message ${id}`,
+			};
+			return {
+				id,
+				entry,
+			};
+		},
+	);
 }
 
-describe("LogList", () => {
-	beforeEach(() => {
-		Object.defineProperty(HTMLElement.prototype, "offsetHeight", {configurable: true, value: 24});
-		Object.defineProperty(HTMLElement.prototype, "clientHeight", {configurable: true, value: 600});
-		Object.defineProperty(HTMLElement.prototype, "clientWidth", {configurable: true, value: 800});
-		HTMLElement.prototype.getBoundingClientRect = () => ({
+describe("LogList", () =>
+{
+	beforeEach(() =>
+	{
+		Object.defineProperty(
+			HTMLElement.prototype,
+			"offsetHeight",
+			{
+				configurable: true,
+				value: 24,
+			},
+		);
+		Object.defineProperty(
+			HTMLElement.prototype,
+			"clientHeight",
+			{
+				configurable: true,
+				value: 600,
+			},
+		);
+		Object.defineProperty(
+			HTMLElement.prototype,
+			"clientWidth",
+			{
+				configurable: true,
+				value: 800,
+			},
+		);
+		HTMLElement.prototype.getBoundingClientRect = () => (
+		{
 			width: 800,
 			height: 600,
 			top: 0,
@@ -29,20 +69,28 @@ describe("LogList", () => {
 		});
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		cleanup();
 	});
 
-	it("renders only a window of 2000 entries in the DOM", async () => {
+	it("renders only a window of 2000 entries in the DOM", async () =>
+	{
 		const {container} = render(
 			<LogList
 				entries={makeEntries(2000)}
-				containerRef={{current: null}}
-				onScroll={() => {}}
+				containerRef={
+				{
+					current: null,
+				}}
+				onScroll={() =>
+				{
+				}}
 				isFollowing={false}
 			/>,
 		);
-		await waitFor(() => {
+		await waitFor(() =>
+		{
 			expect(container.querySelectorAll("li").length).toBeGreaterThan(0);
 		});
 		expect(container.querySelectorAll("li").length).toBeLessThan(100);

@@ -15,76 +15,112 @@ import {MACHINE_BUILD_RESOURCE, type ResourceLock} from "./work-queue.js";
 const REPO_RESOURCE_PREFIX = "repo:";
 const DEFAULT_POLL_MS = 100;
 
-export interface RepoResourceLockOptions {
+export interface RepoResourceLockOptions
+{
 	/** Directory holding lock files; defaults to <cache dir>/locks. */
 	lockDir?: string;
 	pollMs?: number;
 }
 
-function errnoCode(error: unknown): string | undefined {
+function errnoCode(error: unknown): string | undefined
+{
 	return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
 		? error.code
 		: undefined;
 }
 
-export function isPidAlive(pid: number): boolean {
-	try {
+export function isPidAlive(pid: number): boolean
+{
+	try
+	{
 		process.kill(pid, 0);
 		return true;
-	} catch (error) {
+	}
+	catch (error)
+	{
 		// EPERM means the process exists but belongs to someone else.
 		return errnoCode(error) === "EPERM";
 	}
 }
 
-async function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
+async function sleep(ms: number): Promise<void>
+{
+	return new Promise((resolve) =>
+	{
 		setTimeout(resolve, ms);
 	});
 }
 
-function readOwner(file: string): number | undefined {
-	try {
+function readOwner(file: string): number | undefined
+{
+	try
+	{
 		const pid = Number.parseInt(fs.readFileSync(file, "utf8"), 10);
 		return Number.isFinite(pid) ? pid : undefined;
-	} catch {
+	}
+	catch
+	{
 		return undefined;
 	}
 }
 
-function tryCreate(file: string): boolean {
-	try {
-		fs.writeFileSync(file, String(process.pid), {flag: "wx"});
+function tryCreate(file: string): boolean
+{
+	try
+	{
+		fs.writeFileSync(
+			file,
+			String(process.pid),
+			{
+				flag: "wx",
+			},
+		);
 		return true;
-	} catch (error) {
+	}
+	catch (error)
+	{
 		if (errnoCode(error) === "EEXIST") return false;
 		throw error;
 	}
 }
 
 /** Remove a lock whose owner is dead. Renames first so two reclaimers cannot both delete a fresh lock. */
-function reclaimIfStale(file: string): void {
+function reclaimIfStale(file: string): void
+{
 	const owner = readOwner(file);
 	if (owner !== undefined && isPidAlive(owner)) return;
 	const aside = `${file}.stale-${process.pid}-${Date.now()}`;
-	try {
+	try
+	{
 		fs.renameSync(file, aside);
-	} catch {
+	}
+	catch
+	{
 		return;
 	}
 	const moved = readOwner(aside);
-	if (moved !== undefined && moved !== owner && isPidAlive(moved)) {
+	if (moved !== undefined && moved !== owner && isPidAlive(moved))
+	{
 		// We displaced a live lock created after our check; put it back unless someone re-took the slot.
-		try {
+		try
+		{
 			fs.linkSync(aside, file);
-		} catch {
+		}
+		catch
+		{
 			// Another holder already exists; nothing safe to restore.
 		}
 	}
-	fs.rmSync(aside, {force: true});
+	fs.rmSync(
+		aside,
+		{
+			force: true,
+		},
+	);
 }
 
-export interface ProcessLockOptions {
+export interface ProcessLockOptions
+{
 	/** Directory holding lock files; defaults to <cache dir>/locks, shared by every wip process. */
 	lockDir?: string;
 }
@@ -93,35 +129,58 @@ export interface ProcessLockOptions {
  * Non-blocking whole-process lock: returns a release function when this process now owns
  * `<name>.lock`, or null while another live process holds it. A dead owner's lock is reclaimed.
  */
-export function acquireProcessLock(name: string, options: ProcessLockOptions = {}): (() => void) | null {
+export function acquireProcessLock(name: string, options: ProcessLockOptions = {}): (() => void) | null
+{
 	const lockDir = options.lockDir ?? path.join(getCacheDir(), "locks");
-	fs.mkdirSync(lockDir, {recursive: true});
+	fs.mkdirSync(
+		lockDir,
+		{
+			recursive: true,
+		},
+	);
 	const file = path.join(lockDir, `${name}.lock`);
-	if (!tryCreate(file)) {
+	if (!tryCreate(file))
+	{
 		reclaimIfStale(file);
 		if (!tryCreate(file)) return null;
 	}
-	return () => {
-		if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
+	return () =>
+	{
+		if (readOwner(file) === process.pid)
+			fs.rmSync(
+				file,
+				{
+					force: true,
+				},
+			);
 	};
 }
 
-export function createRepoResourceLock(options: RepoResourceLockOptions = {}): ResourceLock {
+export function createRepoResourceLock(options: RepoResourceLockOptions = {}): ResourceLock
+{
 	const lockDir = options.lockDir ?? path.join(getCacheDir(), "locks");
 	const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
 
-	return async (resource, signal) => {
-		if (!resource.startsWith(REPO_RESOURCE_PREFIX)) return () => {};
+	return async (resource, signal) =>
+	{
+		if (!resource.startsWith(REPO_RESOURCE_PREFIX))
+			return () =>
+			{
+			};
 		const name = resource.slice(REPO_RESOURCE_PREFIX.length).replaceAll(/[^\w.-]/g, "_");
-		return acquireFileLock(path.join(lockDir, `repo_${name}.lock`), {
-			signal,
-			pollMs,
-			abortMessage: `Aborted waiting for ${resource} lock`,
-		});
+		return acquireFileLock(
+			path.join(lockDir, `repo_${name}.lock`),
+			{
+				signal,
+				pollMs,
+				abortMessage: `Aborted waiting for ${resource} lock`,
+			},
+		);
 	};
 }
 
-export interface FileLockOptions {
+export interface FileLockOptions
+{
 	signal?: AbortSignal;
 	pollMs?: number;
 	/** The error thrown when `signal` aborts while waiting. */
@@ -133,12 +192,19 @@ export interface FileLockOptions {
  * its pid), reclaiming a dead owner's lock, and resolves to the release function. Throws once
  * `signal` aborts while waiting.
  */
-export async function acquireFileLock(file: string, options: FileLockOptions = {}): Promise<() => void> {
+export async function acquireFileLock(file: string, options: FileLockOptions = {}): Promise<() => void>
+{
 	const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
-	fs.mkdirSync(path.dirname(file), {recursive: true});
+	fs.mkdirSync(
+		path.dirname(file),
+		{
+			recursive: true,
+		},
+	);
 
 	/* oxlint-disable no-await-in-loop -- polling for the lock is inherently sequential */
-	while (!tryCreate(file)) {
+	while (!tryCreate(file))
+	{
 		if (options.signal?.aborted) throw new Error(options.abortMessage ?? `Aborted waiting for lock ${file}`);
 		reclaimIfStale(file);
 		if (tryCreate(file)) break;
@@ -146,15 +212,23 @@ export async function acquireFileLock(file: string, options: FileLockOptions = {
 	}
 	/* oxlint-enable no-await-in-loop */
 
-	return () => {
-		if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
+	return () =>
+	{
+		if (readOwner(file) === process.pid)
+			fs.rmSync(
+				file,
+				{
+					force: true,
+				},
+			);
 	};
 }
 
 /** Machine-wide build slots shared by every wip process (CLI advance, CLI ladder, the server). */
 export const DEFAULT_MACHINE_BUILD_CAP = 2;
 
-export interface MachineBuildLockOptions {
+export interface MachineBuildLockOptions
+{
 	/** Directory holding lock files; defaults to <cache dir>/locks. */
 	lockDir?: string;
 	/** Slots across all processes; defaults to DEFAULT_MACHINE_BUILD_CAP. */
@@ -167,23 +241,40 @@ export interface MachineBuildLockOptions {
  * holding the owner pid. A job takes the first free slot, polling while all are held; a dead owner's
  * slot is reclaimed. Other resources pass through unlocked.
  */
-export function createMachineBuildLock(options: MachineBuildLockOptions = {}): ResourceLock {
+export function createMachineBuildLock(options: MachineBuildLockOptions = {}): ResourceLock
+{
 	const lockDir = options.lockDir ?? path.join(getCacheDir(), "locks");
 	const cap = Math.max(1, options.cap ?? DEFAULT_MACHINE_BUILD_CAP);
 	const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
-	const slots = Array.from({length: cap}, (_, index) => path.join(lockDir, `machine_build_${index}.lock`));
+	const slots = Array.from(
+		{
+			length: cap,
+		},
+		(_, index) => path.join(lockDir, `machine_build_${index}.lock`),
+	);
 
-	function tryAnySlot(): string | undefined {
+	function tryAnySlot(): string | undefined
+	{
 		return slots.find((file) => tryCreate(file));
 	}
 
-	return async (resource, signal) => {
-		if (resource !== MACHINE_BUILD_RESOURCE) return () => {};
-		fs.mkdirSync(lockDir, {recursive: true});
+	return async (resource, signal) =>
+	{
+		if (resource !== MACHINE_BUILD_RESOURCE)
+			return () =>
+			{
+			};
+		fs.mkdirSync(
+			lockDir,
+			{
+				recursive: true,
+			},
+		);
 
 		let held = tryAnySlot();
 		/* oxlint-disable no-await-in-loop -- polling for a slot is inherently sequential */
-		while (held === undefined) {
+		while (held === undefined)
+		{
 			if (signal.aborted) throw new Error(`Aborted waiting for ${resource} lock`);
 			for (const file of slots) reclaimIfStale(file);
 			held = tryAnySlot();
@@ -192,8 +283,15 @@ export function createMachineBuildLock(options: MachineBuildLockOptions = {}): R
 		/* oxlint-enable no-await-in-loop */
 
 		const file = held;
-		return () => {
-			if (readOwner(file) === process.pid) fs.rmSync(file, {force: true});
+		return () =>
+		{
+			if (readOwner(file) === process.pid)
+				fs.rmSync(
+					file,
+					{
+						force: true,
+					},
+				);
 		};
 	};
 }

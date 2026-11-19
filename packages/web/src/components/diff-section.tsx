@@ -6,8 +6,10 @@ import type {FileDiff} from "../lib/server-fns.js";
 import {useInView} from "../lib/use-in-view.js";
 import {estimatePlaceholderHeight, resolveLanguage} from "./diff-section-utils.js";
 
-function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "unified") {
-	return useMemo(() => {
+function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "unified")
+{
+	return useMemo(() =>
+	{
 		const oldLang = resolveLanguage(file.oldFileName);
 		const newLang = resolveLanguage(file.newFileName);
 		const instance = new DiffFile(
@@ -21,9 +23,12 @@ function useDiffFile(file: FileDiff, theme: "light" | "dark", mode: "split" | "u
 		);
 		instance.initTheme(theme);
 		instance.init();
-		if (mode === "split") {
+		if (mode === "split")
+		{
 			instance.buildSplitDiffLines();
-		} else {
+		}
+		else
+		{
 			instance.buildUnifiedDiffLines();
 		}
 		return instance;
@@ -40,7 +45,8 @@ function FileDiffBody({
 	theme: "light" | "dark";
 	mode: "split" | "unified";
 	wrap: boolean;
-}) {
+})
+{
 	const diffFile = useDiffFile(file, theme, mode);
 	return (
 		<DiffView
@@ -64,8 +70,13 @@ export function FileDiffSection({
 	theme: "light" | "dark";
 	mode: "split" | "unified";
 	wrap: boolean;
-}) {
-	const {ref, inView} = useInView<HTMLDivElement>({rootMargin: "400px 0px"});
+})
+{
+	const {ref, inView} = useInView<HTMLDivElement>(
+		{
+			rootMargin: "400px 0px",
+		},
+	);
 	const placeholderHeight = useMemo(() => estimatePlaceholderHeight(file.hunks), [file.hunks]);
 
 	return (
@@ -76,7 +87,14 @@ export function FileDiffSection({
 			<div
 				ref={ref}
 				className="overflow-x-auto rounded-b-lg border border-t-0 border-border-300/50"
-				style={inView ? undefined : {minHeight: placeholderHeight}}
+				style={
+					inView
+						? undefined
+						:
+							{
+								minHeight: placeholderHeight,
+							}
+				}
 			>
 				{inView ? <FileDiffBody file={file} theme={theme} mode={mode} wrap={wrap} /> : null}
 			</div>
@@ -94,13 +112,15 @@ export function DiffToolbar({
 	setMode: (m: "split" | "unified") => void;
 	wrap: boolean;
 	setWrap: (w: boolean) => void;
-}) {
+})
+{
 	return (
 		<div className="flex items-center gap-2">
 			<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
 				<button
 					className={`rounded-md px-2 py-1 ${mode === "split" ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => {
+					onClick={() =>
+					{
 						setMode("split");
 					}}
 				>
@@ -108,7 +128,8 @@ export function DiffToolbar({
 				</button>
 				<button
 					className={`rounded-md px-2 py-1 ${mode === "unified" ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => {
+					onClick={() =>
+					{
 						setMode("unified");
 					}}
 				>
@@ -118,7 +139,8 @@ export function DiffToolbar({
 			<div className="flex gap-1 rounded-lg bg-bg-200 p-0.5 text-xs">
 				<button
 					className={`rounded-md px-2 py-1 ${wrap ? "bg-bg-000 font-medium text-text-100" : "text-text-400 hover:text-text-200"}`}
-					onClick={() => {
+					onClick={() =>
+					{
 						setWrap(true);
 					}}
 				>
@@ -126,7 +148,8 @@ export function DiffToolbar({
 				</button>
 				<button
 					className={`rounded-md px-2 py-1 ${wrap ? "text-text-400 hover:text-text-200" : "bg-bg-000 font-medium text-text-100"}`}
-					onClick={() => {
+					onClick={() =>
+					{
 						setWrap(false);
 					}}
 				>

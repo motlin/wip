@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vite-plus/test";
 
-import {
+import
+{
 	enqueueRefresh,
 	onRefreshError,
 	resetScheduler,
@@ -11,41 +12,83 @@ import {
 // Queue mechanics (concurrency, lanes, priority, state broadcast) are covered
 // by work-queue.test.ts; these tests cover the refresh-flavored adapter.
 
-async function settle(): Promise<void> {
-	await new Promise((resolve) => {
+async function settle(): Promise<void>
+{
+	await new Promise((resolve) =>
+	{
 		setTimeout(resolve, 0);
 	});
 }
 
-beforeEach(async () => {
+beforeEach(async () =>
+{
 	await resetScheduler();
 });
 
-afterEach(async () => {
+afterEach(async () =>
+{
 	await resetScheduler();
 });
 
-describe("enqueueRefresh", () => {
-	it("runs an enqueued job", async () => {
+describe("enqueueRefresh", () =>
+{
+	it("runs an enqueued job", async () =>
+	{
 		const run = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-		const result = enqueueRefresh({kind: "children", project: "alpha", run});
+		const result = enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run,
+			},
+		);
 
-		expect(result).toStrictEqual({queued: true});
+		expect(result).toStrictEqual(
+			{
+				queued: true,
+			},
+		);
 		await settle();
 		expect(run).toHaveBeenCalledTimes(1);
 	});
 
-	it("coalesces jobs with the same kind and project", async () => {
+	it("coalesces jobs with the same kind and project", async () =>
+	{
 		let release!: () => void;
-		const gate = new Promise<void>((resolve) => {
+		const gate = new Promise<void>((resolve) =>
+		{
 			release = resolve;
 		});
 		const firstRun = vi.fn<() => Promise<void>>(async () => gate);
 		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-		expect(enqueueRefresh({kind: "children", project: "alpha", run: firstRun})).toStrictEqual({queued: true});
-		expect(enqueueRefresh({kind: "children", project: "alpha", run: secondRun})).toStrictEqual({queued: false});
+		expect(
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: "alpha",
+					run: firstRun,
+				},
+			),
+		).toStrictEqual(
+			{
+				queued: true,
+			},
+		);
+		expect(
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: "alpha",
+					run: secondRun,
+				},
+			),
+		).toStrictEqual(
+			{
+				queued: false,
+			},
+		);
 
 		release();
 		await settle();
@@ -54,18 +97,37 @@ describe("enqueueRefresh", () => {
 		expect(secondRun).not.toHaveBeenCalled();
 	});
 
-	it("re-runs a forced enqueue that coalesces onto a pending job after it settles", async () => {
+	it("re-runs a forced enqueue that coalesces onto a pending job after it settles", async () =>
+	{
 		let release!: () => void;
-		const gate = new Promise<void>((resolve) => {
+		const gate = new Promise<void>((resolve) =>
+		{
 			release = resolve;
 		});
 		const unforcedRun = vi.fn<() => Promise<void>>(async () => gate);
 		const forcedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-		enqueueRefresh({kind: "children", project: "alpha", run: unforcedRun});
-		expect(enqueueRefresh({kind: "children", project: "alpha", run: forcedRun, force: true})).toStrictEqual({
-			queued: false,
-		});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run: unforcedRun,
+			},
+		);
+		expect(
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: "alpha",
+					run: forcedRun,
+					force: true,
+				},
+			),
+		).toStrictEqual(
+			{
+				queued: false,
+			},
+		);
 
 		release();
 		await settle();
@@ -74,18 +136,34 @@ describe("enqueueRefresh", () => {
 		expect(forcedRun).toHaveBeenCalledTimes(1);
 	});
 
-	it("runs exactly one follow-up when many forced enqueues coalesce onto a running job", async () => {
+	it("runs exactly one follow-up when many forced enqueues coalesce onto a running job", async () =>
+	{
 		let release!: () => void;
-		const gate = new Promise<void>((resolve) => {
+		const gate = new Promise<void>((resolve) =>
+		{
 			release = resolve;
 		});
 		const firstRun = vi.fn<() => Promise<void>>(async () => gate);
 		const forcedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-		enqueueRefresh({kind: "children", project: "alpha", run: firstRun});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run: firstRun,
+			},
+		);
 		await settle();
-		for (let i = 0; i < 5; i++) {
-			enqueueRefresh({kind: "children", project: "alpha", run: forcedRun, force: true});
+		for (let i = 0; i < 5; i++)
+		{
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: "alpha",
+					run: forcedRun,
+					force: true,
+				},
+			);
 		}
 
 		release();
@@ -95,18 +173,50 @@ describe("enqueueRefresh", () => {
 		expect(firstRun).toHaveBeenCalledTimes(1);
 		expect(forcedRun).toHaveBeenCalledTimes(1);
 
-		enqueueRefresh({kind: "children", project: "alpha", run: forcedRun, force: true});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run: forcedRun,
+				force: true,
+			},
+		);
 		await settle();
 
 		expect(forcedRun).toHaveBeenCalledTimes(2);
 	});
 
-	it("does not coalesce jobs with different kinds for the same project", async () => {
+	it("does not coalesce jobs with different kinds for the same project", async () =>
+	{
 		const childrenRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 		const todosRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-		expect(enqueueRefresh({kind: "children", project: "alpha", run: childrenRun})).toStrictEqual({queued: true});
-		expect(enqueueRefresh({kind: "todos", project: "alpha", run: todosRun})).toStrictEqual({queued: true});
+		expect(
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: "alpha",
+					run: childrenRun,
+				},
+			),
+		).toStrictEqual(
+			{
+				queued: true,
+			},
+		);
+		expect(
+			enqueueRefresh(
+				{
+					kind: "todos",
+					project: "alpha",
+					run: todosRun,
+				},
+			),
+		).toStrictEqual(
+			{
+				queued: true,
+			},
+		);
 
 		await settle();
 
@@ -114,17 +224,26 @@ describe("enqueueRefresh", () => {
 		expect(todosRun).toHaveBeenCalledTimes(1);
 	});
 
-	it("emits a refresh-error event and keeps processing when a job rejects", async () => {
+	it("emits a refresh-error event and keeps processing when a job rejects", async () =>
+	{
 		const errors: unknown[] = [];
 		onRefreshError((event) => errors.push(event));
 
-		enqueueRefresh({
-			kind: "children",
-			project: "alpha",
-			run: async () => Promise.reject(new Error("boom")),
-		});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run: async () => Promise.reject(new Error("boom")),
+			},
+		);
 		const nextRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-		enqueueRefresh({kind: "children", project: "beta", run: nextRun});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "beta",
+				run: nextRun,
+			},
+		);
 
 		await settle();
 
@@ -138,13 +257,32 @@ describe("enqueueRefresh", () => {
 		expect(nextRun).toHaveBeenCalledTimes(1);
 	});
 
-	it("allows re-enqueueing a key after its job settles", async () => {
+	it("allows re-enqueueing a key after its job settles", async () =>
+	{
 		const firstRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-		enqueueRefresh({kind: "children", project: "alpha", run: firstRun});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "alpha",
+				run: firstRun,
+			},
+		);
 		await settle();
 
 		const secondRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-		expect(enqueueRefresh({kind: "children", project: "alpha", run: secondRun})).toStrictEqual({queued: true});
+		expect(
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: "alpha",
+					run: secondRun,
+				},
+			),
+		).toStrictEqual(
+			{
+				queued: true,
+			},
+		);
 		await settle();
 
 		expect(firstRun).toHaveBeenCalledTimes(1);
@@ -152,24 +290,37 @@ describe("enqueueRefresh", () => {
 	});
 });
 
-describe("resetScheduler", () => {
-	it("awaits in-flight jobs and clears queued jobs", async () => {
+describe("resetScheduler", () =>
+{
+	it("awaits in-flight jobs and clears queued jobs", async () =>
+	{
 		const gates: Array<() => void> = [];
-		for (let index = 0; index < 6; index++) {
-			enqueueRefresh({
-				kind: "children",
-				project: `running-${index}`,
-				run: async () =>
-					new Promise<void>((resolve) => {
-						gates.push(resolve);
-					}),
-			});
+		for (let index = 0; index < 6; index++)
+		{
+			enqueueRefresh(
+				{
+					kind: "children",
+					project: `running-${index}`,
+					run: async () =>
+						new Promise<void>((resolve) =>
+						{
+							gates.push(resolve);
+						}),
+				},
+			);
 		}
 		const queuedRun = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-		enqueueRefresh({kind: "children", project: "queued", run: queuedRun});
+		enqueueRefresh(
+			{
+				kind: "children",
+				project: "queued",
+				run: queuedRun,
+			},
+		);
 		await settle();
 
-		for (const gate of gates) {
+		for (const gate of gates)
+		{
 			gate();
 		}
 		await resetScheduler();
@@ -179,22 +330,28 @@ describe("resetScheduler", () => {
 	});
 });
 
-describe("startPeriodicSweep", () => {
-	beforeEach(() => {
+describe("startPeriodicSweep", () =>
+{
+	beforeEach(() =>
+	{
 		vi.useFakeTimers();
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		vi.useRealTimers();
 	});
 
-	it("enqueues one project per tick, round-robin", async () => {
+	it("enqueues one project per tick, round-robin", async () =>
+	{
 		const swept: string[] = [];
-		const stop = startPeriodicSweep({
-			intervalMs: 1000,
-			listProjects: () => ["alpha", "beta"],
-			enqueueForProject: (project) => swept.push(project),
-		});
+		const stop = startPeriodicSweep(
+			{
+				intervalMs: 1000,
+				listProjects: () => ["alpha", "beta"],
+				enqueueForProject: (project) => swept.push(project),
+			},
+		);
 
 		await vi.advanceTimersByTimeAsync(3000);
 		stop();
@@ -202,13 +359,16 @@ describe("startPeriodicSweep", () => {
 		expect(swept).toStrictEqual(["alpha", "beta", "alpha"]);
 	});
 
-	it("stops enqueueing after stop() is called", async () => {
+	it("stops enqueueing after stop() is called", async () =>
+	{
 		const swept: string[] = [];
-		const stop = startPeriodicSweep({
-			intervalMs: 1000,
-			listProjects: () => ["alpha"],
-			enqueueForProject: (project) => swept.push(project),
-		});
+		const stop = startPeriodicSweep(
+			{
+				intervalMs: 1000,
+				listProjects: () => ["alpha"],
+				enqueueForProject: (project) => swept.push(project),
+			},
+		);
 
 		await vi.advanceTimersByTimeAsync(1000);
 		stop();

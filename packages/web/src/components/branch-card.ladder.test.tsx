@@ -4,31 +4,53 @@ import {cleanup, render, screen} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {GitChildResult, LadderResult} from "@wip/shared";
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", () => (
+{
 	Link: ({children}: {children: React.ReactNode}) => <a href="/x">{children}</a>,
 }));
-vi.mock("../lib/server-fns.js", () => ({
+vi.mock("../lib/server-fns.js", () => (
+{
 	cancelTestFn: vi.fn<() => void>(),
 	focusHerdrPaneFn: vi.fn<() => void>(),
 	getLadderResults: vi.fn<() => Promise<never[]>>().mockResolvedValue([]),
 }));
-vi.mock("../lib/server-events-context.js", () => ({
+vi.mock("../lib/server-events-context.js", () => (
+{
 	useTestJob: () => undefined,
 	useMergeStatus: () => undefined,
 }));
-vi.mock("./commit-actions.js", () => ({BranchActions: () => <span />}));
+vi.mock("./commit-actions.js", () => (
+{
+	BranchActions: () => <span />,
+}));
 
 import {BranchCard} from "./branch-card.js";
 import {LadderResultsProvider} from "../lib/ladder-results-context.js";
 
-const result: LadderResult = {
+const result: LadderResult =
+{
 	project: "beta",
-	rungs: [{rung: "replay", status: "stopped", detail: "conflict"}],
-	stop: {stop: "conflict", branches: ["feature-a"]},
-	herdr: {tabId: "t", paneId: "p1"},
+	rungs: [
+		{
+			rung: "replay",
+			status: "stopped",
+			detail: "conflict",
+		},
+	],
+	stop:
+	{
+		stop: "conflict",
+		branches: ["feature-a"],
+	},
+	herdr:
+	{
+		tabId: "t",
+		paneId: "p1",
+	},
 };
 
-function branch(name: string): GitChildResult {
+function branch(name: string): GitChildResult
+{
 	return {
 		project: "beta",
 		branch: name,
@@ -39,7 +61,8 @@ function branch(name: string): GitChildResult {
 	} as unknown as GitChildResult;
 }
 
-function renderCard(name: string) {
+function renderCard(name: string)
+{
 	const client = new QueryClient();
 	client.setQueryData(["ladderResults"], [result]);
 	return render(
@@ -51,16 +74,26 @@ function renderCard(name: string) {
 	);
 }
 
-describe("BranchCard ladder state", () => {
+describe("BranchCard ladder state", () =>
+{
 	afterEach(cleanup);
 
-	it("shows the ladder conflict state and focus link for a branch in a stop", () => {
+	it("shows the ladder conflict state and focus link for a branch in a stop", () =>
+	{
 		renderCard("feature-a");
 		expect(screen.getByTestId("ladder-card-state").textContent).toContain("Ladder stopped: conflict");
-		expect(screen.getByRole("button", {name: /Focus pane/})).toBeTruthy();
+		expect(
+			screen.getByRole(
+				"button",
+				{
+					name: /Focus pane/,
+				},
+			),
+		).toBeTruthy();
 	});
 
-	it("leaves a branch outside any stop unchanged", () => {
+	it("leaves a branch outside any stop unchanged", () =>
+	{
 		renderCard("other");
 		expect(screen.queryByTestId("ladder-card-state")).toBeNull();
 	});

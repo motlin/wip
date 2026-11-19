@@ -5,10 +5,15 @@ import type {LadderResult, ProjectInfo} from "@wip/shared";
 
 type Shared = typeof import("@wip/shared");
 
-vi.mock("@wip/shared", () => ({
+vi.mock("@wip/shared", () => (
+{
 	getProjectsDirs: vi.fn<Shared["getProjectsDirs"]>((flag?: string) => [flag ?? "/tmp/fake-projects"]),
 	discoverAllProjects: vi.fn<Shared["discoverAllProjects"]>(),
-	createSystemProbe: vi.fn<Shared["createSystemProbe"]>(() => ({loadPerCore: () => 0, freeMemRatio: () => 1})),
+	createSystemProbe: vi.fn<Shared["createSystemProbe"]>(() => (
+	{
+		loadPerCore: () => 0,
+		freeMemRatio: () => 1,
+	})),
 	createRepoResourceLock: vi.fn<Shared["createRepoResourceLock"]>(() => async () => Promise.resolve(() => {})),
 	createMachineBuildLock: vi.fn<Shared["createMachineBuildLock"]>(() => async () => Promise.resolve(() => {})),
 	matchesFilters: vi.fn<Shared["matchesFilters"]>(() => true),
@@ -18,18 +23,35 @@ vi.mock("@wip/shared", () => ({
 	renderTree: vi.fn<Shared["renderTree"]>(() => "TREE"),
 	inventoryExists: vi.fn<Shared["inventoryExists"]>(() => true),
 	getInventoryPath: vi.fn<Shared["getInventoryPath"]>(() => "/tmp/fake-config/wip/projects.json5"),
-	loadInventory: vi.fn<Shared["loadInventory"]>(() => ({
+	loadInventory: vi.fn<Shared["loadInventory"]>(() => (
+	{
 		projects: [
-			{name: "a", dir: "/tmp/fake-projects/a", template: "typescript", kind: "own"},
-			{name: "b", dir: "/tmp/fake-projects/b", template: "typescript", kind: "fork"},
-			{name: "s", dir: "/tmp/fake-projects/s", template: "project", kind: "skip"},
+			{
+				name: "a",
+				dir: "/tmp/fake-projects/a",
+				template: "typescript",
+				kind: "own",
+			},
+			{
+				name: "b",
+				dir: "/tmp/fake-projects/b",
+				template: "typescript",
+				kind: "fork",
+			},
+			{
+				name: "s",
+				dir: "/tmp/fake-projects/s",
+				template: "project",
+				kind: "skip",
+			},
 		],
 		errors: [],
 	})),
 	selectTrackedProjects: vi.fn<Shared["selectTrackedProjects"]>(),
 }));
 
-import {
+import
+{
 	discoverAllProjects,
 	inventoryExists,
 	ladderResultsToTree,
@@ -42,7 +64,8 @@ type SharedActual = typeof import("@wip/shared");
 const actual = await vi.importActual<SharedActual>("@wip/shared");
 vi.mocked(selectTrackedProjects).mockImplementation(actual.selectTrackedProjects);
 
-function proj(name: string): ProjectInfo {
+function proj(name: string): ProjectInfo
+{
 	return {
 		name,
 		dir: `/tmp/fake-projects/${name}`,
@@ -59,37 +82,58 @@ function proj(name: string): ProjectInfo {
 	};
 }
 
-const okResult = (name: string): LadderResult => ({
+const okResult = (name: string): LadderResult => (
+{
 	project: name,
-	rungs: [{rung: "fetch", status: "passed", detail: "ok"}],
+	rungs: [
+		{
+			rung: "fetch",
+			status: "passed",
+			detail: "ok",
+		},
+	],
 });
 
-const tree = {label: "ladder", status: "green" as const, children: []};
+const tree =
+{
+	label: "ladder",
+	status: "green" as const,
+	children: [],
+};
 
-function capture() {
+function capture()
+{
 	const lines: string[] = [];
 	const original = console.log;
-	console.log = (...args: unknown[]) => {
+	console.log = (...args: unknown[]) =>
+	{
 		lines.push(args.map(String).join(" "));
 	};
-	return {lines, restore: () => (console.log = original)};
+	return {
+		lines,
+		restore: () => (console.log = original),
+	};
 }
 
-describe("wip ladder", () => {
+describe("wip ladder", () =>
+{
 	const restores: Array<() => void> = [];
-	afterEach(() => {
+	afterEach(() =>
+	{
 		for (const r of restores.splice(0)) r();
 		vi.clearAllMocks();
 	});
 
-	it("describes what the ladder does in plain words", async () => {
+	it("describes what the ladder does in plain words", async () =>
+	{
 		const {default: Ladder} = await import("../commands/ladder.js");
 		expect(Ladder.description).toBe(
 			"Bring repos' branches up to date safely: fetch upstream, fast-forward and rebase local branches, delete merged branches, and prune stale worktrees. Stops at conflicts it can't resolve; never pushes.",
 		);
 	});
 
-	it("runs the ladder for all projects with --all and returns JSON", async () => {
+	it("runs the ladder for all projects with --all and returns JSON", async () =>
+	{
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b")]);
 		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("a"), okResult("b")]);
 		vi.mocked(ladderResultsToTree).mockReturnValue(tree);
@@ -103,11 +147,13 @@ describe("wip ladder", () => {
 		);
 		c.restore();
 
-		expect(result).toEqual({
-			dryRun: false,
-			results: [okResult("a"), okResult("b")],
-			tree,
-		});
+		expect(result).toEqual(
+			{
+				dryRun: false,
+				results: [okResult("a"), okResult("b")],
+				tree,
+			},
+		);
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[0].map((p) => p.name)).toEqual(["a", "b"]);
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[1].dryRun).toBe(false);
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[1].backgroundRebase).toBe(false);
@@ -115,7 +161,8 @@ describe("wip ladder", () => {
 		expect(JSON.parse(c.lines.join("\n"))).toEqual(result);
 	});
 
-	it("runs --all only on registered projects that are not skipped, never on strays", async () => {
+	it("runs --all only on registered projects that are not skipped, never on strays", async () =>
+	{
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b"), proj("s"), proj("stray")]);
 		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("a"), okResult("b")]);
 		vi.mocked(ladderResultsToTree).mockReturnValue(tree);
@@ -129,7 +176,8 @@ describe("wip ladder", () => {
 		expect(vi.mocked(runLadderAcrossProjects).mock.calls[0]?.[0].map((p) => p.name)).toEqual(["a", "b"]);
 	});
 
-	it("limits to a named project and passes --dry-run", async () => {
+	it("limits to a named project and passes --dry-run", async () =>
+	{
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b")]);
 		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("b")]);
 		vi.mocked(ladderResultsToTree).mockReturnValue(tree);
@@ -147,7 +195,8 @@ describe("wip ladder", () => {
 		expect(c.lines.join("\n")).toContain("TREE");
 	});
 
-	it("errors when neither a project nor --all is given", async () => {
+	it("errors when neither a project nor --all is given", async () =>
+	{
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a")]);
 		const {default: Ladder} = await import("../commands/ladder.js");
 		await expect(Ladder.run([], await loadTestConfig())).rejects.toThrow(/project|--all/);
@@ -155,7 +204,8 @@ describe("wip ladder", () => {
 		expect(matchesFilters).not.toHaveBeenCalled();
 	});
 
-	it("refuses --all when no project registry exists, without scanning directories", async () => {
+	it("refuses --all when no project registry exists, without scanning directories", async () =>
+	{
 		vi.mocked(inventoryExists).mockReturnValueOnce(false);
 		const {default: Ladder} = await import("../commands/ladder.js");
 		await expect(Ladder.run(["--all"], await loadTestConfig())).rejects.toThrow(
@@ -165,7 +215,8 @@ describe("wip ladder", () => {
 		expect(runLadderAcrossProjects).not.toHaveBeenCalled();
 	});
 
-	it("still runs a single named project when no registry exists", async () => {
+	it("still runs a single named project when no registry exists", async () =>
+	{
 		vi.mocked(inventoryExists).mockReturnValue(false);
 		vi.mocked(discoverAllProjects).mockResolvedValue([proj("a"), proj("b")]);
 		vi.mocked(runLadderAcrossProjects).mockResolvedValue([okResult("a")]);

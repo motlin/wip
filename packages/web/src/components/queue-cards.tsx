@@ -19,7 +19,8 @@ function sectionCards(
 	category: Category,
 	finishFirst: boolean,
 	land: LandContextValue | null,
-): ReactNode[] {
+): ReactNode[]
+{
 	return [
 		...orderedGitChildren(items.gitChildren ?? [], category, land).map((child) => gitChildCard(child, category)),
 		...(items.issues?.map((i) => <IssueCard key={`issue-${i.number}`} issue={i} category={category} />) ?? []),
@@ -42,14 +43,19 @@ function sectionCards(
  * (Set Up PR Refs, Upstream Red), which /queue shows above Ready to land; the default renders
  * the rest.
  */
-export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
+export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"})
+{
 	const {grouped, visibleCategories, filterByProject, commitsWaiting, selectedProject} = useQueueContext();
 	const land = useLandContext();
 	// Ready to Land shows with its header even when empty, once the buffer state has loaded.
 	const hasLead = land?.state !== null && land?.state !== undefined;
 	const sections = visibleCategories
 		.filter((category) => BLOCKING_CATEGORIES.includes(category) === (part === "blocking"))
-		.map((category) => ({category, items: filterByProject(grouped[category])}))
+		.map((category) => (
+		{
+			category,
+			items: filterByProject(grouped[category]),
+		}))
 		.filter(({category, items}) => bucketCount(items) > 0 || (hasLead && category === "ready_to_push"));
 	if (part === "blocking" && sections.length === 0) return null;
 	const showsTodos = sections.some(({items}) => (items.todos?.length ?? 0) > 0);
@@ -84,7 +90,8 @@ export function QueueCards({part = "rest"}: {part?: "blocking" | "rest"}) {
  * included, or the table of the other rows). The table view has no Ready to Land column, so it
  * shows that column's header and Push main cards above its table.
  */
-export function QueueMain({cardsView, children}: {cardsView: boolean; children: ReactNode}) {
+export function QueueMain({cardsView, children}: {cardsView: boolean; children: ReactNode})
+{
 	const land = useLandContext();
 	const {selectedProject} = useQueueContext();
 	return (

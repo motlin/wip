@@ -4,14 +4,22 @@ import {describe, it, expect} from "vite-plus/test";
 
 import {createStderrLog} from "./logger-pino-stderr.js";
 
-function collector(): {stream: Writable; lines: () => unknown[]} {
+function collector():
+{
+	stream: Writable;
+	lines: () => unknown[];
+}
+{
 	const chunks: string[] = [];
-	const stream = new Writable({
-		write(chunk: Buffer, _encoding, callback) {
-			chunks.push(chunk.toString());
-			callback();
+	const stream = new Writable(
+		{
+			write(chunk: Buffer, _encoding, callback)
+			{
+				chunks.push(chunk.toString());
+				callback();
+			},
 		},
-	});
+	);
 	return {
 		stream,
 		lines: () =>
@@ -23,22 +31,40 @@ function collector(): {stream: Writable; lines: () => unknown[]} {
 	};
 }
 
-describe("createStderrLog", () => {
-	it("builds without an installed pretty-printer, as in the production bundle", () => {
+describe("createStderrLog", () =>
+{
+	it("builds without an installed pretty-printer, as in the production bundle", () =>
+	{
 		expect(() => createStderrLog()).not.toThrow();
 	});
 
-	it("writes one JSON line per entry with its category, message and fields", () => {
+	it("writes one JSON line per entry with its category, message and fields", () =>
+	{
 		const {stream, lines} = collector();
 		const log = createStderrLog(stream);
 
-		log.subprocess.info({cmd: "git", args: ["push"], duration: 12}, "git push");
+		log.subprocess.info(
+			{
+				cmd: "git",
+				args: ["push"],
+				duration: 12,
+			},
+			"git push",
+		);
 		log.general.warn("ready buffer paused");
 
 		expect(
-			lines().map((line) => {
+			lines().map((line) =>
+			{
 				const {time, pid, hostname, ...rest} = line as Record<string, unknown>;
-				return Object.assign(rest, {time: typeof time, pid: typeof pid, hostname: typeof hostname});
+				return Object.assign(
+					rest,
+					{
+						time: typeof time,
+						pid: typeof pid,
+						hostname: typeof hostname,
+					},
+				);
 			}),
 		).toEqual([
 			{
@@ -63,7 +89,8 @@ describe("createStderrLog", () => {
 		]);
 	});
 
-	it("scrubs tokens and URL credentials from the fields and message, like the in-memory log buffer", () => {
+	it("scrubs tokens and URL credentials from the fields and message, like the in-memory log buffer", () =>
+	{
 		const {stream, lines} = collector();
 		const log = createStderrLog(stream);
 
@@ -82,31 +109,47 @@ describe("createStderrLog", () => {
 		);
 
 		const [line] = lines() as Record<string, unknown>[];
-		expect({args: line?.["args"], stderr: line?.["stderr"], msg: line?.["msg"]}).toEqual({
-			args: [
-				"push",
-				"https://[REDACTED]@github.com/acme/gears.git",
-				"-c",
-				"http.extraHeader=Authorization: bearer [REDACTED]",
-			],
-			stderr: "fatal: could not read from https://[REDACTED]@example.com/repo.git (token [REDACTED])",
-			msg: "git push https://[REDACTED]@example.com/repo.git failed",
-		});
+		expect(
+			{
+				args: line?.["args"],
+				stderr: line?.["stderr"],
+				msg: line?.["msg"],
+			},
+		).toEqual(
+			{
+				args: [
+					"push",
+					"https://[REDACTED]@github.com/acme/gears.git",
+					"-c",
+					"http.extraHeader=Authorization: bearer [REDACTED]",
+				],
+				stderr: "fatal: could not read from https://[REDACTED]@example.com/repo.git (token [REDACTED])",
+				msg: "git push https://[REDACTED]@example.com/repo.git failed",
+			},
+		);
 	});
 
-	it("keeps a logged error's type, message and stack, scrubbed", () => {
+	it("keeps a logged error's type, message and stack, scrubbed", () =>
+	{
 		const {stream, lines} = collector();
 		const log = createStderrLog(stream);
 		const error = new Error("push to https://u:ghp_12345abcdefghijklmnopqrstuvwxyz0123@github.com/a/b failed");
 		error.stack = "Error: boom\n    at https://u:secretpass@example.com/x";
 
-		log.general.error({err: error}, "push failed");
+		log.general.error(
+			{
+				err: error,
+			},
+			"push failed",
+		);
 
 		const [line] = lines() as Record<string, unknown>[];
-		expect(line?.["err"]).toEqual({
-			type: "Error",
-			message: "push to https://[REDACTED]@github.com/a/b failed",
-			stack: "Error: boom\n    at https://[REDACTED]@example.com/x",
-		});
+		expect(line?.["err"]).toEqual(
+			{
+				type: "Error",
+				message: "push to https://[REDACTED]@github.com/a/b failed",
+				stack: "Error: boom\n    at https://[REDACTED]@example.com/x",
+			},
+		);
 	});
 });

@@ -8,8 +8,15 @@ import {execSync} from "node:child_process";
 import {planProject} from "./advance-plan.js";
 import {initDb, resetDb} from "./db.js";
 
-function git(dir: string, command: string): string {
-	return execSync(`git ${command}`, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
+function git(dir: string, command: string): string
+{
+	return execSync(
+		`git ${command}`,
+		{
+			cwd: dir,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
@@ -21,7 +28,8 @@ function git(dir: string, command: string): string {
  *   feature-b: A c1 c2 b3   (branches from c2)
  * Shared trunk = c1, c2.
  */
-function createYRepo(): string {
+function createYRepo(): string
+{
 	const dir = mkdtempSync(join(tmpdir(), "wip-advance-plan-"));
 	git(dir, "init -b main");
 	git(dir, "config user.email test@test.com");
@@ -36,21 +44,37 @@ function createYRepo(): string {
 	return dir;
 }
 
-describe("planProject", () => {
+describe("planProject", () =>
+{
 	let dir: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		dir = createYRepo();
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetDb();
-		rmSync(dir, {recursive: true, force: true});
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("dedups the shared trunk: every commit beyond upstream is owned by exactly one unit", async () => {
-		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+	it("dedups the shared trunk: every commit beyond upstream is owned by exactly one unit", async () =>
+	{
+		const plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 
 		const branches = sorted(plan.units.map((u) => u.branch));
 		expect(branches).toStrictEqual(["feature-a", "feature-b"]);
@@ -61,8 +85,15 @@ describe("planProject", () => {
 		expect(new Set(allChainShas).size).toBe(4);
 	});
 
-	it("makes the sibling depend on whoever owns the shared ancestors", async () => {
-		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+	it("makes the sibling depend on whoever owns the shared ancestors", async () =>
+	{
+		const plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 		const byBranch = Object.fromEntries(plan.units.map((u) => [u.branch, u]));
 
 		// feature-a (sorted first on the length/name tie) owns the trunk; feature-b depends on it.
@@ -70,43 +101,88 @@ describe("planProject", () => {
 		expect(byBranch["feature-b"]?.dependsOn).toStrictEqual(["feature-a"]);
 	});
 
-	it("flags worktreeRequired for branches that are not the current checkout", async () => {
-		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+	it("flags worktreeRequired for branches that are not the current checkout", async () =>
+	{
+		const plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 		const byBranch = Object.fromEntries(plan.units.map((u) => [u.branch, u]));
 		// HEAD is on feature-b after setup.
 		expect(byBranch["feature-b"]?.worktreeRequired).toBe(false);
 		expect(byBranch["feature-a"]?.worktreeRequired).toBe(true);
 	});
 
-	it("resolves the baseline and marks it needing a test until git-test reports it good", async () => {
+	it("resolves the baseline and marks it needing a test until git-test reports it good", async () =>
+	{
 		const baselineSha = git(dir, "rev-parse main");
-		let plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+		let plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 		expect(plan.baseline.sha).toStrictEqual(baselineSha);
 		expect(plan.baseline.needsTest).toBe(true);
 
 		git(dir, "config test.default.command true");
 		git(dir, `test run --test default ${baselineSha}`);
-		plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+		plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 		expect(plan.baseline.needsTest).toBe(false);
 	});
 
-	it("carries each tip's patch-id as the unit's change identity", async () => {
+	it("carries each tip's patch-id as the unit's change identity", async () =>
+	{
 		git(dir, "checkout -q feature-a");
-		execSync("echo change > file.txt && git add file.txt && git commit -q -m a4", {cwd: dir, stdio: "ignore"});
+		execSync(
+			"echo change > file.txt && git add file.txt && git commit -q -m a4",
+			{
+				cwd: dir,
+				stdio: "ignore",
+			},
+		);
 		const tip = git(dir, "rev-parse feature-a");
-		const expected = execSync(`git diff-tree -p ${tip} | git patch-id --stable`, {cwd: dir})
+		const expected = execSync(
+			`git diff-tree -p ${tip} | git patch-id --stable`,
+			{
+				cwd: dir,
+			},
+		)
 			.toString()
 			.trim()
 			.split(/\s+/)[0];
-		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+		const plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 		const byBranch = Object.fromEntries(plan.units.map((u) => [u.branch, u]));
 		expect(byBranch["feature-a"]?.patchId).toStrictEqual(expected);
 		// An empty tip commit has no patch-id.
 		expect(byBranch["feature-b"]?.patchId).toStrictEqual("");
 	});
 
-	it("excludes the upstream branch itself (empty chain)", async () => {
-		const plan = await planProject({project: "proj", dir, upstreamRef: "main"});
+	it("excludes the upstream branch itself (empty chain)", async () =>
+	{
+		const plan = await planProject(
+			{
+				project: "proj",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 		expect(plan.units.some((u) => u.branch === "main")).toBe(false);
 	});
 });

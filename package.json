@@ -3,11 +3,13 @@
 	"version": "0.0.0",
 	"private": true,
 	"description": "Work-in-progress inventory and prioritization CLI",
-	"bin": {
+	"bin":
+	{
 		"wip": "./packages/cli/bin/run.js"
 	},
 	"type": "module",
-	"scripts": {
+	"scripts":
+	{
 		"preinstall": "npx only-allow pnpm",
 		"build": "pnpm -r run build",
 		"typecheck": "pnpm -r run typecheck",
@@ -21,7 +23,8 @@
 		"test:ui": "node node_modules/vitest/dist/cli.js --ui",
 		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
-	"devDependencies": {
+	"devDependencies":
+	{
 		"@vitest/coverage-v8": "^5.1.0",
 		"eslint-plugin-storybook": "^10.6.5",
 		"fallow": "^3.38.1",

@@ -2,14 +2,16 @@
 
 export type NodeStatus = "green" | "red" | "stuck" | "skipped" | "upstream_fixed" | "running";
 
-export interface ReportNode {
+export interface ReportNode
+{
 	label: string;
 	status: NodeStatus;
 	detail?: string;
 	children: ReportNode[];
 }
 
-const EMOJI: Record<NodeStatus, string> = {
+const EMOJI: Record<NodeStatus, string> =
+{
 	green: "✅",
 	red: "❌",
 	stuck: "🛑",
@@ -18,15 +20,19 @@ const EMOJI: Record<NodeStatus, string> = {
 	running: "🔄",
 };
 
-function label(node: ReportNode): string {
+function label(node: ReportNode): string
+{
 	const detail = node.detail ? ` — ${node.detail}` : "";
 	return `${EMOJI[node.status]} ${node.label}${detail}`;
 }
 
-export function renderTree(root: ReportNode): string {
+export function renderTree(root: ReportNode): string
+{
 	const lines = [label(root)];
-	const walk = (children: ReportNode[], prefix: string): void => {
-		children.forEach((child, i) => {
+	const walk = (children: ReportNode[], prefix: string): void =>
+	{
+		children.forEach((child, i) =>
+		{
 			const last = i === children.length - 1;
 			lines.push(`${prefix}${last ? "└─ " : "├─ "}${label(child)}`);
 			walk(child.children, `${prefix}${last ? "   " : "│  "}`);

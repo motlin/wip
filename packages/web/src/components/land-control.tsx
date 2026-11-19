@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import type {GitChildResult, ProjectInfo} from "@wip/shared";
-import {
+import
+{
 	commitLookup,
 	openPrRefusal,
 	prChecksFailed,
@@ -27,19 +28,42 @@ const REVIEW_CLASS =
  * (`draftPrNumber`) instead of opening another.
  */
 export type LandingAction =
-	| {kind: "merge-pr"; label: string; prNumber: number; autoMerge: boolean}
-	| {kind: "open-pr"; label: string; branch: string; autoMerge: boolean; draftPrNumber?: number}
-	| {kind: "fast-forward"; label: string};
+	|
+	  {
+			kind: "merge-pr";
+			label: string;
+			prNumber: number;
+			autoMerge: boolean;
+	  }
+	|
+	  {
+			kind: "open-pr";
+			label: string;
+			branch: string;
+			autoMerge: boolean;
+			draftPrNumber?: number;
+	  }
+	|
+	  {
+			kind: "fast-forward";
+			label: string;
+	  };
 
 export function landingAction(
 	item: ReadyToLandItem,
 	commit: GitChildResult | undefined,
 	upstreamBranch = "main",
-): LandingAction | null {
-	if (item.landing !== "pull-request") return {kind: "fast-forward", label: `Fast-forward ${upstreamBranch}`};
+): LandingAction | null
+{
+	if (item.landing !== "pull-request")
+		return {
+			kind: "fast-forward",
+			label: `Fast-forward ${upstreamBranch}`,
+		};
 	const autoMergeAllowed = commit?.autoMergeAllowed === true;
 	const draftBranch = item.branch ?? commit?.branch;
-	if (commit?.prNumber !== undefined && commit.mergeStateStatus === "DRAFT" && draftBranch !== undefined) {
+	if (commit?.prNumber !== undefined && commit.mergeStateStatus === "DRAFT" && draftBranch !== undefined)
+	{
 		return {
 			kind: "open-pr",
 			label: "Open PR",
@@ -48,7 +72,8 @@ export function landingAction(
 			draftPrNumber: commit.prNumber,
 		};
 	}
-	if (commit?.prNumber !== undefined) {
+	if (commit?.prNumber !== undefined)
+	{
 		return {
 			kind: "merge-pr",
 			label: `Merge PR #${commit.prNumber}`,
@@ -57,7 +82,15 @@ export function landingAction(
 		};
 	}
 	const branch = item.branch ?? commit?.branch;
-	return branch === undefined ? null : {kind: "open-pr", label: "Open PR", branch, autoMerge: autoMergeAllowed};
+	return branch === undefined
+		? null
+		:
+			{
+				kind: "open-pr",
+				label: "Open PR",
+				branch,
+				autoMerge: autoMergeAllowed,
+			};
 }
 
 /** What the confirm names: the commit, its sha, its repo, and where it goes. */
@@ -71,9 +104,11 @@ function LandingPrompt({
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo | undefined;
-}) {
+})
+{
 	const what = `"${commit?.subject ?? item.sha.slice(0, 7)}" (${item.sha.slice(0, 7)})`;
-	if (action.kind === "merge-pr") {
+	if (action.kind === "merge-pr")
+	{
 		const pr = `PR #${action.prNumber}`;
 		return (
 			<>
@@ -95,7 +130,8 @@ function LandingPrompt({
 			</>
 		);
 	}
-	if (action.kind === "open-pr" && action.draftPrNumber !== undefined) {
+	if (action.kind === "open-pr" && action.draftPrNumber !== undefined)
+	{
 		return (
 			<>
 				Mark draft PR #{action.draftPrNumber} for {what} ready for review in {item.project}.
@@ -103,7 +139,8 @@ function LandingPrompt({
 			</>
 		);
 	}
-	if (action.kind === "open-pr") {
+	if (action.kind === "open-pr")
+	{
 		return (
 			<>
 				Open a PR for {what} from branch {action.branch} in {item.project}.
@@ -120,7 +157,8 @@ function LandingPrompt({
 	);
 }
 
-const OUTCOME_STYLES: Record<ActionOutcome["status"], string> = {
+const OUTCOME_STYLES: Record<ActionOutcome["status"], string> =
+{
 	running: "text-text-300",
 	success: "text-status-green",
 	failure: "text-status-red",
@@ -140,7 +178,8 @@ export function ActionOutcomeLine({
 	onDismiss?: (() => void) | undefined;
 	prefix?: string;
 	className?: string;
-}) {
+})
+{
 	if (outcome === undefined) return null;
 	const link = outcome.status === "running" ? undefined : outcome.link;
 	return (
@@ -159,7 +198,13 @@ export function ActionOutcomeLine({
 			{link !== undefined && (
 				<a
 					href={link.href}
-					{...(/^https?:\/\//.test(link.href) ? {target: "_blank", rel: "noreferrer"} : {})}
+					{...(/^https?:\/\//.test(link.href)
+						?
+							{
+								target: "_blank",
+								rel: "noreferrer",
+							}
+						: {})}
 					className="font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400"
 				>
 					{link.label}
@@ -182,7 +227,11 @@ export function ActionOutcomeLine({
 /** "end": the overlay's right edge lines up with its button's (rows, whose button sits at their right); "start": its left edge. */
 export type PopoverAlign = "start" | "end";
 
-const ALIGN_CLASS: Record<PopoverAlign, string> = {start: "left-0 right-auto", end: "left-auto right-0"};
+const ALIGN_CLASS: Record<PopoverAlign, string> =
+{
+	start: "left-0 right-auto",
+	end: "left-auto right-0",
+};
 
 function ActionPopover({
 	label,
@@ -196,20 +245,25 @@ function ActionPopover({
 	onClose?: (() => void) | undefined;
 	closeOnOutside?: boolean;
 	children: ReactNode;
-}) {
+})
+{
 	const ref = useRef<HTMLDialogElement>(null);
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (onClose === undefined) return undefined;
-		const onKeyDown = (event: KeyboardEvent) => {
+		const onKeyDown = (event: KeyboardEvent) =>
+		{
 			if (event.key === "Escape") onClose();
 		};
-		const onMouseDown = (event: MouseEvent) => {
+		const onMouseDown = (event: MouseEvent) =>
+		{
 			const inside = event.target instanceof Node && ref.current?.contains(event.target) === true;
 			if (closeOnOutside && !inside) onClose();
 		};
 		document.addEventListener("keydown", onKeyDown);
 		document.addEventListener("mousedown", onMouseDown);
-		return () => {
+		return () =>
+		{
 			document.removeEventListener("keydown", onKeyDown);
 			document.removeEventListener("mousedown", onMouseDown);
 		};
@@ -248,7 +302,8 @@ export function ActionSlot({
 	onCancel?: () => void;
 	outcome: ActionOutcome | undefined;
 	onDismissOutcome: (() => void) | undefined;
-}) {
+})
+{
 	return (
 		<div className="relative flex shrink-0 items-center">
 			{children}
@@ -272,7 +327,8 @@ export function ActionSlot({
 	);
 }
 
-export interface LandControlProps {
+export interface LandControlProps
+{
 	item: ReadyToLandItem;
 	commit: GitChildResult | undefined;
 	projectInfo: ProjectInfo | undefined;
@@ -288,7 +344,8 @@ export interface LandControlProps {
  * The landing button plus the overlay it opens (the confirm, then the outcome); nothing lands until
  * the user confirms.
  */
-export function LandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome, align}: LandControlProps) {
+export function LandControl({item, commit, projectInfo, onLand, outcome, onDismissOutcome, align}: LandControlProps)
+{
 	const running = outcome?.status === "running";
 	const [confirming, setConfirming] = useState(false);
 	const landing = landingAction(item, commit, projectInfo?.upstreamBranch);
@@ -306,7 +363,8 @@ export function LandControl({item, commit, projectInfo, onLand, outcome, onDismi
 				<button
 					type="button"
 					disabled={running}
-					onClick={() => {
+					onClick={() =>
+					{
 						setConfirming(false);
 						onLand(item, commit);
 					}}
@@ -316,7 +374,8 @@ export function LandControl({item, commit, projectInfo, onLand, outcome, onDismi
 				</button>
 				<button
 					type="button"
-					onClick={() => {
+					onClick={() =>
+					{
 						setConfirming(false);
 					}}
 					className={CANCEL_CLASS}
@@ -330,7 +389,8 @@ export function LandControl({item, commit, projectInfo, onLand, outcome, onDismi
 		<ActionSlot
 			confirm={confirm}
 			confirmLabel="Confirm landing"
-			onCancel={() => {
+			onCancel={() =>
+			{
 				setConfirming(false);
 			}}
 			outcome={outcome}
@@ -341,7 +401,8 @@ export function LandControl({item, commit, projectInfo, onLand, outcome, onDismi
 				type="button"
 				disabled={running}
 				aria-expanded={confirming}
-				onClick={() => {
+				onClick={() =>
+				{
 					setConfirming(true);
 				}}
 				className="rounded-md bg-status-green px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -359,10 +420,12 @@ export function LandControl({item, commit, projectInfo, onLand, outcome, onDismi
 export function billingCheckCandidates(
 	state: ReadyToLandState | null | undefined,
 	commits: readonly GitChildResult[],
-): ReadyToLandItem[] {
+): ReadyToLandItem[]
+{
 	if (!state) return [];
 	const commitOf = commitLookup(commits);
-	return [...state.ready, ...(state.checksFailed ?? [])].filter((item) => {
+	return [...state.ready, ...(state.checksFailed ?? [])].filter((item) =>
+	{
 		const commit = commitOf(item);
 		return item.landing === "pull-request" && commit !== undefined && prChecksFailed(commit);
 	});
@@ -380,7 +443,8 @@ export function LandByPushing({
 	project: string;
 	upstreamBranch: string;
 	onLandByPushing: (project: string) => void;
-}) {
+})
+{
 	const [confirming, setConfirming] = useState(false);
 	return (
 		<div className="mt-2 flex flex-col gap-2 text-xs text-text-300">
@@ -391,7 +455,8 @@ export function LandByPushing({
 				<button
 					type="button"
 					aria-expanded={confirming}
-					onClick={() => {
+					onClick={() =>
+					{
 						setConfirming(true);
 					}}
 					className={REVIEW_CLASS}
@@ -412,7 +477,8 @@ export function LandByPushing({
 					<div className="flex gap-2">
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setConfirming(false);
 								onLandByPushing(project);
 							}}
@@ -422,7 +488,8 @@ export function LandByPushing({
 						</button>
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								setConfirming(false);
 							}}
 							className={CANCEL_CLASS}
@@ -436,7 +503,8 @@ export function LandByPushing({
 	);
 }
 
-export interface ReadyLandPanelProps {
+export interface ReadyLandPanelProps
+{
 	state: ReadyToLandState | null | undefined;
 	sha: string;
 	commit: GitChildResult | undefined;
@@ -456,7 +524,8 @@ export function ReadyLandPanel({
 	onLand,
 	outcome,
 	onDismissOutcome,
-}: ReadyLandPanelProps) {
+}: ReadyLandPanelProps)
+{
 	const item = [...(state?.ready ?? []), ...(state?.awaitingChecks ?? []), ...(state?.checksFailed ?? [])].find(
 		(r) => r.project === projectInfo.name && r.sha === sha,
 	);
@@ -473,7 +542,8 @@ export function ReadyLandPanel({
 	);
 }
 
-function ReadyLandPanelBody(props: LandControlProps) {
+function ReadyLandPanelBody(props: LandControlProps)
+{
 	return (
 		<div className="mb-4 rounded-lg border border-status-green/40 bg-bg-100 px-4 py-2.5">
 			<div className="flex items-center justify-between gap-3">

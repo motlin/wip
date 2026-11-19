@@ -3,14 +3,16 @@ import {execSync} from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
+import
+{
 	createWorkQueue,
 	normalizeFailureSignature,
 	RunMemory,
 	type LadderResult,
 	type LadderRunProject,
 } from "@wip/shared";
-import {
+import
+{
 	branchVerdict,
 	fixTestAsFixup,
 	prepareTestFixWorktree,
@@ -21,7 +23,8 @@ import {
 	type AiRungDeps,
 } from "./ai-rungs.js";
 
-const project: LadderRunProject = {
+const project: LadderRunProject =
+{
 	name: "demo",
 	path: "/tmp/demo",
 	upstreamRemote: "upstream",
@@ -32,71 +35,155 @@ const project: LadderRunProject = {
 	offline: false,
 };
 
-const stop = {stop: "conflict" as const, branches: ["feat-a", "feat-b"]};
-
-const clean: LadderResult = {
-	project: "demo",
-	rungs: [{rung: "replay", status: "passed", detail: "ok"}],
+const stop =
+{
+	stop: "conflict" as const,
+	branches: ["feat-a", "feat-b"],
 };
 
-function conflicted(branches: string[]): LadderResult {
+const clean: LadderResult =
+{
+	project: "demo",
+	rungs: [
+		{
+			rung: "replay",
+			status: "passed",
+			detail: "ok",
+		},
+	],
+};
+
+function conflicted(branches: string[]): LadderResult
+{
 	return {
 		project: "demo",
-		rungs: [{rung: "replay", status: "stopped", detail: "conflict"}],
-		stop: {stop: "conflict", branches},
+		rungs: [
+			{
+				rung: "replay",
+				status: "stopped",
+				detail: "conflict",
+			},
+		],
+		stop:
+		{
+			stop: "conflict",
+			branches,
+		},
 	};
 }
 
-interface Calls {
-	launches: {cwd: string; label: string; command: string; focus: boolean}[];
-	waits: {paneId: string; timeoutMs: number}[];
+interface Calls
+{
+	launches:
+	{
+		cwd: string;
+		label: string;
+		command: string;
+		focus: boolean;
+	}[];
+	waits:
+	{
+		paneId: string;
+		timeoutMs: number;
+	}[];
 	reruns: number;
-	resultsCalls: {project: string; branch: string}[];
+	resultsCalls:
+	{
+		project: string;
+		branch: string;
+	}[];
 	order: string[];
 }
 
-function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls: Calls} {
-	const calls: Calls = {launches: [], waits: [], reruns: 0, resultsCalls: [], order: []};
-	const deps: AiRungDeps = {
-		queue: createWorkQueue({globalConcurrency: 2, probe: null}),
-		launch: async (request) => {
+function makeDeps(overrides: Partial<AiRungDeps> = {}):
+{
+	deps: AiRungDeps;
+	calls: Calls;
+}
+{
+	const calls: Calls =
+	{
+		launches: [],
+		waits: [],
+		reruns: 0,
+		resultsCalls: [],
+		order: [],
+	};
+	const deps: AiRungDeps =
+	{
+		queue: createWorkQueue(
+			{
+				globalConcurrency: 2,
+				probe: null,
+			},
+		),
+		launch: async (request) =>
+		{
 			calls.order.push("launch");
 			calls.launches.push(request);
-			return Promise.resolve({ok: true, value: {tabId: "t1", paneId: "p1"}});
+			return Promise.resolve(
+				{
+					ok: true,
+					value:
+					{
+						tabId: "t1",
+						paneId: "p1",
+					},
+				},
+			);
 		},
-		wait: async (paneId, options) => {
+		wait: async (paneId, options) =>
+		{
 			calls.order.push("wait");
-			calls.waits.push({paneId, timeoutMs: options.timeoutMs});
+			calls.waits.push(
+				{
+					paneId,
+					timeoutMs: options.timeoutMs,
+				},
+			);
 			return Promise.resolve("done");
 		},
-		rerun: async () => {
+		rerun: async () =>
+		{
 			calls.order.push("rerun");
 			calls.reruns += 1;
 			return Promise.resolve(clean);
 		},
-		results: async (p, branch) => {
+		results: async (p, branch) =>
+		{
 			calls.order.push("results");
-			calls.resultsCalls.push({project: p.name, branch});
+			calls.resultsCalls.push(
+				{
+					project: p.name,
+					branch,
+				},
+			);
 			return Promise.resolve("green");
 		},
 		prepare: async (p) =>
-			Promise.resolve({
-				cwd: p.path,
-				conflicted: true,
-				log: "",
-				finish: async () => {
-					calls.order.push("finish");
-					return Promise.resolve(true);
+			Promise.resolve(
+				{
+					cwd: p.path,
+					conflicted: true,
+					log: "",
+					finish: async () =>
+					{
+						calls.order.push("finish");
+						return Promise.resolve(true);
+					},
 				},
-			}),
+			),
 		prepareTestFix: async (p, branch) =>
-			Promise.resolve({
-				cwd: `${p.path}-test-fix/${branch}`,
-				finish: async () => {
-					calls.order.push("finish");
-					return Promise.resolve();
+			Promise.resolve(
+				{
+					cwd: `${p.path}-test-fix/${branch}`,
+					finish: async () =>
+					{
+						calls.order.push("finish");
+						return Promise.resolve();
+					},
 				},
-			}),
+			),
 		timeoutMs: 1234,
 		memory: new RunMemory(),
 		identity: async (_p, branch) => Promise.resolve(`patch-${branch}`),
@@ -104,237 +191,433 @@ function makeDeps(overrides: Partial<AiRungDeps> = {}): {deps: AiRungDeps; calls
 		untrustedFolder: () => null,
 		...overrides,
 	};
-	return {deps, calls};
+	return {
+		deps,
+		calls,
+	};
 }
 
 /** Deps for a repo Claude does not trust: records each trust check and every prepare. */
-function untrustedDeps(): {deps: AiRungDeps; calls: Calls; trust: [string, string | null][]} {
+function untrustedDeps():
+{
+	deps: AiRungDeps;
+	calls: Calls;
+	trust: [string, string | null][];
+}
+{
 	const trust: [string, string | null][] = [];
-	const {deps, calls} = makeDeps({
-		untrustedFolder: (p) => p.path,
-		onTrust: (name, folder) => {
-			trust.push([name, folder]);
+	const {deps, calls} = makeDeps(
+		{
+			untrustedFolder: (p) => p.path,
+			onTrust: (name, folder) =>
+			{
+				trust.push([name, folder]);
+			},
 		},
-	});
+	);
 	const prepare = deps.prepare;
 	const prepareTestFix = deps.prepareTestFix;
-	deps.prepare = async (p, branch) => {
+	deps.prepare = async (p, branch) =>
+	{
 		calls.order.push("prepare");
 		return prepare(p, branch);
 	};
-	deps.prepareTestFix = async (p, branch) => {
+	deps.prepareTestFix = async (p, branch) =>
+	{
 		calls.order.push("prepare");
 		return prepareTestFix(p, branch);
 	};
-	return {deps, calls, trust};
+	return {
+		deps,
+		calls,
+		trust,
+	};
 }
 
-describe("agents never start in a folder Claude does not trust", () => {
+describe("agents never start in a folder Claude does not trust", () =>
+{
 	const signal = new AbortController().signal;
 
-	it("skips the conflict and test-fix agents before creating a worktree and reports the folder to trust", async () => {
+	it("skips the conflict and test-fix agents before creating a worktree and reports the folder to trust", async () =>
+	{
 		const conflict = untrustedDeps();
 		const fixup = untrustedDeps();
 		const rung = untrustedDeps();
-		expect({
-			conflict: await resolveBranchConflict(project, "feat-a", conflict.deps, signal),
-			fixup: await fixTestAsFixup(project, "feat-a", "abc", "/logs/x.log", fixup.deps, signal),
-			rung: await runAiTestFixRung(project, "feat-a", rung.deps),
-			order: [conflict.calls.order, fixup.calls.order, rung.calls.order],
-			trust: [conflict.trust, fixup.trust, rung.trust],
-		}).toStrictEqual({
-			conflict: "stuck",
-			fixup: null,
-			rung: "stuck",
-			order: [[], [], []],
-			trust: [[["demo", "/tmp/demo"]], [["demo", "/tmp/demo"]], [["demo", "/tmp/demo"]]],
-		});
+		expect(
+			{
+				conflict: await resolveBranchConflict(project, "feat-a", conflict.deps, signal),
+				fixup: await fixTestAsFixup(project, "feat-a", "abc", "/logs/x.log", fixup.deps, signal),
+				rung: await runAiTestFixRung(project, "feat-a", rung.deps),
+				order: [conflict.calls.order, fixup.calls.order, rung.calls.order],
+				trust: [conflict.trust, fixup.trust, rung.trust],
+			},
+		).toStrictEqual(
+			{
+				conflict: "stuck",
+				fixup: null,
+				rung: "stuck",
+				order: [[], [], []],
+				trust: [[["demo", "/tmp/demo"]], [["demo", "/tmp/demo"]], [["demo", "/tmp/demo"]]],
+			},
+		);
 	});
 
-	it("reports a trusted folder before launching, so a notice from an earlier skip clears", async () => {
+	it("reports a trusted folder before launching, so a notice from an earlier skip clears", async () =>
+	{
 		const trust: [string, string | null][] = [];
-		const {deps, calls} = makeDeps({
-			onTrust: (name, folder) => {
-				trust.push([name, folder]);
+		const {deps, calls} = makeDeps(
+			{
+				onTrust: (name, folder) =>
+				{
+					trust.push([name, folder]);
+				},
 			},
-		});
-		expect({
-			result: await resolveBranchConflict(project, "feat-a", deps, signal),
-			order: calls.order,
-			trust,
-		}).toStrictEqual({result: "resolved", order: ["launch", "wait", "finish"], trust: [["demo", null]]});
+		);
+		expect(
+			{
+				result: await resolveBranchConflict(project, "feat-a", deps, signal),
+				order: calls.order,
+				trust,
+			},
+		).toStrictEqual(
+			{
+				result: "resolved",
+				order: ["launch", "wait", "finish"],
+				trust: [["demo", null]],
+			},
+		);
 	});
 });
 
-describe("resolveBranchConflict", () => {
+describe("resolveBranchConflict", () =>
+{
 	const signal = new AbortController().signal;
 
-	it("runs one silent /git:conflicts agent in the stopped worktree and reports resolved once the rebase finished", async () => {
+	it("runs one silent /git:conflicts agent in the stopped worktree and reports resolved once the rebase finished", async () =>
+	{
 		const {deps, calls} = makeDeps();
-		expect({
-			result: await resolveBranchConflict(project, "feat-a", deps, signal),
-			launches: calls.launches,
-			order: calls.order,
-		}).toStrictEqual({
-			result: "resolved",
-			launches: [
-				{
-					cwd: "/tmp/demo",
-					label: "wip:demo:conflicts",
-					command: `claude "/git:conflicts feat-a"`,
-					focus: false,
-				},
-			],
-			order: ["launch", "wait", "finish"],
-		});
+		expect(
+			{
+				result: await resolveBranchConflict(project, "feat-a", deps, signal),
+				launches: calls.launches,
+				order: calls.order,
+			},
+		).toStrictEqual(
+			{
+				result: "resolved",
+				launches: [
+					{
+						cwd: "/tmp/demo",
+						label: "wip:demo:conflicts",
+						command: `claude "/git:conflicts feat-a"`,
+						focus: false,
+					},
+				],
+				order: ["launch", "wait", "finish"],
+			},
+		);
 	});
 
-	it("reports stuck when the agent leaves the rebase unfinished, times out, or cannot launch", async () => {
-		const unfinished = makeDeps({
-			prepare: async (p) =>
-				Promise.resolve({cwd: p.path, conflicted: true, log: "", finish: async () => Promise.resolve(false)}),
-		}).deps;
-		const timeout = makeDeps({wait: async () => Promise.resolve("timeout")}).deps;
-		const noLaunch = makeDeps({
-			launch: async () => Promise.resolve({ok: false, code: "unavailable", message: "no herdr"}),
-		}).deps;
-		const noWorktree = makeDeps({prepare: async () => Promise.resolve(null)}).deps;
-		expect({
-			unfinished: await resolveBranchConflict(project, "feat-a", unfinished, signal),
-			timeout: await resolveBranchConflict(project, "feat-a", timeout, signal),
-			noLaunch: await resolveBranchConflict(project, "feat-a", noLaunch, signal),
-			noWorktree: await resolveBranchConflict(project, "feat-a", noWorktree, signal),
-		}).toStrictEqual({unfinished: "stuck", timeout: "stuck", noLaunch: "stuck", noWorktree: "stuck"});
+	it("reports stuck when the agent leaves the rebase unfinished, times out, or cannot launch", async () =>
+	{
+		const unfinished = makeDeps(
+			{
+				prepare: async (p) =>
+					Promise.resolve(
+						{
+							cwd: p.path,
+							conflicted: true,
+							log: "",
+							finish: async () => Promise.resolve(false),
+						},
+					),
+			},
+		).deps;
+		const timeout = makeDeps(
+			{
+				wait: async () => Promise.resolve("timeout"),
+			},
+		).deps;
+		const noLaunch = makeDeps(
+			{
+				launch: async () =>
+					Promise.resolve(
+						{
+							ok: false,
+							code: "unavailable",
+							message: "no herdr",
+						},
+					),
+			},
+		).deps;
+		const noWorktree = makeDeps(
+			{
+				prepare: async () => Promise.resolve(null),
+			},
+		).deps;
+		expect(
+			{
+				unfinished: await resolveBranchConflict(project, "feat-a", unfinished, signal),
+				timeout: await resolveBranchConflict(project, "feat-a", timeout, signal),
+				noLaunch: await resolveBranchConflict(project, "feat-a", noLaunch, signal),
+				noWorktree: await resolveBranchConflict(project, "feat-a", noWorktree, signal),
+			},
+		).toStrictEqual(
+			{
+				unfinished: "stuck",
+				timeout: "stuck",
+				noLaunch: "stuck",
+				noWorktree: "stuck",
+			},
+		);
 	});
 
-	it("reports resolved without an agent when the rebase no longer conflicts", async () => {
-		const {deps, calls} = makeDeps({
-			prepare: async (p) =>
-				Promise.resolve({cwd: p.path, conflicted: false, log: "", finish: async () => Promise.resolve(true)}),
-		});
-		expect({
-			result: await resolveBranchConflict(project, "feat-a", deps, signal),
-			launches: calls.launches,
-		}).toStrictEqual({result: "resolved", launches: []});
+	it("reports resolved without an agent when the rebase no longer conflicts", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				prepare: async (p) =>
+					Promise.resolve(
+						{
+							cwd: p.path,
+							conflicted: false,
+							log: "",
+							finish: async () => Promise.resolve(true),
+						},
+					),
+			},
+		);
+		expect(
+			{
+				result: await resolveBranchConflict(project, "feat-a", deps, signal),
+				launches: calls.launches,
+			},
+		).toStrictEqual(
+			{
+				result: "resolved",
+				launches: [],
+			},
+		);
 	});
 });
 
-describe("runAiConflictRung", () => {
-	it("launches one agent per branch in its own worktree, cleaning up each, then re-runs the ladder", async () => {
+describe("runAiConflictRung", () =>
+{
+	it("launches one agent per branch in its own worktree, cleaning up each, then re-runs the ladder", async () =>
+	{
 		const {deps, calls} = makeDeps();
 		const result = await runAiConflictRung(project, stop, deps);
 		expect(result).toEqual(clean);
 		expect(calls.launches).toEqual([
-			{cwd: "/tmp/demo", label: "wip:demo:conflicts", command: `claude "/git:conflicts feat-a"`, focus: false},
-			{cwd: "/tmp/demo", label: "wip:demo:conflicts", command: `claude "/git:conflicts feat-b"`, focus: false},
+			{
+				cwd: "/tmp/demo",
+				label: "wip:demo:conflicts",
+				command: `claude "/git:conflicts feat-a"`,
+				focus: false,
+			},
+			{
+				cwd: "/tmp/demo",
+				label: "wip:demo:conflicts",
+				command: `claude "/git:conflicts feat-b"`,
+				focus: false,
+			},
 		]);
 		expect(calls.order).toEqual(["launch", "wait", "finish", "launch", "wait", "finish", "rerun"]);
 	});
 
-	it("returns stuck when the same branch conflicts again after the AI ran", async () => {
-		const {deps, calls} = makeDeps({rerun: async () => Promise.resolve(conflicted(["feat-b", "other"]))});
+	it("returns stuck when the same branch conflicts again after the AI ran", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				rerun: async () => Promise.resolve(conflicted(["feat-b", "other"])),
+			},
+		);
 		const result = await runAiConflictRung(project, stop, deps);
 		expect(result).toBe("stuck");
 		expect(calls.launches).toHaveLength(2);
 	});
 
-	it("returns the new result when a different branch conflicts", async () => {
+	it("returns the new result when a different branch conflicts", async () =>
+	{
 		const next = conflicted(["other"]);
-		const {deps} = makeDeps({rerun: async () => Promise.resolve(next)});
+		const {deps} = makeDeps(
+			{
+				rerun: async () => Promise.resolve(next),
+			},
+		);
 		expect(await runAiConflictRung(project, stop, deps)).toEqual(next);
 	});
 
-	it("returns stuck on timeout without re-running the ladder", async () => {
-		const {deps, calls} = makeDeps({wait: async () => Promise.resolve("timeout")});
+	it("returns stuck on timeout without re-running the ladder", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				wait: async () => Promise.resolve("timeout"),
+			},
+		);
 		expect(await runAiConflictRung(project, stop, deps)).toBe("stuck");
 		expect(calls.reruns).toBe(0);
 		expect(calls.order).toEqual(["launch", "finish"]);
 	});
 
-	it("returns stuck when herdr cannot launch the tab", async () => {
-		const {deps, calls} = makeDeps({
-			launch: async () => Promise.resolve({ok: false, code: "unavailable", message: "no herdr"}),
-		});
+	it("returns stuck when herdr cannot launch the tab", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				launch: async () =>
+					Promise.resolve(
+						{
+							ok: false,
+							code: "unavailable",
+							message: "no herdr",
+						},
+					),
+			},
+		);
 		expect(await runAiConflictRung(project, stop, deps)).toBe("stuck");
 		expect(calls.reruns).toBe(0);
 	});
 
-	it("holds the repo resource so two rungs on one repo never overlap", async () => {
-		const queue = createWorkQueue({globalConcurrency: 4, probe: null});
+	it("holds the repo resource so two rungs on one repo never overlap", async () =>
+	{
+		const queue = createWorkQueue(
+			{
+				globalConcurrency: 4,
+				probe: null,
+			},
+		);
 		let active = 0;
 		let maxActive = 0;
-		const slow = async () => {
+		const slow = async () =>
+		{
 			active += 1;
 			maxActive = Math.max(maxActive, active);
-			await new Promise((resolve) => {
+			await new Promise((resolve) =>
+			{
 				setTimeout(resolve, 20);
 			});
 			active -= 1;
 			return "done" as const;
 		};
-		const {deps} = makeDeps({queue, wait: slow});
+		const {deps} = makeDeps(
+			{
+				queue,
+				wait: slow,
+			},
+		);
 		await Promise.all([runAiConflictRung(project, stop, deps), runAiConflictRung(project, stop, deps)]);
 		expect(maxActive).toBe(1);
 	});
 });
 
-describe("AI loops stop on a repeated failure signature", () => {
-	it("returns stuck after 2 attempts when different tips fail with the same log", async () => {
+describe("AI loops stop on a repeated failure signature", () =>
+{
+	it("returns stuck after 2 attempts when different tips fail with the same log", async () =>
+	{
 		const log = "FAIL src/foo.test.ts > adds\nAssertionError: expected 1 to be 2";
 		let tipCount = 0;
-		const {deps, calls} = makeDeps({
-			results: async () => Promise.resolve("red"),
-			failureLog: async () => Promise.resolve(log),
-			tip: async () => {
-				tipCount += 1;
-				return Promise.resolve(`tip-${tipCount}`);
+		const {deps, calls} = makeDeps(
+			{
+				results: async () => Promise.resolve("red"),
+				failureLog: async () => Promise.resolve(log),
+				tip: async () =>
+				{
+					tipCount += 1;
+					return Promise.resolve(`tip-${tipCount}`);
+				},
+				maxAttempts: 10,
 			},
-			maxAttempts: 10,
-		});
+		);
 		const result = await runAiTestFixLoop(project, "feat-a", deps);
-		expect(result).toStrictEqual({status: "stuck", attempts: 2, signature: normalizeFailureSignature(log)});
+		expect(result).toStrictEqual(
+			{
+				status: "stuck",
+				attempts: 2,
+				signature: normalizeFailureSignature(log),
+			},
+		);
 		expect(calls.launches).toHaveLength(2);
 	});
 
-	it("keeps retrying while each changed tip fails differently", async () => {
+	it("keeps retrying while each changed tip fails differently", async () =>
+	{
 		let attempt = 0;
-		const {deps, calls} = makeDeps({
-			results: async () => Promise.resolve("red"),
-			failureLog: async () => Promise.resolve(`FAIL test number ${["one", "two", "three"][attempt - 1]}`),
-			tip: async () => Promise.resolve(`tip-${attempt}`),
-			onLaunched: () => {
-				attempt += 1;
+		const {deps, calls} = makeDeps(
+			{
+				results: async () => Promise.resolve("red"),
+				failureLog: async () => Promise.resolve(`FAIL test number ${["one", "two", "three"][attempt - 1]}`),
+				tip: async () => Promise.resolve(`tip-${attempt}`),
+				onLaunched: () =>
+				{
+					attempt += 1;
+				},
+				maxAttempts: 3,
 			},
-			maxAttempts: 3,
-		});
+		);
 		const result = await runAiTestFixLoop(project, "feat-a", deps);
-		expect(result).toStrictEqual({status: "stuck", attempts: 3});
+		expect(result).toStrictEqual(
+			{
+				status: "stuck",
+				attempts: 3,
+			},
+		);
 		expect(calls.launches).toHaveLength(3);
 	});
 
-	it("does not launch the conflict agent again for a repeated conflict signature on the same change", async () => {
+	it("does not launch the conflict agent again for a repeated conflict signature on the same change", async () =>
+	{
 		const log = "CONFLICT (content): Merge conflict in src/app.ts";
-		const signatures: {branch: string; signature: string}[] = [];
+		const signatures:
+		{
+			branch: string;
+			signature: string;
+		}[] = [];
 		const memory = new RunMemory();
-		const {deps, calls} = makeDeps({
-			memory,
-			rerun: async () => Promise.resolve(conflicted(["feat-a"])),
-			prepare: async (p) =>
-				Promise.resolve({cwd: p.path, conflicted: true, log, finish: async () => Promise.resolve(true)}),
-			onRepeatedFailure: (branch, signature) => {
-				signatures.push({branch, signature});
+		const {deps, calls} = makeDeps(
+			{
+				memory,
+				rerun: async () => Promise.resolve(conflicted(["feat-a"])),
+				prepare: async (p) =>
+					Promise.resolve(
+						{
+							cwd: p.path,
+							conflicted: true,
+							log,
+							finish: async () => Promise.resolve(true),
+						},
+					),
+				onRepeatedFailure: (branch, signature) =>
+				{
+					signatures.push(
+						{
+							branch,
+							signature,
+						},
+					);
+				},
 			},
-		});
-		const single = {stop: "conflict" as const, branches: ["feat-a"]};
+		);
+		const single =
+		{
+			stop: "conflict" as const,
+			branches: ["feat-a"],
+		};
 		expect(await runAiConflictRung(project, single, deps)).toBe("stuck");
 		expect(await runAiConflictRung(project, single, deps)).toBe("stuck");
 		expect(calls.launches).toHaveLength(1);
-		expect(signatures).toStrictEqual([{branch: "feat-a", signature: normalizeFailureSignature(log)}]);
+		expect(signatures).toStrictEqual([
+			{
+				branch: "feat-a",
+				signature: normalizeFailureSignature(log),
+			},
+		]);
 	});
 });
 
-describe("branchVerdict", () => {
-	it("is green only when git-test reports every commit good", () => {
+describe("branchVerdict", () =>
+{
+	it("is green only when git-test reports every commit good", () =>
+	{
 		expect(
 			branchVerdict(
 				new Map([
@@ -363,8 +646,10 @@ describe("branchVerdict", () => {
 	});
 });
 
-describe("runAiTestFixRung", () => {
-	it("launches claude /build:test-branch in the branch's own worktree, waits, reads git test results, then cleans up", async () => {
+describe("runAiTestFixRung", () =>
+{
+	it("launches claude /build:test-branch in the branch's own worktree, waits, reads git test results, then cleans up", async () =>
+	{
 		const {deps, calls} = makeDeps();
 		const result = await runAiTestFixRung(project, "feat-a", deps);
 		expect(result).toBe("green");
@@ -376,50 +661,99 @@ describe("runAiTestFixRung", () => {
 				focus: false,
 			},
 		]);
-		expect(calls.waits).toEqual([{paneId: "p1", timeoutMs: 1234}]);
-		expect(calls.resultsCalls).toEqual([{project: "demo", branch: "feat-a"}]);
+		expect(calls.waits).toEqual([
+			{
+				paneId: "p1",
+				timeoutMs: 1234,
+			},
+		]);
+		expect(calls.resultsCalls).toEqual([
+			{
+				project: "demo",
+				branch: "feat-a",
+			},
+		]);
 		expect(calls.order).toEqual(["launch", "wait", "results", "finish"]);
 	});
 
-	it("returns stuck without launching when the branch cannot get its own worktree", async () => {
-		const {deps, calls} = makeDeps({prepareTestFix: async () => Promise.resolve(null)});
+	it("returns stuck without launching when the branch cannot get its own worktree", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				prepareTestFix: async () => Promise.resolve(null),
+			},
+		);
 		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
 		expect(calls.order).toEqual([]);
 	});
 
-	it("returns red when results are not all good", async () => {
-		const {deps} = makeDeps({results: async () => Promise.resolve("red")});
+	it("returns red when results are not all good", async () =>
+	{
+		const {deps} = makeDeps(
+			{
+				results: async () => Promise.resolve("red"),
+			},
+		);
 		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("red");
 	});
 
-	it("returns stuck on timeout without reading results", async () => {
-		const {deps, calls} = makeDeps({wait: async () => Promise.resolve("timeout")});
+	it("returns stuck on timeout without reading results", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				wait: async () => Promise.resolve("timeout"),
+			},
+		);
 		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
 		expect(calls.resultsCalls).toEqual([]);
 		expect(calls.order).toEqual(["launch", "finish"]);
 	});
 
-	it("returns stuck when herdr cannot launch the tab", async () => {
-		const {deps, calls} = makeDeps({
-			launch: async () => Promise.resolve({ok: false, code: "unavailable", message: "no herdr"}),
-		});
+	it("returns stuck when herdr cannot launch the tab", async () =>
+	{
+		const {deps, calls} = makeDeps(
+			{
+				launch: async () =>
+					Promise.resolve(
+						{
+							ok: false,
+							code: "unavailable",
+							message: "no herdr",
+						},
+					),
+			},
+		);
 		expect(await runAiTestFixRung(project, "feat-a", deps)).toBe("stuck");
 		expect(calls.resultsCalls).toEqual([]);
 	});
 });
 
-function git(cwd: string, command: string): string {
-	return execSync(`git ${command}`, {cwd, stdio: ["ignore", "pipe", "ignore"]})
+function git(cwd: string, command: string): string
+{
+	return execSync(
+		`git ${command}`,
+		{
+			cwd,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
 
-describe("prepareTestFixWorktree", () => {
+describe("prepareTestFixWorktree", () =>
+{
 	let dir: string;
 	let cache: string;
 	let savedXdgCache: string | undefined;
 
-	function checkoutState(): {head: string; reflog: string; status: string} {
+	function checkoutState():
+	{
+		head: string;
+		reflog: string;
+		status: string;
+	}
+	{
 		return {
 			head: git(dir, "rev-parse HEAD"),
 			reflog: git(dir, "reflog HEAD"),
@@ -427,7 +761,8 @@ describe("prepareTestFixWorktree", () => {
 		};
 	}
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-ai-rung-")));
 		cache = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-ai-rung-cache-")));
 		savedXdgCache = process.env.XDG_CACHE_HOME;
@@ -440,46 +775,96 @@ describe("prepareTestFixWorktree", () => {
 		fs.writeFileSync(path.join(dir, "wip.txt"), "in progress\n");
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		if (savedXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = savedXdgCache;
-		fs.rmSync(dir, {recursive: true, force: true});
-		fs.rmSync(cache, {recursive: true, force: true});
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		fs.rmSync(
+			cache,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("checks the branch out in a throwaway worktree, leaves the user's checkout alone, and removes it when clean", async () => {
+	it("checks the branch out in a throwaway worktree, leaves the user's checkout alone, and removes it when clean", async () =>
+	{
 		const before = checkoutState();
-		const prepared = await prepareTestFixWorktree({...project, name: "demo", path: dir}, "feat-a");
+		const prepared = await prepareTestFixWorktree(
+			{
+				...project,
+				name: "demo",
+				path: dir,
+			},
+			"feat-a",
+		);
 		if (!prepared) throw new Error("expected a worktree");
 		const branchThere = git(prepared.cwd, "branch --show-current");
 		await prepared.finish();
-		expect({
-			underCache: prepared.cwd.startsWith(path.join(cache, "wip", "test-fix-worktrees", "demo")),
-			branchThere,
-			after: checkoutState(),
-			exists: fs.existsSync(prepared.cwd),
-		}).toStrictEqual({underCache: true, branchThere: "feat-a", after: before, exists: false});
+		expect(
+			{
+				underCache: prepared.cwd.startsWith(path.join(cache, "wip", "test-fix-worktrees", "demo")),
+				branchThere,
+				after: checkoutState(),
+				exists: fs.existsSync(prepared.cwd),
+			},
+		).toStrictEqual(
+			{
+				underCache: true,
+				branchThere: "feat-a",
+				after: before,
+				exists: false,
+			},
+		);
 	});
 
-	it("never removes a worktree the agent left dirty", async () => {
-		const prepared = await prepareTestFixWorktree({...project, name: "demo", path: dir}, "feat-a");
+	it("never removes a worktree the agent left dirty", async () =>
+	{
+		const prepared = await prepareTestFixWorktree(
+			{
+				...project,
+				name: "demo",
+				path: dir,
+			},
+			"feat-a",
+		);
 		if (!prepared) throw new Error("expected a worktree");
 		fs.writeFileSync(path.join(prepared.cwd, "unsaved.txt"), "fix in progress\n");
 		await prepared.finish();
 		expect(fs.readFileSync(path.join(prepared.cwd, "unsaved.txt"), "utf8")).toBe("fix in progress\n");
 	});
 
-	it("returns null when the branch is checked out in the user's checkout", async () => {
-		expect(await prepareTestFixWorktree({...project, name: "demo", path: dir}, "main")).toBeNull();
+	it("returns null when the branch is checked out in the user's checkout", async () =>
+	{
+		expect(
+			await prepareTestFixWorktree(
+				{
+					...project,
+					name: "demo",
+					path: dir,
+				},
+				"main",
+			),
+		).toBeNull();
 	});
 });
 
-describe("fixTestAsFixup", () => {
+describe("fixTestAsFixup", () =>
+{
 	const signal = new AbortController().signal;
 	let dir: string;
 	let failing: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wip-fixup-")));
 		git(dir, "init -b main");
 		git(dir, "config user.email test@test.com");
@@ -492,63 +877,108 @@ describe("fixTestAsFixup", () => {
 		failing = git(dir, "rev-parse HEAD");
 	});
 
-	afterEach(() => {
-		fs.rmSync(dir, {recursive: true, force: true});
+	afterEach(() =>
+	{
+		fs.rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
 	/** Deps whose "agent" runs `act` in the branch checkout when launched. */
-	function agentDeps(act: () => void) {
-		return makeDeps({
-			prepareTestFix: async () => Promise.resolve({cwd: dir, finish: async () => Promise.resolve()}),
-			launch: async (request) => {
-				launches.push(request);
-				act();
-				return Promise.resolve({ok: true, value: {tabId: "t1", paneId: "p1"}});
+	function agentDeps(act: () => void)
+	{
+		return makeDeps(
+			{
+				prepareTestFix: async () =>
+					Promise.resolve(
+						{
+							cwd: dir,
+							finish: async () => Promise.resolve(),
+						},
+					),
+				launch: async (request) =>
+				{
+					launches.push(request);
+					act();
+					return Promise.resolve(
+						{
+							ok: true,
+							value:
+							{
+								tabId: "t1",
+								paneId: "p1",
+							},
+						},
+					);
+				},
 			},
-		}).deps;
+		).deps;
 	}
-	let launches: {cwd: string; label: string; command: string; focus: boolean}[] = [];
-	beforeEach(() => {
+	let launches:
+	{
+		cwd: string;
+		label: string;
+		command: string;
+		focus: boolean;
+	}[] = [];
+	beforeEach(() =>
+	{
 		launches = [];
 	});
 
-	const demo = (): LadderRunProject => ({...project, path: dir});
+	const demo = (): LadderRunProject => (
+	{
+		...project,
+		path: dir,
+	});
 
-	it("launches one /build:fix agent told to commit a separate fixup, and returns the fixup on top of the unchanged original", async () => {
-		const deps = agentDeps(() => {
+	it("launches one /build:fix agent told to commit a separate fixup, and returns the fixup on top of the unchanged original", async () =>
+	{
+		const deps = agentDeps(() =>
+		{
 			fs.writeFileSync(path.join(dir, "a.txt"), "fixed\n");
 			git(dir, `commit -am 'fixup! Add a'`);
 		});
 
 		const fixup = await fixTestAsFixup(demo(), "feat-a", failing, "/logs/x.log", deps, signal);
 
-		expect({
-			fixup,
-			tip: git(dir, "rev-parse feat-a"),
-			parent: git(dir, "rev-parse feat-a~1"),
-			launches,
-		}).toStrictEqual({
-			fixup: git(dir, "rev-parse feat-a"),
-			tip: fixup,
-			parent: failing,
-			launches: [
-				{
-					cwd: dir,
-					label: "wip:demo:test-fix:feat-a",
-					command: `claude "/build:fix The test fails at commit ${failing} (log: /logs/x.log). Commit the fix as a separate commit with git commit --fixup=${failing} on top of it. Do not amend, squash, rebase or fold the fix into ${failing}."`,
-					focus: false,
-				},
-			],
-		});
+		expect(
+			{
+				fixup,
+				tip: git(dir, "rev-parse feat-a"),
+				parent: git(dir, "rev-parse feat-a~1"),
+				launches,
+			},
+		).toStrictEqual(
+			{
+				fixup: git(dir, "rev-parse feat-a"),
+				tip: fixup,
+				parent: failing,
+				launches: [
+					{
+						cwd: dir,
+						label: "wip:demo:test-fix:feat-a",
+						command: `claude "/build:fix The test fails at commit ${failing} (log: /logs/x.log). Commit the fix as a separate commit with git commit --fixup=${failing} on top of it. Do not amend, squash, rebase or fold the fix into ${failing}."`,
+						focus: false,
+					},
+				],
+			},
+		);
 	});
 
-	it("returns null when the agent folded the fix into the original, or left no fixup", async () => {
+	it("returns null when the agent folded the fix into the original, or left no fixup", async () =>
+	{
 		const amended = await fixTestAsFixup(
 			demo(),
 			"feat-a",
 			failing,
 			"/logs/x.log",
-			agentDeps(() => {
+			agentDeps(() =>
+			{
 				fs.writeFileSync(path.join(dir, "a.txt"), "fixed\n");
 				git(dir, "commit -a --amend --no-edit");
 			}),
@@ -563,16 +993,42 @@ describe("fixTestAsFixup", () => {
 			signal,
 		);
 
-		expect({amended, nothing}).toStrictEqual({amended: null, nothing: null});
+		expect(
+			{
+				amended,
+				nothing,
+			},
+		).toStrictEqual(
+			{
+				amended: null,
+				nothing: null,
+			},
+		);
 	});
 
-	it("does not launch the agent again for a failure signature already seen on the same change", async () => {
+	it("does not launch the agent again for a failure signature already seen on the same change", async () =>
+	{
 		const memory = new RunMemory();
-		const deps = {...agentDeps(() => {}), memory, failureLog: async () => Promise.resolve("FAIL a.test.ts")};
+		const deps =
+		{
+			...agentDeps(() => {}),
+			memory,
+			failureLog: async () => Promise.resolve("FAIL a.test.ts"),
+		};
 
 		await fixTestAsFixup(demo(), "feat-a", failing, "/logs/x.log", deps, signal);
 		const second = await fixTestAsFixup(demo(), "feat-a", failing, "/logs/x.log", deps, signal);
 
-		expect({second, launches: launches.length}).toStrictEqual({second: null, launches: 1});
+		expect(
+			{
+				second,
+				launches: launches.length,
+			},
+		).toStrictEqual(
+			{
+				second: null,
+				launches: 1,
+			},
+		);
 	});
 });

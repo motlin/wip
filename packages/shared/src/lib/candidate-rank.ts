@@ -8,7 +8,8 @@ import type {GitChildResult} from "./schemas.js";
  */
 
 /** The facts the remaining-job estimate needs about one commit. */
-export interface RankFacts {
+export interface RankFacts
+{
 	landable: boolean;
 	/** Not on the upstream tip, so a replay is needed. */
 	needsReplay: boolean;
@@ -21,7 +22,8 @@ export interface RankFacts {
 }
 
 /** 0 if landable; otherwise +1 for a clean replay or +3 for predicted conflicts, +2 for a bad test, + log2 of the size. */
-export function remainingJob(facts: RankFacts): number {
+export function remainingJob(facts: RankFacts): number
+{
 	if (facts.landable) return 0;
 	let job = 0;
 	if (facts.predictedConflicts) job += 3;
@@ -30,7 +32,8 @@ export function remainingJob(facts: RankFacts): number {
 	return job + Math.log2(1 + Math.max(0, facts.lines));
 }
 
-export interface ChainCommit extends RankFacts {
+export interface ChainCommit extends RankFacts
+{
 	sha: string;
 	/** Landable or readyStacked: lets the next commit in the chain become a candidate. */
 	ready: boolean;
@@ -39,12 +42,14 @@ export interface ChainCommit extends RankFacts {
 }
 
 /** One chain of unlanded commits in a project, bottom (closest to upstream) first. */
-export interface Chain {
+export interface Chain
+{
 	project: string;
 	commits: ChainCommit[];
 }
 
-export interface RankedCandidate {
+export interface RankedCandidate
+{
 	project: string;
 	sha: string;
 	/** Remaining job, never smaller than its parent's so a stack keeps its order. */
@@ -53,12 +58,14 @@ export interface RankedCandidate {
 	depth: number;
 }
 
-interface Keyed extends RankedCandidate {
+interface Keyed extends RankedCandidate
+{
 	rootFirstSeen: number;
 	rootSha: string;
 }
 
-function compareKeyed(a: Keyed, b: Keyed): number {
+function compareKeyed(a: Keyed, b: Keyed): number
+{
 	return (
 		a.job - b.job ||
 		a.rootFirstSeen - b.rootFirstSeen ||
@@ -72,32 +79,52 @@ function compareKeyed(a: Keyed, b: Keyed): number {
  * The first unlanded commit of each chain is a candidate; a stacked commit becomes one
  * once its parent is ready. Ties go to first-seen time (of the chain), then project/sha.
  */
-export function rankCandidates(chains: Chain[]): RankedCandidate[] {
+export function rankCandidates(chains: Chain[]): RankedCandidate[]
+{
 	const keyed: Keyed[] = [];
-	for (const {project, commits} of chains) {
+	for (const {project, commits} of chains)
+	{
 		const root = commits[0];
 		if (!root) continue;
 		let job = 0;
-		for (const [depth, c] of commits.entries()) {
+		for (const [depth, c] of commits.entries())
+		{
 			job = Math.max(job, remainingJob(c));
-			keyed.push({project, sha: c.sha, job, depth, rootFirstSeen: root.firstSeen, rootSha: root.sha});
+			keyed.push(
+				{
+					project,
+					sha: c.sha,
+					job,
+					depth,
+					rootFirstSeen: root.firstSeen,
+					rootSha: root.sha,
+				},
+			);
 			if (!c.ready) break;
 		}
 	}
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a local array
-	return keyed.sort(compareKeyed).map(({project, sha, job, depth}) => ({project, sha, job, depth}));
+	return keyed.sort(compareKeyed).map(({project, sha, job, depth}) => (
+	{
+		project,
+		sha,
+		job,
+		depth,
+	}));
 }
 
 /**
  * Landable: known to be directly on upstream with a passing test, the Ready to land condition the
  * remaining-job estimate scores 0.
  */
-function gitChildLandable(child: GitChildResult): boolean {
+function gitChildLandable(child: GitChildResult): boolean
+{
 	return child.commitsBehind === 0 && child.needsRebase !== true && child.testStatus === "passed";
 }
 
 /** Rank facts a queue item carries; an item without size facts ranks as zero lines. */
-function gitChildFacts(child: GitChildResult): RankFacts {
+function gitChildFacts(child: GitChildResult): RankFacts
+{
 	return {
 		landable: gitChildLandable(child),
 		needsReplay: child.needsRebase === true || (child.commitsBehind ?? 0) > 0,
@@ -108,7 +135,8 @@ function gitChildFacts(child: GitChildResult): RankFacts {
 }
 
 /** A git child's remaining job, the rank key the ready buffer orders its global queue by. */
-export function gitChildJob(child: GitChildResult): number {
+export function gitChildJob(child: GitChildResult): number
+{
 	return remainingJob(gitChildFacts(child));
 }
 
@@ -117,7 +145,8 @@ const NOT_SEEN = "\uffff";
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-interface StackKey<T> {
+interface StackKey<T>
+{
 	child: T;
 	/** Never smaller than the parent's, so a stack keeps its order. */
 	job: number;
@@ -132,10 +161,12 @@ interface StackKey<T> {
  * An item stacked on another item in the list (by parentSha) keeps a job at least its parent's and
  * ranks after it.
  */
-export function rankGitChildren<T extends GitChildResult>(children: readonly T[]): T[] {
+export function rankGitChildren<T extends GitChildResult>(children: readonly T[]): T[]
+{
 	const bySha = new Map(children.map((child) => [`${child.project}:${child.sha}`, child]));
 	const keys = new Map<T, StackKey<T>>();
-	const keyOf = (child: T, visiting: Set<T>): StackKey<T> => {
+	const keyOf = (child: T, visiting: Set<T>): StackKey<T> =>
+	{
 		const known = keys.get(child);
 		if (known !== undefined) return known;
 		visiting.add(child);
@@ -143,10 +174,22 @@ export function rankGitChildren<T extends GitChildResult>(children: readonly T[]
 		const own = gitChildJob(child);
 		const key: StackKey<T> =
 			parent === undefined || visiting.has(parent)
-				? {child, job: own, root: child, depth: 0}
-				: (() => {
+				?
+					{
+						child,
+						job: own,
+						root: child,
+						depth: 0,
+					}
+				: (() =>
+					{
 						const up = keyOf(parent, visiting);
-						return {child, job: Math.max(own, up.job), root: up.root, depth: up.depth + 1};
+						return {
+							child,
+							job: Math.max(own, up.job),
+							root: up.root,
+							depth: up.depth + 1,
+						};
 					})();
 		keys.set(child, key);
 		return key;
@@ -172,9 +215,15 @@ export function rankGitChildren<T extends GitChildResult>(children: readonly T[]
  * Stacked children the ready buffer may not pull yet: an unready commit whose parent is itself an
  * unready commit in the list becomes a candidate only once its parent is ready (lean plan step 19).
  */
-export function dropStackedOnUnready<T extends {sha: string; parentSha?: string; state: string}>(
-	candidates: readonly T[],
-): T[] {
+export function dropStackedOnUnready<
+	T extends
+	{
+		sha: string;
+		parentSha?: string;
+		state: string;
+	},
+>(candidates: readonly T[]): T[]
+{
 	const unready = new Set(candidates.filter((c) => c.state !== "ready").map((c) => c.sha));
 	return candidates.filter((c) => !(c.state !== "ready" && c.parentSha !== undefined && unready.has(c.parentSha)));
 }
@@ -183,6 +232,7 @@ export function dropStackedOnUnready<T extends {sha: string; parentSha?: string;
 export function considerSplitting(
 	child: Pick<GitChildResult, "insertions" | "deletions">,
 	thresholdLines: number,
-): boolean {
+): boolean
+{
 	return (child.insertions ?? 0) + (child.deletions ?? 0) > thresholdLines;
 }

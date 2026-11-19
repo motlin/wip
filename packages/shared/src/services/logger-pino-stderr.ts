@@ -2,7 +2,8 @@ import pino from "pino";
 
 import {scrubSensitive, scrubString} from "./logger.js";
 
-export type StderrLog = {
+export type StderrLog =
+{
 	subprocess: pino.Logger;
 	progress: pino.Logger;
 	general: pino.Logger;
@@ -18,16 +19,25 @@ export type StderrLog = {
  * scrubber as the in-memory log buffer, since server.log is written in clear.
  */
 export function createStderrLog(
-	destination: pino.DestinationStream = pino.destination({dest: 2, sync: true}),
-): StderrLog {
+	destination: pino.DestinationStream = pino.destination(
+		{
+			dest: 2,
+			sync: true,
+		},
+	),
+): StderrLog
+{
 	const base = pino(
 		{
 			level: "debug",
 			timestamp: pino.stdTimeFunctions.isoTime,
-			hooks: {
-				logMethod(args, method) {
+			hooks:
+			{
+				logMethod(args, method)
+				{
 					args[0] = scrubSensitive(args[0]);
-					for (let i = 1; i < args.length; i++) {
+					for (let i = 1; i < args.length; i++)
+					{
 						const arg = args[i];
 						if (typeof arg === "string") args[i] = scrubString(arg);
 					}
@@ -39,8 +49,20 @@ export function createStderrLog(
 	);
 
 	return {
-		subprocess: base.child({category: "subprocess"}),
-		progress: base.child({category: "progress"}),
-		general: base.child({category: "general"}),
+		subprocess: base.child(
+			{
+				category: "subprocess",
+			},
+		),
+		progress: base.child(
+			{
+				category: "progress",
+			},
+		),
+		general: base.child(
+			{
+				category: "general",
+			},
+		),
 	};
 }

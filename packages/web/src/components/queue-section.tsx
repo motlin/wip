@@ -22,7 +22,8 @@ export function QueueSection({
 	count: number;
 	cards: () => ReactNode[];
 	lead?: ReactNode;
-}) {
+})
+{
 	const [open, setOpen] = useState(!COLLAPSED_CATEGORIES.has(category));
 	const [expanded, setExpanded] = useState(false);
 	const all = open ? cards() : [];
@@ -41,7 +42,8 @@ export function QueueSection({
 					<button
 						type="button"
 						aria-expanded={false}
-						onClick={() => {
+						onClick={() =>
+						{
 							setOpen(true);
 						}}
 						className="rounded-md px-2 py-1.5 text-left text-[0.8125rem] text-text-500 hover:bg-bg-200 hover:text-text-300"
@@ -53,7 +55,8 @@ export function QueueSection({
 				{hidden > 0 && (
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setExpanded(true);
 						}}
 						className="rounded-md px-2 py-1.5 text-left text-[0.8125rem] text-text-500 hover:bg-bg-200 hover:text-text-300"

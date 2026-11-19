@@ -7,21 +7,32 @@ import process from "node:process";
 // `@wip/shared` is published as raw `src`. Node strips types but does not remap a
 // `.js` specifier to its `.ts` source, so resolve relative `.js` imports to `.ts`
 // when the `.js` file does not exist. This lets the CLI run straight from source.
-registerHooks({
-	resolve(specifier, context, nextResolve) {
-		if ((specifier.startsWith("./") || specifier.startsWith("../")) && specifier.endsWith(".js")) {
-			try {
-				return nextResolve(specifier, context);
-			} catch {
-				return nextResolve(`${specifier.slice(0, -3)}.ts`, context);
+registerHooks(
+	{
+		resolve(specifier, context, nextResolve)
+		{
+			if ((specifier.startsWith("./") || specifier.startsWith("../")) && specifier.endsWith(".js"))
+			{
+				try
+				{
+					return nextResolve(specifier, context);
+				}
+				catch
+				{
+					return nextResolve(`${specifier.slice(0, -3)}.ts`, context);
+				}
 			}
-		}
-		return nextResolve(specifier, context);
+			return nextResolve(specifier, context);
+		},
 	},
-});
+);
 
 process.title = "wip";
 
 const {execute} = await import("@oclif/core");
 
-await execute({dir: import.meta.url});
+await execute(
+	{
+		dir: import.meta.url,
+	},
+);

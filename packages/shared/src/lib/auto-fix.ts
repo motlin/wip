@@ -18,17 +18,33 @@ const GIT_TEST_TRAILER_RE = /^(?:FAILURE!|BAD COMMIT |Marked tree )/;
  * The failure the marker names: the log's last failure line, without colours and skipping
  * git-test's own trailer, at most 120 characters.
  */
-export function failureSummary(log: string): string {
+export function failureSummary(log: string): string
+{
 	let line = "test failed";
-	for (const raw of log.split("\n")) {
+	for (const raw of log.split("\n"))
+	{
 		const clean = raw.replace(ANSI_RE, "").trim();
 		if (FAILURE_LINE_RE.test(clean) && !GIT_TEST_TRAILER_RE.test(clean)) line = clean;
 	}
 	return line.slice(0, MAX_SUMMARY);
 }
 
-async function git(dir: string, args: string[], input?: string) {
-	return tracedExeca("git", ["-C", dir, ...args], input === undefined ? {reject: false} : {reject: false, input});
+async function git(dir: string, args: string[], input?: string)
+{
+	return tracedExeca(
+		"git",
+		["-C", dir, ...args],
+		input === undefined
+			?
+				{
+					reject: false,
+				}
+			:
+				{
+					reject: false,
+					input,
+				},
+	);
 }
 
 /**
@@ -41,7 +57,8 @@ export async function squashFixup(
 	branch: string,
 	originalSha: string,
 	fixupSha: string,
-): Promise<string | null> {
+): Promise<string | null>
+{
 	const parent = await git(dir, ["rev-parse", `${fixupSha}^`]);
 	if (parent.exitCode !== 0 || parent.stdout.trim() !== originalSha) return null;
 	const info = await git(dir, ["log", "-1", "--format=%an%x00%ae%x00%aI%x00%B", originalSha]);
@@ -55,7 +72,12 @@ export async function squashFixup(
 		{
 			reject: false,
 			input: message.join("\0"),
-			env: {GIT_AUTHOR_NAME: name, GIT_AUTHOR_EMAIL: email, GIT_AUTHOR_DATE: date},
+			env:
+			{
+				GIT_AUTHOR_NAME: name,
+				GIT_AUTHOR_EMAIL: email,
+				GIT_AUTHOR_DATE: date,
+			},
 		},
 	);
 	if (created.exitCode !== 0) return null;
@@ -68,17 +90,20 @@ export async function squashFixup(
  * The project's active auto-fixes, keyed by the failing commit's patch-id, after clearing every
  * marker whose branch no longer ends in the recorded fixup (the user dropped, squashed or moved it).
  */
-export async function reconcileAutoFixes(dir: string, project: string): Promise<Map<string, AutoFix>> {
+export async function reconcileAutoFixes(dir: string, project: string): Promise<Map<string, AutoFix>>
+{
 	const fixes = getAutoFixes(project);
 	if (fixes.size === 0) return fixes;
 	const refs = await git(dir, ["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
 	if (refs.exitCode !== 0) return fixes;
 	const tips = new Map<string, string>();
-	for (const line of refs.stdout.split("\n")) {
+	for (const line of refs.stdout.split("\n"))
+	{
 		const [name = "", sha = ""] = line.split("\0");
 		if (name !== "") tips.set(name, sha);
 	}
-	for (const [patchId, fix] of fixes) {
+	for (const [patchId, fix] of fixes)
+	{
 		if (tips.get(fix.branch) === fix.fixupSha) continue;
 		clearAutoFix(project, patchId);
 		fixes.delete(patchId);

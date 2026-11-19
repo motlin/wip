@@ -2,9 +2,15 @@ import {Args, Command} from "@oclif/core";
 
 import {type ConfigValue, getConfigValue, readConfig} from "@wip/shared";
 
-export default class ConfigGet extends Command {
-	static override args = {
-		key: Args.string({description: "Config key to read (omit to list all)"}),
+export default class ConfigGet extends Command
+{
+	static override args =
+	{
+		key: Args.string(
+			{
+				description: "Config key to read (omit to list all)",
+			},
+		),
 	};
 
 	static override description = "Get a config value";
@@ -17,20 +23,26 @@ export default class ConfigGet extends Command {
 		"<%= config.bin %> config get --json",
 	];
 
-	async run(): Promise<Record<string, ConfigValue>> {
+	async run(): Promise<Record<string, ConfigValue>>
+	{
 		const {args} = await this.parse(ConfigGet);
 
-		if (args.key) {
+		if (args.key)
+		{
 			const value = getConfigValue(args.key);
-			if (value === undefined) {
+			if (value === undefined)
+			{
 				this.error(`Key '${args.key}' is not set`);
 			}
 			this.log(Array.isArray(value) ? value.join(", ") : value);
-			return {[args.key]: value};
+			return {
+				[args.key]: value,
+			};
 		}
 
 		const config = readConfig();
-		for (const [key, value] of Object.entries(config)) {
+		for (const [key, value] of Object.entries(config))
+		{
 			this.log(`${key}=${Array.isArray(value) ? value.join(", ") : value}`);
 		}
 		return config;

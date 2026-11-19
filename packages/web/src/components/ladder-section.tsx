@@ -21,7 +21,8 @@ export function LadderSection({
 	results: readonly LadderResult[];
 	runLadderAll: () => Promise<unknown>;
 	focusPane: (paneId: string) => Promise<unknown>;
-}) {
+})
+{
 	const [running, setRunning] = useState(false);
 	const registered = inventory?.exists === true;
 	// Skip entries are never updated, so the count names only the repos the ladder will touch.
@@ -39,7 +40,8 @@ export function LadderSection({
 				<button
 					type="button"
 					disabled={running || !registered}
-					onClick={() => {
+					onClick={() =>
+					{
 						void runPendingAction("Update repos", setRunning, runLadderAll);
 					}}
 					className="inline-flex items-center gap-1.5 rounded-md border border-border-300/50 px-2.5 py-1 text-xs font-medium text-text-200 transition-colors hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-50"
@@ -117,8 +119,12 @@ export function LadderSection({
 										type="button"
 										title="Copy command"
 										aria-label="Copy command"
-										onClick={() => {
-											const {command} = result.needsAi ?? {command: ""};
+										onClick={() =>
+										{
+											const {command} = result.needsAi ??
+											{
+												command: "",
+											};
 											void runPendingAction("Copy command", undefined, async () =>
 												navigator.clipboard.writeText(command),
 											);
@@ -133,7 +139,8 @@ export function LadderSection({
 								<div className="ml-6 text-xs">
 									<button
 										type="button"
-										onClick={() => {
+										onClick={() =>
+										{
 											const paneId = result.herdr?.paneId ?? "";
 											void runPendingAction("Focus pane", undefined, async () =>
 												focusPane(paneId),

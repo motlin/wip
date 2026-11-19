@@ -6,6 +6,7 @@ export const SECTION_PAGE_SIZE = 25;
  * of a large section at once creates tens of thousands of DOM nodes, so
  * sections show one page until the user expands them.
  */
-export function limitVisibleItems<T>(items: readonly T[], limit: number, expanded: boolean): T[] {
+export function limitVisibleItems<T>(items: readonly T[], limit: number, expanded: boolean): T[]
+{
 	return expanded ? [...items] : items.slice(0, limit);
 }

@@ -13,12 +13,14 @@ const DIAGNOSTIC_REPORTS = path.join(os.homedir(), "Library", "Logs", "Diagnosti
  * Playwright's browser builds live under its cache (~/Library/Caches/ms-playwright, which macOS
  * masks to "~/Library/Caches/*"); other apps bundle Chromium too (an Electron app's crashpad handler).
  */
-function isPlaywrightBrowser(body) {
+function isPlaywrightBrowser(body)
+{
 	return /\/Library\/Caches\/(\*|ms-playwright)\//.test(body.procPath ?? "");
 }
 
 /** A Playwright browser .ips report's process, lifetime, exception and crashed thread; undefined for another app's. */
-export function summarizeCrashReport(text) {
+export function summarizeCrashReport(text)
+{
 	const body = JSON.parse(text.slice(text.indexOf("\n") + 1));
 	if (!isPlaywrightBrowser(body)) return undefined;
 	const {type, signal, subtype} = body.exception;
@@ -33,28 +35,42 @@ export function summarizeCrashReport(text) {
 }
 
 /** Parses an .ips capture time like "2026-11-05 14:10:15.3796 -0500" to epoch ms. */
-function captureTimeMs(captured) {
+function captureTimeMs(captured)
+{
 	const [date, time, zone] = captured.split(" ");
 	return Date.parse(`${date}T${time.slice(0, 12)}${zone.slice(0, 3)}:${zone.slice(3)}`);
 }
 
 /** Playwright Chromium crash reports captured at or after `sinceMs`, oldest first. */
-export function chromiumCrashReportsSince(sinceMs, dir = DIAGNOSTIC_REPORTS) {
+export function chromiumCrashReportsSince(sinceMs, dir = DIAGNOSTIC_REPORTS)
+{
 	let files;
-	try {
+	try
+	{
 		files = fs.readdirSync(dir);
-	} catch {
+	}
+	catch
+	{
 		return [];
 	}
 	return files
 		.filter((file) => file.endsWith(".ips") && /^(chrome|chromium)/i.test(file))
-		.flatMap((file) => {
-			try {
+		.flatMap((file) =>
+		{
+			try
+			{
 				const report = summarizeCrashReport(fs.readFileSync(path.join(dir, file), "utf8"));
 				return report && captureTimeMs(report.captured) >= sinceMs
-					? [{file: path.join(dir, file), ...report}]
+					? [
+							{
+								file: path.join(dir, file),
+								...report,
+							},
+						]
 					: [];
-			} catch {
+			}
+			catch
+			{
 				return [];
 			}
 		})
@@ -69,12 +85,14 @@ export function chromiumCrashReportsSince(sinceMs, dir = DIAGNOSTIC_REPORTS) {
 export async function waitForChromiumCrashReports(
 	sinceMs,
 	{crashSeen, timeoutMs = 10_000, pollMs = 250, dir = DIAGNOSTIC_REPORTS},
-) {
+)
+{
 	const deadline = Date.now() + timeoutMs;
 	let reports = chromiumCrashReportsSince(sinceMs, dir);
 	if (!crashSeen) return reports;
 	/* oxlint-disable no-await-in-loop -- polls until macOS writes the report or the deadline passes */
-	while (reports.length === 0 && Date.now() < deadline) {
+	while (reports.length === 0 && Date.now() < deadline)
+	{
 		await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, deadline - Date.now())));
 		reports = chromiumCrashReportsSince(sinceMs, dir);
 	}

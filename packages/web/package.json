@@ -31,7 +31,7 @@
 		"@tanstack/react-virtual": "^3.14.25",
 		"@wip/shared": "workspace:*",
 		"ansi-to-html": "^0.7.2",
-		"better-sqlite3": "^13.0.3",
+		"better-sqlite3": "^13.1.1",
 		"execa": "^10.2.1",
 		"lucide-react": "^1.67.0",
 		"react": "^19.3.1",

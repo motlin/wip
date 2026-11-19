@@ -1,4 +1,5 @@
-import {
+import
+{
 	Loader2,
 	Clock,
 	AlertTriangle,
@@ -27,7 +28,8 @@ import {UpstreamRedBlockedMarker} from "./upstream-ci-card";
 import {BranchActions} from "./commit-actions.js";
 import {branchRemoteUrl} from "../lib/branch-rename.js";
 
-function relativeTime(dateStr: string): string {
+function relativeTime(dateStr: string): string
+{
 	const date = new Date(dateStr);
 	const now = new Date();
 	const diffMs = now.getTime() - date.getTime();
@@ -40,18 +42,22 @@ function relativeTime(dateStr: string): string {
 	return `${Math.floor(diffDays / 365)} years ago`;
 }
 
-export function BranchCard({branch, category}: {branch: GitChildResult; category: Category}) {
+export function BranchCard({branch, category}: {branch: GitChildResult; category: Category})
+{
 	// Test status flows into the ["children"] cache through the single SSE
 	// writer (server-events-apply); this card only reads.
 	const testJob = useTestJob(branch.sha, branch.project);
 	const [copied, setCopied] = useState(false);
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (!copied) return undefined;
-		const timer = setTimeout(() => {
+		const timer = setTimeout(() =>
+		{
 			setCopied(false);
 		}, 2000);
-		return () => {
+		return () =>
+		{
 			clearTimeout(timer);
 		};
 	}, [copied]);
@@ -72,15 +78,24 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 	const [actionsActivated, setActionsActivated] = useState(false);
 	const listedReady = useLandContext()?.readyItemOf(branch) !== undefined;
 	const showActions = actionsActivated || testJob !== undefined || listedReady;
-	const activateActions = () => {
+	const activateActions = () =>
+	{
 		setActionsActivated(true);
 	};
 
 	const ghBranchUrl = branchRemoteUrl(branch);
 
-	const handleCancelTest = async () => {
+	const handleCancelTest = async () =>
+	{
 		if (!testJob) return;
-		await cancelTestFn({data: {id: testJob.id}});
+		await cancelTestFn(
+			{
+				data:
+				{
+					id: testJob.id,
+				},
+			},
+		);
 	};
 
 	const blockCommand = branch.blockCommand;
@@ -200,7 +215,11 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 
 			<Link
 				to="/item/$project/$sha"
-				params={{project: branch.project, sha: branch.sha}}
+				params={
+				{
+					project: branch.project,
+					sha: branch.sha,
+				}}
 				className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors"
 			>
 				{branch.subject}
@@ -230,7 +249,8 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 							</code>
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									void navigator.clipboard.writeText(blockCommand);
 									setCopied(true);
 								}}
@@ -256,7 +276,8 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 							<Loader2 className="h-3 w-3 animate-spin text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									void handleCancelTest();
 								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"
@@ -272,7 +293,8 @@ export function BranchCard({branch, category}: {branch: GitChildResult; category
 							<Clock className="h-3 w-3 text-yellow-500" aria-hidden="true" />
 							<button
 								type="button"
-								onClick={() => {
+								onClick={() =>
+								{
 									void handleCancelTest();
 								}}
 								className="rounded p-0.5 text-text-500 transition-colors hover:text-red-400"

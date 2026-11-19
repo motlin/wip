@@ -5,7 +5,8 @@ import {CategoryBadge} from "./category-badge";
 import {LabelList} from "./label-list";
 
 // No primary action: an issue's next step (triage it into a todo or a branch) is the user's judgment, not one click.
-export function IssueCard({issue, category}: {issue: IssueResult; category?: Category}) {
+export function IssueCard({issue, category}: {issue: IssueResult; category?: Category})
+{
 	return (
 		<div className="rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm hover:shadow-md transition-shadow">
 			<div className="flex items-center gap-1.5">
@@ -29,7 +30,11 @@ export function IssueCard({issue, category}: {issue: IssueResult; category?: Cat
 			</div>
 			<Link
 				to="/issue/$project/$number"
-				params={{project: issue.repository.name, number: String(issue.number)}}
+				params={
+				{
+					project: issue.repository.name,
+					number: String(issue.number),
+				}}
 				className="mt-1.5 block text-sm leading-snug text-text-100 hover:text-text-000 transition-colors"
 			>
 				{issue.title}

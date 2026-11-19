@@ -9,7 +9,8 @@ import type {WorkResourceProbe} from "./work-queue.js";
  * SSE bootstrap calls it too, which is harmless since setProbe replaces.
  * Node-only dependency (createSystemProbe) is late-bound.
  */
-export async function installResourceProbe(probe?: WorkResourceProbe): Promise<void> {
+export async function installResourceProbe(probe?: WorkResourceProbe): Promise<void>
+{
 	const shared = await import("@wip/shared");
 	workQueue.setProbe(probe ?? shared.createSystemProbe());
 	workQueue.setResourceLock(shared.createRepoResourceLock());
@@ -23,8 +24,15 @@ export async function installResourceProbe(probe?: WorkResourceProbe): Promise<v
  * Boot-time wrapper: an install failure leaves the queue ungated, so it is
  * logged rather than silently swallowed. Never rejects.
  */
-export async function installResourceProbeAtBoot(): Promise<void> {
-	await installResourceProbe().catch((error: unknown) => {
-		log.general.error({error}, "Resource probe install failed; work queue is ungated");
+export async function installResourceProbeAtBoot(): Promise<void>
+{
+	await installResourceProbe().catch((error: unknown) =>
+	{
+		log.general.error(
+			{
+				error,
+			},
+			"Resource probe install failed; work queue is ungated",
+		);
 	});
 }

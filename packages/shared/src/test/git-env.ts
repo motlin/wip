@@ -9,9 +9,12 @@ const SUITE_OWNED_GIT_VARIABLES = new Set(["GIT_FIXTURE_RECORD"]);
  * `git config user.name ...` in a temp dir would write into the real repo's .git/config instead.
  * It also pins core.fsmonitor=false for every git the tests spawn.
  */
-export function sanitizeGitEnv(env: NodeJS.ProcessEnv): void {
-	for (const key of Object.keys(env)) {
-		if (key.startsWith("GIT_") && !SUITE_OWNED_GIT_VARIABLES.has(key)) {
+export function sanitizeGitEnv(env: NodeJS.ProcessEnv): void
+{
+	for (const key of Object.keys(env))
+	{
+		if (key.startsWith("GIT_") && !SUITE_OWNED_GIT_VARIABLES.has(key))
+		{
 			Reflect.deleteProperty(env, key);
 		}
 	}

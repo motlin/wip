@@ -7,29 +7,37 @@ import {tracedExeca} from "../services/traced-execa.js";
 import {createGate} from "./concurrency.js";
 import {getBranchNames, setBranchName} from "./db.js";
 
-interface NamingRequest {
+interface NamingRequest
+{
 	sha: string;
 	project: string;
 	subject: string;
 	dir: string;
 }
 
-const BranchNamingResultSchema = z.object({
-	branchName: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+){2,5}$/),
-});
+const BranchNamingResultSchema = z.object(
+	{
+		branchName: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+){2,5}$/),
+	},
+);
 
-const ClaudeBranchNamingOutputSchema = z.object({
-	type: z.literal("result"),
-	subtype: z.literal("success"),
-	is_error: z.literal(false),
-	structured_output: BranchNamingResultSchema,
-});
+const ClaudeBranchNamingOutputSchema = z.object(
+	{
+		type: z.literal("result"),
+		subtype: z.literal("success"),
+		is_error: z.literal(false),
+		structured_output: BranchNamingResultSchema,
+	},
+);
 
-const BRANCH_NAMING_JSON_SCHEMA = {
+const BRANCH_NAMING_JSON_SCHEMA =
+{
 	type: "object",
 	additionalProperties: false,
-	properties: {
-		branchName: {
+	properties:
+	{
+		branchName:
+		{
 			type: "string",
 			pattern: "^[a-z0-9]+(?:-[a-z0-9]+){2,5}$",
 		},
@@ -40,12 +48,18 @@ const BRANCH_NAMING_JSON_SCHEMA = {
 const NAMING_GATE_LIMIT = 1;
 const namingGate = createGate(NAMING_GATE_LIMIT);
 
-export async function nameBranch(req: NamingRequest): Promise<string | null> {
-	const commit = await tracedExeca("git", ["-C", req.dir, "show", "--stat", "--format=fuller", req.sha], {
-		reject: false,
-		timeout: 10_000,
-	});
-	if (commit.exitCode !== 0 || !commit.stdout.trim()) {
+export async function nameBranch(req: NamingRequest): Promise<string | null>
+{
+	const commit = await tracedExeca(
+		"git",
+		["-C", req.dir, "show", "--stat", "--format=fuller", req.sha],
+		{
+			reject: false,
+			timeout: 10_000,
+		},
+	);
+	if (commit.exitCode !== 0 || !commit.stdout.trim())
+	{
 		return null;
 	}
 
@@ -91,24 +105,45 @@ ${commit.stdout}
 	);
 	const duration = Math.round(performance.now() - start);
 	log.subprocess.debug(
-		{cmd: "claude", args: ["-p", "..."], duration},
+		{
+			cmd: "claude",
+			args: ["-p", "..."],
+			duration,
+		},
 		`claude -p branch naming for ${req.sha.slice(0, 7)} (${duration}ms)`,
 	);
 
-	if (result.exitCode !== 0 || !result.stdout.trim()) {
+	if (result.exitCode !== 0 || !result.stdout.trim())
+	{
 		return null;
 	}
 
 	let parsed: unknown;
-	try {
+	try
+	{
 		parsed = JSON.parse(result.stdout);
-	} catch {
-		log.general.warn({sha: req.sha, project: req.project}, "branch naming output was not JSON");
+	}
+	catch
+	{
+		log.general.warn(
+			{
+				sha: req.sha,
+				project: req.project,
+			},
+			"branch naming output was not JSON",
+		);
 		return null;
 	}
 	const output = ClaudeBranchNamingOutputSchema.safeParse(parsed);
-	if (!output.success) {
-		log.general.warn({sha: req.sha, project: req.project}, "branch naming output failed schema validation");
+	if (!output.success)
+	{
+		log.general.warn(
+			{
+				sha: req.sha,
+				project: req.project,
+			},
+			"branch naming output failed schema validation",
+		);
 		return null;
 	}
 	return output.data.structured_output.branchName;
@@ -119,19 +154,24 @@ ${commit.stdout}
 const FAILED_NAMING_COOLDOWN_MS = 10 * 60_000;
 const failedNamingAt = new Map<string, number>();
 
-export function failedNamingKeysForTests(): string[] {
+export function failedNamingKeysForTests(): string[]
+{
 	return [...failedNamingAt.keys()];
 }
 
-function pruneExpiredFailures(now: number): void {
-	for (const [key, failedAt] of failedNamingAt) {
-		if (now - failedAt >= FAILED_NAMING_COOLDOWN_MS) {
+function pruneExpiredFailures(now: number): void
+{
+	for (const [key, failedAt] of failedNamingAt)
+	{
+		if (now - failedAt >= FAILED_NAMING_COOLDOWN_MS)
+		{
 			failedNamingAt.delete(key);
 		}
 	}
 }
 
-export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map<string, string>> {
+export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map<string, string>>
+{
 	const result = new Map<string, string>();
 	if (requests.length === 0) return result;
 
@@ -141,30 +181,40 @@ export async function suggestBranchNames(requests: NamingRequest[]): Promise<Map
 	// Check cache first
 	const cached = getBranchNames(requests);
 	const uncached: NamingRequest[] = [];
-	for (const req of requests) {
+	for (const req of requests)
+	{
 		const key = `${req.project}:${req.sha}`;
 		const name = cached.get(key);
 		const failedAt = failedNamingAt.get(key);
-		if (name) {
+		if (name)
+		{
 			result.set(key, name);
-		} else if (failedAt !== undefined && now - failedAt < FAILED_NAMING_COOLDOWN_MS) {
+		}
+		else if (failedAt !== undefined && now - failedAt < FAILED_NAMING_COOLDOWN_MS)
+		{
 			continue;
-		} else {
+		}
+		else
+		{
 			uncached.push(req);
 		}
 	}
 
 	const names = await Promise.all(uncached.map(async (req) => nameBranch(req)));
-	for (let i = 0; i < uncached.length; i++) {
+	for (let i = 0; i < uncached.length; i++)
+	{
 		const name = names[i];
 		const req = uncached[i];
 		if (!req) continue;
 		const key = `${req.project}:${req.sha}`;
-		if (name) {
+		if (name)
+		{
 			result.set(key, name);
 			failedNamingAt.delete(key);
 			setBranchName(req.sha, req.project, name);
-		} else {
+		}
+		else
+		{
 			failedNamingAt.set(key, Date.now());
 		}
 	}

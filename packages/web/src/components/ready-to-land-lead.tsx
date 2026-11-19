@@ -6,7 +6,8 @@ import {PushMainCards} from "./push-main-card.js";
  * "n ready (target k) · m readying", Paused on battery, the buffer's notices (draft-PR verification
  * not in effect, untrusted repos), then one Push main card per project, first in the column.
  */
-export function ReadyToLandLead({land, project}: {land: LandContextValue; project: string | null}) {
+export function ReadyToLandLead({land, project}: {land: LandContextValue; project: string | null})
+{
 	const {state} = land;
 	if (state === null || state === undefined) return null;
 	return (

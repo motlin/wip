@@ -4,16 +4,30 @@ import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 
-const {execaCalls} = vi.hoisted(() => ({
-	execaCalls: [] as {command: string; args: readonly string[]; input: string}[],
+const {execaCalls} = vi.hoisted(() => (
+{
+	execaCalls: [] as
+	{
+		command: string;
+		args: readonly string[];
+		input: string;
+	}[],
 }));
 
-vi.mock("execa", async (importOriginal) => {
+vi.mock("execa", async (importOriginal) =>
+{
 	const original = await importOriginal<typeof import("execa")>();
 	return {
 		...original,
-		execa: async (command: string, args: readonly string[], options?: import("execa").Options) => {
-			execaCalls.push({command, args, input: typeof options?.input === "string" ? options.input : ""});
+		execa: async (command: string, args: readonly string[], options?: import("execa").Options) =>
+		{
+			execaCalls.push(
+				{
+					command,
+					args,
+					input: typeof options?.input === "string" ? options.input : "",
+				},
+			);
 			return original.execa(command, args, options);
 		},
 	};
@@ -23,13 +37,21 @@ import {changeIdentity, RunMemory, type UnitRef} from "./advance-progress.js";
 import {getCommitFacts} from "./commit-facts.js";
 import {initDb, resetDb} from "./db.js";
 
-function sh(dir: string, command: string): string {
-	return execSync(command, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
+function sh(dir: string, command: string): string
+{
+	return execSync(
+		command,
+		{
+			cwd: dir,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
 
-function commitFile(dir: string, file: string, content: string, message: string): string {
+function commitFile(dir: string, file: string, content: string, message: string): string
+{
 	writeFileSync(join(dir, file), content);
 	sh(dir, `git add . && git commit -q -m '${message}'`);
 	return sh(dir, "git rev-parse HEAD");
@@ -39,7 +61,8 @@ function commitFile(dir: string, file: string, content: string, message: string)
  * main:    base -> other
  * feature: base -> feat   (feat rebased onto other afterward)
  */
-function createRepo(): string {
+function createRepo(): string
+{
 	const dir = mkdtempSync(join(tmpdir(), "wip-commit-facts-"));
 	sh(dir, "git init -q -b main");
 	sh(dir, "git config user.email test@test.com");
@@ -48,21 +71,31 @@ function createRepo(): string {
 	return dir;
 }
 
-describe("getCommitFacts", () => {
+describe("getCommitFacts", () =>
+{
 	let dir: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		dir = createRepo();
 		execaCalls.length = 0;
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetDb();
-		rmSync(dir, {recursive: true, force: true});
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("keeps the patch-id stable across a clean rebase and reports size", async () => {
+	it("keeps the patch-id stable across a clean rebase and reports size", async () =>
+	{
 		sh(dir, "git checkout -q -b feature");
 		writeFileSync(join(dir, "shared.txt"), "one\nTWO\nthree\nfour\n");
 		writeFileSync(join(dir, "new.txt"), "a\nb\n");
@@ -77,11 +110,26 @@ describe("getCommitFacts", () => {
 		const facts = await getCommitFacts(dir, "proj", [before, after]);
 		const patchId = facts.get(before)?.patchId ?? "";
 		expect(patchId).toMatch(/^[0-9a-f]{40}$/);
-		expect(facts.get(before)).toStrictEqual({patchId, files: 2, insertions: 4, deletions: 1});
-		expect(facts.get(after)).toStrictEqual({patchId, files: 2, insertions: 4, deletions: 1});
+		expect(facts.get(before)).toStrictEqual(
+			{
+				patchId,
+				files: 2,
+				insertions: 4,
+				deletions: 1,
+			},
+		);
+		expect(facts.get(after)).toStrictEqual(
+			{
+				patchId,
+				files: 2,
+				insertions: 4,
+				deletions: 1,
+			},
+		);
 	});
 
-	it("batches misses into a fixed number of subprocesses and spawns none on the second call", async () => {
+	it("batches misses into a fixed number of subprocesses and spawns none on the second call", async () =>
+	{
 		const shas = [
 			commitFile(dir, "a.txt", "a\n", "a"),
 			commitFile(dir, "b.txt", "b\n", "b"),
@@ -98,7 +146,8 @@ describe("getCommitFacts", () => {
 		expect([...second.keys()]).toStrictEqual(shas);
 	});
 
-	it("only fetches the misses when some shas are already cached", async () => {
+	it("only fetches the misses when some shas are already cached", async () =>
+	{
 		const first = commitFile(dir, "a.txt", "a\n", "a");
 		await getCommitFacts(dir, "proj", [first]);
 		const second = commitFile(dir, "b.txt", "b\n", "b");
@@ -110,14 +159,23 @@ describe("getCommitFacts", () => {
 		for (const input of stdinInputs) expect(input.trim()).toStrictEqual(second);
 	});
 
-	it("records an empty commit with no patch-id and zero size", async () => {
+	it("records an empty commit with no patch-id and zero size", async () =>
+	{
 		sh(dir, "git commit -q --allow-empty -m empty");
 		const empty = sh(dir, "git rev-parse HEAD");
 		const facts = await getCommitFacts(dir, "proj", [empty]);
-		expect(facts.get(empty)).toStrictEqual({patchId: "", files: 0, insertions: 0, deletions: 0});
+		expect(facts.get(empty)).toStrictEqual(
+			{
+				patchId: "",
+				files: 0,
+				insertions: 0,
+				deletions: 0,
+			},
+		);
 	});
 
-	it("lets RunMemory recognize the change after a rebase", async () => {
+	it("lets RunMemory recognize the change after a rebase", async () =>
+	{
 		sh(dir, "git checkout -q -b feature");
 		const before = commitFile(dir, "feat.txt", "feat\n", "feat");
 		sh(dir, "git checkout -q main");
@@ -126,9 +184,16 @@ describe("getCommitFacts", () => {
 		const after = sh(dir, "git rev-parse HEAD");
 
 		const facts = await getCommitFacts(dir, "proj", [before, after]);
-		const refFor = (sha: string): UnitRef => ({
+		const refFor = (sha: string): UnitRef => (
+		{
 			project: "proj",
-			changeIdentity: changeIdentity({patchId: facts.get(sha)?.patchId ?? "", branch: "feature", sha}),
+			changeIdentity: changeIdentity(
+				{
+					patchId: facts.get(sha)?.patchId ?? "",
+					branch: "feature",
+					sha,
+				},
+			),
 		});
 		const memory = new RunMemory();
 		memory.record(refFor(before), "test", "sig");

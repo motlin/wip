@@ -4,34 +4,51 @@ import {getAutoMergeAllowed, prRepository, resetAutoMergeAllowedCache} from "./g
 import {markGitHubRateLimited, resetGitHubRateLimit} from "./rate-limit.js";
 import {resetGitHubClient, setGitHubClient} from "../services/github-client.js";
 
-function fakeClient(respond: (variables: Record<string, unknown> | undefined) => unknown) {
+function fakeClient(respond: (variables: Record<string, unknown> | undefined) => unknown)
+{
 	const calls: (Record<string, unknown> | undefined)[] = [];
-	setGitHubClient({
-		graphql: async (_query, variables) => {
-			calls.push(variables);
-			const response = respond(variables);
-			if (response instanceof Error) throw response;
-			return Promise.resolve(response);
+	setGitHubClient(
+		{
+			graphql: async (_query, variables) =>
+			{
+				calls.push(variables);
+				const response = respond(variables);
+				if (response instanceof Error) throw response;
+				return Promise.resolve(response);
+			},
 		},
-	});
+	);
 	return calls;
 }
 
-const allowed = (value: boolean) => ({data: {repository: {autoMergeAllowed: value}}});
+const allowed = (value: boolean) => (
+{
+	data:
+	{
+		repository:
+		{
+			autoMergeAllowed: value,
+		},
+	},
+});
 
-describe("getAutoMergeAllowed", () => {
-	beforeEach(() => {
+describe("getAutoMergeAllowed", () =>
+{
+	beforeEach(() =>
+	{
 		resetGitHubRateLimit();
 		resetAutoMergeAllowedCache();
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetGitHubClient();
 		resetGitHubRateLimit();
 		resetAutoMergeAllowedCache();
 	});
 
-	it("reads whether the repo allows auto-merge once per repo and caches it", async () => {
+	it("reads whether the repo allows auto-merge once per repo and caches it", async () =>
+	{
 		const calls = fakeClient((variables) => allowed(variables?.["name"] === "auto"));
 
 		const results = [
@@ -40,16 +57,30 @@ describe("getAutoMergeAllowed", () => {
 			await getAutoMergeAllowed("motlin/manual"),
 		];
 
-		expect({results, calls}).toStrictEqual({
-			results: [true, true, false],
-			calls: [
-				{owner: "motlin", name: "auto"},
-				{owner: "motlin", name: "manual"},
-			],
-		});
+		expect(
+			{
+				results,
+				calls,
+			},
+		).toStrictEqual(
+			{
+				results: [true, true, false],
+				calls: [
+					{
+						owner: "motlin",
+						name: "auto",
+					},
+					{
+						owner: "motlin",
+						name: "manual",
+					},
+				],
+			},
+		);
 	});
 
-	it("is false without caching when the request fails, and false while rate limited", async () => {
+	it("is false without caching when the request fails, and false while rate limited", async () =>
+	{
 		let fail = true;
 		const calls = fakeClient(() => (fail ? new Error("network down") : allowed(true)));
 
@@ -60,20 +91,43 @@ describe("getAutoMergeAllowed", () => {
 		markGitHubRateLimited();
 		const limited = await getAutoMergeAllowed("motlin/auto");
 
-		expect({failed, recovered, limited, calls: calls.length}).toStrictEqual({
-			failed: false,
-			recovered: true,
-			limited: false,
-			calls: 2,
-		});
+		expect(
+			{
+				failed,
+				recovered,
+				limited,
+				calls: calls.length,
+			},
+		).toStrictEqual(
+			{
+				failed: false,
+				recovered: true,
+				limited: false,
+				calls: 2,
+			},
+		);
 	});
 });
 
-describe("prRepository", () => {
-	it("is origin when origin is the upstream remote, else the fork parent", () => {
+describe("prRepository", () =>
+{
+	it("is origin when origin is the upstream remote, else the fork parent", () =>
+	{
 		expect([
-			prRepository({upstreamRemote: "origin", originRemote: "motlin/avalon", remote: "avalon-org/avalon"}),
-			prRepository({upstreamRemote: "upstream", originRemote: "motlin/avalon", remote: "avalon-org/avalon"}),
+			prRepository(
+				{
+					upstreamRemote: "origin",
+					originRemote: "motlin/avalon",
+					remote: "avalon-org/avalon",
+				},
+			),
+			prRepository(
+				{
+					upstreamRemote: "upstream",
+					originRemote: "motlin/avalon",
+					remote: "avalon-org/avalon",
+				},
+			),
 		]).toStrictEqual(["motlin/avalon", "avalon-org/avalon"]);
 	});
 });

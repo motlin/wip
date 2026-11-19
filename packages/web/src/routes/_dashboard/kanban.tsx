@@ -13,24 +13,36 @@ import {CATEGORY_PRIORITY} from "../../lib/category-actions.js";
 import {LandContext} from "../../lib/land-context.js";
 import {useLandContextValue} from "../../lib/use-land-ready-item.js";
 
-export const Route = createFileRoute("/_dashboard/kanban")({
-	head: () => ({
-		meta: [{title: "WIP Kanban"}],
-	}),
-	component: Kanban,
-});
+export const Route = createFileRoute("/_dashboard/kanban")(
+	{
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP Kanban",
+				},
+			],
+		}),
+		component: Kanban,
+	},
+);
 
-function Kanban() {
+function Kanban()
+{
 	const {data: projects} = useSuspenseQuery(projectsQueryOptions());
 	const workItems = useWorkItems(projects);
 	const [refreshingAll, setRefreshingAll] = useState(false);
 
 	const {data: readyToLand} = useQuery(readyToLandQueryOptions());
-	const {grouped: builtGrouped, totalCount} = useMemo(() => {
+	const {grouped: builtGrouped, totalCount} = useMemo(() =>
+	{
 		const g = buildGrouped(workItems, projects, readyToLand);
 		let total = 0;
 		for (const cat of CATEGORY_PRIORITY) total += bucketCount(g[cat]);
-		return {grouped: g, totalCount: total};
+		return {
+			grouped: g,
+			totalCount: total,
+		};
 	}, [workItems, projects, readyToLand]);
 
 	const {data: mainPushes} = useQuery(mainPushesQueryOptions());
@@ -38,8 +50,10 @@ function Kanban() {
 	// A card whose land action runs stays in its column until the outcome settles.
 	const grouped = usePinnedLandings(builtGrouped, landContext.outcomes);
 
-	const handleRefreshAll = async () => {
-		await runPendingAction("Refresh all", setRefreshingAll, async () => {
+	const handleRefreshAll = async () =>
+	{
+		await runPendingAction("Refresh all", setRefreshingAll, async () =>
+		{
 			await refreshAll();
 		});
 	};
@@ -52,7 +66,8 @@ function Kanban() {
 					<div className="flex items-center gap-3">
 						<button
 							type="button"
-							onClick={() => {
+							onClick={() =>
+							{
 								void handleRefreshAll();
 							}}
 							disabled={refreshingAll}
@@ -67,7 +82,8 @@ function Kanban() {
 					</div>
 				</div>
 				<div className="grid auto-cols-[minmax(200px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
-					{CATEGORY_PRIORITY.map((category) => {
+					{CATEGORY_PRIORITY.map((category) =>
+					{
 						const items = grouped[category];
 						const count = bucketCount(items);
 						// Ready to Land opens with the buffer's counts and Push main cards, so it shows even empty.

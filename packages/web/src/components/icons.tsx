@@ -55,19 +55,39 @@ const LUCIDE_SPRITE = [
 
 type SpriteIconId = (typeof LUCIDE_SPRITE)[number][0] | "github";
 
-const SPRITE_SYMBOLS: ReadonlyArray<{id: SpriteIconId; viewBox: string; content: ReactNode}> = [
-	...LUCIDE_SPRITE.map(([id, Icon]) => ({
+const SPRITE_SYMBOLS: ReadonlyArray<
+{
+	id: SpriteIconId;
+	viewBox: string;
+	content: ReactNode;
+}> = [
+	...LUCIDE_SPRITE.map(([id, Icon]) => (
+	{
 		id,
 		viewBox: "0 0 24 24",
 		content: <Icon />,
 	})),
-	{id: "github", viewBox: "0 0 16 16", content: <path fill="currentColor" d={GITHUB_MARK_PATH} />},
+	{
+		id: "github",
+		viewBox: "0 0 16 16",
+		content: <path fill="currentColor" d={GITHUB_MARK_PATH} />,
+	},
 ];
 
 /** The one definition of every icon; render once per document. */
-export function IconSprite() {
+export function IconSprite()
+{
 	return (
-		<svg width="0" height="0" style={{position: "absolute", overflow: "hidden"}} aria-hidden="true">
+		<svg
+			width="0"
+			height="0"
+			style={
+			{
+				position: "absolute",
+				overflow: "hidden",
+			}}
+			aria-hidden="true"
+		>
 			{SPRITE_SYMBOLS.map(({id, viewBox, content}) => (
 				<symbol key={id} id={`icon-${id}`} viewBox={viewBox}>
 					{content}
@@ -77,12 +97,20 @@ export function IconSprite() {
 	);
 }
 
-export interface IconProps {
+export interface IconProps
+{
 	className?: string;
 	"aria-hidden"?: boolean | "true" | "false";
 }
 
-function SpriteIcon({id, className}: IconProps & {id: SpriteIconId}) {
+function SpriteIcon({
+	id,
+	className,
+}: IconProps &
+{
+	id: SpriteIconId;
+})
+{
 	return (
 		<svg className={className} width="24" height="24" aria-hidden="true">
 			<use href={`#icon-${id}`} />
@@ -90,166 +118,207 @@ function SpriteIcon({id, className}: IconProps & {id: SpriteIconId}) {
 	);
 }
 
-export function AlarmClockOff({className}: IconProps) {
+export function AlarmClockOff({className}: IconProps)
+{
 	return <SpriteIcon id="alarm-clock-off" className={className} />;
 }
 
-export function AlertCircle({className}: IconProps) {
+export function AlertCircle({className}: IconProps)
+{
 	return <SpriteIcon id="alert-circle" className={className} />;
 }
 
-export function AlertTriangle({className}: IconProps) {
+export function AlertTriangle({className}: IconProps)
+{
 	return <SpriteIcon id="alert-triangle" className={className} />;
 }
 
-export function ArrowDown({className}: IconProps) {
+export function ArrowDown({className}: IconProps)
+{
 	return <SpriteIcon id="arrow-down" className={className} />;
 }
 
-export function ArrowLeft({className}: IconProps) {
+export function ArrowLeft({className}: IconProps)
+{
 	return <SpriteIcon id="arrow-left" className={className} />;
 }
 
-export function ArrowRight({className}: IconProps) {
+export function ArrowRight({className}: IconProps)
+{
 	return <SpriteIcon id="arrow-right" className={className} />;
 }
 
-export function ArrowUpRight({className}: IconProps) {
+export function ArrowUpRight({className}: IconProps)
+{
 	return <SpriteIcon id="arrow-up-right" className={className} />;
 }
 
-export function Ban({className}: IconProps) {
+export function Ban({className}: IconProps)
+{
 	return <SpriteIcon id="ban" className={className} />;
 }
 
-export function Bot({className}: IconProps) {
+export function Bot({className}: IconProps)
+{
 	return <SpriteIcon id="bot" className={className} />;
 }
 
-export function Check({className}: IconProps) {
+export function Check({className}: IconProps)
+{
 	return <SpriteIcon id="check" className={className} />;
 }
 
-export function CheckCircle({className}: IconProps) {
+export function CheckCircle({className}: IconProps)
+{
 	return <SpriteIcon id="check-circle" className={className} />;
 }
 
-export function CheckCircle2({className}: IconProps) {
+export function CheckCircle2({className}: IconProps)
+{
 	return <SpriteIcon id="check-circle-2" className={className} />;
 }
 
-export function CircleDot({className}: IconProps) {
+export function CircleDot({className}: IconProps)
+{
 	return <SpriteIcon id="circle-dot" className={className} />;
 }
 
-export function ClipboardList({className}: IconProps) {
+export function ClipboardList({className}: IconProps)
+{
 	return <SpriteIcon id="clipboard-list" className={className} />;
 }
 
-export function Clock({className}: IconProps) {
+export function Clock({className}: IconProps)
+{
 	return <SpriteIcon id="clock" className={className} />;
 }
 
-export function Cloud({className}: IconProps) {
+export function Cloud({className}: IconProps)
+{
 	return <SpriteIcon id="cloud" className={className} />;
 }
 
-export function Copy({className}: IconProps) {
+export function Copy({className}: IconProps)
+{
 	return <SpriteIcon id="copy" className={className} />;
 }
 
-export function Diff({className}: IconProps) {
+export function Diff({className}: IconProps)
+{
 	return <SpriteIcon id="diff" className={className} />;
 }
 
-export function ExternalLink({className}: IconProps) {
+export function ExternalLink({className}: IconProps)
+{
 	return <SpriteIcon id="external-link" className={className} />;
 }
 
-export function Eye({className}: IconProps) {
+export function Eye({className}: IconProps)
+{
 	return <SpriteIcon id="eye" className={className} />;
 }
 
-export function FileText({className}: IconProps) {
+export function FileText({className}: IconProps)
+{
 	return <SpriteIcon id="file-text" className={className} />;
 }
 
-export function FlaskConical({className}: IconProps) {
+export function FlaskConical({className}: IconProps)
+{
 	return <SpriteIcon id="flask-conical" className={className} />;
 }
 
-export function GitBranch({className}: IconProps) {
+export function GitBranch({className}: IconProps)
+{
 	return <SpriteIcon id="git-branch" className={className} />;
 }
 
-export function GitMerge({className}: IconProps) {
+export function GitMerge({className}: IconProps)
+{
 	return <SpriteIcon id="git-merge" className={className} />;
 }
 
-export function HardDrive({className}: IconProps) {
+export function HardDrive({className}: IconProps)
+{
 	return <SpriteIcon id="hard-drive" className={className} />;
 }
 
-export function Info({className}: IconProps) {
+export function Info({className}: IconProps)
+{
 	return <SpriteIcon id="info" className={className} />;
 }
 
-export function LayoutGrid({className}: IconProps) {
+export function LayoutGrid({className}: IconProps)
+{
 	return <SpriteIcon id="layout-grid" className={className} />;
 }
 
-export function Loader2({className}: IconProps) {
+export function Loader2({className}: IconProps)
+{
 	return <SpriteIcon id="loader-2" className={className} />;
 }
 
-export function Moon({className}: IconProps) {
+export function Moon({className}: IconProps)
+{
 	return <SpriteIcon id="moon" className={className} />;
 }
 
-export function OctagonAlert({className}: IconProps) {
+export function OctagonAlert({className}: IconProps)
+{
 	return <SpriteIcon id="octagon-alert" className={className} />;
 }
 
-export function Pencil({className}: IconProps) {
+export function Pencil({className}: IconProps)
+{
 	return <SpriteIcon id="pencil" className={className} />;
 }
 
-export function Play({className}: IconProps) {
+export function Play({className}: IconProps)
+{
 	return <SpriteIcon id="play" className={className} />;
 }
 
-export function RefreshCw({className}: IconProps) {
+export function RefreshCw({className}: IconProps)
+{
 	return <SpriteIcon id="refresh-cw" className={className} />;
 }
 
-export function Save({className}: IconProps) {
+export function Save({className}: IconProps)
+{
 	return <SpriteIcon id="save" className={className} />;
 }
 
-export function SearchX({className}: IconProps) {
+export function SearchX({className}: IconProps)
+{
 	return <SpriteIcon id="search-x" className={className} />;
 }
 
-export function Sun({className}: IconProps) {
+export function Sun({className}: IconProps)
+{
 	return <SpriteIcon id="sun" className={className} />;
 }
 
-export function Trash2({className}: IconProps) {
+export function Trash2({className}: IconProps)
+{
 	return <SpriteIcon id="trash-2" className={className} />;
 }
 
-export function Wrench({className}: IconProps) {
+export function Wrench({className}: IconProps)
+{
 	return <SpriteIcon id="wrench" className={className} />;
 }
 
-export function X({className}: IconProps) {
+export function X({className}: IconProps)
+{
 	return <SpriteIcon id="x" className={className} />;
 }
 
-export function XCircle({className}: IconProps) {
+export function XCircle({className}: IconProps)
+{
 	return <SpriteIcon id="x-circle" className={className} />;
 }
 
-export function GitHubIcon({className}: IconProps) {
+export function GitHubIcon({className}: IconProps)
+{
 	return <SpriteIcon id="github" className={className} />;
 }

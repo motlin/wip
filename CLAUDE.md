@@ -19,7 +19,8 @@
 ## Build and Check Commands
 
 - `just build` -- build all packages
-- `just check` -- format + lint + typecheck (with `--fix`)
+- `just format` -- format with oxfmt-next-line
+- `just check` -- lint + typecheck (with `--fix`)
 - `just test` -- build then run all tests
 - `just verify` -- check + build + typecheck + test (`just precommit` is a deprecated alias)
 - `pnpm --filter @wip/shared build` -- build the shared package only
@@ -82,8 +83,13 @@
 - `POLLY_RECORD=true just test` -- re-records GitHub API fixtures (requires valid `gh auth` or `GITHUB_TOKEN`)
 - `GIT_FIXTURE_RECORD=true just test` -- re-records git subprocess fixtures
 
+## Formatting
+
+Formatting uses [oxfmt-next-line](https://www.npmjs.com/package/oxfmt-next-line), a fork of oxfmt that puts opening braces on their own line. mise installs it, and it reads `.oxfmtrc.json`. Run `just format` or `oxfmt-next-line`, not `vp fmt`: Vite+'s bundled oxfmt does not support next-line braces, so `vite.config.ts` has no `fmt` block and sets `check.fmt: false`, which makes `vp check` lint and type-check without formatting. The pre-commit `oxfmt` hook enforces formatting in CI.
+
 ## Code Style
 
 - Tab indentation (width 4); YAML uses 2-space indentation
+- Opening braces on their own line
 - Double quotes for strings
 - Imports use `.js` extensions (TypeScript with ESM)

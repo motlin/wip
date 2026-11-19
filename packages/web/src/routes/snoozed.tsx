@@ -7,15 +7,29 @@ import type {SnoozedChild} from "../lib/server-fns.js";
 import {snoozedQueryOptions} from "../lib/queries.js";
 import {snoozeLabel} from "../lib/snooze-label.js";
 
-export const Route = createFileRoute("/snoozed")({
-	loader: async ({context: {queryClient}}) => queryClient.query({...snoozedQueryOptions(), staleTime: "static"}),
-	head: () => ({
-		meta: [{title: "WIP Snoozed"}],
-	}),
-	component: Snoozed,
-});
+export const Route = createFileRoute("/snoozed")(
+	{
+		loader: async ({context: {queryClient}}) =>
+			queryClient.query(
+				{
+					...snoozedQueryOptions(),
+					staleTime: "static",
+				},
+			),
+		head: () => (
+		{
+			meta: [
+				{
+					title: "WIP Snoozed",
+				},
+			],
+		}),
+		component: Snoozed,
+	},
+);
 
-function Snoozed() {
+function Snoozed()
+{
 	const {data: snoozed} = useSuspenseQuery(snoozedQueryOptions());
 
 	const onHold = snoozed.filter((s) => s.until === null);
@@ -63,28 +77,51 @@ function Snoozed() {
 	);
 }
 
-function SnoozedCard({item}: {item: SnoozedChild}) {
+function SnoozedCard({item}: {item: SnoozedChild})
+{
 	const queryClient = useQueryClient();
 	const [waking, setWaking] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const handleUnsnooze = async () => {
+	const handleUnsnooze = async () =>
+	{
 		setWaking(true);
 		setError(null);
 		const saved = queryClient.getQueryData<SnoozedChild[]>(["snoozed"]);
 		queryClient.setQueryData<SnoozedChild[]>(["snoozed"], (old) =>
 			old?.filter((s) => !(s.sha === item.sha && s.project === item.project)),
 		);
-		try {
-			const result = await unsnoozeChildFn({data: {sha: item.sha, project: item.project}});
-			if (result.ok) {
-				const fresh = await getProjectChildren({data: {project: item.project}});
+		try
+		{
+			const result = await unsnoozeChildFn(
+				{
+					data:
+					{
+						sha: item.sha,
+						project: item.project,
+					},
+				},
+			);
+			if (result.ok)
+			{
+				const fresh = await getProjectChildren(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				);
 				queryClient.setQueryData(["children", item.project], fresh);
-			} else {
+			}
+			else
+			{
 				queryClient.setQueryData<SnoozedChild[]>(["snoozed"], saved);
 				setError(result.message);
 			}
-		} catch (e) {
+		}
+		catch (e)
+		{
 			queryClient.setQueryData<SnoozedChild[]>(["snoozed"], saved);
 			setError(e instanceof Error ? e.message : "Failed to unsnooze");
 		}
@@ -94,8 +131,15 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 	return (
 		<Link
 			to="/item/$project/$sha"
-			params={{project: item.project, sha: item.sha}}
-			search={{from: "/snoozed"}}
+			params={
+			{
+				project: item.project,
+				sha: item.sha,
+			}}
+			search={
+			{
+				from: "/snoozed",
+			}}
 			className="block rounded-lg border border-border-300/30 bg-bg-000 p-3 shadow-sm transition-colors hover:border-border-300"
 		>
 			<div className="flex items-start justify-between gap-2">
@@ -112,7 +156,8 @@ function SnoozedCard({item}: {item: SnoozedChild}) {
 				<span className="text-xs font-medium text-text-300">{item.project}</span>
 				<button
 					type="button"
-					onClick={(e) => {
+					onClick={(e) =>
+					{
 						e.preventDefault();
 						void handleUnsnooze();
 					}}

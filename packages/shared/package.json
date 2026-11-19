@@ -5,94 +5,117 @@
 	"type": "module",
 	"main": "src/index.ts",
 	"types": "src/index.ts",
-	"exports": {
-		".": {
+	"exports":
+	{
+		".":
+		{
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
-		"./inventory-import.js": {
+		"./inventory-import.js":
+		{
 			"types": "./src/lib/inventory-import.ts",
 			"import": "./src/lib/inventory-import.ts"
 		},
-		"./classify.js": {
+		"./classify.js":
+		{
 			"types": "./src/lib/classify.ts",
 			"import": "./src/lib/classify.ts"
 		},
-		"./git-child-discriminators.js": {
+		"./git-child-discriminators.js":
+		{
 			"types": "./src/lib/git-child-discriminators.ts",
 			"import": "./src/lib/git-child-discriminators.ts"
 		},
-		"./candidate-rank.js": {
+		"./candidate-rank.js":
+		{
 			"types": "./src/lib/candidate-rank.ts",
 			"import": "./src/lib/candidate-rank.ts"
 		},
-		"./ready-queue.js": {
+		"./ready-queue.js":
+		{
 			"types": "./src/lib/ready-queue.ts",
 			"import": "./src/lib/ready-queue.ts"
 		},
-		"./priority.js": {
+		"./priority.js":
+		{
 			"types": "./src/lib/priority.ts",
 			"import": "./src/lib/priority.ts"
 		},
-		"./baseline-failures.js": {
+		"./baseline-failures.js":
+		{
 			"types": "./src/lib/baseline-failures.ts",
 			"import": "./src/lib/baseline-failures.ts"
 		},
-		"./main-push.js": {
+		"./main-push.js":
+		{
 			"types": "./src/lib/main-push.ts",
 			"import": "./src/lib/main-push.ts"
 		},
-		"./readiness.js": {
+		"./readiness.js":
+		{
 			"types": "./src/lib/readiness.ts",
 			"import": "./src/lib/readiness.ts"
 		},
-		"./flow-counts.js": {
+		"./flow-counts.js":
+		{
 			"types": "./src/lib/flow-counts.ts",
 			"import": "./src/lib/flow-counts.ts"
 		},
-		"./flow-history.js": {
+		"./flow-history.js":
+		{
 			"types": "./src/lib/flow-history.ts",
 			"import": "./src/lib/flow-history.ts"
 		},
-		"./flow-metrics.js": {
+		"./flow-metrics.js":
+		{
 			"types": "./src/lib/flow-metrics.ts",
 			"import": "./src/lib/flow-metrics.ts"
 		},
-		"./ready-to-land.js": {
+		"./ready-to-land.js":
+		{
 			"types": "./src/lib/ready-to-land.ts",
 			"import": "./src/lib/ready-to-land.ts"
 		},
-		"./upstream-red.js": {
+		"./upstream-red.js":
+		{
 			"types": "./src/lib/upstream-red.ts",
 			"import": "./src/lib/upstream-red.ts"
 		},
-		"./schemas.js": {
+		"./schemas.js":
+		{
 			"types": "./src/lib/schemas.ts",
 			"import": "./src/lib/schemas.ts"
 		},
-		"./services/telemetry.js": {
+		"./services/telemetry.js":
+		{
 			"types": "./src/services/telemetry.ts",
 			"import": "./src/services/telemetry.ts"
 		},
-		"./services/subprocess-gate.js": {
+		"./services/subprocess-gate.js":
+		{
 			"types": "./src/services/subprocess-gate.ts",
 			"import": "./src/services/subprocess-gate.ts"
 		},
-		"./services/traced-execa.js": {
+		"./services/traced-execa.js":
+		{
 			"types": "./src/services/traced-execa.ts",
 			"import": "./src/services/traced-execa.ts"
 		},
-		"./services/logger-pino.js": {
+		"./services/logger-pino.js":
+		{
 			"types": "./src/services/logger-pino.ts",
 			"import": "./src/services/logger-pino.ts"
 		}
 	},
-	"scripts": {
+	"scripts":
+	{
 		"build": "tsc -b tsconfig.build.json",
 		"test": "node node_modules/vitest/dist/cli.js run",
 		"typecheck": "tsc --noEmit"
 	},
-	"dependencies": {
+	"dependencies":
+	{
 		"@opentelemetry/api": "^1.10.0",
 		"@opentelemetry/core": "^3.0.0",
 		"@opentelemetry/exporter-trace-otlp-proto": "^0.300.0",
@@ -106,7 +129,8 @@
 		"pino": "^10.4.0",
 		"zod": "^4.6.7"
 	},
-	"devDependencies": {
+	"devDependencies":
+	{
 		"@pollyjs/adapter-fetch": "^6.0.7",
 		"@pollyjs/core": "^6.0.6",
 		"@pollyjs/persister-fs": "^6.0.6",

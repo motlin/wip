@@ -9,26 +9,31 @@ import type {Priority} from "./priority.js";
  * only the proposals the user confirms.
  */
 
-export interface LadderNode {
+export interface LadderNode
+{
 	name: string;
 	completedAt?: string | null | undefined;
 	children?: LadderNode[] | undefined;
 }
 
 const LadderNodeSchema: z.ZodType<LadderNode> = z.lazy(() =>
-	z.object({
-		name: z.string(),
-		completedAt: z.string().nullish(),
-		children: z.array(LadderNodeSchema).optional(),
-	}),
+	z.object(
+		{
+			name: z.string(),
+			completedAt: z.string().nullish(),
+			children: z.array(LadderNodeSchema).optional(),
+		},
+	),
 );
 
 /** Validates a `node get --depth N --json` export of one asap bucket. */
-export function parseAsapLadder(raw: unknown): LadderNode {
+export function parseAsapLadder(raw: unknown): LadderNode
+{
 	return LadderNodeSchema.parse(raw);
 }
 
-export interface PriorityProposal {
+export interface PriorityProposal
+{
 	name: string;
 	current: Priority | undefined;
 	proposed: Priority;
@@ -40,20 +45,30 @@ export interface PriorityProposal {
 }
 
 /** Tiers 1-2 are the day plan (high), 3-4 real intent (medium), the rest the landing zone (low). */
-export function tierPriority(tier: number): Priority {
+export function tierPriority(tier: number): Priority
+{
 	if (tier <= 2) return "high";
 	if (tier <= 4) return "medium";
 	return "low";
 }
 
-function tierNumber(name: string): number | undefined {
+function tierNumber(name: string): number | undefined
+{
 	const match = /^(\d+)(?:st|nd|rd|th)$/.exec(name.trim());
 	return match ? Number(match[1]) : undefined;
 }
 
-const HTML_ENTITIES: Record<string, string> = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'"};
+const HTML_ENTITIES: Record<string, string> =
+{
+	"&amp;": "&",
+	"&lt;": "<",
+	"&gt;": ">",
+	"&quot;": '"',
+	"&#39;": "'",
+};
 
-function plainText(html: string): string {
+function plainText(html: string): string
+{
 	return html
 		.replaceAll(/<[^>]*>/g, "")
 		.replaceAll(/&(?:amp|lt|gt|quot|#39);/g, (entity) => HTML_ENTITIES[entity] ?? entity)
@@ -61,20 +76,24 @@ function plainText(html: string): string {
 		.trim();
 }
 
-function hrefs(html: string): string[] {
+function hrefs(html: string): string[]
+{
 	return [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1] ?? "");
 }
 
-function escapeRegExp(text: string): string {
+function escapeRegExp(text: string): string
+{
 	return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
-function basename(dir: string): string {
+function basename(dir: string): string
+{
 	return dir.replace(/\/+$/, "").split("/").pop() ?? dir;
 }
 
 /** The names a project may go by on the ladder: its registry name and its directory name. */
-function matchKeys(project: ProjectRecord): string[] {
+function matchKeys(project: ProjectRecord): string[]
+{
 	return [...new Set([project.name, basename(project.dir)])];
 }
 
@@ -83,12 +102,14 @@ function matchKeys(project: ProjectRecord): string[] {
  * `#name`, links its GitHub repo, or contains a distinctive name (one with `-`, `.` or `/`) as a
  * whole token. A plain word inside a sentence is not enough: "Clean up the sprint" is not `clean`.
  */
-function nodeNamesProject(html: string, keys: string[]): boolean {
+function nodeNamesProject(html: string, keys: string[]): boolean
+{
 	const text = plainText(html);
 	const lowerText = text.toLowerCase();
 	const bareText = lowerText.replace(/^[^\p{L}\p{N}]+/u, "");
 	const links = hrefs(html).map((href) => href.toLowerCase());
-	return keys.some((key) => {
+	return keys.some((key) =>
+	{
 		const lowerKey = key.toLowerCase();
 		if (bareText === lowerKey) return true;
 		const bounded = (prefix: string): RegExp =>
@@ -96,14 +117,16 @@ function nodeNamesProject(html: string, keys: string[]): boolean {
 		if (bounded("#").test(lowerText)) return true;
 		if (
 			links.some((link) => new RegExp(`github\\.com/(?:[^/]+/)?${escapeRegExp(lowerKey)}(?:[/?#]|$)`).test(link))
-		) {
+		)
+		{
 			return true;
 		}
 		return /[-./]/.test(lowerKey) && bounded("").test(lowerText);
 	});
 }
 
-function* openNodes(node: LadderNode): Generator<LadderNode> {
+function* openNodes(node: LadderNode): Generator<LadderNode>
+{
 	if (node.completedAt) return;
 	yield node;
 	for (const child of node.children ?? []) yield* openNodes(child);
@@ -116,28 +139,36 @@ function* openNodes(node: LadderNode): Generator<LadderNode> {
 export function proposePriorities(
 	ladders: readonly LadderNode[],
 	projects: readonly ProjectRecord[],
-): PriorityProposal[] {
+): PriorityProposal[]
+{
 	const best = new Map<string, PriorityProposal>();
-	for (const project of projects) {
+	for (const project of projects)
+	{
 		if (project.kind === "skip") continue;
 		const keys = matchKeys(project);
-		for (const ladder of ladders) {
-			for (const tierNode of ladder.children ?? []) {
+		for (const ladder of ladders)
+		{
+			for (const tierNode of ladder.children ?? [])
+			{
 				const tier = tierNumber(tierNode.name);
 				if (tier === undefined || tierNode.completedAt) continue;
 				const current = best.get(project.name);
 				if (current && current.tier <= tier) continue;
-				for (const item of tierNode.children ?? []) {
+				for (const item of tierNode.children ?? [])
+				{
 					const match = [...openNodes(item)].find((node) => nodeNamesProject(node.name, keys));
 					if (!match) continue;
-					best.set(project.name, {
-						name: project.name,
-						current: project.priority,
-						proposed: tierPriority(tier),
-						tier,
-						ladder: plainText(ladder.name),
-						evidence: plainText(match.name),
-					});
+					best.set(
+						project.name,
+						{
+							name: project.name,
+							current: project.priority,
+							proposed: tierPriority(tier),
+							tier,
+							ladder: plainText(ladder.name),
+							evidence: plainText(match.name),
+						},
+					);
 					break;
 				}
 			}

@@ -11,11 +11,16 @@ export async function replayBranchOnto(
 	branch: string,
 	expectedSha: string,
 	onto: string,
-): Promise<string | null> {
+): Promise<string | null>
+{
 	const newTip = await replayOnto(dir, expectedSha, onto);
 	if (newTip === null) return null;
-	const update = await tracedExeca("git", ["-C", dir, "update-ref", `refs/heads/${branch}`, newTip, expectedSha], {
-		reject: false,
-	});
+	const update = await tracedExeca(
+		"git",
+		["-C", dir, "update-ref", `refs/heads/${branch}`, newTip, expectedSha],
+		{
+			reject: false,
+		},
+	);
 	return update.exitCode === 0 ? newTip : null;
 }

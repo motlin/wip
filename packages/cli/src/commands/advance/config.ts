@@ -1,6 +1,7 @@
 import {Args, Command} from "@oclif/core";
 
-import {
+import
+{
 	discoverAllProjects,
 	getAllAdvanceConfig,
 	getProjectsDirs,
@@ -8,7 +9,8 @@ import {
 	setAdvanceConfig,
 } from "@wip/shared";
 
-interface AdvanceConfigResult {
+interface AdvanceConfigResult
+{
 	project: string;
 	concurrency: number;
 }
@@ -18,10 +20,20 @@ interface AdvanceConfigResult {
  * the effective concurrency (DB override > .envrc > default). With a value, sets
  * the DB override that wins over `.envrc`.
  */
-export default class AdvanceConfigCommand extends Command {
-	static override args = {
-		project: Args.string({description: "Project name (omit to list all overrides)"}),
-		value: Args.integer({description: "Concurrency to set for the project"}),
+export default class AdvanceConfigCommand extends Command
+{
+	static override args =
+	{
+		project: Args.string(
+			{
+				description: "Project name (omit to list all overrides)",
+			},
+		),
+		value: Args.integer(
+			{
+				description: "Concurrency to set for the project",
+			},
+		),
 	};
 
 	static override description = "Get or set per-repo advance concurrency";
@@ -34,25 +46,38 @@ export default class AdvanceConfigCommand extends Command {
 		"<%= config.bin %> advance config liftwizard 4",
 	];
 
-	async run(): Promise<AdvanceConfigResult[]> {
+	async run(): Promise<AdvanceConfigResult[]>
+	{
 		const {args} = await this.parse(AdvanceConfigCommand);
 
-		if (!args.project) {
+		if (!args.project)
+		{
 			const overrides = getAllAdvanceConfig();
 			for (const row of overrides) this.log(`${row.project}=${row.concurrency}`);
 			return overrides;
 		}
 
-		if (args.value !== undefined) {
+		if (args.value !== undefined)
+		{
 			setAdvanceConfig(args.project, args.value);
 			this.log(`Set ${args.project} concurrency to ${args.value}`);
-			return [{project: args.project, concurrency: args.value}];
+			return [
+				{
+					project: args.project,
+					concurrency: args.value,
+				},
+			];
 		}
 
 		const projects = await discoverAllProjects(getProjectsDirs());
 		const dir = projects.find((p) => p.name === args.project)?.dir ?? "";
 		const concurrency = resolveAdvanceConcurrency(args.project, dir);
 		this.log(`${args.project}=${concurrency}`);
-		return [{project: args.project, concurrency}];
+		return [
+			{
+				project: args.project,
+				concurrency,
+			},
+		];
 	}
 }

@@ -14,15 +14,23 @@ function pinRunningLandings(
 	grouped: Grouped,
 	outcomes: ActionOutcomes,
 	shown: ReadonlyMap<string, Category>,
-): {grouped: Grouped; shown: Map<string, Category>} {
+):
+{
+	grouped: Grouped;
+	shown: Map<string, Category>;
+}
+{
 	const pinned = emptyGrouped();
 	const nowShown = new Map<string, Category>();
-	for (const category of CATEGORY_PRIORITY) {
+	for (const category of CATEGORY_PRIORITY)
+	{
 		const {gitChildren: _moved, ...rest} = grouped[category];
 		pinned[category] = rest;
 	}
-	for (const category of CATEGORY_PRIORITY) {
-		for (const child of grouped[category].gitChildren ?? []) {
+	for (const category of CATEGORY_PRIORITY)
+	{
+		for (const child of grouped[category].gitChildren ?? [])
+		{
 			const key = landOutcomeKey(child.project, child.sha);
 			const previous = shown.get(key);
 			const target = outcomes[key]?.status === "running" && previous !== undefined ? previous : category;
@@ -30,10 +38,14 @@ function pinRunningLandings(
 			nowShown.set(key, target);
 		}
 	}
-	return {grouped: pinned, shown: nowShown};
+	return {
+		grouped: pinned,
+		shown: nowShown,
+	};
 }
 
-function sameColumns(a: ReadonlyMap<string, Category>, b: ReadonlyMap<string, Category>): boolean {
+function sameColumns(a: ReadonlyMap<string, Category>, b: ReadonlyMap<string, Category>): boolean
+{
 	return a.size === b.size && [...a].every(([key, category]) => b.get(key) === category);
 }
 
@@ -44,7 +56,8 @@ function sameColumns(a: ReadonlyMap<string, Category>, b: ReadonlyMap<string, Ca
  * column does: /queue builds a new grouping on every render (useSuspenseQueries returns a new
  * array), and setting state on that alone re-renders forever (React error #301).
  */
-export function usePinnedLandings(grouped: Grouped, outcomes: ActionOutcomes): Grouped {
+export function usePinnedLandings(grouped: Grouped, outcomes: ActionOutcomes): Grouped
+{
 	const [shown, setShown] = useState<ReadonlyMap<string, Category>>(() => new Map());
 	const pinned = useMemo(() => pinRunningLandings(grouped, outcomes, shown), [grouped, outcomes, shown]);
 	if (!sameColumns(pinned.shown, shown)) setShown(pinned.shown);

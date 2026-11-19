@@ -11,33 +11,50 @@ import {log} from "../services/logger-pino.js";
 let rateLimitUntil = 0;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
-export function isGitHubRateLimited(): boolean {
+export function isGitHubRateLimited(): boolean
+{
 	return Date.now() < rateLimitUntil;
 }
 
-export interface GitHubRateLimitState {
+export interface GitHubRateLimitState
+{
 	limited: boolean;
 	until: number | null;
 }
 
 /** Current cooldown state, for surfacing "rate limited until HH:MM" in the UI. */
-export function getGitHubRateLimitState(): GitHubRateLimitState {
-	if (Date.now() < rateLimitUntil) {
-		return {limited: true, until: rateLimitUntil};
+export function getGitHubRateLimitState(): GitHubRateLimitState
+{
+	if (Date.now() < rateLimitUntil)
+	{
+		return {
+			limited: true,
+			until: rateLimitUntil,
+		};
 	}
-	return {limited: false, until: null};
+	return {
+		limited: false,
+		until: null,
+	};
 }
 
 /**
  * Enter cooldown. Pass the reset time (epoch ms, e.g. from the
  * x-ratelimit-reset header) when known; otherwise a fixed cooldown applies.
  */
-export function markGitHubRateLimited(untilEpochMs?: number): void {
+export function markGitHubRateLimited(untilEpochMs?: number): void
+{
 	rateLimitUntil = untilEpochMs ?? Date.now() + RATE_LIMIT_COOLDOWN_MS;
-	log.subprocess.debug({until: rateLimitUntil}, "GitHub API rate limit detected, entering cooldown");
+	log.subprocess.debug(
+		{
+			until: rateLimitUntil,
+		},
+		"GitHub API rate limit detected, entering cooldown",
+	);
 }
 
-export function resetGitHubRateLimit(): void {
+export function resetGitHubRateLimit(): void
+{
 	rateLimitUntil = 0;
 }
 
@@ -48,7 +65,8 @@ export function resetGitHubRateLimit(): void {
  * must NOT trigger a global cooldown — that silently served stale data for
  * every project whenever any repo was merely forbidden.
  */
-export function detectRateLimitError(message: string): boolean {
+export function detectRateLimitError(message: string): boolean
+{
 	return (
 		message.includes("RATE_LIMITED") ||
 		message.includes("API rate limit") ||

@@ -16,7 +16,8 @@ import {landedPatchIds, type LandingOutcome} from "./landing-detector.js";
 export const TERMINAL_WORK_STATES = ["landed", "abandoned"] as const;
 export type TerminalWorkState = (typeof TERMINAL_WORK_STATES)[number];
 
-export interface WorkItem {
+export interface WorkItem
+{
 	patchId: string;
 	/** Last-known sha. */
 	sha: string;
@@ -28,18 +29,21 @@ export interface WorkItem {
 	landedAt: string | null;
 }
 
-export interface ObservedWorkItem {
+export interface ObservedWorkItem
+{
 	patchId: string;
 	sha: string;
 	subject: string;
 	state: string;
 }
 
-function isTerminal(state: string): boolean {
+function isTerminal(state: string): boolean
+{
 	return (TERMINAL_WORK_STATES as readonly string[]).includes(state);
 }
 
-function sameItem(a: WorkItem, b: WorkItem): boolean {
+function sameItem(a: WorkItem, b: WorkItem): boolean
+{
 	return (
 		a.sha === b.sha &&
 		a.subject === b.subject &&
@@ -49,12 +53,19 @@ function sameItem(a: WorkItem, b: WorkItem): boolean {
 	);
 }
 
-function landed(item: WorkItem, now: string): WorkItem {
-	return {...item, state: "landed", stateSince: now, landedAt: now};
+function landed(item: WorkItem, now: string): WorkItem
+{
+	return {
+		...item,
+		state: "landed",
+		stateSince: now,
+		landedAt: now,
+	};
 }
 
 /** Items to write after a landing outcome: everything named that is known and not yet landed. */
-export function applyLandings(current: readonly WorkItem[], landedIds: readonly string[], now: string): WorkItem[] {
+export function applyLandings(current: readonly WorkItem[], landedIds: readonly string[], now: string): WorkItem[]
+{
 	const ids = new Set(landedIds);
 	return current.filter((item) => ids.has(item.patchId) && item.state !== "landed").map((item) => landed(item, now));
 }
@@ -68,27 +79,55 @@ export function reconcileLedger(
 	observed: readonly ObservedWorkItem[],
 	landedIds: readonly string[],
 	now: string,
-): WorkItem[] {
+): WorkItem[]
+{
 	const byId = new Map(current.map((item) => [item.patchId, item]));
 	const landedSet = new Set(landedIds);
 	const seen = new Set<string>();
 	const changes: WorkItem[] = [];
 
-	for (const obs of observed) {
+	for (const obs of observed)
+	{
 		if (obs.patchId === "" || seen.has(obs.patchId)) continue;
 		seen.add(obs.patchId);
 		const existing = byId.get(obs.patchId);
-		if (landedSet.has(obs.patchId)) {
-			const base = existing ?? {...obs, firstSeen: now, stateSince: now, landedAt: null};
-			if (base.state !== "landed") changes.push(landed({...base, sha: obs.sha, subject: obs.subject}, now));
+		if (landedSet.has(obs.patchId))
+		{
+			const base = existing ??
+			{
+				...obs,
+				firstSeen: now,
+				stateSince: now,
+				landedAt: null,
+			};
+			if (base.state !== "landed")
+				changes.push(
+					landed(
+						{
+							...base,
+							sha: obs.sha,
+							subject: obs.subject,
+						},
+						now,
+					),
+				);
 			continue;
 		}
-		if (!existing) {
-			changes.push({...obs, firstSeen: now, stateSince: now, landedAt: null});
+		if (!existing)
+		{
+			changes.push(
+				{
+					...obs,
+					firstSeen: now,
+					stateSince: now,
+					landedAt: null,
+				},
+			);
 			continue;
 		}
 		if (existing.state === "landed") continue;
-		const next: WorkItem = {
+		const next: WorkItem =
+		{
 			...existing,
 			sha: obs.sha,
 			subject: obs.subject,
@@ -98,12 +137,22 @@ export function reconcileLedger(
 		if (!sameItem(existing, next)) changes.push(next);
 	}
 
-	for (const item of current) {
+	for (const item of current)
+	{
 		if (seen.has(item.patchId)) continue;
-		if (landedSet.has(item.patchId)) {
+		if (landedSet.has(item.patchId))
+		{
 			if (item.state !== "landed") changes.push(landed(item, now));
-		} else if (!isTerminal(item.state)) {
-			changes.push({...item, state: "abandoned", stateSince: now});
+		}
+		else if (!isTerminal(item.state))
+		{
+			changes.push(
+				{
+					...item,
+					state: "abandoned",
+					stateSince: now,
+				},
+			);
 		}
 	}
 	return changes;
@@ -114,7 +163,8 @@ export function reconcileWorkItems(
 	project: string,
 	observed: readonly ObservedWorkItem[],
 	landedIds: readonly string[] = [],
-): WorkItem[] {
+): WorkItem[]
+{
 	const changes = reconcileLedger(loadWorkItems(project), observed, landedIds, new Date().toISOString());
 	writeWorkItems(project, changes);
 	return changes;
@@ -134,7 +184,8 @@ export async function upstreamLandedPatchIds(
 	project: string,
 	departed: readonly WorkItem[],
 	upstream: string,
-): Promise<string[]> {
+): Promise<string[]>
+{
 	if (departed.length === 0) return [];
 	const existing = await existingCommitShas(
 		dir,
@@ -168,7 +219,8 @@ export async function reconcileWorkItemsWithUpstream(
 	project: string,
 	upstream: string,
 	observed: readonly ObservedWorkItem[],
-): Promise<WorkItem[]> {
+): Promise<WorkItem[]>
+{
 	const current = loadWorkItems(project);
 	const observedIds = new Set(observed.map((obs) => obs.patchId));
 	const departed = current.filter((item) => !observedIds.has(item.patchId) && !isTerminal(item.state));
@@ -185,9 +237,11 @@ export async function recordLandingOutcomes(
 	from: string | null,
 	to: string,
 	outcomes: readonly LandingOutcome[],
-): Promise<WorkItem[]> {
+): Promise<WorkItem[]>
+{
 	const ids: string[] = [];
-	for (const outcome of outcomes) {
+	for (const outcome of outcomes)
+	{
 		// Sequential on purpose: each call spawns git subprocesses under the shared gate.
 		// eslint-disable-next-line no-await-in-loop
 		ids.push(...(await landedPatchIds(dir, project, from, to, outcome)));

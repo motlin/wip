@@ -2,7 +2,8 @@
 import {afterEach, describe, expect, it, vi} from "vite-plus/test";
 import {act, cleanup, render, screen} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
-import {
+import
+{
 	Outlet,
 	RouterProvider,
 	createMemoryHistory,
@@ -14,7 +15,8 @@ import type {ProjectInfo, TodoItem} from "@wip/shared";
 
 import {Route as DashboardFile} from "../routes/_dashboard.js";
 import {Route as KanbanFile} from "../routes/_dashboard/kanban.js";
-import {
+import
+{
 	issuesQueryOptions,
 	projectChildrenQueryOptions,
 	projectItemsQueryOptions,
@@ -24,16 +26,23 @@ import {
 } from "./queries.js";
 import type {QueueSnapshot} from "./server-fns.js";
 
-const snapshotCalls = vi.hoisted(() => ({count: 0, snapshot: undefined as unknown}));
-vi.mock("./server-fns.js", async (importOriginal) => ({
+const snapshotCalls = vi.hoisted(() => (
+{
+	count: 0,
+	snapshot: undefined as unknown,
+}));
+vi.mock("./server-fns.js", async (importOriginal) => (
+{
 	...(await importOriginal<typeof import("./server-fns.js")>()),
-	getQueueSnapshot: async () => {
+	getQueueSnapshot: async () =>
+	{
 		snapshotCalls.count++;
 		return Promise.resolve(snapshotCalls.snapshot);
 	},
 }));
 
-const project: ProjectInfo = {
+const project: ProjectInfo =
+{
 	name: "wip",
 	dir: "/Users/craig/projects/wip",
 	remote: "motlin/wip",
@@ -48,15 +57,28 @@ const project: ProjectInfo = {
 	rebaseInProgress: false,
 };
 
-const todo: TodoItem = {
+const todo: TodoItem =
+{
 	project: "wip",
 	title: "Client-render the dashboard from the persisted cache",
 	sourceFile: ".llm/todo.md",
 	sourceLabel: "todo.md",
 };
 
-function seededClient() {
-	const queryClient = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}});
+function seededClient()
+{
+	const queryClient = new QueryClient(
+		{
+			defaultOptions:
+			{
+				queries:
+				{
+					staleTime: Infinity,
+					retry: false,
+				},
+			},
+		},
+	);
 	queryClient.setQueryData(projectsQueryOptions().queryKey, [project]);
 	queryClient.setQueryData(projectChildrenQueryOptions(project.name).queryKey, []);
 	queryClient.setQueryData(projectTodosQueryOptions(project.name).queryKey, [todo]);
@@ -66,46 +88,83 @@ function seededClient() {
 	return queryClient;
 }
 
-function coldClient() {
-	const queryClient = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}});
+function coldClient()
+{
+	const queryClient = new QueryClient(
+		{
+			defaultOptions:
+			{
+				queries:
+				{
+					staleTime: Infinity,
+					retry: false,
+				},
+			},
+		},
+	);
 	queryClient.setQueryData(projectsQueryOptions().queryKey, [project]);
 	return queryClient;
 }
 
-function buildRouter(queryClient: QueryClient) {
-	const rootRoute = createRootRouteWithContext<{queryClient: QueryClient; cacheRestored: Promise<void>}>()({
-		component: Outlet,
-	});
-	const dashboardRoute = createRoute({
-		getParentRoute: () => rootRoute,
-		id: "_dashboard",
-		loader: DashboardFile.options.loader,
-		component: DashboardFile.options.component,
-	});
-	const kanbanRoute = createRoute({
-		getParentRoute: () => dashboardRoute,
-		path: "/kanban",
-		component: KanbanFile.options.component,
-	});
+function buildRouter(queryClient: QueryClient)
+{
+	const rootRoute = createRootRouteWithContext<
+	{
+		queryClient: QueryClient;
+		cacheRestored: Promise<void>;
+	}>()(
+		{
+			component: Outlet,
+		},
+	);
+	const dashboardRoute = createRoute(
+		{
+			getParentRoute: () => rootRoute,
+			id: "_dashboard",
+			loader: DashboardFile.options.loader,
+			component: DashboardFile.options.component,
+		},
+	);
+	const kanbanRoute = createRoute(
+		{
+			getParentRoute: () => dashboardRoute,
+			path: "/kanban",
+			component: KanbanFile.options.component,
+		},
+	);
 	const routeTree = rootRoute.addChildren([dashboardRoute.addChildren([kanbanRoute])]);
-	return createRouter({
-		routeTree,
-		history: createMemoryHistory({initialEntries: ["/kanban"]}),
-		context: {queryClient, cacheRestored: Promise.resolve()},
-	});
+	return createRouter(
+		{
+			routeTree,
+			history: createMemoryHistory(
+				{
+					initialEntries: ["/kanban"],
+				},
+			),
+			context:
+			{
+				queryClient,
+				cacheRestored: Promise.resolve(),
+			},
+		},
+	);
 }
 
-describe("dashboard client-only rendering", () => {
-	afterEach(() => {
+describe("dashboard client-only rendering", () =>
+{
+	afterEach(() =>
+	{
 		cleanup();
 	});
 
-	it("paints the kanban from a seeded (persisted) query cache without hitting the server", async () => {
+	it("paints the kanban from a seeded (persisted) query cache without hitting the server", async () =>
+	{
 		const queryClient = seededClient();
 		const router = buildRouter(queryClient);
 
 		await router.load();
-		await act(async () => {
+		await act(async () =>
+		{
 			render(
 				<QueryClientProvider client={queryClient}>
 					<RouterProvider router={router} />
@@ -119,10 +178,18 @@ describe("dashboard client-only rendering", () => {
 		expect(queryClient.isFetching()).toBe(0);
 	});
 
-	it("fills a cold cache from one queue snapshot before painting", async () => {
-		const snapshot: QueueSnapshot = {
-			children: {wip: []},
-			todos: {wip: [todo]},
+	it("fills a cold cache from one queue snapshot before painting", async () =>
+	{
+		const snapshot: QueueSnapshot =
+		{
+			children:
+			{
+				wip: [],
+			},
+			todos:
+			{
+				wip: [todo],
+			},
 			issues: [],
 			projectItems: [],
 			snoozed: [],
@@ -133,7 +200,8 @@ describe("dashboard client-only rendering", () => {
 		const router = buildRouter(queryClient);
 
 		await router.load();
-		await act(async () => {
+		await act(async () =>
+		{
 			render(
 				<QueryClientProvider client={queryClient}>
 					<RouterProvider router={router} />
@@ -142,10 +210,18 @@ describe("dashboard client-only rendering", () => {
 			await router.load();
 		});
 
-		expect({
-			snapshotCalls: snapshotCalls.count,
-			todo: screen.getByText(todo.title).textContent,
-			fetching: queryClient.isFetching(),
-		}).toStrictEqual({snapshotCalls: 1, todo: todo.title, fetching: 0});
+		expect(
+			{
+				snapshotCalls: snapshotCalls.count,
+				todo: screen.getByText(todo.title).textContent,
+				fetching: queryClient.isFetching(),
+			},
+		).toStrictEqual(
+			{
+				snapshotCalls: 1,
+				todo: todo.title,
+				fetching: 0,
+			},
+		);
 	});
 });

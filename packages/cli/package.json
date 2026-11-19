@@ -3,28 +3,33 @@
 	"version": "0.0.0",
 	"description": "Work-in-progress inventory and prioritization CLI",
 	"author": "Craig P. Motlin",
-	"bin": {
+	"bin":
+	{
 		"wip": "./bin/run.js"
 	},
 	"type": "module",
-	"scripts": {
+	"scripts":
+	{
 		"build": "tsc -b",
 		"test": "node node_modules/vitest/dist/cli.js run",
 		"typecheck": "tsc --noEmit"
 	},
-	"dependencies": {
+	"dependencies":
+	{
 		"@oclif/core": "^5.1.12",
 		"@wip/shared": "workspace:*",
 		"chalk": "^6.0.1",
 		"execa": "^10.2.1"
 	},
-	"devDependencies": {
+	"devDependencies":
+	{
 		"@types/node": "^26.6.6",
 		"typescript": "^7.0.2",
 		"vite-plus": "catalog:",
 		"vitest": "catalog:"
 	},
-	"oclif": {
+	"oclif":
+	{
 		"bin": "wip",
 		"commands": "./dist/commands",
 		"dirname": "wip",

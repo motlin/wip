@@ -8,24 +8,37 @@ import {sql} from "drizzle-orm";
 import {checkBaseline} from "./advance-baseline.js";
 import {getDb, initDb, resetDb} from "./db.js";
 
-function git(dir: string, command: string): string {
-	return execSync(`git ${command}`, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
+function git(dir: string, command: string): string
+{
+	return execSync(
+		`git ${command}`,
+		{
+			cwd: dir,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
 
-function tableNames(): string[] {
+function tableNames(): string[]
+{
 	return getDb()
-		.all<{name: string}>(sql`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
+		.all<
+		{
+			name: string;
+		}>(sql`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
 		.map((row) => row.name);
 }
 
-describe("checkBaseline", () => {
+describe("checkBaseline", () =>
+{
 	let dir: string;
 	let cacheDir: string;
 	let savedXdgCache: string | undefined;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		dir = mkdtempSync(join(tmpdir(), "wip-baseline-"));
 		cacheDir = mkdtempSync(join(tmpdir(), "wip-baseline-cache-"));
@@ -37,77 +50,151 @@ describe("checkBaseline", () => {
 		git(dir, "commit --allow-empty -m base");
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		if (savedXdgCache === undefined) delete process.env.XDG_CACHE_HOME;
 		else process.env.XDG_CACHE_HOME = savedXdgCache;
-		rmSync(dir, {recursive: true, force: true});
-		rmSync(`${dir}-test-worktree`, {recursive: true, force: true});
-		rmSync(cacheDir, {recursive: true, force: true});
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		rmSync(
+			`${dir}-test-worktree`,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		rmSync(
+			cacheDir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 		resetDb();
 	});
 
-	it("resolves the upstream ref to a sha and reports it green when the test passes", async () => {
+	it("resolves the upstream ref to a sha and reports it green when the test passes", async () =>
+	{
 		const sha = git(dir, "rev-parse main");
 		const tested: string[] = [];
-		const result = await checkBaseline({
-			project: "p",
-			dir,
-			upstreamRef: "main",
-			runTest: async (s) => {
-				tested.push(s);
-				return Promise.resolve(true);
+		const result = await checkBaseline(
+			{
+				project: "p",
+				dir,
+				upstreamRef: "main",
+				runTest: async (s) =>
+				{
+					tested.push(s);
+					return Promise.resolve(true);
+				},
 			},
-		});
-		expect(result).toStrictEqual({sha, green: true});
+		);
+		expect(result).toStrictEqual(
+			{
+				sha,
+				green: true,
+			},
+		);
 		expect(tested).toStrictEqual([sha]);
 	});
 
-	it("reports red when the baseline test fails", async () => {
-		const result = await checkBaseline({
-			project: "p",
-			dir,
-			upstreamRef: "main",
-			runTest: async () => Promise.resolve(false),
-		});
+	it("reports red when the baseline test fails", async () =>
+	{
+		const result = await checkBaseline(
+			{
+				project: "p",
+				dir,
+				upstreamRef: "main",
+				runTest: async () => Promise.resolve(false),
+			},
+		);
 		expect(result.green).toBe(false);
 	});
 
-	it("proceeds on git test exit 0 without writing to the database", async () => {
+	it("proceeds on git test exit 0 without writing to the database", async () =>
+	{
 		git(dir, "test add --test default true");
 		const sha = git(dir, "rev-parse main");
 		const before = tableNames();
 
-		const result = await checkBaseline({project: "p", dir, upstreamRef: "main"});
+		const result = await checkBaseline(
+			{
+				project: "p",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 
-		expect(result).toStrictEqual({sha, green: true});
+		expect(result).toStrictEqual(
+			{
+				sha,
+				green: true,
+			},
+		);
 		expect(tableNames()).toStrictEqual(before);
 		expect(before).not.toContain("test_results");
 		expect(existsSync(join(cacheDir, "wip", "test-logs", "p", `${sha}.log`))).toBe(true);
 	});
 
-	it("reuses a cached bad baseline instead of retesting it", async () => {
+	it("reuses a cached bad baseline instead of retesting it", async () =>
+	{
 		const counter = join(cacheDir, "runs");
 		git(dir, `test add --test default "echo run >> ${counter}; false"`);
 		const sha = git(dir, "rev-parse main");
 
-		const first = await checkBaseline({project: "p", dir, upstreamRef: "main"});
-		const second = await checkBaseline({project: "p", dir, upstreamRef: "main"});
+		const first = await checkBaseline(
+			{
+				project: "p",
+				dir,
+				upstreamRef: "main",
+			},
+		);
+		const second = await checkBaseline(
+			{
+				project: "p",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 
 		expect([first, second, readFileSync(counter, "utf8")]).toStrictEqual([
-			{sha, green: false},
-			{sha, green: false},
+			{
+				sha,
+				green: false,
+			},
+			{
+				sha,
+				green: false,
+			},
 			"run\n",
 		]);
 	});
 
-	it("stops on a non-zero git test exit without writing to the database", async () => {
+	it("stops on a non-zero git test exit without writing to the database", async () =>
+	{
 		git(dir, "test add --test default false");
 		const sha = git(dir, "rev-parse main");
 		const before = tableNames();
 
-		const result = await checkBaseline({project: "p", dir, upstreamRef: "main"});
+		const result = await checkBaseline(
+			{
+				project: "p",
+				dir,
+				upstreamRef: "main",
+			},
+		);
 
-		expect(result).toStrictEqual({sha, green: false});
+		expect(result).toStrictEqual(
+			{
+				sha,
+				green: false,
+			},
+		);
 		expect(tableNames()).toStrictEqual(before);
 		expect(before).not.toContain("test_results");
 	});

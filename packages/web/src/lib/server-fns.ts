@@ -2,7 +2,8 @@ import {createServerFn} from "@tanstack/react-start";
 import type {ActionEvent} from "./server-events-schema.js";
 import type {ActionLog} from "./action-log-schema.js";
 import {z} from "zod";
-import {
+import
+{
 	ApplyFixesInputSchema,
 	CancelTestInputSchema,
 	CreateBranchInputSchema,
@@ -28,7 +29,8 @@ import {
 	UnsnoozeChildInputSchema,
 	UnsnoozeTodoInputSchema,
 } from "@wip/shared/schemas.js";
-import type {
+import type
+{
 	AdvancePlanSummary,
 	AutoFixReview,
 	FileDiff,
@@ -38,7 +40,8 @@ import type {
 	SystemStatus,
 	TestJobStatus,
 } from "./server-fns.impl.js";
-import type {
+import type
+{
 	GitHubProjectItem,
 	InventoryStatus,
 	IssueResult,
@@ -54,7 +57,8 @@ import type {FlowMetrics} from "@wip/shared/flow-metrics.js";
 import type {FlowHistory} from "@wip/shared/flow-history.js";
 import {EscapeHatchRecipeSchema} from "./escape-hatch.js";
 
-export type {
+export type
+{
 	AdvancePlanBranchSummary,
 	AdvancePlanProjectSummary,
 	FileDiff,
@@ -69,288 +73,684 @@ const serverFns: () => Promise<typeof import("./server-fns.impl.js")> = import.m
 	? async () => import("./server-fns.impl.js")
 	: async () => Promise.reject(new Error("server-fns.impl is only available during SSR"));
 
-export const getProjects = createServerFn({method: "GET"}).handler(async () =>
-	(await serverFns()).getProjectsHandler(),
-);
+export const getProjects = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async () => (await serverFns()).getProjectsHandler());
 
-export const getProjectChildren = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
+export const getProjectChildren = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<ProjectChildrenResult> =>
 		(await serverFns()).getProjectChildrenHandler(data.project),
 	);
 
-export const getActionStatus = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({id: z.string()}).parse(input))
+export const getActionStatus = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					id: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<ActionEvent | null> => (await serverFns()).getActionStatusHandler(data.id));
 
-export const getActionLog = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({id: z.string()}).parse(input))
+export const getActionLog = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					id: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<ActionLog | null> => (await serverFns()).getActionLogHandler(data.id));
 
-export const getRecentActionLogs = createServerFn({method: "GET"}).handler(async (): Promise<ActionLog[]> =>
-	(await serverFns()).getRecentActionLogsHandler(),
-);
+export const getRecentActionLogs = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<ActionLog[]> => (await serverFns()).getRecentActionLogsHandler());
 
-export const getProjectTodos = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
+export const getProjectTodos = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}) => (await serverFns()).getProjectTodosHandler(data.project));
 
-export const getQueueSnapshot = createServerFn({method: "GET"}).handler(async (): Promise<QueueSnapshot> =>
-	(await serverFns()).getQueueSnapshotHandler(),
-);
+export const getQueueSnapshot = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<QueueSnapshot> => (await serverFns()).getQueueSnapshotHandler());
 
-export const getIssues = createServerFn({method: "GET"}).handler(async () => (await serverFns()).getIssuesHandler());
+export const getIssues = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async () => (await serverFns()).getIssuesHandler());
 
-export const getProjectItemsFn = createServerFn({method: "GET"}).handler(async (): Promise<GitHubProjectItem[]> =>
-	(await serverFns()).getProjectItemsHandler(),
-);
+export const getProjectItemsFn = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<GitHubProjectItem[]> => (await serverFns()).getProjectItemsHandler());
 
-export const getIssueByNumber = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
+export const getIssueByNumber = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+					number: z.number(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<IssueResult | null> => (await serverFns()).getIssueByNumberHandler(data));
 
-export const getProjectItemByNumber = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string(), number: z.number()}).parse(input))
+export const getProjectItemByNumber = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+					number: z.number(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<ProjectItemResult | null> =>
 		(await serverFns()).getProjectItemByNumberHandler(data),
 	);
 
-export const pushChild = createServerFn({method: "POST"})
+export const pushChild = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => PushChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).pushChildHandler(data));
 
-export const createPr = createServerFn({method: "POST"})
+export const createPr = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => CreatePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).createPrHandler(data));
 
-export const testChild = createServerFn({method: "POST"})
+export const testChild = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => TestChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).testChildHandler(data));
 
-export const getFlowMetrics = createServerFn({method: "GET"}).handler(async (): Promise<FlowMetrics> =>
-	(await serverFns()).getFlowMetricsHandler(),
-);
+export const getFlowMetrics = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<FlowMetrics> => (await serverFns()).getFlowMetricsHandler());
 
-export const getFlowHistory = createServerFn({method: "GET"}).handler(async (): Promise<FlowHistory> =>
-	(await serverFns()).getFlowHistoryHandler(),
-);
+export const getFlowHistory = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<FlowHistory> => (await serverFns()).getFlowHistoryHandler());
 
-export const getReadyToLand = createServerFn({method: "GET"}).handler(async (): Promise<ReadyToLandState | null> =>
-	(await serverFns()).getReadyToLandHandler(),
-);
+export const getReadyToLand = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<ReadyToLandState | null> => (await serverFns()).getReadyToLandHandler());
 
 /** Push main rows: projects whose local main is ahead of the upstream branch (or just `project`). */
-export const getMainPushes = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string().optional()}).parse(input ?? {}))
+export const getMainPushes = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string().optional(),
+				},
+			)
+			.parse(input ?? {}),
+	)
 	.handler(async ({data}): Promise<MainPush[]> => (await serverFns()).getMainPushesHandler(data));
 
-export const topUpReadyBuffer = createServerFn({method: "POST"}).handler(async (): Promise<{running: boolean}> =>
-	(await serverFns()).topUpReadyBufferHandler(),
+export const topUpReadyBuffer = createServerFn(
+	{
+		method: "POST",
+	},
+).handler(
+	async (): Promise<
+	{
+		running: boolean;
+	}> => (await serverFns()).topUpReadyBufferHandler(),
 );
 
-export const runEscapeHatch = createServerFn({method: "POST"})
-	.validator((input: unknown) => z.object({recipe: EscapeHatchRecipeSchema}).parse(input))
+export const runEscapeHatch = createServerFn(
+	{
+		method: "POST",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					recipe: EscapeHatchRecipeSchema,
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<TestJobStatus[]> => (await serverFns()).runEscapeHatchHandler(data.recipe));
 
-export const runLadderAll = createServerFn({method: "POST"}).handler(async (): Promise<TestJobStatus[]> =>
-	(await serverFns()).runLadderAllHandler(),
-);
+export const runLadderAll = createServerFn(
+	{
+		method: "POST",
+	},
+).handler(async (): Promise<TestJobStatus[]> => (await serverFns()).runLadderAllHandler());
 
-export const getInventoryStatus = createServerFn({method: "GET"}).handler(async (): Promise<InventoryStatus> =>
-	(await serverFns()).getInventoryStatusHandler(),
-);
+export const getInventoryStatus = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<InventoryStatus> => (await serverFns()).getInventoryStatusHandler());
 
-export const getRegistryCandidates = createServerFn({method: "GET"}).handler(async (): Promise<RegistryCandidates> =>
-	(await serverFns()).getRegistryCandidatesHandler(),
-);
+export const getRegistryCandidates = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<RegistryCandidates> => (await serverFns()).getRegistryCandidatesHandler());
 
 // Each record is validated against ProjectRecordSchema by saveInventory on the server.
-const SaveRegistryInputSchema = z.object({
-	projects: z.array(z.custom<ProjectRecord>((value) => typeof value === "object" && value !== null)),
-	baseModifiedAt: z.string().nullable(),
-});
+const SaveRegistryInputSchema = z.object(
+	{
+		projects: z.array(z.custom<ProjectRecord>((value) => typeof value === "object" && value !== null)),
+		baseModifiedAt: z.string().nullable(),
+	},
+);
 
-export const saveRegistry = createServerFn({method: "POST"})
+export const saveRegistry = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => SaveRegistryInputSchema.parse(input))
 	.handler(async ({data}): Promise<SaveRegistryResult> => (await serverFns()).saveRegistryHandler(data));
 
-export const focusHerdrPaneFn = createServerFn({method: "POST"})
-	.validator((input: unknown) => z.object({paneId: z.string()}).parse(input))
+export const focusHerdrPaneFn = createServerFn(
+	{
+		method: "POST",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					paneId: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<void> => (await serverFns()).focusHerdrPaneHandler(data.paneId));
 
-export const getLadderResults = createServerFn({method: "GET"}).handler(async (): Promise<LadderResult[]> =>
-	(await serverFns()).getLadderResultsHandler(),
-);
+export const getLadderResults = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<LadderResult[]> => (await serverFns()).getLadderResultsHandler());
 
-export const getCommitDiff = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
-	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string; subject: string}> =>
-		(await serverFns()).getCommitDiffHandler(data),
+export const getCommitDiff = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+					sha: z.string(),
+				},
+			)
+			.parse(input),
+	)
+	.handler(
+		async ({
+			data,
+		}): Promise<
+		{
+			files: FileDiff[];
+			stat: string;
+			subject: string;
+		}> => (await serverFns()).getCommitDiffHandler(data),
 	);
 
-export const getWorkingTreeDiff = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
-	.handler(async ({data}): Promise<{files: FileDiff[]; stat: string}> =>
-		(await serverFns()).getWorkingTreeDiffHandler(data.project),
+export const getWorkingTreeDiff = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+				},
+			)
+			.parse(input),
+	)
+	.handler(
+		async ({
+			data,
+		}): Promise<
+		{
+			files: FileDiff[];
+			stat: string;
+		}> => (await serverFns()).getWorkingTreeDiffHandler(data.project),
 	);
 
-export const commitWorkingTree = createServerFn({method: "POST"})
-	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
+export const commitWorkingTree = createServerFn(
+	{
+		method: "POST",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).commitWorkingTreeHandler(data.project));
 
-export const getTestLog = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
-	.handler(async ({data}): Promise<{log: string | null; tail: string | null}> =>
-		(await serverFns()).getTestLogHandler(data),
+export const getTestLog = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+					sha: z.string(),
+				},
+			)
+			.parse(input),
+	)
+	.handler(
+		async ({
+			data,
+		}): Promise<
+		{
+			log: string | null;
+			tail: string | null;
+		}> => (await serverFns()).getTestLogHandler(data),
 	);
 
-export const snoozeChildFn = createServerFn({method: "POST"})
+export const snoozeChildFn = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => SnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).snoozeChildHandler(data));
 
-export const unsnoozeChildFn = createServerFn({method: "POST"})
+export const unsnoozeChildFn = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => UnsnoozeChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).unsnoozeChildHandler(data));
 
-export const snoozeTodoFn = createServerFn({method: "POST"})
+export const snoozeTodoFn = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => SnoozeTodoInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).snoozeTodoHandler(data));
 
-export const unsnoozeTodoFn = createServerFn({method: "POST"})
+export const unsnoozeTodoFn = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => UnsnoozeTodoInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).unsnoozeTodoHandler(data));
 
-export const runTodoTask = createServerFn({method: "POST"})
+export const runTodoTask = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RunTodoTaskInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).runTodoTaskHandler(data));
 
-export const getSnoozedList = createServerFn({method: "GET"}).handler(async (): Promise<SnoozedChild[]> =>
-	(await serverFns()).getSnoozedListHandler(),
-);
+export const getSnoozedList = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<SnoozedChild[]> => (await serverFns()).getSnoozedListHandler());
 
-export const getTaskQueue = createServerFn({method: "GET"}).handler(async (): Promise<TaskQueueJob[]> =>
-	(await serverFns()).getTaskQueueHandler(),
-);
+export const getTaskQueue = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<TaskQueueJob[]> => (await serverFns()).getTaskQueueHandler());
 
-export const cancelTestFn = createServerFn({method: "POST"})
+export const cancelTestFn = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => CancelTestInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).cancelTestHandler(data.id));
 
-export const runClaudeCommand = createServerFn({method: "POST"})
+export const runClaudeCommand = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RunClaudeCommandInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).runClaudeCommandHandler(data));
 
-export const refreshChild = createServerFn({method: "POST"})
+export const refreshChild = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RefreshChildInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).refreshChildHandler(data.project));
 
-export const abortRebase = createServerFn({method: "POST"})
+export const abortRebase = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => AbortRebaseInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).abortRebaseHandler(data.project));
 
-export const acceptAutoFix = createServerFn({method: "POST"})
+export const acceptAutoFix = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => AutoFixInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).acceptAutoFixHandler(data));
 
-export const getAutoFixReview = createServerFn({method: "GET"})
+export const getAutoFixReview = createServerFn(
+	{
+		method: "GET",
+	},
+)
 	.validator((input: unknown) => AutoFixInputSchema.parse(input))
 	.handler(async ({data}): Promise<AutoFixReview | null> => (await serverFns()).getAutoFixReviewHandler(data));
 
-export const assignAutoFix = createServerFn({method: "POST"})
+export const assignAutoFix = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => AutoFixInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).assignAutoFixHandler(data));
 
-export const dropAutoFixBranch = createServerFn({method: "POST"})
+export const dropAutoFixBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => AutoFixInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).dropAutoFixBranchHandler(data));
 
-export const createBranch = createServerFn({method: "POST"})
+export const createBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => CreateBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).createBranchHandler(data));
 
-export const suggestBranchName = createServerFn({method: "POST"})
-	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
-	.handler(async ({data}): Promise<{name: string | null}> => (await serverFns()).suggestBranchNameHandler(data));
+export const suggestBranchName = createServerFn(
+	{
+		method: "POST",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+					sha: z.string(),
+				},
+			)
+			.parse(input),
+	)
+	.handler(
+		async ({
+			data,
+		}): Promise<
+		{
+			name: string | null;
+		}> => (await serverFns()).suggestBranchNameHandler(data),
+	);
 
-export const deleteBranch = createServerFn({method: "POST"})
+export const deleteBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => DeleteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).deleteBranchHandler(data));
 
-export const setUpPrRefs = createServerFn({method: "POST"})
+export const setUpPrRefs = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => SetUpPrRefsInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).setUpPrRefsHandler(data));
 
-export const restoreRemoteBranch = createServerFn({method: "POST"})
+export const restoreRemoteBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RemoteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).restoreRemoteBranchHandler(data));
 
-export const deleteRemoteBranch = createServerFn({method: "POST"})
+export const deleteRemoteBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RemoteBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).deleteRemoteBranchHandler(data));
 
-export const forcePush = createServerFn({method: "POST"})
+export const forcePush = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => ForcePushInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).forcePushHandler(data));
 
-export const mergePr = createServerFn({method: "POST"})
+export const mergePr = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => MergePrInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).mergePrHandler(data));
 
-export const landFastForward = createServerFn({method: "POST"})
+export const landFastForward = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => LandFastForwardInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).landFastForwardHandler(data));
 
-export const pushUpstreamBranch = createServerFn({method: "POST"})
+export const pushUpstreamBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => PushUpstreamBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).pushUpstreamBranchHandler(data));
 
-export const getActionsBillingBlock = createServerFn({method: "GET"})
-	.validator((input: unknown) => z.object({project: z.string(), sha: z.string()}).parse(input))
+export const getActionsBillingBlock = createServerFn(
+	{
+		method: "GET",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+					sha: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<boolean> => (await serverFns()).getActionsBillingBlockHandler(data));
 
-export const landByPushing = createServerFn({method: "POST"})
-	.validator((input: unknown) => z.object({project: z.string()}).parse(input))
+export const landByPushing = createServerFn(
+	{
+		method: "POST",
+	},
+)
+	.validator((input: unknown) =>
+		z
+			.object(
+				{
+					project: z.string(),
+				},
+			)
+			.parse(input),
+	)
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).landByPushingHandler(data));
 
-export const renameBranch = createServerFn({method: "POST"})
+export const renameBranch = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RenameBranchInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).renameBranchHandler(data));
 
-export const applyFixes = createServerFn({method: "POST"})
+export const applyFixes = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => ApplyFixesInputSchema.parse(input))
 	.handler(async ({data}): Promise<ActionResult> => (await serverFns()).applyFixesHandler(data));
 
-export const rebaseChild = createServerFn({method: "POST"})
+export const rebaseChild = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) => RebaseLocalInputSchema.parse(input))
 	.handler(async ({data}): Promise<TestJobStatus> => (await serverFns()).rebaseChildHandler(data));
 
-export const generateAdvancePlan = createServerFn({method: "POST"})
+export const generateAdvancePlan = createServerFn(
+	{
+		method: "POST",
+	},
+)
 	.validator((input: unknown) =>
 		z
-			.object({
-				include: z.array(z.string()).optional(),
-				exclude: z.array(z.string()).optional(),
-			})
+			.object(
+				{
+					include: z.array(z.string()).optional(),
+					exclude: z.array(z.string()).optional(),
+				},
+			)
 			.parse(input ?? {}),
 	)
 	.handler(async ({data}): Promise<AdvancePlanSummary> => (await serverFns()).generateAdvancePlanHandler(data));
 
-export const refreshAll = createServerFn({method: "POST"}).handler(async (): Promise<{started: number}> =>
-	(await serverFns()).refreshAllHandler(),
+export const refreshAll = createServerFn(
+	{
+		method: "POST",
+	},
+).handler(
+	async (): Promise<
+	{
+		started: number;
+	}> => (await serverFns()).refreshAllHandler(),
 );
 
-export const getSystemStatus = createServerFn({method: "GET"}).handler(async (): Promise<SystemStatus> =>
-	(await serverFns()).getSystemStatusHandler(),
-);
+export const getSystemStatus = createServerFn(
+	{
+		method: "GET",
+	},
+).handler(async (): Promise<SystemStatus> => (await serverFns()).getSystemStatusHandler());
 
 export const CHILDREN_CACHE_TTL_MS = 10 * 60 * 1000;
 export const TODOS_CACHE_TTL_MS = 10 * 60 * 1000;
 
-export async function refreshProjectChildren(projectName: string): Promise<ProjectChildrenResult> {
+export async function refreshProjectChildren(projectName: string): Promise<ProjectChildrenResult>
+{
 	return (await serverFns()).refreshProjectChildren(projectName);
 }
 
-export async function refreshProjectTodos(projectName: string) {
+export async function refreshProjectTodos(projectName: string)
+{
 	return (await serverFns()).refreshProjectTodos(projectName);
 }
 
@@ -358,6 +758,7 @@ export async function refreshProjectTodos(projectName: string) {
  * The project list for server code that runs outside a request (background refresh, the git watcher,
  * the ready buffer, all started at boot): the getProjects server function needs a Start context.
  */
-export async function listProjects() {
+export async function listProjects()
+{
 	return (await serverFns()).getProjectsHandler();
 }

@@ -13,26 +13,42 @@ const BUTTON_CLASS =
 type Children = GitChildResult[] | undefined;
 
 /** Runs one action, toasts its result, and on success writes its effect into the children cache. */
-function useCardAction(project: string) {
+function useCardAction(project: string)
+{
 	const queryClient = useQueryClient();
 	const [busy, setBusy] = useState(false);
 	const run = async (
 		label: string,
 		action: () => Promise<ActionResult>,
 		onOk: (old: GitChildResult[]) => GitChildResult[],
-	) => {
+	) =>
+	{
 		setBusy(true);
-		try {
+		try
+		{
 			const result = await action();
 			pushToast(actionResultToast(label, result));
 			if (result.ok) queryClient.setQueryData<Children>(["children", project], (old) => old && onOk(old));
-		} catch (error) {
-			pushToast({level: "error", message: label, detail: error instanceof Error ? error.message : String(error)});
-		} finally {
+		}
+		catch (error)
+		{
+			pushToast(
+				{
+					level: "error",
+					message: label,
+					detail: error instanceof Error ? error.message : String(error),
+				},
+			);
+		}
+		finally
+		{
 			setBusy(false);
 		}
 	};
-	return {busy, run};
+	return {
+		busy,
+		run,
+	};
 }
 
 /**
@@ -40,13 +56,22 @@ function useCardAction(project: string) {
  * work. Restore a local branch from the remote one, open a PR from it on GitHub, or delete the
  * remote branch (outward-facing, so it asks first). Never ready, never in the ready buffer.
  */
-export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; category?: Category}) {
+export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; category?: Category})
+{
 	const {busy, run} = useCardAction(commit.project);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const holder = commit.remoteOnly;
 	if (holder === undefined) return null;
 	const remoteBranch = `${holder.remote}/${holder.branch}`;
-	const input = {data: {project: commit.project, remote: holder.remote, branch: holder.branch}};
+	const input =
+	{
+		data:
+		{
+			project: commit.project,
+			remote: holder.remote,
+			branch: holder.branch,
+		},
+	};
 
 	const restore = async () =>
 		run(
@@ -55,7 +80,13 @@ export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; cate
 			(old) =>
 				old.map((c) =>
 					c.sha === commit.sha
-						? {...c, branch: holder.branch, remoteOnly: undefined, pushedToRemote: true}
+						?
+							{
+								...c,
+								branch: holder.branch,
+								remoteOnly: undefined,
+								pushedToRemote: true,
+							}
 						: c,
 				),
 		);
@@ -88,7 +119,8 @@ export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; cate
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							void remove();
 						}}
 						className={`${BUTTON_CLASS} bg-red-600 text-white hover:bg-red-700`}
@@ -97,7 +129,8 @@ export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; cate
 					</button>
 					<button
 						type="button"
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirmDelete(false);
 						}}
 						className={`${BUTTON_CLASS} text-text-400 hover:bg-bg-200`}
@@ -110,7 +143,8 @@ export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; cate
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							void restore();
 						}}
 						title={`git branch ${holder.branch} ${remoteBranch}`}
@@ -136,7 +170,8 @@ export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; cate
 					<button
 						type="button"
 						disabled={busy}
-						onClick={() => {
+						onClick={() =>
+						{
 							setConfirmDelete(true);
 						}}
 						className={`${BUTTON_CLASS} ml-auto text-text-400 hover:bg-bg-200`}
@@ -154,14 +189,23 @@ export function RemoteOnlyCard({commit, category}: {commit: GitChildResult; cate
  * A repo whose PR remote fetches no `refs/pull/*` heads: one item, near the top, whose one action
  * adds the refspec and fetches. Never automatic: only the repo the user clicks is touched.
  */
-export function PrRefsMissingCard({item, category}: {item: GitChildResult; category?: Category}) {
+export function PrRefsMissingCard({item, category}: {item: GitChildResult; category?: Category})
+{
 	const {busy, run} = useCardAction(item.project);
 	const remote = item.prRemote ?? "the PR remote";
 
 	const setUp = async () =>
 		run(
 			"Set up PR refs",
-			async () => setUpPrRefs({data: {project: item.project}}),
+			async () =>
+				setUpPrRefs(
+					{
+						data:
+						{
+							project: item.project,
+						},
+					},
+				),
 			(old) => old.filter((c) => c.kind !== "pr_refs_missing"),
 		);
 
@@ -184,7 +228,8 @@ export function PrRefsMissingCard({item, category}: {item: GitChildResult; categ
 				<button
 					type="button"
 					disabled={busy}
-					onClick={() => {
+					onClick={() =>
+					{
 						void setUp();
 					}}
 					title={`git config --add remote.${remote}.fetch '+refs/pull/*/head:refs/remotes/${remote}/pr/*' && git fetch ${remote}`}

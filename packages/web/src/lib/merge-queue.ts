@@ -1,4 +1,5 @@
-import {
+import
+{
 	fetchUpstreamRef,
 	computeMergeStatus,
 	getChildren,
@@ -22,13 +23,15 @@ export {mergeQueueEvents as emitter} from "./upstream-moves.js";
 export function mergeStatusToTransition(
 	commitsBehind: number | undefined,
 	rebaseable: boolean | null,
-): Transition | undefined {
+): Transition | undefined
+{
 	if (commitsBehind == null || commitsBehind === 0) return undefined;
 	if (rebaseable === false) return "resolve_conflicts";
 	return "rebase";
 }
 
-function emit(event: MergeStatusEvent): void {
+function emit(event: MergeStatusEvent): void
+{
 	emitter.emit("mergeStatus", event);
 }
 
@@ -39,21 +42,46 @@ function emit(event: MergeStatusEvent): void {
 export const MERGE_STATUS_LOOKAHEAD = 2;
 
 /** Each project's not-on-hold children from its last check, in rank order with their remaining job. */
-const unreadyWork = new Map<string, Array<{sha: string; job: number}>>();
+const unreadyWork = new Map<
+	string,
+	Array<
+	{
+		sha: string;
+		job: number;
+	}>
+>();
 
 /**
  * How many of the project's children fall in the head of the global order across every project
  * checked so far. Readiness isn't known here, so each not-on-hold child counts as unready work;
  * per-item overrides are left to the buffer.
  */
-function pullWindowFor(project: string, projects: readonly ProjectInfo[]): number {
+function pullWindowFor(project: string, projects: readonly ProjectInfo[]): number
+{
 	const registry = new Map(loadInventory().projects.map((r) => [r.dir, r.priority]));
-	const repos = projects.map((p) => {
+	const repos = projects.map((p) =>
+	{
 		const priority = registry.get(p.dir);
-		return priority === undefined ? {name: p.name} : {name: p.name, priority};
+		return priority === undefined
+			?
+				{
+					name: p.name,
+				}
+			:
+				{
+					name: p.name,
+					priority,
+				};
 	});
 	const items = [...unreadyWork].flatMap(([repo, work]) =>
-		work.map(({sha, job}) => ({repo, id: sha, job, state: "unready" as const, onHold: false})),
+		work.map(({sha, job}) => (
+		{
+			repo,
+			id: sha,
+			job,
+			state: "unready" as const,
+			onHold: false,
+		})),
 	);
 	return orderReadyQueue(repos, items)
 		.slice(0, getReadyBufferSize() + MERGE_STATUS_LOOKAHEAD)
@@ -61,24 +89,43 @@ function pullWindowFor(project: string, projects: readonly ProjectInfo[]): numbe
 }
 
 /** Children outside the pull window, in rank order, waiting for one-per-sweep-tick merge-tree checks. */
-const deferred = new Map<string, {upstreamSha: string; shas: string[]}>();
+const deferred = new Map<
+	string,
+	{
+		upstreamSha: string;
+		shas: string[];
+	}
+>();
 
 /** Projects that still have deferred merge-tree checks, oldest backlog first. */
-export function deferredMergeStatusProjects(): string[] {
+export function deferredMergeStatusProjects(): string[]
+{
 	return [...deferred.keys()];
 }
 
 /** Test-only: forget every deferred backlog. */
-export function resetDeferredMergeStatus(): void {
+export function resetDeferredMergeStatus(): void
+{
 	deferred.clear();
 	unreadyWork.clear();
 }
 
 /** Children ranked shortest job first, by size from the commit_facts cache (filled by the children refresh). */
-async function rankWork(p: ProjectInfo, shas: string[]): Promise<Array<{sha: string; job: number}>> {
+async function rankWork(
+	p: ProjectInfo,
+	shas: string[],
+): Promise<
+	Array<
+	{
+		sha: string;
+		job: number;
+	}>
+>
+{
 	if (shas.length === 0) return [];
 	const facts = await getCommitFacts(p.dir, p.name, shas);
-	const chains = shas.map((sha) => {
+	const chains = shas.map((sha) =>
+	{
 		const f = facts.get(sha);
 		const lines = f === undefined ? 0 : f.insertions + f.deletions;
 		return {
@@ -97,23 +144,31 @@ async function rankWork(p: ProjectInfo, shas: string[]): Promise<Array<{sha: str
 			],
 		};
 	});
-	return rankCandidates(chains).map(({sha, job}) => ({sha, job}));
+	return rankCandidates(chains).map(({sha, job}) => (
+	{
+		sha,
+		job,
+	}));
 }
 
-async function computeAndEmit(p: ProjectInfo, sha: string, upstreamSha: string): Promise<void> {
+async function computeAndEmit(p: ProjectInfo, sha: string, upstreamSha: string): Promise<void>
+{
 	const ms = await computeMergeStatus(p.dir, sha, upstreamSha);
 	cacheMergeStatus(p.name, sha, upstreamSha, ms.commitsAhead, ms.commitsBehind, ms.rebaseable);
-	emit({
-		project: p.name,
-		sha,
-		commitsBehind: ms.commitsBehind,
-		commitsAhead: ms.commitsAhead,
-		rebaseable: ms.rebaseable,
-		transition: mergeStatusToTransition(ms.commitsBehind, ms.rebaseable),
-	});
+	emit(
+		{
+			project: p.name,
+			sha,
+			commitsBehind: ms.commitsBehind,
+			commitsAhead: ms.commitsAhead,
+			rebaseable: ms.rebaseable,
+			transition: mergeStatusToTransition(ms.commitsBehind, ms.rebaseable),
+		},
+	);
 }
 
-async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]): Promise<void> {
+async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]): Promise<void>
+{
 	const fetched = await fetchUpstreamRef(p.dir, p.upstreamRef, p.name);
 	const upstreamSha = fetched.sha;
 	if (!upstreamSha) return;
@@ -137,27 +192,39 @@ async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]
 	const cached = new Map(getCachedMergeStatuses(p.name, upstreamSha).map((ms) => [ms.sha, ms]));
 
 	const uncached: string[] = [];
-	for (const {sha} of work) {
+	for (const {sha} of work)
+	{
 		const ms = cached.get(sha);
-		if (!ms) {
+		if (!ms)
+		{
 			uncached.push(sha);
 			continue;
 		}
-		emit({
-			project: p.name,
-			sha,
-			commitsBehind: ms.commitsBehind,
-			commitsAhead: ms.commitsAhead,
-			rebaseable: ms.rebaseable,
-			transition: mergeStatusToTransition(ms.commitsBehind, ms.rebaseable),
-		});
+		emit(
+			{
+				project: p.name,
+				sha,
+				commitsBehind: ms.commitsBehind,
+				commitsAhead: ms.commitsAhead,
+				rebaseable: ms.rebaseable,
+				transition: mergeStatusToTransition(ms.commitsBehind, ms.rebaseable),
+			},
+		);
 	}
 
 	const rest = uncached.slice(window);
 	deferred.delete(p.name);
-	if (rest.length > 0) deferred.set(p.name, {upstreamSha, shas: rest});
+	if (rest.length > 0)
+		deferred.set(
+			p.name,
+			{
+				upstreamSha,
+				shas: rest,
+			},
+		);
 
-	for (const sha of uncached.slice(0, window)) {
+	for (const sha of uncached.slice(0, window))
+	{
 		// Sequential on purpose: each call spawns git subprocesses, so fan-out must stay bounded
 		// eslint-disable-next-line no-await-in-loop
 		await computeAndEmit(p, sha, upstreamSha);
@@ -165,7 +232,8 @@ async function checkProjectInfo(p: ProjectInfo, projects: readonly ProjectInfo[]
 }
 
 /** One deferred merge-tree check for `project`: the highest-ranked child still waiting. */
-async function checkDeferredInfo(p: ProjectInfo): Promise<void> {
+async function checkDeferredInfo(p: ProjectInfo): Promise<void>
+{
 	const backlog = deferred.get(p.name);
 	if (!backlog) return;
 	const sha = backlog.shas.shift();
@@ -178,7 +246,8 @@ async function checkDeferredInfo(p: ProjectInfo): Promise<void> {
 	await computeAndEmit(p, sha, backlog.upstreamSha);
 }
 
-export async function checkProject(projectName: string): Promise<void> {
+export async function checkProject(projectName: string): Promise<void>
+{
 	const {listProjects} = await import("./server-fns.js");
 	const projects = await listProjects();
 	const p = projects.find((proj) => proj.name === projectName);
@@ -190,10 +259,12 @@ export async function checkProject(projectName: string): Promise<void> {
 }
 
 /** Run one deferred merge-tree check for `projectName` (called once per sweep tick, at background rank). */
-export async function checkDeferredMergeStatus(projectName: string): Promise<void> {
+export async function checkDeferredMergeStatus(projectName: string): Promise<void>
+{
 	const {listProjects} = await import("./server-fns.js");
 	const p = (await listProjects()).find((proj) => proj.name === projectName);
-	if (!p) {
+	if (!p)
+	{
 		deferred.delete(projectName);
 		return;
 	}

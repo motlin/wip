@@ -4,24 +4,35 @@ import {ArrowLeft, ExternalLink, LayoutGrid} from "../components/icons.js";
 import {LabelList} from "../components/label-list";
 import {boardItemByNumberQueryOptions} from "../lib/queries";
 
-export const Route = createFileRoute("/board-item/$project/$number")({
-	loader: async ({context: {queryClient}, params}) =>
-		queryClient.query({
-			...boardItemByNumberQueryOptions(params.project, Number(params.number)),
-			staleTime: "static",
+export const Route = createFileRoute("/board-item/$project/$number")(
+	{
+		loader: async ({context: {queryClient}, params}) =>
+			queryClient.query(
+				{
+					...boardItemByNumberQueryOptions(params.project, Number(params.number)),
+					staleTime: "static",
+				},
+			),
+		head: ({params}) => (
+		{
+			meta: [
+				{
+					title: `Board Item #${params.number}`,
+				},
+			],
 		}),
-	head: ({params}) => ({
-		meta: [{title: `Board Item #${params.number}`}],
-	}),
-	component: BoardItemDetail,
-});
+		component: BoardItemDetail,
+	},
+);
 
-function BoardItemDetail() {
+function BoardItemDetail()
+{
 	const {project, number} = Route.useParams();
 	const num = Number(number);
 	const {data: item} = useSuspenseQuery(boardItemByNumberQueryOptions(project, num));
 
-	if (!item) {
+	if (!item)
+	{
 		return (
 			<div className="p-6">
 				<p className="text-sm text-text-500">

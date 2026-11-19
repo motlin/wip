@@ -15,7 +15,8 @@
  * line per ref.
  */
 
-export interface WatchGate {
+export interface WatchGate
+{
 	/** Should a watcher fire for this project trigger a refresh? */
 	shouldRefresh(project: string): Promise<boolean>;
 	/**
@@ -40,7 +41,8 @@ export interface WatchGate {
 }
 
 /** True when before → after differs only in refs/remotes/ lines (a fetch), HEAD unchanged. */
-export function onlyRemoteRefsChanged(before: string, after: string): boolean {
+export function onlyRemoteRefsChanged(before: string, after: string): boolean
+{
 	const [beforeHead, ...beforeRefs] = before.split("\n");
 	const [afterHead, ...afterRefs] = after.split("\n");
 	if (beforeHead !== afterHead) return false;
@@ -59,29 +61,36 @@ export function onlyRemoteRefsChanged(before: string, after: string): boolean {
  */
 export function createWatchGate(
 	getSnapshot: (project: string) => Promise<string>,
-	onRecord: (project: string, snapshot: string) => Promise<void> | void = () => {},
-): WatchGate {
+	onRecord: (project: string, snapshot: string) => Promise<void> | void = () =>
+	{
+	},
+): WatchGate
+{
 	const lastRefreshed = new Map<string, string>();
-	const record = async (project: string, snapshot: string): Promise<void> => {
+	const record = async (project: string, snapshot: string): Promise<void> =>
+	{
 		lastRefreshed.set(project, snapshot);
 		await onRecord(project, snapshot);
 	};
 
 	return {
-		async shouldRefresh(project: string): Promise<boolean> {
+		async shouldRefresh(project: string): Promise<boolean>
+		{
 			const snapshot = await getSnapshot(project);
 			// Unknown snapshot (repo unreadable): fail open — a spurious refresh
 			// is coalesced by the queue; a missed real change would go stale.
 			if (snapshot === "") return true;
 			return lastRefreshed.get(project) !== snapshot;
 		},
-		async refreshing<T>(project: string, work: () => Promise<T>): Promise<T> {
+		async refreshing<T>(project: string, work: () => Promise<T>): Promise<T>
+		{
 			const snapshot = await getSnapshot(project);
 			const result = await work();
 			if (snapshot !== "") await record(project, snapshot);
 			return result;
 		},
-		async absorbOwnWrites<T>(project: string, work: () => Promise<T>): Promise<T> {
+		async absorbOwnWrites<T>(project: string, work: () => Promise<T>): Promise<T>
+		{
 			const before = await getSnapshot(project);
 			const result = await work();
 			const after = await getSnapshot(project);
@@ -90,18 +99,22 @@ export function createWatchGate(
 				after !== "" &&
 				lastRefreshed.get(project) === before &&
 				onlyRemoteRefsChanged(before, after)
-			) {
+			)
+			{
 				await record(project, after);
 			}
 			return result;
 		},
-		hasRecord(project: string): boolean {
+		hasRecord(project: string): boolean
+		{
 			return lastRefreshed.has(project);
 		},
-		adopt(project: string, snapshot: string): void {
+		adopt(project: string, snapshot: string): void
+		{
 			lastRefreshed.set(project, snapshot);
 		},
-		reset(): void {
+		reset(): void
+		{
 			lastRefreshed.clear();
 		},
 	};

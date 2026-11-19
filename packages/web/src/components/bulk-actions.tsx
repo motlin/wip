@@ -5,8 +5,12 @@ import {ESCAPE_HATCH_RECIPES, type EscapeHatchRecipe} from "../lib/escape-hatch.
 import {runPendingAction} from "../lib/pending-action.js";
 import {pushToast} from "../lib/toast-store.js";
 
-export interface BulkActionsProps {
-	topUp: () => Promise<{running: boolean}>;
+export interface BulkActionsProps
+{
+	topUp: () => Promise<
+	{
+		running: boolean;
+	}>;
 	runRecipe: (recipe: EscapeHatchRecipe) => Promise<unknown>;
 }
 
@@ -14,25 +18,41 @@ export interface BulkActionsProps {
  * The dashboard's bulk actions (lean plan step 37): "Top up ready buffer" pulls at most the
  * buffer's shortfall; the More menu is the escape hatch to the user's own just recipes.
  */
-export function BulkActions({topUp, runRecipe}: BulkActionsProps) {
+export function BulkActions({topUp, runRecipe}: BulkActionsProps)
+{
 	const [toppingUp, setToppingUp] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [status, setStatus] = useState<string | null>(null);
 
-	const handleTopUp = async () => {
+	const handleTopUp = async () =>
+	{
 		setStatus(null);
-		await runPendingAction("Top up ready buffer", setToppingUp, async () => {
+		await runPendingAction("Top up ready buffer", setToppingUp, async () =>
+		{
 			const {running} = await topUp();
-			if (running) pushToast({level: "info", message: "Topping up the ready buffer…"});
+			if (running)
+				pushToast(
+					{
+						level: "info",
+						message: "Topping up the ready buffer…",
+					},
+				);
 			else setStatus("The ready buffer is not running in this server");
 		});
 	};
 
-	const handleRecipe = async (recipe: EscapeHatchRecipe, label: string) => {
+	const handleRecipe = async (recipe: EscapeHatchRecipe, label: string) =>
+	{
 		setMenuOpen(false);
-		await runPendingAction(label, undefined, async () => {
+		await runPendingAction(label, undefined, async () =>
+		{
 			await runRecipe(recipe);
-			pushToast({level: "info", message: `Running "${label}" in every repo…`});
+			pushToast(
+				{
+					level: "info",
+					message: `Running "${label}" in every repo…`,
+				},
+			);
 		});
 	};
 
@@ -41,7 +61,8 @@ export function BulkActions({topUp, runRecipe}: BulkActionsProps) {
 			{status && <output className="text-xs text-text-500">{status}</output>}
 			<button
 				type="button"
-				onClick={() => {
+				onClick={() =>
+				{
 					void handleTopUp();
 				}}
 				disabled={toppingUp}
@@ -54,7 +75,8 @@ export function BulkActions({topUp, runRecipe}: BulkActionsProps) {
 				type="button"
 				aria-haspopup="menu"
 				aria-expanded={menuOpen}
-				onClick={() => {
+				onClick={() =>
+				{
 					setMenuOpen((open) => !open);
 				}}
 				className="rounded-lg border border-border-300 px-3 py-1.5 text-sm font-medium text-text-300 transition-colors hover:bg-bg-200"
@@ -72,7 +94,8 @@ export function BulkActions({topUp, runRecipe}: BulkActionsProps) {
 							type="button"
 							role="menuitem"
 							aria-label={`${label} (${command})`}
-							onClick={() => {
+							onClick={() =>
+							{
 								void handleRecipe(recipe, label);
 							}}
 							className="flex items-center justify-between gap-4 px-3 py-1.5 text-left text-sm text-text-100 hover:bg-bg-200"

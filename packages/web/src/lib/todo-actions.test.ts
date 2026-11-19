@@ -6,7 +6,8 @@ import {execa} from "execa";
 
 import {initDb, resetDb, type ProjectInfo} from "@wip/shared";
 
-import {
+import
+{
 	getProjectTodosHandler,
 	resetProjectCache,
 	runTodoTaskHandler,
@@ -16,20 +17,30 @@ import {
 } from "./server-fns.impl.js";
 
 const enqueueTodoTask = vi.hoisted(() =>
-	vi.fn<(...args: unknown[]) => {id: string; status: string; message?: string}>(() => ({
+	vi.fn<
+		(...args: unknown[]) =>
+		{
+			id: string;
+			status: string;
+			message?: string;
+		}
+	>(() => (
+	{
 		id: "7",
 		status: "queued",
 		message: 'Queued after "First task"',
 	})),
 );
-vi.mock("./task-queue.js", async (importOriginal) => ({
+vi.mock("./task-queue.js", async (importOriginal) => (
+{
 	...(await importOriginal<typeof import("./task-queue.js")>()),
 	enqueueTodoTask,
 }));
 
 let dir: string;
 
-function project(): ProjectInfo {
+function project(): ProjectInfo
+{
 	return {
 		name: "todo-actions",
 		dir,
@@ -46,71 +57,161 @@ function project(): ProjectInfo {
 	};
 }
 
-beforeEach(async () => {
+beforeEach(async () =>
+{
 	initDb(":memory:");
 	dir = await mkdtemp(join(tmpdir(), "wip-todo-actions-"));
-	await execa("git", ["init", "--initial-branch=feature/todos"], {cwd: dir});
-	await execa("git", ["config", "user.email", "test@test.com"], {cwd: dir});
-	await execa("git", ["config", "user.name", "Test User"], {cwd: dir});
-	await execa("git", ["commit", "--allow-empty", "-m", "Initial commit"], {cwd: dir});
+	await execa(
+		"git",
+		["init", "--initial-branch=feature/todos"],
+		{
+			cwd: dir,
+		},
+	);
+	await execa(
+		"git",
+		["config", "user.email", "test@test.com"],
+		{
+			cwd: dir,
+		},
+	);
+	await execa(
+		"git",
+		["config", "user.name", "Test User"],
+		{
+			cwd: dir,
+		},
+	);
+	await execa(
+		"git",
+		["commit", "--allow-empty", "-m", "Initial commit"],
+		{
+			cwd: dir,
+		},
+	);
 	await mkdir(join(dir, ".llm"));
 	await writeFile(join(dir, ".llm", "todo.md"), "- [ ] First task\n- [ ] Second task\n");
 	seedProjectCache([project()]);
 });
 
-afterEach(async () => {
+afterEach(async () =>
+{
 	resetProjectCache();
 	resetDb();
 	enqueueTodoTask.mockClear();
-	await rm(dir, {recursive: true, force: true});
+	await rm(
+		dir,
+		{
+			recursive: true,
+			force: true,
+		},
+	);
 });
 
-describe("todo actions", () => {
-	it("queues a Claude task on the project's checked-out branch that does the clicked todo, not the first one, and reports what it queued behind", async () => {
+describe("todo actions", () =>
+{
+	it("queues a Claude task on the project's checked-out branch that does the clicked todo, not the first one, and reports what it queued behind", async () =>
+	{
 		const head = (await execa("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
 		const todoFile = join(dir, ".llm", "todo.md");
 
-		const status = await runTodoTaskHandler({project: "todo-actions", sourceFile: todoFile, title: "Second task"});
+		const status = await runTodoTaskHandler(
+			{
+				project: "todo-actions",
+				sourceFile: todoFile,
+				title: "Second task",
+			},
+		);
 
-		expect({status, calls: enqueueTodoTask.mock.calls}).toStrictEqual({
-			status: {id: "7", status: "queued", message: 'Queued after "First task"'},
-			calls: [
-				[
-					{
-						project: "todo-actions",
-						projectDir: dir,
-						sha: head,
-						shortSha: head.slice(0, 7),
-						branch: "feature/todos",
-						sourceFile: todoFile,
-						title: "Second task",
-						command:
-							'Follow the markdown-tasks:do-one-task skill, but implement the task titled "Second task" in .llm/todo.md instead of the first incomplete task, and mark it complete with task_mark.py --title "Second task".',
-					},
+		expect(
+			{
+				status,
+				calls: enqueueTodoTask.mock.calls,
+			},
+		).toStrictEqual(
+			{
+				status:
+				{
+					id: "7",
+					status: "queued",
+					message: 'Queued after "First task"',
+				},
+				calls: [
+					[
+						{
+							project: "todo-actions",
+							projectDir: dir,
+							sha: head,
+							shortSha: head.slice(0, 7),
+							branch: "feature/todos",
+							sourceFile: todoFile,
+							title: "Second task",
+							command:
+								'Follow the markdown-tasks:do-one-task skill, but implement the task titled "Second task" in .llm/todo.md instead of the first incomplete task, and mark it complete with task_mark.py --title "Second task".',
+						},
+					],
 				],
-			],
-		});
+			},
+		);
 	});
 
-	it("flags a todo on hold until it is unsnoozed", async () => {
+	it("flags a todo on hold until it is unsnoozed", async () =>
+	{
 		const todoFile = join(dir, ".llm", "todo.md");
-		await snoozeTodoHandler({project: "todo-actions", sourceFile: todoFile, title: "Second task", until: null});
+		await snoozeTodoHandler(
+			{
+				project: "todo-actions",
+				sourceFile: todoFile,
+				title: "Second task",
+				until: null,
+			},
+		);
 		const held = await getProjectTodosHandler("todo-actions");
-		await unsnoozeTodoHandler({project: "todo-actions", sourceFile: todoFile, title: "Second task"});
+		await unsnoozeTodoHandler(
+			{
+				project: "todo-actions",
+				sourceFile: todoFile,
+				title: "Second task",
+			},
+		);
 		const released = await getProjectTodosHandler("todo-actions");
 
-		expect({
-			held: held.map((t) => ({title: t.title, onHold: t.onHold})),
-			released: released.map((t) => ({title: t.title, onHold: t.onHold})),
-		}).toStrictEqual({
-			held: [
-				{title: "First task", onHold: false},
-				{title: "Second task", onHold: true},
-			],
-			released: [
-				{title: "First task", onHold: false},
-				{title: "Second task", onHold: false},
-			],
-		});
+		expect(
+			{
+				held: held.map((t) => (
+				{
+					title: t.title,
+					onHold: t.onHold,
+				})),
+				released: released.map((t) => (
+				{
+					title: t.title,
+					onHold: t.onHold,
+				})),
+			},
+		).toStrictEqual(
+			{
+				held: [
+					{
+						title: "First task",
+						onHold: false,
+					},
+					{
+						title: "Second task",
+						onHold: true,
+					},
+				],
+				released: [
+					{
+						title: "First task",
+						onHold: false,
+					},
+					{
+						title: "Second task",
+						onHold: false,
+					},
+				],
+			},
+		);
 	});
 });

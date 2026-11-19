@@ -1,5 +1,6 @@
 import {describe, it, expect} from "vite-plus/test";
-import {
+import
+{
 	diffQueryOptions,
 	inventoryStatusQueryOptions,
 	issuesQueryOptions,
@@ -10,8 +11,10 @@ import {
 
 // Refresh all no longer invalidates these caches, so they must go stale right away
 // and refetch on the next window focus instead of waiting out the 10 minute default.
-describe("refresh-all freshness for issues and project items", () => {
-	it("marks issues and project items stale immediately", () => {
+describe("refresh-all freshness for issues and project items", () =>
+{
+	it("marks issues and project items stale immediately", () =>
+	{
 		expect(issuesQueryOptions().staleTime).toBe(0);
 		expect(projectItemsQueryOptions().staleTime).toBe(0);
 	});
@@ -19,8 +22,10 @@ describe("refresh-all freshness for issues and project items", () => {
 
 // Diffs and test logs are immutable, so they never go stale, but each one opened
 // in a long session used to stay in memory forever once its card closed.
-describe("on-demand diff and test log caches", () => {
-	it("are released ten minutes after nothing observes them", () => {
+describe("on-demand diff and test log caches", () =>
+{
+	it("are released ten minutes after nothing observes them", () =>
+	{
 		expect([diffQueryOptions("wip", "abc").gcTime, testLogQueryOptions("wip", "abc").gcTime]).toStrictEqual([
 			10 * 60 * 1000,
 			10 * 60 * 1000,
@@ -30,8 +35,10 @@ describe("on-demand diff and test log caches", () => {
 
 // A save in another tab rewrites projects.json5, so a mounted or refocused /tasks
 // must refetch the registry rather than trust a copy from before that save.
-describe("registry freshness", () => {
-	it("marks registry status and candidates stale immediately", () => {
+describe("registry freshness", () =>
+{
+	it("marks registry status and candidates stale immediately", () =>
+	{
 		expect([inventoryStatusQueryOptions().staleTime, registryCandidatesQueryOptions().staleTime]).toStrictEqual([
 			0, 0,
 		]);

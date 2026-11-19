@@ -31,7 +31,8 @@ const CONTENT_TYPES = new Map([
 	[".woff2", "font/woff2"],
 ]);
 
-export function contentTypeFor(filePath) {
+export function contentTypeFor(filePath)
+{
 	return CONTENT_TYPES.get(path.extname(filePath)) ?? "application/octet-stream";
 }
 
@@ -39,12 +40,16 @@ export function contentTypeFor(filePath) {
  * Map a URL pathname to a file inside clientDir, or null when the path
  * escapes the client dir or is the root (which must go to SSR).
  */
-export function resolveStaticPath(clientDir, urlPath) {
+export function resolveStaticPath(clientDir, urlPath)
+{
 	const withoutQuery = urlPath.split("?")[0] ?? "";
 	let decoded;
-	try {
+	try
+	{
 		decoded = decodeURIComponent(withoutQuery);
-	} catch {
+	}
+	catch
+	{
 		return null;
 	}
 	if (decoded === "/" || decoded === "") return null;
@@ -55,45 +60,59 @@ export function resolveStaticPath(clientDir, urlPath) {
 	return resolved;
 }
 
-function toWebRequest(nodeRequest, port) {
+function toWebRequest(nodeRequest, port)
+{
 	const url = `http://localhost:${port}${nodeRequest.url}`;
 	const headers = new Headers();
-	for (const [name, value] of Object.entries(nodeRequest.headers)) {
-		if (Array.isArray(value)) {
+	for (const [name, value] of Object.entries(nodeRequest.headers))
+	{
+		if (Array.isArray(value))
+		{
 			for (const item of value) headers.append(name, item);
-		} else if (value !== undefined) {
+		}
+		else if (value !== undefined)
+		{
 			headers.set(name, value);
 		}
 	}
 	const hasBody = nodeRequest.method !== "GET" && nodeRequest.method !== "HEAD";
-	return new Request(url, {
-		method: nodeRequest.method,
-		headers,
-		body: hasBody ? Readable.toWeb(nodeRequest) : undefined,
-		duplex: hasBody ? "half" : undefined,
-	});
+	return new Request(
+		url,
+		{
+			method: nodeRequest.method,
+			headers,
+			body: hasBody ? Readable.toWeb(nodeRequest) : undefined,
+			duplex: hasBody ? "half" : undefined,
+		},
+	);
 }
 
-async function writeWebResponse(webResponse, nodeResponse) {
+async function writeWebResponse(webResponse, nodeResponse)
+{
 	const headers = {};
-	for (const [name, value] of webResponse.headers.entries()) {
+	for (const [name, value] of webResponse.headers.entries())
+	{
 		headers[name] = value;
 	}
 	nodeResponse.writeHead(webResponse.status, headers);
-	if (!webResponse.body) {
+	if (!webResponse.body)
+	{
 		nodeResponse.end();
 		return;
 	}
-	for await (const chunk of webResponse.body) {
+	for await (const chunk of webResponse.body)
+	{
 		nodeResponse.write(chunk);
 	}
 	nodeResponse.end();
 }
 
-async function main() {
+async function main()
+{
 	const portFlagIndex = process.argv.indexOf("--port");
 	const port = portFlagIndex === -1 ? 3456 : Number(process.argv[portFlagIndex + 1]);
-	if (!Number.isInteger(port) || port <= 0) {
+	if (!Number.isInteger(port) || port <= 0)
+	{
 		console.error(`Invalid --port value: ${process.argv[portFlagIndex + 1]}`);
 		process.exit(1);
 	}
@@ -101,27 +120,36 @@ async function main() {
 	const webDir = path.dirname(fileURLToPath(import.meta.url));
 	const clientDir = path.join(webDir, "dist", "client");
 	const serverEntry = path.join(webDir, "dist", "server", "server.js");
-	if (!existsSync(serverEntry) || !existsSync(clientDir)) {
+	if (!existsSync(serverEntry) || !existsSync(clientDir))
+	{
 		console.error(`No production build under ${path.join(webDir, "dist")} — run \`just build\` first.`);
 		process.exit(1);
 	}
 
 	const {default: ssr} = await import(pathToFileURL(serverEntry).href);
 
-	const server = createServer((request, response) => {
-		const handle = async () => {
-			if (request.method === "GET" || request.method === "HEAD") {
+	const server = createServer((request, response) =>
+	{
+		const handle = async () =>
+		{
+			if (request.method === "GET" || request.method === "HEAD")
+			{
 				const staticPath = resolveStaticPath(clientDir, request.url ?? "/");
-				if (staticPath && existsSync(staticPath) && statSync(staticPath).isFile()) {
-					response.writeHead(200, {
-						"Content-Type": contentTypeFor(staticPath),
-						"Content-Length": statSync(staticPath).size,
-						// Vite asset filenames are content-hashed, safe to cache hard
-						"Cache-Control": staticPath.includes(`${path.sep}assets${path.sep}`)
-							? "public, max-age=31536000, immutable"
-							: "no-cache",
-					});
-					if (request.method === "HEAD") {
+				if (staticPath && existsSync(staticPath) && statSync(staticPath).isFile())
+				{
+					response.writeHead(
+						200,
+						{
+							"Content-Type": contentTypeFor(staticPath),
+							"Content-Length": statSync(staticPath).size,
+							// Vite asset filenames are content-hashed, safe to cache hard
+							"Cache-Control": staticPath.includes(`${path.sep}assets${path.sep}`)
+								? "public, max-age=31536000, immutable"
+								: "no-cache",
+						},
+					);
+					if (request.method === "HEAD")
+					{
 						response.end();
 						return;
 					}
@@ -134,21 +162,30 @@ async function main() {
 			await writeWebResponse(webResponse, response);
 		};
 
-		handle().catch((error) => {
+		handle().catch((error) =>
+		{
 			console.error("Request failed:", error);
-			if (!response.headersSent) {
-				response.writeHead(500, {"Content-Type": "text/plain; charset=utf-8"});
+			if (!response.headersSent)
+			{
+				response.writeHead(
+					500,
+					{
+						"Content-Type": "text/plain; charset=utf-8",
+					},
+				);
 			}
 			response.end("Internal Server Error");
 		});
 	});
 
-	server.listen(port, () => {
+	server.listen(port, () =>
+	{
 		console.log(`WIP dashboard (production) on http://localhost:${port}/`);
 	});
 }
 
 const isDirectRun = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
-if (isDirectRun) {
+if (isDirectRun)
+{
 	await main();
 }

@@ -9,11 +9,21 @@ import {useRefreshSchedulerState} from "../lib/server-events-context";
  * Every box has a fixed height and the count uses tabular figures, so the
  * card never changes size as the queue drains and the page below never shifts.
  */
-export function RefreshSchedulerPanel() {
+export function RefreshSchedulerPanel()
+{
 	const state = useRefreshSchedulerState();
 	if (state.slots === 0) return null;
 
-	const slots = Array.from({length: state.slots}, (_, index) => ({slot: index, job: state.running[index] ?? null}));
+	const slots = Array.from(
+		{
+			length: state.slots,
+		},
+		(_, index) => (
+		{
+			slot: index,
+			job: state.running[index] ?? null,
+		}),
+	);
 
 	return (
 		<section className="mb-6 rounded-lg border border-border-300/50 bg-bg-100 p-4">

@@ -1,6 +1,8 @@
 import {useSyncExternalStore} from "react";
 
-const noopSubscribe = () => () => {};
+const noopSubscribe = () => () =>
+{
+};
 const isClient = () => true;
 const isServer = () => false;
 
@@ -9,6 +11,7 @@ const isServer = () => false;
  * client-only state (localStorage-restored queries, live SSE state) on it so the
  * hydration render matches the server HTML.
  */
-export function useHydrated(): boolean {
+export function useHydrated(): boolean
+{
 	return useSyncExternalStore(noopSubscribe, isClient, isServer);
 }

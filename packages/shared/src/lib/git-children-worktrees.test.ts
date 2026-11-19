@@ -9,19 +9,28 @@ import {initDb, resetDb} from "./db.js";
 import {getChildCommits, prRefsMissing, setUpPrRefs} from "./git.js";
 import type {PrStatuses} from "./github-pr-status.js";
 
-function sh(dir: string, command: string): string {
-	return execSync(command, {cwd: dir, stdio: ["ignore", "pipe", "ignore"]})
+function sh(dir: string, command: string): string
+{
+	return execSync(
+		command,
+		{
+			cwd: dir,
+			stdio: ["ignore", "pipe", "ignore"],
+		},
+	)
 		.toString()
 		.trim();
 }
 
-function commit(dir: string, file: string): string {
+function commit(dir: string, file: string): string
+{
 	writeFileSync(join(dir, file), file);
 	sh(dir, `git add . && git commit -m '${file}'`);
 	return sh(dir, "git rev-parse HEAD");
 }
 
-function createRepo(): string {
+function createRepo(): string
+{
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), "wip-children-worktrees-")));
 	sh(dir, "git init -b main");
 	sh(dir, "git config user.email test@test.com");
@@ -34,7 +43,10 @@ function createRepo(): string {
 			"!PARENT=$(git rev-parse ${1:-HEAD}); git rev-list --all --parents" +
 				" | awk -v p=\"$PARENT\" 'NF==2 && $2==p {print $1}'; :",
 		],
-		{cwd: dir, stdio: "ignore"},
+		{
+			cwd: dir,
+			stdio: "ignore",
+		},
 	);
 	return dir;
 }
@@ -44,13 +56,15 @@ function createRepo(): string {
  * worktrees (the `<repo>-test-worktree` that last tested it, a throwaway agent worktree) can still
  * sit detached on it, and `git rev-list --all` counts every worktree's HEAD.
  */
-describe("getChildCommits ignores commits only wip's own worktrees hold", () => {
+describe("getChildCommits ignores commits only wip's own worktrees hold", () =>
+{
 	let dir: string;
 	let base: string;
 	let rewritten: string;
 	let squashed: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		dir = createRepo();
 		base = commit(dir, "base.txt");
@@ -64,13 +78,27 @@ describe("getChildCommits ignores commits only wip's own worktrees hold", () => 
 		sh(dir, "git checkout -q main");
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetDb();
-		rmSync(`${dir}-test-worktree`, {recursive: true, force: true});
-		rmSync(dir, {recursive: true, force: true});
+		rmSync(
+			`${dir}-test-worktree`,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("drops a commit only the test worktree's detached HEAD holds", async () => {
+	it("drops a commit only the test worktree's detached HEAD holds", async () =>
+	{
 		sh(dir, `git worktree add -q --detach ${dir}-test-worktree ${rewritten}`);
 
 		const children = await getChildCommits(dir, base, false);
@@ -78,11 +106,22 @@ describe("getChildCommits ignores commits only wip's own worktrees hold", () => 
 		expect(children.map((child) => [child.sha, child.branch])).toStrictEqual([[squashed, "feature"]]);
 	});
 
-	it("drops a commit only a throwaway worktree under the wip cache dir holds", async () => {
+	it("drops a commit only a throwaway worktree under the wip cache dir holds", async () =>
+	{
 		const throwaways = join(getCacheDir(), "conflict-worktrees", "repo");
-		mkdirSync(throwaways, {recursive: true});
+		mkdirSync(
+			throwaways,
+			{
+				recursive: true,
+			},
+		);
 		const throwaway = mkdtempSync(join(throwaways, "wt-"));
-		rmSync(throwaway, {recursive: true});
+		rmSync(
+			throwaway,
+			{
+				recursive: true,
+			},
+		);
 		sh(dir, `git worktree add -q --detach ${throwaway} ${rewritten}`);
 
 		const children = await getChildCommits(dir, base, false);
@@ -90,7 +129,8 @@ describe("getChildCommits ignores commits only wip's own worktrees hold", () => 
 		expect(children.map((child) => [child.sha, child.branch])).toStrictEqual([[squashed, "feature"]]);
 	});
 
-	it("keeps a commit the user's own checkout is detached on", async () => {
+	it("keeps a commit the user's own checkout is detached on", async () =>
+	{
 		sh(dir, `git worktree add -q --detach ${dir}-test-worktree ${rewritten}`);
 		sh(dir, `git checkout -q --detach ${rewritten}`);
 
@@ -99,7 +139,8 @@ describe("getChildCommits ignores commits only wip's own worktrees hold", () => 
 		expect(new Set(children.map((child) => child.sha))).toStrictEqual(new Set([rewritten, squashed]));
 	});
 
-	it("keeps a commit the test worktree holds that a branch also holds", async () => {
+	it("keeps a commit the test worktree holds that a branch also holds", async () =>
+	{
 		sh(dir, `git worktree add -q --detach ${dir}-test-worktree ${squashed}`);
 
 		const children = await getChildCommits(dir, base, false);
@@ -109,7 +150,8 @@ describe("getChildCommits ignores commits only wip's own worktrees hold", () => 
 });
 
 /** PR statuses naming one branch's open PR, as the GitHub PR query returns them. */
-function prStatusesFor(branch: string, sha: string): PrStatuses {
+function prStatusesFor(branch: string, sha: string): PrStatuses
+{
 	return {
 		review: new Map([[branch, "no_pr"]]),
 		checks: new Map([[branch, "running"]]),
@@ -132,12 +174,14 @@ function prStatusesFor(branch: string, sha: string): PrStatuses {
  * refs/remotes/<remote>/pr/<n> ref, or the PR data naming the branch) represents it, so it is not
  * listed again; with no PR it is effectively lost work and is listed remote-only, never ready.
  */
-describe("getChildCommits and commits only a remote-tracking branch holds", () => {
+describe("getChildCommits and commits only a remote-tracking branch holds", () =>
+{
 	let dir: string;
 	let base: string;
 	let pushed: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		dir = createRepo();
 		base = commit(dir, "base.txt");
@@ -149,22 +193,38 @@ describe("getChildCommits and commits only a remote-tracking branch holds", () =
 		sh(dir, `git update-ref refs/remotes/origin/vault-feature ${pushed}`);
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetDb();
-		rmSync(dir, {recursive: true, force: true});
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("lists a commit with no local branch and no PR as remote-only, naming the fork branch", async () => {
+	it("lists a commit with no local branch and no PR as remote-only, naming the fork branch", async () =>
+	{
 		sh(dir, "git branch -q -D vault-feature");
 
 		const children = await getChildCommits(dir, base, false);
 
 		expect(children.map((child) => [child.sha, child.branch, child.remoteOnly])).toStrictEqual([
-			[pushed, undefined, {remote: "origin", branch: "vault-feature"}],
+			[
+				pushed,
+				undefined,
+				{
+					remote: "origin",
+					branch: "vault-feature",
+				},
+			],
 		]);
 	});
 
-	it("hides a remote-only commit a pull request ref points at", async () => {
+	it("hides a remote-only commit a pull request ref points at", async () =>
+	{
 		sh(dir, "git branch -q -D vault-feature");
 		sh(dir, `git update-ref refs/remotes/upstream/pr/7 ${pushed}`);
 
@@ -173,7 +233,8 @@ describe("getChildCommits and commits only a remote-tracking branch holds", () =
 		expect(children.map((child) => child.sha)).toStrictEqual([]);
 	});
 
-	it("hides a remote-only commit whose fork branch has an open PR", async () => {
+	it("hides a remote-only commit whose fork branch has an open PR", async () =>
+	{
 		sh(dir, "git branch -q -D vault-feature");
 
 		const children = await getChildCommits(dir, base, false, prStatusesFor("vault-feature", pushed));
@@ -181,18 +242,26 @@ describe("getChildCommits and commits only a remote-tracking branch holds", () =
 		expect(children.map((child) => child.sha)).toStrictEqual([]);
 	});
 
-	it("ignores <remote>/HEAD when deciding which branch holds a commit", async () => {
+	it("ignores <remote>/HEAD when deciding which branch holds a commit", async () =>
+	{
 		sh(dir, "git branch -q -D vault-feature");
 		sh(dir, "git symbolic-ref refs/remotes/upstream/HEAD refs/remotes/origin/vault-feature");
 
 		const children = await getChildCommits(dir, base, false);
 
 		expect(children.map((child) => [child.sha, child.remoteOnly])).toStrictEqual([
-			[pushed, {remote: "origin", branch: "vault-feature"}],
+			[
+				pushed,
+				{
+					remote: "origin",
+					branch: "vault-feature",
+				},
+			],
 		]);
 	});
 
-	it("keeps a commit a local branch holds that the fork also holds, not remote-only", async () => {
+	it("keeps a commit a local branch holds that the fork also holds, not remote-only", async () =>
+	{
 		const children = await getChildCommits(dir, base, false);
 
 		expect(
@@ -205,11 +274,13 @@ describe("getChildCommits and commits only a remote-tracking branch holds", () =
  * GitHub publishes every PR head as refs/pull/<n>/head; wip sees which commits a PR covers only
  * when the PR remote fetches them (`+refs/pull/*\/head:refs/remotes/<remote>/pr/*`).
  */
-describe("prRefsMissing and setUpPrRefs", () => {
+describe("prRefsMissing and setUpPrRefs", () =>
+{
 	let dir: string;
 	let bare: string;
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		initDb(":memory:");
 		bare = realpathSync(mkdtempSync(join(tmpdir(), "wip-pr-refs-bare-")));
 		sh(bare, "git init -q --bare -b main");
@@ -224,35 +295,56 @@ describe("prRefsMissing and setUpPrRefs", () => {
 		sh(dir, `git branch -q -D pr-head`);
 	});
 
-	afterEach(() => {
+	afterEach(() =>
+	{
 		resetDb();
-		rmSync(dir, {recursive: true, force: true});
-		rmSync(bare, {recursive: true, force: true});
+		rmSync(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
+		rmSync(
+			bare,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it("reports a remote that fetches no refs/pull/* as missing PR refs", async () => {
+	it("reports a remote that fetches no refs/pull/* as missing PR refs", async () =>
+	{
 		expect(await prRefsMissing(dir, "upstream")).toBe(true);
 	});
 
-	it("reports no missing PR refs for a remote the repo does not have", async () => {
+	it("reports no missing PR refs for a remote the repo does not have", async () =>
+	{
 		expect(await prRefsMissing(dir, "origin")).toBe(false);
 	});
 
-	it("adds the PR refspec to the remote and fetches the PR heads", async () => {
+	it("adds the PR refspec to the remote and fetches the PR heads", async () =>
+	{
 		await setUpPrRefs(dir, "upstream");
 
-		expect({
-			fetch: sh(dir, "git config --get-all remote.upstream.fetch").split("\n"),
-			missing: await prRefsMissing(dir, "upstream"),
-			prRef: sh(dir, "git for-each-ref --format='%(refname)' refs/remotes/upstream/pr/"),
-		}).toStrictEqual({
-			fetch: ["+refs/heads/*:refs/remotes/upstream/*", "+refs/pull/*/head:refs/remotes/upstream/pr/*"],
-			missing: false,
-			prRef: "refs/remotes/upstream/pr/3",
-		});
+		expect(
+			{
+				fetch: sh(dir, "git config --get-all remote.upstream.fetch").split("\n"),
+				missing: await prRefsMissing(dir, "upstream"),
+				prRef: sh(dir, "git for-each-ref --format='%(refname)' refs/remotes/upstream/pr/"),
+			},
+		).toStrictEqual(
+			{
+				fetch: ["+refs/heads/*:refs/remotes/upstream/*", "+refs/pull/*/head:refs/remotes/upstream/pr/*"],
+				missing: false,
+				prRef: "refs/remotes/upstream/pr/3",
+			},
+		);
 	});
 
-	it("adds the refspec only once when set up twice", async () => {
+	it("adds the refspec only once when set up twice", async () =>
+	{
 		await setUpPrRefs(dir, "upstream");
 		await setUpPrRefs(dir, "upstream");
 

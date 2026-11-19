@@ -8,7 +8,8 @@ import type {WorkItems} from "./use-work-items.js";
 
 export type Grouped = Record<Category, ColumnItems>;
 
-export function emptyGrouped(): Grouped {
+export function emptyGrouped(): Grouped
+{
 	return {
 		upstream_red: {},
 		pr_refs_missing: {},
@@ -43,7 +44,8 @@ export function emptyGrouped(): Grouped {
 	};
 }
 
-export function bucketCount(items: ColumnItems): number {
+export function bucketCount(items: ColumnItems): number
+{
 	return (
 		(items.gitChildren?.length ?? 0) +
 		(items.issues?.length ?? 0) +
@@ -59,16 +61,25 @@ export function bucketCount(items: ColumnItems): number {
  * already pushed; with a PR, its PR's checks place it whatever its local test says. Behind upstream is
  * Needs Rebase, listed or not. A green commit the buffer does not list has only passed its tests.
  */
-function landingCategory(child: GitChildResult, project: ProjectInfo, entry: ReadyEntry | undefined): Category {
+function landingCategory(child: GitChildResult, project: ProjectInfo, entry: ReadyEntry | undefined): Category
+{
 	const category = classifyGitChild(child, project);
 	if (child.kind !== undefined || child.onHold === true || child.remoteOnly !== undefined) return category;
-	if (entry === undefined || category === "pushing" || category === "skippable") {
+	if (entry === undefined || category === "pushing" || category === "skippable")
+	{
 		if (category !== "ready_to_push") return category;
 		if (child.testStatus === "passed") return "tests_passed";
 		return project.hasTestConfigured ? "ready_to_test" : "no_test";
 	}
 	if ((child.commitsBehind ?? 0) > 0) return "needs_rebase";
-	if (isGitChildPullRequest(child)) return classifyPullRequest({...child, testStatus: "unknown"}, project);
+	if (isGitChildPullRequest(child))
+		return classifyPullRequest(
+			{
+				...child,
+				testStatus: "unknown",
+			},
+			project,
+		);
 	if (entry.list === "awaitingChecks") return "checks_running";
 	if (entry.list === "checksFailed") return "checks_failed";
 	return "ready_to_push";
@@ -79,22 +90,26 @@ export function buildGrouped(
 	workItems: WorkItems,
 	projects: ProjectInfo[],
 	readyToLand: ReadyToLandState | null | undefined,
-): Grouped {
+): Grouped
+{
 	const grouped = emptyGrouped();
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	const readyEntryOf = readyIndex(readyToLand);
 
-	for (const child of workItems.gitChildren) {
+	for (const child of workItems.gitChildren)
+	{
 		const project = projectMap.get(child.project);
 		if (!project) continue;
 		// A foreign red upstream is the baseline, not work: it gets no item.
 		if (child.kind === "upstream_ci" && !isOwnUpstreamRed(child)) continue;
 		(grouped[landingCategory(child, project, readyEntryOf(child))].gitChildren ??= []).push(child);
 	}
-	for (const issue of workItems.issues) {
+	for (const issue of workItems.issues)
+	{
 		(grouped[classifyIssue(issue)].issues ??= []).push(issue);
 	}
-	for (const todo of workItems.todos) {
+	for (const todo of workItems.todos)
+	{
 		(grouped[classifyTodo(todo)].todos ??= []).push(todo);
 	}
 	// Project items lack assignment info, so they are untriaged.

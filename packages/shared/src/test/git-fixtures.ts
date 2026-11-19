@@ -12,39 +12,64 @@ const fixturesDir = resolve(currentDir, "..", "__fixtures__", "git");
 
 const isRecordMode = process.env["GIT_FIXTURE_RECORD"] === "true";
 
-const recordedCallSchema = z.object({
-	command: z.string(),
-	args: z.array(z.string()),
-	input: z.string().optional(),
-	stdout: z.string(),
-	stderr: z.string(),
-	exitCode: z.number(),
-});
+const recordedCallSchema = z.object(
+	{
+		command: z.string(),
+		args: z.array(z.string()),
+		input: z.string().optional(),
+		stdout: z.string(),
+		stderr: z.string(),
+		exitCode: z.number(),
+	},
+);
 
-const fixtureFileSchema = z.object({calls: z.array(recordedCallSchema)});
+const fixtureFileSchema = z.object(
+	{
+		calls: z.array(recordedCallSchema),
+	},
+);
 
 export type RecordedCall = z.infer<typeof recordedCallSchema>;
 
 type FixtureFile = z.infer<typeof fixtureFileSchema>;
 
-function hashCall(command: string, args: string[], input?: string): string {
-	const payload = JSON.stringify({command, args, input: input ?? ""});
+function hashCall(command: string, args: string[], input?: string): string
+{
+	const payload = JSON.stringify(
+		{
+			command,
+			args,
+			input: input ?? "",
+		},
+	);
 	return createHash("sha256").update(payload).digest("hex").slice(0, 16);
 }
 
-function getFixturePath(testDir: string, command: string, args: string[], input?: string): string {
+function getFixturePath(testDir: string, command: string, args: string[], input?: string): string
+{
 	const hash = hashCall(command, args, input);
 	return join(testDir, `${hash}.json`);
 }
 
-function saveFixture(fixturePath: string, call: RecordedCall): void {
+function saveFixture(fixturePath: string, call: RecordedCall): void
+{
 	const dir = dirname(fixturePath);
-	if (!existsSync(dir)) mkdirSync(dir, {recursive: true});
-	const data: FixtureFile = {calls: [call]};
+	if (!existsSync(dir))
+		mkdirSync(
+			dir,
+			{
+				recursive: true,
+			},
+		);
+	const data: FixtureFile =
+	{
+		calls: [call],
+	};
 	writeFileSync(fixturePath, JSON.stringify(data, null, 2) + "\n");
 }
 
-export interface GitFixtureContext {
+export interface GitFixtureContext
+{
 	mock: Mock;
 	addFixture: (call: RecordedCall) => void;
 	stop: () => void;
@@ -62,19 +87,23 @@ export interface GitFixtureContext {
  * @param testName - Unique name for this test's fixtures (used as directory name)
  * @param fixturesRoot - Directory holding every test's fixture directory; defaults to the committed fixtures
  */
-export function setupGitFixtures(testName: string, fixturesRoot: string = fixturesDir): GitFixtureContext {
+export function setupGitFixtures(testName: string, fixturesRoot: string = fixturesDir): GitFixtureContext
+{
 	const fixtureMap = new Map<string, RecordedCall>();
 
 	// Pre-load all existing fixtures for this test
 	const testDir = join(fixturesRoot, testName);
-	if (existsSync(testDir)) {
-		for (const file of readdirSync(testDir)) {
+	if (existsSync(testDir))
+	{
+		for (const file of readdirSync(testDir))
+		{
 			if (!file.endsWith(".json")) continue;
 			const filePath = join(testDir, file);
 			const content = readFileSync(filePath, "utf-8");
 			const data = fixtureFileSchema.parse(JSON.parse(content));
 			const call = data.calls[0];
-			if (call) {
+			if (call)
+			{
 				const hash = hashCall(call.command, call.args, call.input);
 				fixtureMap.set(hash, call);
 			}
@@ -85,24 +114,44 @@ export function setupGitFixtures(testName: string, fixturesRoot: string = fixtur
 		(
 			command: string,
 			args: string[],
-			options?: {input?: string; reject?: boolean; env?: Record<string, string>; cwd?: string},
+			options?:
+			{
+				input?: string;
+				reject?: boolean;
+				env?: Record<string, string>;
+				cwd?: string;
+			},
 		) => Promise<ExecaResult>
 	>(
 		async (
 			command: string,
 			args: string[],
-			options?: {input?: string; reject?: boolean; env?: Record<string, string>; cwd?: string},
-		) => {
+			options?:
+			{
+				input?: string;
+				reject?: boolean;
+				env?: Record<string, string>;
+				cwd?: string;
+			},
+		) =>
+		{
 			const input = options?.input;
 			const hash = hashCall(command, args, input);
 
-			if (isRecordMode) {
+			if (isRecordMode)
+			{
 				const {tracedExeca: realTracedExeca} = await import("../services/traced-execa.js");
 				const result = await realTracedExeca(command, args, options);
-				const recorded: RecordedCall = {
+				const recorded: RecordedCall =
+				{
 					command,
 					args,
-					...(input ? {input} : {}),
+					...(input
+						?
+							{
+								input,
+							}
+						: {}),
 					stdout: result.stdout,
 					stderr: result.stderr,
 					exitCode: result.exitCode,
@@ -115,7 +164,8 @@ export function setupGitFixtures(testName: string, fixturesRoot: string = fixtur
 
 			// Replay mode: look up fixture by command+args hash
 			const recorded = fixtureMap.get(hash);
-			if (!recorded) {
+			if (!recorded)
+			{
 				throw new Error(
 					`No git fixture found for: ${command} ${args.join(" ")}\n` +
 						`Hash: ${hash}\n` +
@@ -133,16 +183,22 @@ export function setupGitFixtures(testName: string, fixturesRoot: string = fixtur
 		},
 	);
 
-	function addFixture(call: RecordedCall): void {
+	function addFixture(call: RecordedCall): void
+	{
 		const hash = hashCall(call.command, call.args, call.input);
 		fixtureMap.set(hash, call);
 		const fixturePath = getFixturePath(testDir, call.command, call.args, call.input);
 		saveFixture(fixturePath, call);
 	}
 
-	function stop(): void {
+	function stop(): void
+	{
 		mockFn.mockRestore();
 	}
 
-	return {mock: mockFn, addFixture, stop};
+	return {
+		mock: mockFn,
+		addFixture,
+		stop,
+	};
 }

@@ -10,41 +10,64 @@ import {resetProjectCache, runLadderAllHandler, seedProjectCache} from "./server
 import {getLatestLadderResults, resetQueue, waitForTask} from "./task-queue.js";
 
 // The ladder's replay rung runs a recipe from the user's global justfile, which CI machines do not have.
-const hasGlobalJustfile = (() => {
-	try {
-		execFileSync("just", ["--global-justfile", "--summary"], {stdio: "ignore"});
+const hasGlobalJustfile = (() =>
+{
+	try
+	{
+		execFileSync(
+			"just",
+			["--global-justfile", "--summary"],
+			{
+				stdio: "ignore",
+			},
+		);
 		return true;
-	} catch {
+	}
+	catch
+	{
 		return false;
 	}
 })();
 
-function git(dir: string, ...args: string[]): string {
-	return execFileSync("git", ["-C", dir, ...args], {
-		encoding: "utf-8",
-		stdio: ["ignore", "pipe", "pipe"],
-		env: {...process.env, GIT_EDITOR: "true"},
-	}).trim();
+function git(dir: string, ...args: string[]): string
+{
+	return execFileSync(
+		"git",
+		["-C", dir, ...args],
+		{
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+			env:
+			{
+				...process.env,
+				GIT_EDITOR: "true",
+			},
+		},
+	).trim();
 }
 
-function commit(dir: string, file: string, content: string, message: string): void {
+function commit(dir: string, file: string, content: string, message: string): void
+{
 	fs.writeFileSync(path.join(dir, file), content);
 	git(dir, "add", file);
 	git(dir, "commit", "-q", "-m", message);
 }
 
-function remoteRefs(origin: string): string {
+function remoteRefs(origin: string): string
+{
 	return git(origin, "for-each-ref", "--format=%(refname) %(objectname)");
 }
 
-describe("ladder end to end with fake git remote and fake herdr", () => {
+describe("ladder end to end with fake git remote and fake herdr", () =>
+{
 	let root: string;
 	let origin: string;
 	let clone: string;
 	let pushMarker: string;
 	const saved: Record<string, string | undefined> = {};
 
-	beforeEach(() => {
+	beforeEach(() =>
+	{
 		for (const key of ["XDG_CONFIG_HOME", "XDG_CACHE_HOME", "CLAUDE_CONFIG_DIR"]) saved[key] = process.env[key];
 		root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "ladder-e2e-")));
 		process.env["XDG_CONFIG_HOME"] = path.join(root, "config");
@@ -56,13 +79,29 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		fs.mkdirSync(path.join(root, "claude"));
 		fs.writeFileSync(
 			path.join(root, "claude", ".claude.json"),
-			JSON.stringify({projects: {[clone]: {hasTrustDialogAccepted: true}}}),
+			JSON.stringify(
+				{
+					projects:
+					{
+						[clone]:
+						{
+							hasTrustDialogAccepted: true,
+						},
+					},
+				},
+			),
 		);
 		const seed = path.join(root, "seed");
 		pushMarker = path.join(root, "push-attempted");
 
 		execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
-		execFileSync("git", ["clone", "-q", origin, seed], {stdio: "ignore"});
+		execFileSync(
+			"git",
+			["clone", "-q", origin, seed],
+			{
+				stdio: "ignore",
+			},
+		);
 		git(seed, "config", "user.email", "t@example.com");
 		git(seed, "config", "user.name", "T");
 		git(seed, "checkout", "-q", "-b", "main");
@@ -84,9 +123,16 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 
 		// Any push or ref update arriving at the remote from here on leaves a marker.
 		const hook = path.join(origin, "hooks", "pre-receive");
-		fs.writeFileSync(hook, `#!/bin/sh\ntouch '${pushMarker}'\nexit 1\n`, {mode: 0o755});
+		fs.writeFileSync(
+			hook,
+			`#!/bin/sh\ntouch '${pushMarker}'\nexit 1\n`,
+			{
+				mode: 0o755,
+			},
+		);
 
-		const info: ProjectInfo = {
+		const info: ProjectInfo =
+		{
 			name: "clone",
 			dir: clone,
 			remote: "owner/repo",
@@ -100,48 +146,99 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			hasTestConfigured: true,
 			rebaseInProgress: false,
 		};
-		saveInventory([{name: "clone", dir: clone, template: "typescript", kind: "own"}]);
+		saveInventory([
+			{
+				name: "clone",
+				dir: clone,
+				template: "typescript",
+				kind: "own",
+			},
+		]);
 		initDb(":memory:");
 		seedProjectCache([info]);
 	});
 
-	afterEach(async () => {
+	afterEach(async () =>
+	{
 		await resetQueue();
 		resetProjectCache();
 		resetDb();
-		for (const [key, value] of Object.entries(saved)) {
+		for (const [key, value] of Object.entries(saved))
+		{
 			if (value === undefined) Reflect.deleteProperty(process.env, key);
 			else process.env[key] = value;
 		}
-		fs.rmSync(root, {recursive: true, force: true});
+		fs.rmSync(
+			root,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
 	it.skipIf(!hasGlobalJustfile)(
 		"replays the clean branch, hands the conflict to the AI job once, and ends green without touching the remote",
-		async () => {
+		async () =>
+		{
 			const remoteBefore = remoteRefs(origin);
-			const launches: {cwd: string; label: string; command: string}[] = [];
-			const stateAtLaunch: {conflicting: string; clean: string; mainHead: string; mainStatus: string}[] = [];
+			const launches:
+			{
+				cwd: string;
+				label: string;
+				command: string;
+			}[] = [];
+			const stateAtLaunch:
+			{
+				conflicting: string;
+				clean: string;
+				mainHead: string;
+				mainStatus: string;
+			}[] = [];
 			const mainHeadBefore = git(clone, "rev-parse", "HEAD");
 			const mainStatusBefore = git(clone, "status", "--porcelain");
-			const overrides: Partial<AiRungDeps> = {
+			const overrides: Partial<AiRungDeps> =
+			{
 				memory: new RunMemory(),
 				results: async () => Promise.resolve("green"),
-				launch: async (request) => {
-					if (request.label.includes(":test-fix:")) {
-						return Promise.resolve({ok: true, value: {tabId: "tab-2", paneId: "pane-2"}});
+				launch: async (request) =>
+				{
+					if (request.label.includes(":test-fix:"))
+					{
+						return Promise.resolve(
+							{
+								ok: true,
+								value:
+								{
+									tabId: "tab-2",
+									paneId: "pane-2",
+								},
+							},
+						);
 					}
 					launches.push(request);
-					stateAtLaunch.push({
-						conflicting: git(clone, "rev-parse", "conflicting"),
-						clean: git(clone, "rev-parse", "clean~1"),
-						mainHead: git(clone, "rev-parse", "HEAD"),
-						mainStatus: git(clone, "status", "--porcelain"),
-					});
-					return Promise.resolve({ok: true, value: {tabId: "tab-1", paneId: "pane-1"}});
+					stateAtLaunch.push(
+						{
+							conflicting: git(clone, "rev-parse", "conflicting"),
+							clean: git(clone, "rev-parse", "clean~1"),
+							mainHead: git(clone, "rev-parse", "HEAD"),
+							mainStatus: git(clone, "status", "--porcelain"),
+						},
+					);
+					return Promise.resolve(
+						{
+							ok: true,
+							value:
+							{
+								tabId: "tab-1",
+								paneId: "pane-1",
+							},
+						},
+					);
 				},
 				// The fake agent: resolve the rebase conflict with scripted git commands, then report done.
-				wait: async (paneId) => {
+				wait: async (paneId) =>
+				{
 					if (paneId === "pane-2") return Promise.resolve("done");
 					const wt = launches[0]?.cwd ?? "";
 					// The rebase is already stopped on the conflict in the throwaway worktree.
@@ -152,10 +249,16 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 				},
 			};
 
-			const [job] = await runLadderAllHandler({
-				backgroundRebase: true,
-				ai: {probe: async () => Promise.resolve(true), overrides},
-			});
+			const [job] = await runLadderAllHandler(
+				{
+					backgroundRebase: true,
+					ai:
+					{
+						probe: async () => Promise.resolve(true),
+						overrides,
+					},
+				},
+			);
 			// Resolves once the ladder job and its AI follow-up have both finished, however slow the machine is.
 			await waitForTask(job?.id ?? "");
 
@@ -189,7 +292,12 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			// After the fake agent finished, the repo is rebased and the final result is green.
 			expect(git(clone, "rev-parse", "conflicting~1")).toBe(upstream);
 			expect(result?.stop).toBeUndefined();
-			expect(result?.herdr).toStrictEqual({tabId: "tab-2", paneId: "pane-2"});
+			expect(result?.herdr).toStrictEqual(
+				{
+					tabId: "tab-2",
+					paneId: "pane-2",
+				},
+			);
 			expect(result?.rungs.every((r) => r.status === "passed")).toBe(true);
 			// Nothing was pushed and the remote is untouched.
 			expect(fs.existsSync(pushMarker)).toBe(false);
@@ -204,21 +312,43 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 		180_000,
 	);
 
-	it("leaves every ref unchanged and removes the worktree when the agent leaves the rebase unfinished", async () => {
+	it("leaves every ref unchanged and removes the worktree when the agent leaves the rebase unfinished", async () =>
+	{
 		git(clone, "fetch", "-q", "upstream");
 		const refsBefore = git(clone, "for-each-ref", "--format=%(refname) %(objectname)");
-		const launches: {cwd: string}[] = [];
-		const overrides: Partial<AiRungDeps> = {
+		const launches:
+		{
+			cwd: string;
+		}[] = [];
+		const overrides: Partial<AiRungDeps> =
+		{
 			memory: new RunMemory(),
-			launch: async (request) => {
+			launch: async (request) =>
+			{
 				launches.push(request);
-				return Promise.resolve({ok: true, value: {tabId: "tab-1", paneId: "pane-1"}});
+				return Promise.resolve(
+					{
+						ok: true,
+						value:
+						{
+							tabId: "tab-1",
+							paneId: "pane-1",
+						},
+					},
+				);
 			},
 			wait: async () => Promise.resolve("done"),
 			// The cheap rungs would legitimately rebase "clean"; isolate the AI rung's own effect.
-			rerun: async () => Promise.resolve({project: "clone", rungs: []}),
+			rerun: async () =>
+				Promise.resolve(
+					{
+						project: "clone",
+						rungs: [],
+					},
+				),
 		};
-		const project = {
+		const project =
+		{
 			name: "clone",
 			path: clone,
 			upstreamRemote: "upstream",
@@ -228,7 +358,14 @@ describe("ladder end to end with fake git remote and fake herdr", () => {
 			rebaseInProgress: false,
 			offline: false,
 		};
-		const outcome = await runAiConflictRung(project, {stop: "conflict", branches: ["conflicting"]}, overrides);
+		const outcome = await runAiConflictRung(
+			project,
+			{
+				stop: "conflict",
+				branches: ["conflicting"],
+			},
+			overrides,
+		);
 
 		expect(outcome).toBe("stuck");
 		expect(launches).toHaveLength(1);

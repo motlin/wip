@@ -15,13 +15,15 @@ export function orderedGitChildren(
 	children: readonly GitChildResult[],
 	category: Category,
 	land: Pick<LandContextValue, "readyItemOf"> | null,
-): GitChildResult[] {
+): GitChildResult[]
+{
 	const ranked = rankGitChildren(children);
 	if (land === null || !LANDING_CATEGORIES.includes(category)) return ranked;
 	const itemOf = new Map(ranked.map((child) => [child, land.readyItemOf(child)?.item]));
 	const items = [...new Set([...itemOf.values()].filter((item): item is ReadyToLandItem => item !== undefined))];
 	const place = new Map(stableRowOrder(items).map((item, index) => [item, index]));
-	const placeOf = (child: GitChildResult): number => {
+	const placeOf = (child: GitChildResult): number =>
+	{
 		const item = itemOf.get(child);
 		return (item === undefined ? undefined : place.get(item)) ?? items.length;
 	};

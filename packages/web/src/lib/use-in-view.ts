@@ -10,36 +10,53 @@ import {useEffect, useRef, useState} from "react";
  * If `IntersectionObserver` is unavailable (older browsers, SSR), returns
  * `true` immediately so consumers fall back to eager rendering.
  */
-export function useInView<T extends Element = Element>({rootMargin}: {rootMargin?: string} = {}) {
+export function useInView<T extends Element = Element>({
+	rootMargin,
+}:
+{
+	rootMargin?: string;
+} = {})
+{
 	const ref = useRef<T | null>(null);
 	const [inView, setInView] = useState(false);
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		if (inView) return undefined;
 		const el = ref.current;
 		if (!el) return undefined;
-		if (typeof IntersectionObserver === "undefined") {
+		if (typeof IntersectionObserver === "undefined")
+		{
 			// oxlint-disable-next-line react/set-state-in-effect -- the fallback must flip after mount to keep hydration deterministic
 			setInView(true);
 			return undefined;
 		}
 		const observer = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) {
-					if (entry.isIntersecting) {
+			(entries) =>
+			{
+				for (const entry of entries)
+				{
+					if (entry.isIntersecting)
+					{
 						setInView(true);
 						observer.disconnect();
 						return;
 					}
 				}
 			},
-			{rootMargin},
+			{
+				rootMargin,
+			},
 		);
 		observer.observe(el);
-		return () => {
+		return () =>
+		{
 			observer.disconnect();
 		};
 	}, [inView, rootMargin]);
 
-	return {ref, inView};
+	return {
+		ref,
+		inView,
+	};
 }

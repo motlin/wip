@@ -29,36 +29,57 @@ process.stdout.write(JSON.stringify({started: started(), warnings}));
 process.exit(0);
 `;
 
-describe("tracing in the production build", () => {
+describe("tracing in the production build", () =>
+{
 	let tempDir: string | undefined;
 
-	afterEach(() => {
-		if (tempDir !== undefined) rmSync(tempDir, {recursive: true, force: true});
+	afterEach(() =>
+	{
+		if (tempDir !== undefined)
+			rmSync(
+				tempDir,
+				{
+					recursive: true,
+					force: true,
+				},
+			);
 		tempDir = undefined;
 	});
 
-	it("registers a tracer provider without failing to start", async () => {
-		if (!existsSync(serverEntry)) {
+	it("registers a tracer provider without failing to start", async () =>
+	{
+		if (!existsSync(serverEntry))
+		{
 			throw new Error(`No production build at ${serverEntry}; run \`just build\` first.`);
 		}
 		tempDir = mkdtempSync(path.join(tmpdir(), "wip-prod-tracing-"));
-		const {stdout} = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", childScript], {
-			cwd: webDir,
-			env: {
-				...process.env,
-				HOME: tempDir,
-				XDG_CONFIG_HOME: path.join(tempDir, "config"),
-				XDG_DATA_HOME: path.join(tempDir, "data"),
-				XDG_CACHE_HOME: path.join(tempDir, "cache"),
-				XDG_STATE_HOME: path.join(tempDir, "state"),
-				WIP_DB_PATH: path.join(tempDir, "wip.db"),
-				WIP_READY_BUFFER: "false",
-				WIP_TRACING: "true",
-				OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:9/v1/traces",
+		const {stdout} = await promisify(execFile)(
+			process.execPath,
+			["--input-type=module", "-e", childScript],
+			{
+				cwd: webDir,
+				env:
+				{
+					...process.env,
+					HOME: tempDir,
+					XDG_CONFIG_HOME: path.join(tempDir, "config"),
+					XDG_DATA_HOME: path.join(tempDir, "data"),
+					XDG_CACHE_HOME: path.join(tempDir, "cache"),
+					XDG_STATE_HOME: path.join(tempDir, "state"),
+					WIP_DB_PATH: path.join(tempDir, "wip.db"),
+					WIP_READY_BUFFER: "false",
+					WIP_TRACING: "true",
+					OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:9/v1/traces",
+				},
+				timeout: 30_000,
 			},
-			timeout: 30_000,
-		});
+		);
 
-		expect(JSON.parse(stdout)).toStrictEqual({started: true, warnings: []});
+		expect(JSON.parse(stdout)).toStrictEqual(
+			{
+				started: true,
+				warnings: [],
+			},
+		);
 	});
 });

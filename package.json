@@ -3,25 +3,28 @@
 	"version": "0.0.0",
 	"private": true,
 	"description": "Work-in-progress inventory and prioritization CLI",
-	"bin": {
+	"bin":
+	{
 		"wip": "./packages/cli/bin/run.js"
 	},
 	"type": "module",
-	"scripts": {
+	"scripts":
+	{
 		"preinstall": "npx only-allow pnpm",
 		"build": "pnpm -r run build",
 		"typecheck": "pnpm -r run typecheck",
 		"oxlint": "vp lint . --fix",
 		"oxlint:ci": "vp lint . --format github",
-		"fmt": "vp fmt",
-		"fmt:ci": "vp fmt --check",
+		"fmt": "oxfmt-next-line",
+		"fmt:ci": "oxfmt-next-line --check",
 		"fallow": "fallow fix --yes --no-create-config",
 		"fallow:ci": "fallow dead-code",
 		"test": "node node_modules/vitest/dist/cli.js",
 		"test:ui": "node node_modules/vitest/dist/cli.js --ui",
 		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
-	"devDependencies": {
+	"devDependencies":
+	{
 		"@vitest/coverage-v8": "^5.1.0",
 		"eslint-plugin-storybook": "^10.6.5",
 		"fallow": "^3.38.1",

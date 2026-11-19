@@ -12,14 +12,21 @@ export function flagSnoozedChildren(
 	children: GitChildResult[],
 	project: string,
 	snoozed: SnoozedChild[] | undefined,
-): GitChildResult[] {
+): GitChildResult[]
+{
 	if (!snoozed || snoozed.length === 0) return children;
 	const rows = snoozed.filter((s) => s.project === project);
 	if (rows.length === 0) return children;
 	const shas = new Set(rows.map((s) => s.sha));
 	const patchIds = new Set(rows.flatMap((s) => (s.patchId ? [s.patchId] : [])));
 	return children.map((c) =>
-		!c.onHold && (shas.has(c.sha) || (c.patchId && patchIds.has(c.patchId))) ? {...c, onHold: true} : c,
+		!c.onHold && (shas.has(c.sha) || (c.patchId && patchIds.has(c.patchId)))
+			?
+				{
+					...c,
+					onHold: true,
+				}
+			: c,
 	);
 }
 
@@ -31,8 +38,13 @@ export function flagSnoozedChildren(
 export function findSnoozedEntry(
 	snoozed: SnoozedChild[],
 	project: string,
-	identity: {sha: string; patchId?: string | undefined},
-): SnoozedChild | undefined {
+	identity:
+	{
+		sha: string;
+		patchId?: string | undefined;
+	},
+): SnoozedChild | undefined
+{
 	return snoozed.find(
 		(s) =>
 			s.project === project && (s.sha === identity.sha || (s.patchId !== null && s.patchId === identity.patchId)),

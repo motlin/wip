@@ -14,12 +14,14 @@ const LINK_CLASS = "font-medium underline underline-offset-2";
  * run, or a link to the failing run when they failed (plus Land by pushing where billing blocks
  * GitHub Actions). Chips mark a draft PR and auto-merge.
  */
-export function CardLand({commit, entry, land}: {commit: GitChildResult; entry: ReadyEntry; land: LandContextValue}) {
+export function CardLand({commit, entry, land}: {commit: GitChildResult; entry: ReadyEntry; land: LandContextValue})
+{
 	const {item} = entry;
 	const projectInfo = land.projects.find((p) => p.name === item.project);
 	const outcomeKey = landOutcomeKey(item.project, item.sha);
 	const outcome = land.outcomes[outcomeKey];
-	const dismiss = () => {
+	const dismiss = () =>
+	{
 		land.onDismissOutcome(outcomeKey);
 	};
 	const view = readyRowView(item, commit);

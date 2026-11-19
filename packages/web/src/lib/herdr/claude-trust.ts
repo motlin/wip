@@ -14,16 +14,21 @@ import {z} from "zod";
  * throwaway worktree (e.g. ~/.cache/wip/test-fix-worktrees) does not trust it; trusting the repo does.
  */
 
-function isFile(file: string): boolean {
-	try {
+function isFile(file: string): boolean
+{
+	try
+	{
 		return fs.statSync(file).isFile();
-	} catch {
+	}
+	catch
+	{
 		return false;
 	}
 }
 
 /** Claude Code's global config: a legacy `.config.json` in its config dir if present, else `.claude.json`. */
-export function claudeGlobalConfigPath(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string {
+export function claudeGlobalConfigPath(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string
+{
 	const configDir = env.CLAUDE_CONFIG_DIR;
 	const legacy = path.join(configDir ?? path.join(home, ".claude"), ".config.json");
 	if (isFile(legacy)) return legacy;
@@ -31,27 +36,44 @@ export function claudeGlobalConfigPath(env: NodeJS.ProcessEnv = process.env, hom
 }
 
 /** The slice of Claude's global config wip reads: which folders' trust dialog was accepted. */
-const ClaudeTrustConfigSchema = z.object({
-	projects: z.record(z.string(), z.object({hasTrustDialogAccepted: z.unknown()})).optional(),
-});
+const ClaudeTrustConfigSchema = z.object(
+	{
+		projects: z
+			.record(
+				z.string(),
+				z.object(
+					{
+						hasTrustDialogAccepted: z.unknown(),
+					},
+				),
+			)
+			.optional(),
+	},
+);
 
-function readTrustedFolders(configPath: string): Set<string> {
-	try {
+function readTrustedFolders(configPath: string): Set<string>
+{
+	try
+	{
 		const config = ClaudeTrustConfigSchema.parse(JSON.parse(fs.readFileSync(configPath, "utf8")));
 		return new Set(
 			Object.entries(config.projects ?? {})
 				.filter(([, project]) => project.hasTrustDialogAccepted === true)
 				.map(([dir]) => dir.normalize("NFC")),
 		);
-	} catch {
+	}
+	catch
+	{
 		return new Set();
 	}
 }
 
 /** The nearest folder at or above `dir` holding a `.git` entry; null outside any repo. */
-function gitRootOf(dir: string): string | null {
+function gitRootOf(dir: string): string | null
+{
 	let current = dir;
-	for (;;) {
+	for (;;)
+	{
 		if (fs.existsSync(path.join(current, ".git"))) return current;
 		const parent = path.dirname(current);
 		if (parent === current) return null;
@@ -60,7 +82,8 @@ function gitRootOf(dir: string): string | null {
 }
 
 /** The main checkout of the repo whose root is `gitRoot`: itself, or for a linked worktree the folder holding the common .git dir. */
-function canonicalRootOf(gitRoot: string): string {
+function canonicalRootOf(gitRoot: string): string
+{
 	const dotGit = path.join(gitRoot, ".git");
 	if (!isFile(dotGit)) return gitRoot;
 	const match = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dotGit, "utf8"));
@@ -72,10 +95,14 @@ function canonicalRootOf(gitRoot: string): string {
 	return path.basename(commonDir) === ".git" ? path.dirname(commonDir) : gitRoot;
 }
 
-function realpath(dir: string): string {
-	try {
+function realpath(dir: string): string
+{
+	try
+	{
 		return fs.realpathSync(dir);
-	} catch {
+	}
+	catch
+	{
 		return path.resolve(dir);
 	}
 }
@@ -85,7 +112,8 @@ function realpath(dir: string): string {
  * holding `repoDir` (its main checkout), or null when Claude already trusts it. A fresh worktree
  * folder has no trust entry of its own, so only the main checkout's counts.
  */
-export function untrustedWorktreeFolder(repoDir: string, configPath: string = claudeGlobalConfigPath()): string | null {
+export function untrustedWorktreeFolder(repoDir: string, configPath: string = claudeGlobalConfigPath()): string | null
+{
 	const real = realpath(repoDir);
 	const gitRoot = gitRootOf(real);
 	const folder = gitRoot === null ? real : canonicalRootOf(gitRoot);
@@ -96,12 +124,14 @@ export function untrustedWorktreeFolder(repoDir: string, configPath: string = cl
 const untrusted = new Map<string, string>();
 
 /** Records a project's latest trust check before an agent launch: the folder to trust, or null when trusted. */
-export function recordClaudeTrust(project: string, folder: string | null): void {
+export function recordClaudeTrust(project: string, folder: string | null): void
+{
 	if (folder === null) untrusted.delete(project);
 	else untrusted.set(project, folder);
 }
 
 /** Folders the user must trust in Claude so background fixes can run, by project. */
-export function untrustedAgentFolders(): ReadonlyMap<string, string> {
+export function untrustedAgentFolders(): ReadonlyMap<string, string>
+{
 	return untrusted;
 }

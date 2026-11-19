@@ -1,7 +1,8 @@
 import type {Meta, StoryObj} from "@storybook/react-vite";
 import {LineNumberedAnsiText} from "../components/line-numbered-ansi-text.js";
 
-const meta: Meta<typeof LineNumberedAnsiText> = {
+const meta: Meta<typeof LineNumberedAnsiText> =
+{
 	title: "Components/LineNumberedAnsiText",
 	component: LineNumberedAnsiText,
 };
@@ -9,8 +10,10 @@ const meta: Meta<typeof LineNumberedAnsiText> = {
 export default meta;
 type Story = StoryObj<typeof LineNumberedAnsiText>;
 
-export const HappyPath: Story = {
-	args: {
+export const HappyPath: Story =
+{
+	args:
+	{
 		text: [
 			"$ vitest run --reporter=verbose",
 			"",
@@ -31,8 +34,10 @@ export const HappyPath: Story = {
 	},
 };
 
-export const WithAnsiColors: Story = {
-	args: {
+export const WithAnsiColors: Story =
+{
+	args:
+	{
 		text: [
 			"\x1b[1m RUN \x1b[0m v3.1.1 /Users/dev/projects/wip",
 			"",
@@ -49,8 +54,10 @@ export const WithAnsiColors: Story = {
 	},
 };
 
-export const SingleLine: Story = {
-	args: {
+export const SingleLine: Story =
+{
+	args:
+	{
 		text: "✓ All tests passed",
 		className: "p-4 font-mono text-xs leading-relaxed",
 	},

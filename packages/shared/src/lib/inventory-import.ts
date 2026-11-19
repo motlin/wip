@@ -8,11 +8,13 @@ export type LandingMode = "pull-request" | "fast-forward";
  * The registry's configured landing; an unconfigured repo lands through a pull request, the safe
  * path, never a guess from its kind. Push-based landing is only ever an explicit choice.
  */
-export function landingMode(record: Pick<ProjectRecord, "landing">): LandingMode {
+export function landingMode(record: Pick<ProjectRecord, "landing">): LandingMode
+{
 	return record.landing ?? "pull-request";
 }
 
-export interface ParsedProjectsYaml {
+export interface ParsedProjectsYaml
+{
 	scan?: string;
 	skip?: string[];
 	own?: string[];
@@ -22,17 +24,20 @@ export interface ParsedProjectsYaml {
 
 type ListKey = "skip" | "own" | "forks" | "nested";
 
-function isListKey(key: string): key is ListKey {
+function isListKey(key: string): key is ListKey
+{
 	return key === "skip" || key === "own" || key === "forks" || key === "nested";
 }
 
-function expandHome(value: string, homeDir: string | undefined): string {
+function expandHome(value: string, homeDir: string | undefined): string
+{
 	if (homeDir === undefined) return value;
 	if (value === "~") return homeDir;
 	return value.startsWith("~/") ? `${homeDir}${value.slice(1)}` : value;
 }
 
-function stripTrailingSlash(value: string): string {
+function stripTrailingSlash(value: string): string
+{
 	return value.length > 1 ? value.replace(/\/+$/, "") : value;
 }
 
@@ -42,13 +47,16 @@ function stripTrailingSlash(value: string): string {
  * (or `[]`), with `#` comments and blank lines. `~` is expanded when
  * `homeDir` is given.
  */
-export function parseProjectsYaml(text: string, homeDir?: string): ParsedProjectsYaml {
+export function parseProjectsYaml(text: string, homeDir?: string): ParsedProjectsYaml
+{
 	const result: ParsedProjectsYaml = {};
 	let currentList: string[] | undefined;
-	for (const rawLine of text.split(/\r?\n/)) {
+	for (const rawLine of text.split(/\r?\n/))
+	{
 		const line = rawLine.trim();
 		if (line === "" || line.startsWith("#")) continue;
-		if (line.startsWith("- ") || line === "-") {
+		if (line.startsWith("- ") || line === "-")
+		{
 			currentList?.push(
 				expandHome(
 					line
@@ -65,9 +73,12 @@ export function parseProjectsYaml(text: string, homeDir?: string): ParsedProject
 		const key = match[1] ?? "";
 		const value = match[2] ?? "";
 		currentList = undefined;
-		if (key === "scan") {
+		if (key === "scan")
+		{
 			if (value !== "") result.scan = expandHome(value, homeDir);
-		} else if (isListKey(key)) {
+		}
+		else if (isListKey(key))
+		{
 			const list: string[] = [];
 			result[key] = list;
 			if (value === "") currentList = list;
@@ -78,7 +89,8 @@ export function parseProjectsYaml(text: string, homeDir?: string): ParsedProject
 
 export type LanguageTemplate = "typescript" | "java" | "rust" | "playdate";
 
-export interface TemplateTexts {
+export interface TemplateTexts
+{
 	project?: string;
 	typescript?: string;
 	java?: string;
@@ -86,17 +98,20 @@ export interface TemplateTexts {
 	playdate?: string;
 }
 
-export interface InventoryConflict {
+export interface InventoryConflict
+{
 	dir: string;
 	templates: LanguageTemplate[];
 }
 
-export interface TemplateInventory {
+export interface TemplateInventory
+{
 	projects: ProjectRecord[];
 	conflicts: InventoryConflict[];
 }
 
-export interface BuildInventoryOptions {
+export interface BuildInventoryOptions
+{
 	/** Home directory used to expand `~`. Defaults to the parent of projectsDir. */
 	homeDir?: string;
 	/** Absolute directories found under the scan root. */
@@ -110,13 +125,15 @@ const KINDS = [
 	["nested", "nested"],
 ] as const;
 
-function nameFor(dir: string, projectsDir: string): string {
+function nameFor(dir: string, projectsDir: string): string
+{
 	const prefix = `${projectsDir}/`;
 	if (dir.startsWith(prefix)) return dir.slice(prefix.length);
 	return dir.slice(dir.lastIndexOf("/") + 1);
 }
 
-function byName(a: ProjectRecord, b: ProjectRecord): number {
+function byName(a: ProjectRecord, b: ProjectRecord): number
+{
 	return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
@@ -124,19 +141,30 @@ export function buildInventoryFromTemplates(
 	texts: TemplateTexts,
 	projectsDir: string,
 	options: BuildInventoryOptions = {},
-): TemplateInventory {
+): TemplateInventory
+{
 	const root = stripTrailingSlash(projectsDir);
 	const homeDir = options.homeDir ?? root.slice(0, Math.max(root.lastIndexOf("/"), 0));
 	const byDir = new Map<string, ProjectRecord[]>();
-	for (const template of LANGUAGES) {
+	for (const template of LANGUAGES)
+	{
 		const text = texts[template];
 		if (text === undefined) continue;
 		const parsed = parseProjectsYaml(text, homeDir);
-		for (const [key, kind] of KINDS) {
-			for (const entry of parsed[key] ?? []) {
+		for (const [key, kind] of KINDS)
+		{
+			for (const entry of parsed[key] ?? [])
+			{
 				const dir = stripTrailingSlash(entry);
 				const records = byDir.get(dir) ?? [];
-				records.push({name: nameFor(dir, root), dir, template, kind});
+				records.push(
+					{
+						name: nameFor(dir, root),
+						dir,
+						template,
+						kind,
+					},
+				);
 				byDir.set(dir, records);
 			}
 		}
@@ -144,34 +172,62 @@ export function buildInventoryFromTemplates(
 
 	const projects: ProjectRecord[] = [];
 	const conflicts: InventoryConflict[] = [];
-	for (const [dir, records] of byDir) {
+	for (const [dir, records] of byDir)
+	{
 		const templates = LANGUAGES.filter((language) => records.some((record) => record.template === language));
-		if (templates.length > 1) conflicts.push({dir, templates});
+		if (templates.length > 1)
+			conflicts.push(
+				{
+					dir,
+					templates,
+				},
+			);
 		else if (records[0]) projects.push(records[0]);
 	}
 
-	if (texts.project !== undefined) {
+	if (texts.project !== undefined)
+	{
 		const parsed = parseProjectsYaml(texts.project, homeDir);
-		for (const entry of parsed.skip ?? []) {
+		for (const entry of parsed.skip ?? [])
+		{
 			const dir = stripTrailingSlash(entry);
 			if (byDir.has(dir)) continue;
-			projects.push({name: nameFor(dir, root), dir, template: "project", kind: "skip"});
+			projects.push(
+				{
+					name: nameFor(dir, root),
+					dir,
+					template: "project",
+					kind: "skip",
+				},
+			);
 			byDir.set(dir, []);
 		}
-		for (const entry of options.directories ?? []) {
+		for (const entry of options.directories ?? [])
+		{
 			const dir = stripTrailingSlash(entry);
 			if (byDir.has(dir)) continue;
-			projects.push({name: nameFor(dir, root), dir, template: "project", kind: "own"});
+			projects.push(
+				{
+					name: nameFor(dir, root),
+					dir,
+					template: "project",
+					kind: "own",
+				},
+			);
 			byDir.set(dir, []);
 		}
 	}
 
 	projects.sort(byName);
 	conflicts.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
-	return {projects, conflicts};
+	return {
+		projects,
+		conflicts,
+	};
 }
 
-export interface InventoryImportSummary {
+export interface InventoryImportSummary
+{
 	total: number;
 	byTemplate: Record<string, number>;
 	byKind: Record<string, number>;
@@ -180,7 +236,8 @@ export interface InventoryImportSummary {
 }
 
 /** What an existing project registry holds, so the UI can always show what wip will act on. */
-export interface RegistrySummary {
+export interface RegistrySummary
+{
 	total: number;
 	byTemplate: Record<string, number>;
 	byKind: Record<string, number>;
@@ -190,20 +247,23 @@ export interface RegistrySummary {
 }
 
 /** Whether the project registry exists, and a summary of it when it does. */
-export interface InventoryStatus {
+export interface InventoryStatus
+{
 	exists: boolean;
 	registryPath: string;
 	templatesDir: string;
 	registry: RegistrySummary | null;
 }
 
-function countBy(projects: ProjectRecord[], key: "template" | "kind"): Record<string, number> {
+function countBy(projects: ProjectRecord[], key: "template" | "kind"): Record<string, number>
+{
 	const counts: Record<string, number> = {};
 	for (const project of projects) counts[project[key]] = (counts[project[key]] ?? 0) + 1;
 	return counts;
 }
 
-export function summarizeRegistry(projects: ProjectRecord[], modifiedAt: string): RegistrySummary {
+export function summarizeRegistry(projects: ProjectRecord[], modifiedAt: string): RegistrySummary
+{
 	return {
 		total: projects.length,
 		byTemplate: countBy(projects, "template"),
@@ -213,7 +273,8 @@ export function summarizeRegistry(projects: ProjectRecord[], modifiedAt: string)
 	};
 }
 
-export function summarizeInventoryImport({projects, conflicts}: TemplateInventory): InventoryImportSummary {
+export function summarizeInventoryImport({projects, conflicts}: TemplateInventory): InventoryImportSummary
+{
 	return {
 		total: projects.length,
 		byTemplate: countBy(projects, "template"),
@@ -223,31 +284,49 @@ export function summarizeInventoryImport({projects, conflicts}: TemplateInventor
 	};
 }
 
-export interface InventoryDiff {
+export interface InventoryDiff
+{
 	added: ProjectRecord[];
 	removed: ProjectRecord[];
-	changed: {before: ProjectRecord; after: ProjectRecord}[];
+	changed:
+	{
+		before: ProjectRecord;
+		after: ProjectRecord;
+	}[];
 }
 
-function sortKeys(project: ProjectRecord): [string, unknown][] {
+function sortKeys(project: ProjectRecord): [string, unknown][]
+{
 	// eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.entries
 	return Object.entries(project).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
 }
 
 /** Compares two inventories, matching entries by `dir`. */
-export function diffInventories(before: ProjectRecord[], after: ProjectRecord[]): InventoryDiff {
+export function diffInventories(before: ProjectRecord[], after: ProjectRecord[]): InventoryDiff
+{
 	const beforeByDir = new Map(before.map((project) => [project.dir, project]));
 	const afterByDir = new Map(after.map((project) => [project.dir, project]));
 	const added = after.filter((project) => !beforeByDir.has(project.dir));
 	const removed = before.filter((project) => !afterByDir.has(project.dir));
 	const changed: InventoryDiff["changed"] = [];
-	for (const next of after) {
+	for (const next of after)
+	{
 		const previous = beforeByDir.get(next.dir);
-		if (previous && JSON.stringify(sortKeys(previous)) !== JSON.stringify(sortKeys(next))) {
-			changed.push({before: previous, after: next});
+		if (previous && JSON.stringify(sortKeys(previous)) !== JSON.stringify(sortKeys(next)))
+		{
+			changed.push(
+				{
+					before: previous,
+					after: next,
+				},
+			);
 		}
 	}
-	return {added, removed, changed};
+	return {
+		added,
+		removed,
+		changed,
+	};
 }
 
 /** Which card of the registry review a candidate belongs to. */
@@ -267,13 +346,15 @@ export type SkipReasonCode =
 	| "user";
 
 /** Why a repo is, or would be, left out of the registry, in plain words from the server. */
-export interface SkipReason {
+export interface SkipReason
+{
 	code: SkipReasonCode;
 	text: string;
 }
 
 /** One row of the registry review: a project the user decides to own, fork, nest, or skip. */
-export interface RegistryCandidate {
+export interface RegistryCandidate
+{
 	project: ProjectRecord;
 	group: RegistryGroup;
 	/** Why skipping fits this repo; always present when the project is a skip. */
@@ -283,7 +364,8 @@ export interface RegistryCandidate {
 }
 
 /** Everything the registry review lists, and the registry state the list was built from. */
-export interface RegistryCandidates {
+export interface RegistryCandidates
+{
 	registryPath: string;
 	/** Modification time of the registry the candidates came from; null when none exists yet. */
 	baseModifiedAt: string | null;
@@ -291,7 +373,8 @@ export interface RegistryCandidates {
 }
 
 /** A reviewed project list to write as the registry. */
-export interface SaveRegistryInput {
+export interface SaveRegistryInput
+{
 	projects: ProjectRecord[];
 	/** The registry modification time the user reviewed against; null when none existed. */
 	baseModifiedAt: string | null;

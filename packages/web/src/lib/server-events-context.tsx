@@ -4,7 +4,8 @@ import type {RefreshSchedulerState} from "./refresh-scheduler.js";
 import {createServerEventApplier, resyncLoadedProjects} from "./server-events-apply.js";
 import {getProjectChildren, getProjectTodos} from "./server-fns.js";
 import {ServerEventSchema, type MergeStatusEvent, type TaskEvent} from "./server-events-schema.js";
-import {
+import
+{
 	getAllTasksSnapshot,
 	getMergeStatusSnapshot,
 	getSchedulerStateSnapshot,
@@ -27,32 +28,59 @@ export type {TaskEvent, MergeStatusEvent};
  * contract (server-events-schema) and handed to the single apply-to-cache
  * writer (server-events-apply).
  */
-export function ServerEventsProvider({children}: {children: React.ReactNode}) {
+export function ServerEventsProvider({children}: {children: React.ReactNode})
+{
 	const queryClient = useQueryClient();
 
-	useEffect(() => {
+	useEffect(() =>
+	{
 		const applier = createServerEventApplier(queryClient);
 		const es = new EventSource("/api/events");
 		let opened = false;
 
-		es.addEventListener("open", () => {
-			if (opened) {
+		es.addEventListener("open", () =>
+		{
+			if (opened)
+			{
 				clearActiveTasks();
-				void resyncLoadedProjects(queryClient, {
-					fetchChildren: async (project) => getProjectChildren({data: {project}}),
-					fetchTodos: async (project) => getProjectTodos({data: {project}}),
-				});
+				void resyncLoadedProjects(
+					queryClient,
+					{
+						fetchChildren: async (project) =>
+							getProjectChildren(
+								{
+									data:
+									{
+										project,
+									},
+								},
+							),
+						fetchTodos: async (project) =>
+							getProjectTodos(
+								{
+									data:
+									{
+										project,
+									},
+								},
+							),
+					},
+				);
 			}
 			opened = true;
 		});
 
-		es.addEventListener("message", (event) => {
+		es.addEventListener("message", (event) =>
+		{
 			const data: unknown = event.data;
 			if (typeof data !== "string") return;
 			let raw: unknown;
-			try {
+			try
+			{
 				raw = JSON.parse(data);
-			} catch {
+			}
+			catch
+			{
 				return;
 			}
 			const parsed = ServerEventSchema.safeParse(raw);
@@ -60,7 +88,8 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 			applier.apply(parsed.data);
 		});
 
-		return () => {
+		return () =>
+		{
 			es.close();
 			applier.dispose();
 		};
@@ -69,7 +98,8 @@ export function ServerEventsProvider({children}: {children: React.ReactNode}) {
 	return <>{children}</>;
 }
 
-export function useTestJob(sha: string, project: string): TaskEvent | undefined {
+export function useTestJob(sha: string, project: string): TaskEvent | undefined
+{
 	const subscribe = useCallback(
 		(listener: () => void) => subscribeToStoreKey(`task:${taskStoreKey(project, sha)}`, listener),
 		[project, sha],
@@ -81,7 +111,8 @@ export function useTestJob(sha: string, project: string): TaskEvent | undefined 
 	);
 }
 
-export function useTestLog(sha: string, project: string): string | undefined {
+export function useTestLog(sha: string, project: string): string | undefined
+{
 	const subscribe = useCallback(
 		(listener: () => void) => subscribeToStoreKey(`log:${taskStoreKey(project, sha)}`, listener),
 		[project, sha],
@@ -93,7 +124,8 @@ export function useTestLog(sha: string, project: string): string | undefined {
 	);
 }
 
-export function useMergeStatus(sha: string, project: string): MergeStatusEvent | undefined {
+export function useMergeStatus(sha: string, project: string): MergeStatusEvent | undefined
+{
 	const subscribe = useCallback(
 		(listener: () => void) => subscribeToStoreKey(`merge:${taskStoreKey(project, sha)}`, listener),
 		[project, sha],
@@ -106,18 +138,21 @@ export function useMergeStatus(sha: string, project: string): MergeStatusEvent |
 }
 
 /** Live background-work queue state, for the Tasks page's scheduler panel. */
-export function useRefreshSchedulerState(): RefreshSchedulerState {
+export function useRefreshSchedulerState(): RefreshSchedulerState
+{
 	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("scheduler", listener), []);
 	return useSyncExternalStore(subscribe, getSchedulerStateSnapshot, getServerSchedulerStateSnapshot);
 }
 
 /** Full live task map plus lookups, for the Tasks and Advance Plan pages. */
-export function useAllTasks(): {
+export function useAllTasks():
+{
 	tasks: ReadonlyMap<string, TaskEvent>;
 	getTask: (sha: string, project: string) => TaskEvent | undefined;
 	getLog: (sha: string, project: string) => string | undefined;
 	hasActiveTasks: boolean;
-} {
+}
+{
 	const subscribe = useCallback((listener: () => void) => subscribeToStoreKey("tasks", listener), []);
 	const tasks = useSyncExternalStore<ReadonlyMap<string, TaskEvent>>(
 		subscribe,
@@ -125,5 +160,10 @@ export function useAllTasks(): {
 		getServerTasksSnapshot,
 	);
 	const hasActiveTasks = useSyncExternalStore(subscribe, hasActiveTasksSnapshot, () => false);
-	return {tasks, getTask: getTaskSnapshot, getLog: getTaskLogSnapshot, hasActiveTasks};
+	return {
+		tasks,
+		getTask: getTaskSnapshot,
+		getLog: getTaskLogSnapshot,
+		hasActiveTasks,
+	};
 }

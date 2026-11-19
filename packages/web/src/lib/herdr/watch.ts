@@ -6,12 +6,28 @@ import {resolveHerdrSocketPath} from "./socket-path.js";
 /** Real herdr names the event `pane.agent_status_changed`; older herdr used underscores. */
 const AGENT_STATUS_EVENTS = new Set(["pane.agent_status_changed", "pane_agent_status_changed"]);
 const PANE_GET_TIMEOUT_MS = 10_000;
-const paneInfoSchema = z.object({pane: z.object({agent_status: z.string()})});
+const paneInfoSchema = z.object(
+	{
+		pane: z.object(
+			{
+				agent_status: z.string(),
+			},
+		),
+	},
+);
 
 /** The pane's current agent status from herdr's `pane.get` (on its own connection: a subscribed one answers nothing else). */
-async function currentAgentStatus(paneId: string, socketPath: string): Promise<string | undefined> {
+async function currentAgentStatus(paneId: string, socketPath: string): Promise<string | undefined>
+{
 	const response = await herdrRequest(
-		{id: `wip:pane-get:${crypto.randomUUID().slice(0, 8)}`, method: "pane.get", params: {pane_id: paneId}},
+		{
+			id: `wip:pane-get:${crypto.randomUUID().slice(0, 8)}`,
+			method: "pane.get",
+			params:
+			{
+				pane_id: paneId,
+			},
+		},
 		PANE_GET_TIMEOUT_MS,
 		socketPath,
 	);
@@ -22,7 +38,8 @@ async function currentAgentStatus(paneId: string, socketPath: string): Promise<s
 
 export type HerdrWaitResult = "done" | "timeout" | "aborted";
 
-export interface HerdrWaitOptions {
+export interface HerdrWaitOptions
+{
 	timeoutMs: number;
 	signal?: AbortSignal;
 	socketPath?: string;
@@ -39,16 +56,19 @@ export interface HerdrWaitOptions {
 export async function waitForHerdrAgent(
 	paneId: string,
 	{timeoutMs, signal, socketPath = resolveHerdrSocketPath()}: HerdrWaitOptions,
-): Promise<HerdrWaitResult> {
+): Promise<HerdrWaitResult>
+{
 	if (signal?.aborted) return "aborted";
 
-	return new Promise((resolve) => {
+	return new Promise((resolve) =>
+	{
 		let settled = false;
 		let buffer = "";
 		const socket = net.createConnection(socketPath);
 		socket.setEncoding("utf8");
 
-		const finish = (result: HerdrWaitResult) => {
+		const finish = (result: HerdrWaitResult) =>
+		{
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
@@ -58,33 +78,52 @@ export async function waitForHerdrAgent(
 			socket.destroy();
 			resolve(result);
 		};
-		const onAbort = () => {
+		const onAbort = () =>
+		{
 			finish("aborted");
 		};
-		const timer = setTimeout(() => {
+		const timer = setTimeout(() =>
+		{
 			finish("timeout");
 		}, timeoutMs);
-		signal?.addEventListener("abort", onAbort, {once: true});
+		signal?.addEventListener(
+			"abort",
+			onAbort,
+			{
+				once: true,
+			},
+		);
 
 		const subscribeId = `wip:watch:${crypto.randomUUID().slice(0, 8)}`;
 		let checkedCurrentStatus = false;
 		let worked = false;
-		const checkCurrentStatus = async () => {
+		const checkCurrentStatus = async () =>
+		{
 			if (checkedCurrentStatus) return;
 			checkedCurrentStatus = true;
 			if ((await currentAgentStatus(paneId, socketPath)) === "done") finish("done");
 		};
 
-		const handleLine = (line: string) => {
+		const handleLine = (line: string) =>
+		{
 			let message: unknown;
-			try {
+			try
+			{
 				message = JSON.parse(line);
-			} catch {
+			}
+			catch
+			{
 				return;
 			}
 			if (message === null || typeof message !== "object") return;
-			const {id, event, data} = message as {id?: unknown; event?: unknown; data?: Record<string, unknown> | null};
-			if (id === subscribeId) {
+			const {id, event, data} = message as
+			{
+				id?: unknown;
+				event?: unknown;
+				data?: Record<string, unknown> | null;
+			};
+			if (id === subscribeId)
+			{
 				void checkCurrentStatus();
 				return;
 			}
@@ -96,29 +135,44 @@ export async function waitForHerdrAgent(
 			if (status === "done" || (status === "idle" && worked)) finish("done");
 		};
 
-		socket.on("connect", () => {
+		socket.on("connect", () =>
+		{
 			socket.write(
-				`${JSON.stringify({
-					id: subscribeId,
-					method: "events.subscribe",
-					params: {subscriptions: [{type: "pane.agent_status_changed", pane_id: paneId}]},
-				})}\n`,
+				`${JSON.stringify(
+					{
+						id: subscribeId,
+						method: "events.subscribe",
+						params:
+						{
+							subscriptions: [
+								{
+									type: "pane.agent_status_changed",
+									pane_id: paneId,
+								},
+							],
+						},
+					},
+				)}\n`,
 			);
 		});
-		socket.on("data", (chunk: string) => {
+		socket.on("data", (chunk: string) =>
+		{
 			buffer += chunk;
 			let index = buffer.indexOf("\n");
-			while (index !== -1) {
+			while (index !== -1)
+			{
 				handleLine(buffer.slice(0, index));
 				buffer = buffer.slice(index + 1);
 				index = buffer.indexOf("\n");
 			}
 		});
 		// A lost connection means completion can no longer be observed; treat it as a timeout-style failure.
-		socket.on("error", () => {
+		socket.on("error", () =>
+		{
 			finish("timeout");
 		});
-		socket.on("close", () => {
+		socket.on("close", () =>
+		{
 			finish("timeout");
 		});
 	});

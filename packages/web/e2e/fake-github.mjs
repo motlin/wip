@@ -17,34 +17,53 @@ const VIEWER_LOGIN = "e2e-user";
  * @typedef {{number: number; repository: string; headRefName: string; baseRefName: string; title: string; draft: boolean; check: "SUCCESS" | "FAILURE" | "PENDING"; autoMerge: boolean; headOid?: string}} FakePr
  */
 
-async function readJson(request) {
+async function readJson(request)
+{
 	const body = await readBody(request);
 	return body === "" ? {} : JSON.parse(body);
 }
 
-function readBody(request) {
-	return new Promise((resolve, reject) => {
+function readBody(request)
+{
+	return new Promise((resolve, reject) =>
+	{
 		let body = "";
 		request.setEncoding("utf8");
-		request.on("data", (chunk) => {
+		request.on("data", (chunk) =>
+		{
 			body += chunk;
 		});
-		request.on("end", () => {
+		request.on("end", () =>
+		{
 			resolve(body);
 		});
 		request.on("error", reject);
 	});
 }
 
-function commitOf(bareDir, ref) {
-	try {
-		const out = execFileSync("git", ["-C", bareDir, "log", "-1", "--format=%H%x1f%cI", ref], {
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-		}).trim();
+function commitOf(bareDir, ref)
+{
+	try
+	{
+		const out = execFileSync(
+			"git",
+			["-C", bareDir, "log", "-1", "--format=%H%x1f%cI", ref],
+			{
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+			},
+		).trim();
 		const [oid = "", committedDate = ""] = out.split("\x1f");
-		return oid === "" ? null : {oid, committedDate};
-	} catch {
+		return oid === ""
+			? null
+			:
+				{
+					oid,
+					committedDate,
+				};
+	}
+	catch
+	{
 		return null;
 	}
 }
@@ -57,12 +76,14 @@ const BILLING_ANNOTATION =
  * A rollup with one "build" check run. NOT_STARTED is a FAILURE whose run GitHub never started
  * (billing): its id resolves through checkRunNode to no steps and the billing annotation.
  */
-function rollup(state, idPrefix) {
+function rollup(state, idPrefix)
+{
 	const notStarted = state === "NOT_STARTED";
 	const failed = state === "FAILURE" || notStarted;
 	return {
 		state: notStarted ? "FAILURE" : state,
-		contexts: {
+		contexts:
+		{
 			nodes: [
 				{
 					__typename: "CheckRun",
@@ -76,13 +97,32 @@ function rollup(state, idPrefix) {
 	};
 }
 
-function checkRunNode(id) {
+function checkRunNode(id)
+{
 	const notStarted = id.startsWith("CR_notstarted_");
 	return {
 		id,
-		steps: {totalCount: notStarted ? 0 : 3},
-		checkSuite: {app: {slug: "github-actions"}},
-		annotations: {nodes: notStarted ? [{message: BILLING_ANNOTATION}] : []},
+		steps:
+		{
+			totalCount: notStarted ? 0 : 3,
+		},
+		checkSuite:
+		{
+			app:
+			{
+				slug: "github-actions",
+			},
+		},
+		annotations:
+		{
+			nodes: notStarted
+				? [
+						{
+							message: BILLING_ANNOTATION,
+						},
+					]
+				: [],
+		},
 	};
 }
 
@@ -90,12 +130,20 @@ function checkRunNode(id) {
  * Starts the fake on a free 127.0.0.1 port.
  * @param {{repos: FakeRepo[]; prs?: Array<Omit<FakePr, "autoMerge" | "draft" | "title"> & Partial<FakePr>>}} options
  */
-export async function startFakeGitHub(options) {
+export async function startFakeGitHub(options)
+{
 	/** @type {Map<string, FakeRepo>} */
 	const repos = new Map(options.repos.map((repo) => [`${repo.owner}/${repo.name}`, repo]));
 	/** @type {FakePr[]} */
 	const prs = (options.prs ?? []).map((pr) =>
-		Object.assign({title: pr.headRefName, draft: false, autoMerge: false}, pr),
+		Object.assign(
+			{
+				title: pr.headRefName,
+				draft: false,
+				autoMerge: false,
+			},
+			pr,
+		),
 	);
 	/**
 	 * Check run statuses (GraphQL's QUEUED, COMPLETED, ...) on a pushed commit, keyed owner/name@sha, as the GitHub
@@ -109,48 +157,148 @@ export async function startFakeGitHub(options) {
 
 	const prUrl = (pr) => `${baseUrl}/${pr.repository}/pull/${pr.number}`;
 
-	function prNode(pr) {
+	function prNode(pr)
+	{
 		return {
 			headRefName: pr.headRefName,
 			baseRefName: pr.baseRefName,
 			url: prUrl(pr),
 			number: pr.number,
-			author: {login: VIEWER_LOGIN},
+			author:
+			{
+				login: VIEWER_LOGIN,
+			},
 			reviewDecision: null,
 			mergeStateStatus: pr.check === "PENDING" ? "BLOCKED" : pr.check === "FAILURE" ? "BLOCKED" : "CLEAN",
-			autoMergeRequest: pr.autoMerge ? {enabledAt: new Date().toISOString()} : null,
-			reviewThreads: {nodes: []},
-			commits: {nodes: [{commit: {statusCheckRollup: rollup(pr.check, `${pr.repository}#${pr.number}`)}}]},
+			autoMergeRequest: pr.autoMerge
+				?
+					{
+						enabledAt: new Date().toISOString(),
+					}
+				: null,
+			reviewThreads:
+			{
+				nodes: [],
+			},
+			commits:
+			{
+				nodes: [
+					{
+						commit:
+						{
+							statusCheckRollup: rollup(pr.check, `${pr.repository}#${pr.number}`),
+						},
+					},
+				],
+			},
 		};
 	}
 
-	function answer(query, variables) {
+	function answer(query, variables)
+	{
 		const key = `${variables.owner}/${variables.name}`;
 		const repo = repos.get(key);
-		if (/\bviewer\s*\{\s*login/.test(query)) return {kind: "viewer", body: {data: {viewer: {login: VIEWER_LOGIN}}}};
-		if (/\bsearch\(query:/.test(query)) return {kind: "search", body: {data: {search: {nodes: []}}}};
-		if (/\bnodes\(ids: \$ids\)/.test(query)) {
+		if (/\bviewer\s*\{\s*login/.test(query))
+			return {
+				kind: "viewer",
+				body:
+				{
+					data:
+					{
+						viewer:
+						{
+							login: VIEWER_LOGIN,
+						},
+					},
+				},
+			};
+		if (/\bsearch\(query:/.test(query))
+			return {
+				kind: "search",
+				body:
+				{
+					data:
+					{
+						search:
+						{
+							nodes: [],
+						},
+					},
+				},
+			};
+		if (/\bnodes\(ids: \$ids\)/.test(query))
+		{
 			const ids = Array.isArray(variables.ids) ? variables.ids.map(String) : [];
-			return {kind: "checkRunStarts", body: {data: {nodes: ids.map(checkRunNode)}}};
+			return {
+				kind: "checkRunStarts",
+				body:
+				{
+					data:
+					{
+						nodes: ids.map(checkRunNode),
+					},
+				},
+			};
 		}
-		if (/viewer\s*\{\s*projectsV2/.test(query)) {
-			return {kind: "projects", body: {data: {viewer: {projectsV2: {nodes: []}}}}};
+		if (/viewer\s*\{\s*projectsV2/.test(query))
+		{
+			return {
+				kind: "projects",
+				body:
+				{
+					data:
+					{
+						viewer:
+						{
+							projectsV2:
+							{
+								nodes: [],
+							},
+						},
+					},
+				},
+			};
 		}
-		if (/mutation[\s\S]*createPullRequest/.test(query)) {
+		if (/mutation[\s\S]*createPullRequest/.test(query))
+		{
 			const target = [...repos.values()].find((r) => `R_${r.owner}/${r.name}` === variables.repositoryId);
-			if (target === undefined) {
-				return {kind: "createPullRequest", body: {errors: [{message: "Could not resolve to a Repository"}]}};
+			if (target === undefined)
+			{
+				return {
+					kind: "createPullRequest",
+					body:
+					{
+						errors: [
+							{
+								message: "Could not resolve to a Repository",
+							},
+						],
+					},
+				};
 			}
 			const headRefName = String(variables.headRefName).replace(/^[^:]+:/, "");
 			const repository = `${target.owner}/${target.name}`;
-			if (target.viewerPermission === "READ" && !String(variables.headRefName).includes(":")) {
-				return {kind: "createPullRequest", body: {data: null, errors: [{message: "must be a collaborator"}]}};
+			if (target.viewerPermission === "READ" && !String(variables.headRefName).includes(":"))
+			{
+				return {
+					kind: "createPullRequest",
+					body:
+					{
+						data: null,
+						errors: [
+							{
+								message: "must be a collaborator",
+							},
+						],
+					},
+				};
 			}
 			// The head as the PR was opened on it: the fork's branch for owner:branch, else the target's.
 			const headOwner = /^([^:]+):/.exec(String(variables.headRefName))?.[1] ?? target.owner;
 			const headRepo = repos.get(`${headOwner}/${target.name}`) ?? target;
 			const headOid = commitOf(headRepo.bareDir, `refs/heads/${headRefName}`)?.oid;
-			const pr = {
+			const pr =
+			{
 				number: prs.reduce((max, p) => (p.repository === repository ? Math.max(max, p.number) : max), 0) + 1,
 				repository,
 				headRefName,
@@ -159,68 +307,209 @@ export async function startFakeGitHub(options) {
 				draft: variables.draft === true,
 				check: "PENDING",
 				autoMerge: false,
-				...(headOid === undefined ? {} : {headOid}),
+				...(headOid === undefined
+					? {}
+					:
+						{
+							headOid,
+						}),
 			};
 			prs.push(pr);
-			return {kind: "createPullRequest", body: {data: {createPullRequest: {pullRequest: {url: prUrl(pr)}}}}};
+			return {
+				kind: "createPullRequest",
+				body:
+				{
+					data:
+					{
+						createPullRequest:
+						{
+							pullRequest:
+							{
+								url: prUrl(pr),
+							},
+						},
+					},
+				},
+			};
 		}
-		if (repo === undefined) {
-			return {kind: "unknown-repo", body: {data: null, errors: [{message: `fake GitHub has no ${key}`}]}};
+		if (repo === undefined)
+		{
+			return {
+				kind: "unknown-repo",
+				body:
+				{
+					data: null,
+					errors: [
+						{
+							message: `fake GitHub has no ${key}`,
+						},
+					],
+				},
+			};
 		}
-		if (/parent\s*\{\s*owner/.test(query)) {
+		if (/parent\s*\{\s*owner/.test(query))
+		{
 			const [owner, name] = (repo.parent ?? "").split("/");
 			return {
 				kind: "forkParent",
-				body: {data: {repository: {parent: repo.parent ? {owner: {login: owner}, name} : null}}},
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							parent: repo.parent
+								?
+									{
+										owner:
+										{
+											login: owner,
+										},
+										name,
+									}
+								: null,
+						},
+					},
+				},
 			};
 		}
-		if (/pullRequests\(first: 100, states: OPEN\)/.test(query)) {
+		if (/pullRequests\(first: 100, states: OPEN\)/.test(query))
+		{
 			const qualified = String(variables.qualifiedBaseRef ?? "refs/heads/main");
 			const target = commitOf(repo.bareDir, qualified);
 			return {
 				kind: "prStatuses",
-				body: {
-					data: {
-						repository: {
+				body:
+				{
+					data:
+					{
+						repository:
+						{
 							url: `${baseUrl}/${key}`,
 							autoMergeAllowed: true,
 							viewerPermission: repo.viewerPermission ?? "ADMIN",
 							ref:
 								target === null
 									? null
-									: {
-											target: {
+									:
+										{
+											target:
+											{
 												...target,
 												statusCheckRollup: rollup(repo.baseCheck ?? "SUCCESS", key),
 											},
 										},
-							pullRequests: {nodes: prs.filter((pr) => pr.repository === key).map(prNode)},
+							pullRequests:
+							{
+								nodes: prs.filter((pr) => pr.repository === key).map(prNode),
+							},
 						},
 					},
 				},
 			};
 		}
 		// The GitHub Actions gate's question: the status of every check run on a pushed commit.
-		if (/checkRuns\(first: 100\) \{ nodes \{ status \} \}/.test(query)) {
+		if (/checkRuns\(first: 100\) \{ nodes \{ status \} \}/.test(query))
+		{
 			const statuses = checkRuns.get(`${key}@${String(variables.oid)}`) ?? [];
-			const checkSuites = {nodes: [{checkRuns: {nodes: statuses.map((status) => ({status}))}}]};
-			return {kind: "checkRuns", body: {data: {repository: {object: {checkSuites}}}}};
+			const checkSuites =
+			{
+				nodes: [
+					{
+						checkRuns:
+						{
+							nodes: statuses.map((status) => (
+							{
+								status,
+							})),
+						},
+					},
+				],
+			};
+			return {
+				kind: "checkRuns",
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							object:
+							{
+								checkSuites,
+							},
+						},
+					},
+				},
+			};
 		}
-		if (/checkSuites\(/.test(query)) {
-			return {kind: "checkSuites", body: {data: {repository: {object: {checkSuites: {nodes: []}}}}}};
+		if (/checkSuites\(/.test(query))
+		{
+			return {
+				kind: "checkSuites",
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							object:
+							{
+								checkSuites:
+								{
+									nodes: [],
+								},
+							},
+						},
+					},
+				},
+			};
 		}
-		if (/states: MERGED/.test(query)) {
-			return {kind: "mergedPrs", body: {data: {repository: {pullRequests: {nodes: []}}}}};
+		if (/states: MERGED/.test(query))
+		{
+			return {
+				kind: "mergedPrs",
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							pullRequests:
+							{
+								nodes: [],
+							},
+						},
+					},
+				},
+			};
 		}
-		if (/autoMergeAllowed/.test(query)) {
-			return {kind: "autoMergeAllowed", body: {data: {repository: {autoMergeAllowed: true}}}};
+		if (/autoMergeAllowed/.test(query))
+		{
+			return {
+				kind: "autoMergeAllowed",
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							autoMergeAllowed: true,
+						},
+					},
+				},
+			};
 		}
-		if (/\bisPrivate\b/.test(query)) {
+		if (/\bisPrivate\b/.test(query))
+		{
 			return {
 				kind: "repoFacts",
-				body: {
-					data: {
-						repository: {
+				body:
+				{
+					data:
+					{
+						repository:
+						{
 							isPrivate: repo.isPrivate === true,
 							viewerPermission: repo.viewerPermission ?? "ADMIN",
 						},
@@ -228,42 +517,108 @@ export async function startFakeGitHub(options) {
 				},
 			};
 		}
-		if (/\bviewerPermission\b/.test(query)) {
+		if (/\bviewerPermission\b/.test(query))
+		{
 			return {
 				kind: "viewerPermission",
-				body: {data: {repository: {viewerPermission: repo.viewerPermission ?? "ADMIN"}}},
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							viewerPermission: repo.viewerPermission ?? "ADMIN",
+						},
+					},
+				},
 			};
 		}
-		if (/repository\(owner: \$owner, name: \$name\)\s*\{\s*id\s*\}/.test(query)) {
-			return {kind: "repositoryId", body: {data: {repository: {id: `R_${key}`}}}};
+		if (/repository\(owner: \$owner, name: \$name\)\s*\{\s*id\s*\}/.test(query))
+		{
+			return {
+				kind: "repositoryId",
+				body:
+				{
+					data:
+					{
+						repository:
+						{
+							id: `R_${key}`,
+						},
+					},
+				},
+			};
 		}
-		return {kind: "unsupported", body: {data: null, errors: [{message: "fake GitHub: unsupported query"}]}};
+		return {
+			kind: "unsupported",
+			body:
+			{
+				data: null,
+				errors: [
+					{
+						message: "fake GitHub: unsupported query",
+					},
+				],
+			},
+		};
 	}
 
-	const server = createServer((request, response) => {
-		const handle = async () => {
+	const server = createServer((request, response) =>
+	{
+		const handle = async () =>
+		{
 			const url = new URL(request.url ?? "/", baseUrl);
-			if (request.method === "POST" && url.pathname === "/graphql") {
+			if (request.method === "POST" && url.pathname === "/graphql")
+			{
 				const {query = "", variables = {}} = await readJson(request);
 				const {kind, body} = answer(String(query), variables);
-				graphqlCalls.push({kind, query: String(query), variables});
-				response.writeHead(200, {"Content-Type": "application/json"});
+				graphqlCalls.push(
+					{
+						kind,
+						query: String(query),
+						variables,
+					},
+				);
+				response.writeHead(
+					200,
+					{
+						"Content-Type": "application/json",
+					},
+				);
 				response.end(JSON.stringify(body));
 				return;
 			}
 			// The fake gh turns auto-merge on through here, like `gh pr merge --auto` does on GitHub.
-			if (request.method === "POST" && url.pathname === "/fake/auto-merge") {
+			if (request.method === "POST" && url.pathname === "/fake/auto-merge")
+			{
 				const {repository, number} = await readJson(request);
 				const pr = prs.find((p) => p.repository === repository && p.number === Number(number));
 				if (pr !== undefined) pr.autoMerge = true;
-				response.writeHead(pr === undefined ? 404 : 200, {"Content-Type": "application/json"});
-				response.end(JSON.stringify({ok: pr !== undefined}));
+				response.writeHead(
+					pr === undefined ? 404 : 200,
+					{
+						"Content-Type": "application/json",
+					},
+				);
+				response.end(
+					JSON.stringify(
+						{
+							ok: pr !== undefined,
+						},
+					),
+				);
 				return;
 			}
 			const pull = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(url.pathname);
-			if (request.method === "GET" && pull !== null) {
+			if (request.method === "GET" && pull !== null)
+			{
 				const pr = prs.find((p) => p.repository === pull[1] && p.number === Number(pull[2]));
-				response.writeHead(pr === undefined ? 404 : 200, {"Content-Type": "text/html; charset=utf-8"});
+				response.writeHead(
+					pr === undefined ? 404 : 200,
+					{
+						"Content-Type": "text/html; charset=utf-8",
+					},
+				);
 				response.end(
 					`<!doctype html><title>Fake PR</title><h1 data-testid="fake-pr">${pull[1]}#${pull[2]}</h1>`,
 				);
@@ -271,24 +626,43 @@ export async function startFakeGitHub(options) {
 			}
 			// GitHub's prefilled new-PR page, where the user clicks Create in their own browser session.
 			const compare = /^\/([^/]+\/[^/]+)\/compare\/(.+)$/.exec(url.pathname);
-			if (request.method === "GET" && compare !== null) {
-				response.writeHead(200, {"Content-Type": "text/html; charset=utf-8"});
+			if (request.method === "GET" && compare !== null)
+			{
+				response.writeHead(
+					200,
+					{
+						"Content-Type": "text/html; charset=utf-8",
+					},
+				);
 				response.end(
 					`<!doctype html><title>Fake new PR</title><h1 data-testid="fake-compare">${compare[1]} ${compare[2]}</h1>`,
 				);
 				return;
 			}
-			response.writeHead(404, {"Content-Type": "text/plain"});
+			response.writeHead(
+				404,
+				{
+					"Content-Type": "text/plain",
+				},
+			);
 			response.end("fake GitHub: not found");
 		};
-		handle().catch((error) => {
-			response.writeHead(500, {"Content-Type": "text/plain"});
+		handle().catch((error) =>
+		{
+			response.writeHead(
+				500,
+				{
+					"Content-Type": "text/plain",
+				},
+			);
 			response.end(String(error));
 		});
 	});
 
-	await new Promise((resolve) => {
-		server.listen(0, "127.0.0.1", () => {
+	await new Promise((resolve) =>
+	{
+		server.listen(0, "127.0.0.1", () =>
+		{
 			resolve(undefined);
 		});
 	});
@@ -302,13 +676,17 @@ export async function startFakeGitHub(options) {
 		prs,
 		graphqlCalls,
 		/** Sets the check run statuses (QUEUED, IN_PROGRESS, COMPLETED, ...) GitHub reports on `repository`@`sha`. */
-		setCheckRuns(repository, sha, statuses) {
+		setCheckRuns(repository, sha, statuses)
+		{
 			checkRuns.set(`${repository}@${sha}`, statuses);
 		},
-		async close() {
+		async close()
+		{
 			server.closeAllConnections();
-			await new Promise((resolve) => {
-				server.close(() => {
+			await new Promise((resolve) =>
+			{
+				server.close(() =>
+				{
 					resolve(undefined);
 				});
 			});

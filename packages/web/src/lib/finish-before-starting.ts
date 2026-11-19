@@ -8,7 +8,8 @@ import type {ReadyToLandState} from "@wip/shared/ready-to-land.js";
 export function commitsWaiting(
 	counts: Pick<FlowCounts, "red" | "ready">,
 	readyToLand: ReadyToLandState | null | undefined,
-): boolean {
+): boolean
+{
 	return (
 		counts.red > 0 ||
 		counts.ready > 0 ||

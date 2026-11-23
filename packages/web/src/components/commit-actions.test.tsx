@@ -91,7 +91,7 @@ describe("no_test marker and Add a test detour", () => {
 	it("shows the no tests marker on a no_test item", () => {
 		renderBranch(branchItem({}), "no_test");
 
-		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toStrictEqual(["no tests"]);
 	});
 
 	it("does not show the no tests marker on a tested item", () => {
@@ -105,14 +105,14 @@ describe("no_test marker and Add a test detour", () => {
 		renderBranch(branchItem({pushedToRemote: true}), "pushed_no_pr", [project(false)]);
 		openMore();
 
-		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toStrictEqual(["no tests"]);
 		expect(screen.getByRole("button", {name: "Add a test"}).hasAttribute("disabled")).toBe(false);
 	});
 
 	it("shows the no tests marker on a ready_to_push branch in a project with no test configured", () => {
 		renderBranch(branchItem({localAhead: true}), "ready_to_push", [project(false)]);
 
-		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toStrictEqual(["no tests"]);
 	});
 
 	it("shows the no tests marker on a pull request in a project with no test configured", () => {
@@ -127,7 +127,7 @@ describe("no_test marker and Add a test detour", () => {
 			</QueryClientProvider>,
 		);
 
-		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toEqual(["no tests"]);
+		expect(screen.getAllByTestId("no-tests-marker").map((el) => el.textContent)).toStrictEqual(["no tests"]);
 	});
 
 	it("does not show the no tests marker in a project with a test configured", () => {
@@ -142,12 +142,12 @@ describe("no_test marker and Add a test detour", () => {
 		openMore();
 
 		const button = screen.getByRole("button", {name: "Add a test"});
-		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
+		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toStrictEqual({
 			disabled: true,
 			title: "Name a branch first: Claude tasks run on a branch checkout",
 		});
 		fireEvent.click(button);
-		expect(serverFns.runClaudeCommand.mock.calls).toEqual([]);
+		expect(serverFns.runClaudeCommand.mock.calls).toStrictEqual([]);
 	});
 
 	it("enqueues exactly one task for the commit when Add a test is clicked", async () => {
@@ -158,7 +158,7 @@ describe("no_test marker and Add a test detour", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Add a test"}));
 
 		await waitFor(() => {
-			expect(serverFns.runClaudeCommand.mock.calls).toEqual([
+			expect(serverFns.runClaudeCommand.mock.calls).toStrictEqual([
 				[
 					{
 						data: {
@@ -190,7 +190,7 @@ describe("Abort rebase on a stuck rebase", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Abort rebase"}));
 
 		await waitFor(() => {
-			expect(serverFns.abortRebase.mock.calls).toEqual([[{data: {project: "wip"}}]]);
+			expect(serverFns.abortRebase.mock.calls).toStrictEqual([[{data: {project: "wip"}}]]);
 		});
 	});
 
@@ -225,7 +225,7 @@ describe("Abort rebase on a stuck rebase", () => {
 				first: buttons[0],
 				plainRebase: buttons.filter((b) => b === "Rebase"),
 				calls: serverFns.rebaseChild.mock.calls,
-			}).toEqual({
+			}).toStrictEqual({
 				first: "Rebase again",
 				plainRebase: [],
 				calls: [[{data: {project: "wip", branch: "feature/x"}}]],
@@ -239,7 +239,7 @@ describe("Abort rebase on a stuck rebase", () => {
 		expect({
 			rebaseAgain: screen.queryByRole("button", {name: "Rebase again"}),
 			rebase: screen.getAllByRole("button", {name: "Rebase"}).length,
-		}).toEqual({rebaseAgain: null, rebase: 1});
+		}).toStrictEqual({rebaseAgain: null, rebase: 1});
 	});
 
 	it("does not offer Abort rebase outside rebase_stuck", () => {
@@ -269,7 +269,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Push anyway"}));
 
 		await waitFor(() => {
-			expect({afterFirst, calls: serverFns.pushChild.mock.calls}).toEqual({
+			expect({afterFirst, calls: serverFns.pushChild.mock.calls}).toStrictEqual({
 				afterFirst: {
 					warnings: ["Unverified: 3 commits behind upstream. Click again to push anyway."],
 					calls: [],
@@ -294,7 +294,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Force Push anyway"}));
 
 		await waitFor(() => {
-			expect({afterFirst, calls: serverFns.forcePush.mock.calls}).toEqual({
+			expect({afterFirst, calls: serverFns.forcePush.mock.calls}).toStrictEqual({
 				afterFirst: {
 					warnings: ["Unverified: test not passed (unknown). Click again to push anyway."],
 					calls: [],
@@ -314,7 +314,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 			expect({
 				warning: screen.queryByTestId("unverified-push-warning"),
 				calls: serverFns.pushChild.mock.calls,
-			}).toEqual({
+			}).toStrictEqual({
 				warning: null,
 				calls: [[{data: {project: "wip", sha: "abc123", branch: "feature/x"}}]],
 			});
@@ -334,7 +334,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 			expect({
 				warning: screen.queryByTestId("unverified-push-warning"),
 				calls: serverFns.forcePush.mock.calls,
-			}).toEqual({warning: null, calls: [[{data: {project: "wip", branch: "feature/x"}}]]});
+			}).toStrictEqual({warning: null, calls: [[{data: {project: "wip", branch: "feature/x"}}]]});
 		});
 	});
 
@@ -345,7 +345,7 @@ describe("Push and Force Push warn on unverified commits", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Push"}));
 
 		await waitFor(() => {
-			expect(serverFns.pushChild.mock.calls).toEqual([
+			expect(serverFns.pushChild.mock.calls).toStrictEqual([
 				[{data: {project: "wip", sha: "abc123", branch: "feature/x"}}],
 			]);
 		});
@@ -368,7 +368,7 @@ describe("commit-actions error toasts", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Run Test"}));
 
 		await waitFor(() => {
-			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toEqual([
+			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toStrictEqual([
 				{level: "error", message: "Test", detail: "boom"},
 			]);
 		});
@@ -383,7 +383,7 @@ describe("commit-actions error toasts", () => {
 		fireEvent.click(screen.getByRole("button", {name: "/git:commit"}));
 
 		await waitFor(() => {
-			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toEqual([
+			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toStrictEqual([
 				{level: "error", message: "Run Claude", detail: "claude exploded"},
 			]);
 		});
@@ -406,7 +406,7 @@ describe("consider splitting marker and Split transition", () => {
 			markers: screen.getAllByTestId("consider-splitting-marker").map((el) => el.textContent),
 			push: screen.getAllByRole("button", {name: "Push"}).length,
 			split: screen.getAllByRole("button", {name: "Split"}).length,
-		}).toEqual({markers: ["consider splitting"], push: 1, split: 1});
+		}).toStrictEqual({markers: ["consider splitting"], push: 1, split: 1});
 	});
 
 	it("shows neither the marker nor Split on a small commit", () => {
@@ -416,7 +416,7 @@ describe("consider splitting marker and Split transition", () => {
 			marker: screen.queryByTestId("consider-splitting-marker"),
 			split: screen.queryByRole("button", {name: "Split"}),
 			push: screen.getAllByRole("button", {name: "Push"}).length,
-		}).toEqual({marker: null, split: null, push: 1});
+		}).toStrictEqual({marker: null, split: null, push: 1});
 	});
 
 	it("shows the marker but no Split in a state without a split transition", () => {
@@ -425,7 +425,7 @@ describe("consider splitting marker and Split transition", () => {
 		expect({
 			markers: screen.getAllByTestId("consider-splitting-marker").map((el) => el.textContent),
 			split: screen.queryByRole("button", {name: "Split"}),
-		}).toEqual({markers: ["consider splitting"], split: null});
+		}).toStrictEqual({markers: ["consider splitting"], split: null});
 	});
 
 	it("queues /git:split-branch through the task queue when Split is clicked", async () => {
@@ -436,7 +436,7 @@ describe("consider splitting marker and Split transition", () => {
 		fireEvent.click(screen.getByRole("button", {name: "Split"}));
 
 		await waitFor(() => {
-			expect(serverFns.runClaudeCommand.mock.calls).toEqual([
+			expect(serverFns.runClaudeCommand.mock.calls).toStrictEqual([
 				[{data: {project: "wip", sha: "abc123", branch: "feature/x", command: "/git:split-branch"}}],
 			]);
 		});
@@ -447,7 +447,7 @@ describe("consider splitting marker and Split transition", () => {
 		openMore();
 
 		const button = screen.getByRole("button", {name: "Split"});
-		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toEqual({
+		expect({disabled: button.hasAttribute("disabled"), title: button.getAttribute("title")}).toStrictEqual({
 			disabled: true,
 			title: "Name a branch first: Claude tasks run on a branch checkout",
 		});
@@ -498,7 +498,7 @@ describe("auto-fixed marker and the auto-fix review", () => {
 			review: screen.getAllByRole("button", {name: "Review fix"}).length,
 			accept: screen.queryByRole("button", {name: "Accept fix"}),
 			dropFix: screen.queryByRole("button", {name: "Drop fix"}),
-		}).toEqual({markers: ["auto-fixed: FAIL a.test.ts"], review: 1, accept: null, dropFix: null});
+		}).toStrictEqual({markers: ["auto-fixed: FAIL a.test.ts"], review: 1, accept: null, dropFix: null});
 	});
 
 	it("shows neither the marker nor Review fix without an auto-fix", () => {
@@ -507,13 +507,13 @@ describe("auto-fixed marker and the auto-fix review", () => {
 		expect({
 			marker: screen.queryByTestId("auto-fixed-marker"),
 			review: screen.queryByRole("button", {name: "Review fix"}),
-		}).toEqual({marker: null, review: null});
+		}).toStrictEqual({marker: null, review: null});
 	});
 
 	it("marks an item the user took over as theirs to fix", () => {
 		renderAutoFixed({...autoFixed, assigned: true});
 
-		expect(screen.getAllByTestId("auto-fixed-marker").map((el) => el.textContent)).toEqual([
+		expect(screen.getAllByTestId("auto-fixed-marker").map((el) => el.textContent)).toStrictEqual([
 			"yours to fix: FAIL a.test.ts",
 		]);
 	});
@@ -529,7 +529,7 @@ describe("auto-fixed marker and the auto-fix review", () => {
 				diff: panel.getByTestId("auto-fix-diff").textContent,
 				failure: panel.getByTestId("auto-fix-failure").textContent,
 				actions: panel.getAllByRole("button").map((el) => el.textContent),
-			}).toEqual({
+			}).toStrictEqual({
 				request: [[{data: {project: "wip", sha: "abc123"}}]],
 				diff: review.diff,
 				failure: review.failureLog,
@@ -549,7 +549,7 @@ describe("auto-fixed marker and the auto-fix review", () => {
 			expect({
 				accept: serverFns.acceptAutoFix.mock.calls,
 				refreshed: serverFns.getProjectChildren.mock.calls,
-			}).toEqual({
+			}).toStrictEqual({
 				accept: [[{data: {project: "wip", sha: "abc123"}}]],
 				refreshed: [[{data: {project: "wip"}}]],
 			});
@@ -567,7 +567,7 @@ describe("auto-fixed marker and the auto-fix review", () => {
 			expect({
 				assign: serverFns.assignAutoFix.mock.calls,
 				refreshed: serverFns.getProjectChildren.mock.calls,
-			}).toEqual({
+			}).toStrictEqual({
 				assign: [[{data: {project: "wip", sha: "abc123"}}]],
 				refreshed: [[{data: {project: "wip"}}]],
 			});
@@ -582,7 +582,7 @@ describe("auto-fixed marker and the auto-fix review", () => {
 		fireEvent.click(await panel.findByRole("button", {name: "On hold"}));
 
 		await waitFor(() => {
-			expect(serverFns.snoozeChildFn.mock.calls).toEqual([
+			expect(serverFns.snoozeChildFn.mock.calls).toStrictEqual([
 				[{data: {project: "wip", sha: "abc123", until: null}}],
 			]);
 		});
@@ -601,7 +601,7 @@ describe("auto-fixed marker and the auto-fix review", () => {
 		fireEvent.click(panel.getByRole("button", {name: "Delete local branch"}));
 
 		await waitFor(() => {
-			expect({asked, dropped: serverFns.dropAutoFixBranch.mock.calls}).toEqual({
+			expect({asked, dropped: serverFns.dropAutoFixBranch.mock.calls}).toStrictEqual({
 				asked: {prompt: "Delete the local branch feature/x? Remote branches are kept.", dropped: []},
 				dropped: [[{data: {project: "wip", sha: "abc123"}}]],
 			});

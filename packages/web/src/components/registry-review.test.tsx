@@ -143,7 +143,7 @@ describe("RegistryReview", () => {
 			"4 repos aren't kept up to date by Update all yet: decide each one",
 		);
 		expect(inbox.textContent).toContain("The registry decides what wip ladder --all keeps up to date");
-		expect(rowNames(inbox)).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(inbox)).toStrictEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
 		const report = card("In the registry");
 		expect(
 			[...report.querySelectorAll("section")].map((section) => [
@@ -151,7 +151,7 @@ describe("RegistryReview", () => {
 				section.querySelector("[data-explanation]")?.textContent,
 				rowNames(section),
 			]),
-		).toEqual([
+		).toStrictEqual([
 			["Registered (1)", "Kept up to date by wip ladder --all.", ["beta"]],
 			["Skipped (2)", "In the registry but left out of wip ladder --all.", ["chosen", "legacy"]],
 			["Missing (1)", "In the registry, but the directory is gone or isn't a git repo.", ["gone"]],
@@ -163,15 +163,15 @@ describe("RegistryReview", () => {
 
 	it("leaves inbox rows undecided, showing the suggestion, while registry rows show their saved kind", () => {
 		renderReview();
-		expect(screen.queryAllByRole("checkbox")).toEqual([]);
+		expect(screen.queryAllByRole("checkbox")).toStrictEqual([]);
 		for (const item of document.querySelectorAll<HTMLElement>("section[data-registry-group] li")) {
 			expect(
 				within(item)
 					.getAllByRole("radio")
 					.map((radio) => labelOf(radio)),
-			).toEqual(["Own", "Fork", "Nested", "Skip"]);
+			).toStrictEqual(["Own", "Fork", "Nested", "Skip"]);
 		}
-		expect(["herdr-web", "wip-pr125"].map(decision)).toEqual([null, null]);
+		expect(["herdr-web", "wip-pr125"].map(decision)).toStrictEqual([null, null]);
 		expect(row("herdr-web").querySelector("[data-suggestion]")?.textContent).toBe("suggested: Own");
 		expect(row("wip-pr125").querySelector("[data-suggestion]")?.textContent).toBe("suggested: Skip");
 		expect(decision("beta")).toBe("Fork");
@@ -189,9 +189,9 @@ describe("RegistryReview", () => {
 	it("moves a decided row out of the inbox, counts it down, and offers to save it", () => {
 		renderReview();
 		decide("lift", "Fork");
-		expect(rowNames(card("Unregistered (3)"))).toEqual(["herdr-web", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(card("Unregistered (3)"))).toStrictEqual(["herdr-web", "wip-pr125", "wip-pr126"]);
 		const decided = card("Decided, not saved yet (1)");
-		expect(rowNames(decided)).toEqual(["lift"]);
+		expect(rowNames(decided)).toStrictEqual(["lift"]);
 		expect(decision("lift")).toBe("Fork");
 		expect(saveBar().querySelector("[data-remaining]")?.textContent).toBe("3 left to decide");
 		expect(within(saveBar()).getByRole("button", {name: "Save 1 decisions"})).toHaveProperty("disabled", false);
@@ -203,11 +203,16 @@ describe("RegistryReview", () => {
 		answer("Skip all 2 PR worktrees");
 		decide("herdr-web", "Own");
 		decide("lift", "Own");
-		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
+		expect(rowNames(card("Unregistered (0)"))).toStrictEqual([]);
 		expect(within(card("Unregistered (0)")).getByRole("heading").textContent).toBe(
 			"Every repo is decided: save to finish",
 		);
-		expect(rowNames(card("Decided, not saved yet (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(card("Decided, not saved yet (4)"))).toStrictEqual([
+			"herdr-web",
+			"lift",
+			"wip-pr125",
+			"wip-pr126",
+		]);
 		expect(saveBar().querySelector("[data-remaining]")?.textContent).toBe("0 left to decide");
 		expect(within(saveBar()).getByRole("button", {name: "Save 4 decisions"})).toBeTruthy();
 	});
@@ -216,7 +221,7 @@ describe("RegistryReview", () => {
 		renderReview();
 		decide("herdr-web", "Skip");
 		fireEvent.click(within(row("herdr-web")).getByRole("button", {name: "Undo decision for herdr-web"}));
-		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(card("Unregistered (4)"))).toStrictEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
 		expect(screen.queryByRole("region", {name: /^Decided/})).toBeNull();
 		expect(decision("herdr-web")).toBeNull();
 		expect(within(saveBar()).getByRole("button", {name: "No changes yet"})).toBeTruthy();
@@ -227,7 +232,7 @@ describe("RegistryReview", () => {
 		decide("lift", "Fork");
 		decide("beta", "Own");
 		fireEvent.click(within(saveBar()).getByRole("button", {name: "Discard"}));
-		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(card("Unregistered (4)"))).toStrictEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
 		expect(decision("beta")).toBe("Fork");
 		expect(within(saveBar()).getByRole("button", {name: "No changes yet"})).toBeTruthy();
 	});
@@ -235,14 +240,14 @@ describe("RegistryReview", () => {
 	it("saves only the decided unregistered repos alongside the registry", () => {
 		const {onSave} = renderReview();
 		decide("lift", "Own");
-		expect(saveAndCapture(onSave, 1)).toEqual([beta, chosen, gone, legacy, lift]);
+		expect(saveAndCapture(onSave, 1)).toStrictEqual([beta, chosen, gone, legacy, lift]);
 	});
 
 	it("shows the reason on every skipped row, and the user's note on a hand-picked skip", () => {
 		renderReview();
 		decide("wip-pr125", "Skip");
 		const skipped = screen.getAllByRole("listitem").filter((item) => checkedIn(item) === "Skip");
-		expect(skipped.map((item) => item.querySelector("[data-skip-reason]")?.textContent)).toEqual([
+		expect(skipped.map((item) => item.querySelector("[data-skip-reason]")?.textContent)).toStrictEqual([
 			"PR #125 worktree of wip",
 			"skipped by you",
 			"listed under skip in project-template",
@@ -263,7 +268,7 @@ describe("RegistryReview", () => {
 		});
 		decide("gone", "Skip");
 		expect(row("gone").querySelector("[data-skip-reason]")?.textContent).toBe("directory missing");
-		expect(saveAndCapture(onSave, 2)).toEqual([
+		expect(saveAndCapture(onSave, 2)).toStrictEqual([
 			{...beta, kind: "skip", skipNote: "moved to work laptop"},
 			chosen,
 			{...gone, kind: "skip"},
@@ -292,7 +297,7 @@ describe("RegistryReview", () => {
 			beta: "Push directly (fast-forward)",
 			gone: "Pull request",
 		});
-		expect(saveAndCapture(onSave, 2)).toEqual([
+		expect(saveAndCapture(onSave, 2)).toStrictEqual([
 			{...beta, landing: "fast-forward"},
 			chosen,
 			{...gone, landing: "pull-request"},
@@ -304,29 +309,39 @@ describe("RegistryReview", () => {
 		const {onSave} = renderReview();
 		decide("chosen", "Own");
 		expect(within(row("chosen")).queryByRole("textbox")).toBeNull();
-		expect(saveAndCapture(onSave, 1)[1]).toEqual({name: "chosen", dir: "/p/chosen", template: "java", kind: "own"});
+		expect(saveAndCapture(onSave, 1)[1]).toStrictEqual({
+			name: "chosen",
+			dir: "/p/chosen",
+			template: "java",
+			kind: "own",
+		});
 	});
 
 	it("skips every PR worktree in the inbox with one bulk action", () => {
 		renderReview();
 		answer("Skip all 2 PR worktrees");
-		expect(rowNames(card("Unregistered (2)"))).toEqual(["herdr-web", "lift"]);
-		expect(["wip-pr125", "wip-pr126"].map(decision)).toEqual(["Skip", "Skip"]);
+		expect(rowNames(card("Unregistered (2)"))).toStrictEqual(["herdr-web", "lift"]);
+		expect(["wip-pr125", "wip-pr126"].map(decision)).toStrictEqual(["Skip", "Skip"]);
 		expect(decision("herdr-web")).toBeNull();
 	});
 
 	it("marks every repo of one template in the inbox Own with one bulk action", () => {
 		renderReview();
 		answer("Mark all 4 unregistered typescript repos Own");
-		expect(["herdr-web", "lift", "wip-pr125", "wip-pr126"].map(decision)).toEqual(["Own", "Own", "Own", "Own"]);
-		expect(rowNames(card("Unregistered (0)"))).toEqual([]);
+		expect(["herdr-web", "lift", "wip-pr125", "wip-pr126"].map(decision)).toStrictEqual([
+			"Own",
+			"Own",
+			"Own",
+			"Own",
+		]);
+		expect(rowNames(card("Unregistered (0)"))).toStrictEqual([]);
 		expect(decision("beta")).toBe("Fork");
 	});
 
 	describe("with the real unregistered list", () => {
 		it("labels each bulk action with exactly which rows it covers, every copy in one Skip action", () => {
 			renderReal();
-			expect(bulkLabels()).toEqual([
+			expect(bulkLabels()).toStrictEqual([
 				"Skip all 56 copies (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 39 git worktrees)",
 				"Mark all 45 unregistered typescript repos Own",
 				"Mark all 15 unregistered java repos Own",
@@ -339,9 +354,9 @@ describe("RegistryReview", () => {
 			fireEvent.click(within(question()).getByRole("button", {name: /^Skip all 56 copies/}));
 			for (const button of screen.getAllByRole("button", {name: /^Show all/})) fireEvent.click(button);
 			const left = card("Unregistered (48)");
-			expect(rowNames(left).filter((name) => name.includes("FBSR"))).toEqual(["Factorio-FBSR"]);
+			expect(rowNames(left).filter((name) => name.includes("FBSR"))).toStrictEqual(["Factorio-FBSR"]);
 			expect(rowNames(card("Decided, not saved yet (56)"))).toContain("Factorio-FBSR-maven-3.10.0");
-			expect(realUnregistered.filter((r) => r.skipReason).map((r) => decision(r.project.name))).toEqual(
+			expect(realUnregistered.filter((r) => r.skipReason).map((r) => decision(r.project.name))).toStrictEqual(
 				Array.from({length: 57}, () => "Skip"),
 			);
 		});
@@ -355,7 +370,7 @@ describe("RegistryReview", () => {
 				const count = Number(/all (\d+)/.exec(label)?.[1]);
 				answer(label);
 				const inbox = screen.getAllByRole("region", {name: /^Unregistered \(/})[0]?.getAttribute("aria-label");
-				expect([label, inbox]).toEqual([label, `Unregistered (${104 - count})`]);
+				expect([label, inbox]).toStrictEqual([label, `Unregistered (${104 - count})`]);
 				cleanup();
 			}
 		});
@@ -372,7 +387,7 @@ describe("RegistryReview", () => {
 			within(first)
 				.getAllByRole("button")
 				.map((button) => [button.textContent, button.getAttribute("aria-label")]),
-		]).toEqual([
+		]).toStrictEqual([
 			"Question 1 of 2",
 			"Skip the 2 PR worktrees?",
 			"Copies of another repo (2 PR worktrees). wip ladder --all already updates the original, so a copy only adds work.",
@@ -388,18 +403,20 @@ describe("RegistryReview", () => {
 			within(question()).getByRole("heading").textContent,
 			question().querySelector("[data-covers]")?.textContent,
 			[...question().querySelectorAll("[data-sample] li")].map((li) => li.textContent),
-		]).toEqual([
+		]).toStrictEqual([
 			"Question 2 of 2",
 			"Mark the 4 unregistered typescript repos Own?",
 			"Every unregistered repo on the typescript template. Own means wip ladder --all keeps it up to date.",
 			["herdr-web", "lift", "wip-pr125", "wip-pr126"],
 		]);
-		expect(rowNames(card("Unregistered (4)"))).toEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
+		expect(rowNames(card("Unregistered (4)"))).toStrictEqual(["herdr-web", "lift", "wip-pr125", "wip-pr126"]);
 		const lastCard = question().outerHTML.replace(/>[^<]*</g, "><");
 		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
 		expect(screen.queryByRole("region", {name: "Quick question"})).toBeNull();
 		const section = screen.getByRole("region", {name: "Quick questions"});
-		expect(section.textContent).toContain("No quick questions left");
+		expect(section.textContent).toBe(
+			"Decide whole groups of repos at once. Keep leaves a group to decide one by one.Question 1 of 1repo-0repo-1repo-2repo-3Skip allKeepNo quick questions left.",
+		);
 		// An invisible card of the same shape holds the area's height, so nothing below it moves.
 		const placeholder = section.querySelector("[data-question-placeholder]");
 		expect([
@@ -408,7 +425,7 @@ describe("RegistryReview", () => {
 			placeholder?.firstElementChild?.outerHTML
 				.replace(/>[^<]*</g, "><")
 				.replace(/ (aria-label|title)="[^"]*"/g, ""),
-		]).toEqual(["true", true, lastCard.replace(/ (aria-label|title)="[^"]*"/g, "")]);
+		]).toStrictEqual(["true", true, lastCard.replace(/ (aria-label|title)="[^"]*"/g, "")]);
 	});
 
 	it("samples a few repos of a long question and counts the rest", () => {
@@ -419,7 +436,7 @@ describe("RegistryReview", () => {
 			within(question()).getAllByRole("button")[0]?.textContent,
 			[...question().querySelectorAll("[data-sample] li")].map((li) => li.textContent),
 			question().querySelector("[data-sample-more]")?.textContent,
-		]).toEqual([
+		]).toStrictEqual([
 			"Skip the 56 copies of other repos?",
 			"Copies of another repo (5 PR worktrees, 3 Maven copies, 6 template repos, 3 parallel worktrees, 39 git worktrees). wip ladder --all already updates the original, so a copy only adds work.",
 			"Skip all 56 copies",
@@ -435,7 +452,7 @@ describe("RegistryReview", () => {
 			within(nav)
 				.getAllByRole("listitem")
 				.map((step) => step.textContent),
-		).toEqual(["1Quick questions", "2Decide the rest", "3Save"]);
+		).toStrictEqual(["1Quick questions", "2Decide the rest", "3Save"]);
 		expect(currentStep()).toBe("1Quick questions");
 		answer("Skip all 2 PR worktrees");
 		fireEvent.click(within(question()).getByRole("button", {name: "Keep"}));
@@ -456,7 +473,7 @@ describe("RegistryReview", () => {
 				.getAllByText(/\d+ left/)
 				.map((element) => element.closest("[aria-label]")?.getAttribute("aria-label")),
 			saveBar().textContent,
-		]).toEqual([
+		]).toStrictEqual([
 			"1Quick questions2Decide the rest3Save",
 			[true],
 			[true],
@@ -475,7 +492,7 @@ describe("RegistryReview", () => {
 			["herdr-web", "lift", "wip-pr125", "wip-pr126"].map((name) =>
 				within(row(name)).getByRole("radio", {checked: true}).nextElementSibling?.getAttribute("data-kind"),
 			),
-		).toEqual(["own", "fork", "nested", "skip"]);
+		).toStrictEqual(["own", "fork", "nested", "skip"]);
 	});
 
 	it("shows the first rows of a long group with a show-all button inside the card", () => {
@@ -509,12 +526,12 @@ describe("RegistryReview", () => {
 		decide("herdr-web", "Skip");
 		fireEvent.click(within(saveBar()).getByRole("button", {name: "Show changes"}));
 		const diff = screen.getByRole("region", {name: "Registry changes"});
-		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toStrictEqual([
 			"+ herdr-web (typescript, skip) /p/herdr-web",
 			"~ beta: fork → own",
 		]);
 		decide("lift", "Fork");
-		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+		expect([...diff.querySelectorAll("li")].map((li) => li.textContent)).toStrictEqual([
 			"+ herdr-web (typescript, skip) /p/herdr-web",
 			"+ lift (typescript, fork) /p/lift",
 			"~ beta: fork → own",
@@ -552,7 +569,7 @@ describe("RegistryReview", () => {
 				onSave={vi.fn<(projects: ProjectRecord[]) => void>()}
 			/>,
 		);
-		expect([rowNames(card("Skipped (1)")), saveBar().textContent]).toEqual([
+		expect([rowNames(card("Skipped (1)")), saveBar().textContent]).toStrictEqual([
 			["kalshi-test-worktree"],
 			"0 left to decideNo changes yet",
 		]);

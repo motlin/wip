@@ -67,7 +67,10 @@ describe("BranchCard per-card client work", () => {
 		const names = Array.from({length: 20}, (_, i) => `b${i}`);
 		const {client} = renderCards(names);
 		const query = client.getQueryCache().find({queryKey: ["ladderResults"]});
-		expect({observers: query?.getObserversCount(), fetches: serverFns.getLadderResults.mock.calls.length}).toEqual({
+		expect({
+			observers: query?.getObserversCount(),
+			fetches: serverFns.getLadderResults.mock.calls.length,
+		}).toStrictEqual({
 			observers: 1,
 			fetches: 1,
 		});
@@ -77,7 +80,10 @@ describe("BranchCard per-card client work", () => {
 		renderCards(["a", "b"]);
 		expect(screen.queryByTestId("actions-sha-a")).toBeNull();
 		fireEvent.mouseEnter(screen.getByTestId("branch-card-sha-a"));
-		expect({a: screen.queryByTestId("actions-sha-a") !== null, b: screen.queryByTestId("actions-sha-b")}).toEqual({
+		expect({
+			a: screen.queryByTestId("actions-sha-a") !== null,
+			b: screen.queryByTestId("actions-sha-b"),
+		}).toStrictEqual({
 			a: true,
 			b: null,
 		});
@@ -106,7 +112,10 @@ describe("BranchCard on a landing card", () => {
 				</LadderResultsProvider>
 			</QueryClientProvider>,
 		);
-		expect({a: screen.queryByTestId("actions-sha-a") !== null, b: screen.queryByTestId("actions-sha-b")}).toEqual({
+		expect({
+			a: screen.queryByTestId("actions-sha-a") !== null,
+			b: screen.queryByTestId("actions-sha-b"),
+		}).toStrictEqual({
 			a: true,
 			b: null,
 		});

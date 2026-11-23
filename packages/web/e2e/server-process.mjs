@@ -125,24 +125,19 @@ for pid in map(int, sys.argv[3:]):
  * processes is asked via /proc: readlink() on /proc/<pid>/fd/<n> reads the kernel's own path for
  * the descriptor without touching the file or its mount, so a stalled mount cannot block it.
  */
-function linuxHolders(file)
-{
+function linuxHolders(file) {
 	const target = fs.realpathSync(file);
 	const uid = process.getuid();
 	return fs
 		.readdirSync("/proc")
 		.filter((entry) => /^\d+$/.test(entry))
-		.filter((pid) =>
-		{
-			try
-			{
+		.filter((pid) => {
+			try {
 				if (fs.statSync(`/proc/${pid}`).uid !== uid) return false;
 				return fs
 					.readdirSync(`/proc/${pid}/fd`)
 					.some((fd) => fs.readlinkSync(`/proc/${pid}/fd/${fd}`) === target);
-			}
-			catch
-			{
+			} catch {
 				return false;
 			}
 		})

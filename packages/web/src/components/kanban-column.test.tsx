@@ -46,7 +46,7 @@ describe("KanbanColumn", () => {
 			<KanbanColumn category="test_failed" items={{gitChildren: [commit]}} count={1} />,
 		);
 
-		expect(markup).toEqual(expect.stringContaining('data-commit-category="test_failed"'));
+		expect([...markup.matchAll(/data-commit-category="([^"]*)"/g)].map((m) => m[1])).toStrictEqual(["test_failed"]);
 	});
 });
 

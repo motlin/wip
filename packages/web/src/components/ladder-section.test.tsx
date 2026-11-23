@@ -72,12 +72,10 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		expect(screen.getByText("alpha").closest("li")?.textContent).toContain("passed");
-		const betaRow = screen.getByText("beta").closest("li");
-		expect(betaRow?.textContent).toContain("stopped");
-		expect(betaRow?.textContent).toContain("conflict");
-		expect(betaRow?.textContent).toContain("feature-a");
-		expect(betaRow?.textContent).toContain("feature-b");
+		expect([
+			screen.getByText("alpha").closest("li")?.textContent,
+			screen.getByText("beta").closest("li")?.textContent,
+		]).toStrictEqual(["alphapassed", "betastoppedconflictfeature-a, feature-b"]);
 	});
 
 	it("shows test/fix progress per branch", () => {
@@ -97,10 +95,9 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		const row = screen.getByText("alpha").closest("li");
-		expect(row?.textContent).toContain("feature-a");
-		expect(row?.textContent).toContain("test/fix green (attempt 1)");
-		expect(row?.textContent).toContain("test/fix stuck (attempt 3)");
+		expect(screen.getByText("alpha").closest("li")?.textContent).toBe(
+			"alphapassedfeature-atest/fix green (attempt 1)feature-btest/fix stuck (attempt 3)",
+		);
 	});
 
 	it("shows the repeated failure signature that stopped a branch or the AI conflict rung", () => {
@@ -118,12 +115,13 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		expect(screen.getByText("alpha").closest("li")?.textContent).toContain(
-			"test/fix stuck (attempt 2)repeated failure 0123456789abcdef",
-		);
-		expect(screen.getByText("beta").closest("li")?.textContent).toContain(
-			"AI stuckrepeated failure fedcba9876543210",
-		);
+		expect([
+			screen.getByText("alpha").closest("li")?.textContent,
+			screen.getByText("beta").closest("li")?.textContent,
+		]).toStrictEqual([
+			"alphapassedfeature-atest/fix stuck (attempt 2)repeated failure 0123456789abcdef",
+			"betastoppedconflictfeature-a, feature-bAI stuckrepeated failure fedcba9876543210Focus pane",
+		]);
 	});
 
 	it("reports a failed run only through the toast", async () => {
@@ -133,7 +131,9 @@ describe("LadderSection", () => {
 		);
 		fireEvent.click(screen.getByRole("button", {name: /Update all/}));
 		await waitFor(() => {
-			expect(getToasts()).toHaveLength(1);
+			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toStrictEqual([
+				{level: "error", message: "Update repos", detail: "boom"},
+			]);
 		});
 		expect(container.textContent).not.toContain("boom");
 	});
@@ -147,7 +147,9 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		expect(screen.getByText("beta").closest("li")?.textContent).toContain(`AI ${status}`);
+		expect(screen.getByText("beta").closest("li")?.textContent).toBe(
+			`betastoppedconflictfeature-a, feature-bAI ${status}Focus pane`,
+		);
 	});
 
 	it("shows the needs-AI command and copies it", async () => {
@@ -162,9 +164,9 @@ describe("LadderSection", () => {
 				focusPane={noFocus}
 			/>,
 		);
-		const row = screen.getByText("beta").closest("li");
-		expect(row?.textContent).toContain("needs AI");
-		expect(row?.textContent).toContain(command);
+		expect(screen.getByText("beta").closest("li")?.textContent).toBe(
+			`betastoppedconflictfeature-a, feature-bneeds AI${command}`,
+		);
 		fireEvent.click(screen.getByRole("button", {name: /Copy command/}));
 		await waitFor(() => {
 			expect(writeText).toHaveBeenCalledWith(command);
@@ -186,7 +188,7 @@ describe("LadderSection", () => {
 		await waitFor(() => {
 			expect(focusPane).toHaveBeenCalledWith("pane-1");
 		});
-		expect(getToasts()).toHaveLength(0);
+		expect(getToasts()).toStrictEqual([]);
 	});
 
 	it("toasts when focusing the pane fails", async () => {
@@ -203,7 +205,9 @@ describe("LadderSection", () => {
 		);
 		fireEvent.click(screen.getByRole("button", {name: /Focus pane/}));
 		await waitFor(() => {
-			expect(getToasts()).toHaveLength(1);
+			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toStrictEqual([
+				{level: "error", message: "Focus pane", detail: "herdr is not running"},
+			]);
 		});
 	});
 

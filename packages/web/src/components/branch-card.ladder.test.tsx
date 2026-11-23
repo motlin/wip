@@ -56,7 +56,7 @@ describe("BranchCard ladder state", () => {
 
 	it("shows the ladder conflict state and focus link for a branch in a stop", () => {
 		renderCard("feature-a");
-		expect(screen.getByTestId("ladder-card-state").textContent).toContain("Ladder stopped: conflict");
+		expect(screen.getByTestId("ladder-card-state").textContent).toBe("Ladder stopped: conflictFocus pane");
 		expect(screen.getByRole("button", {name: /Focus pane/})).toBeTruthy();
 	});
 

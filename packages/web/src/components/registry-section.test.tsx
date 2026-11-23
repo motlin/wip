@@ -88,8 +88,9 @@ describe("RegistrySection", () => {
 	it("explains the import and offers it from the save bar when no registry exists", () => {
 		render(<RegistrySection inventory={unregistered} candidates={importCandidates} saveRegistry={noSave} />);
 		const summary = screen.getByRole("region", {name: "Project registry"});
-		expect(summary.textContent).toContain("No project registry at /tmp/config/wip/projects.json5");
-		expect(summary.textContent).toContain("/tmp/projects");
+		expect(summary.textContent).toBe(
+			"Project registryNo project registry at /tmp/config/wip/projects.json5. Decide each repo below, from what the templates in /tmp/projects list plus the repos on disk, then import before running the ladder on every project.",
+		);
 		expect(screen.getByRole("region", {name: "Template conflicts (1)"}).textContent).toContain(
 			"listed by typescript, java",
 		);
@@ -160,7 +161,9 @@ describe("RegistrySection", () => {
 		});
 		pending.reject(new Error("disk full"));
 		await waitFor(() => {
-			expect(getToasts()).toHaveLength(1);
+			expect(getToasts().map((t) => ({level: t.level, message: t.message, detail: t.detail}))).toStrictEqual([
+				{level: "error", message: "Import", detail: "disk full"},
+			]);
 		});
 		expect(container.querySelectorAll(".animate-spin")).toHaveLength(0);
 		expect(screen.getByRole("button", {name: importLabel})).toHaveProperty("disabled", false);
@@ -187,7 +190,7 @@ describe("RegistrySection", () => {
 		expect(confirmation.textContent).toBe(
 			"Imported 2 projects into /tmp/config/wip/projects.json5Kind: fork 1, own 1Template: java 1, typescript 1",
 		);
-		expect(getToasts()).toHaveLength(0);
+		expect(getToasts()).toStrictEqual([]);
 	});
 
 	it("saves corrections to an existing registry against the reviewed modification time", async () => {
@@ -211,7 +214,9 @@ describe("RegistrySection", () => {
 			});
 		});
 		const confirmation = await screen.findByRole("status", {name: "Registry saved"});
-		expect(confirmation.textContent).toContain("Saved 2 projects into /tmp/config/wip/projects.json5");
+		expect(confirmation.textContent).toBe(
+			"Saved 2 projects into /tmp/config/wip/projects.json5Kind: fork 1, own 1Template: java 1, typescript 1",
+		);
 	});
 
 	it("lists saved decisions in the registry report once the saved candidates arrive", () => {
@@ -250,7 +255,7 @@ describe("RegistrySection", () => {
 			within(screen.getByRole("region", {name: "Skipped (1)"}))
 				.getAllByRole("listitem")
 				.map((item) => item.getAttribute("aria-label")),
-		).toEqual(["stray"]);
+		).toStrictEqual(["stray"]);
 		expect(screen.getByRole("button", {name: "No changes yet"})).toHaveProperty("disabled", true);
 	});
 
@@ -259,9 +264,12 @@ describe("RegistrySection", () => {
 			<RegistrySection inventory={registered} candidates={undefined} saveRegistry={noSave} />,
 		);
 		const summary = screen.getByRole("region", {name: "Project registry"});
-		expect(summary.textContent).toContain("2 projects in /tmp/config/wip/projects.json5");
-		expect(summary.textContent).toContain("Kind: fork 1, own 1");
-		expect(summary.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-23T12:00:00.000Z");
+		const time = summary.querySelector("time");
+		// The modification time renders in the machine's locale and time zone; its dateTime attribute is fixed.
+		expect(time?.getAttribute("dateTime")).toBe("2026-10-23T12:00:00.000Z");
+		expect(summary.textContent.replace(time?.textContent ?? "", "")).toBe(
+			"Project registry2 projects in /tmp/config/wip/projects.json5Kind: fork 1, own 1Modified ",
+		);
 		// A header line over the review, not one more card stacked above the step bar.
 		expect(summary.className.split(" ")).not.toContain("border");
 		expect(container.querySelectorAll("details")).toHaveLength(0);

@@ -120,6 +120,32 @@ for pid in map(int, sys.argv[3:]):
 `;
 
 /**
+ * Linux has no libproc, and `ps` start times there are derived from the boot time and can read a
+ * second early, so the start-time filter would drop the holders. Instead every one of this user's
+ * processes is asked via /proc: readlink() on /proc/<pid>/fd/<n> reads the kernel's own path for
+ * the descriptor without touching the file or its mount, so a stalled mount cannot block it.
+ */
+function linuxHolders(file) {
+	const target = fs.realpathSync(file);
+	const uid = process.getuid();
+	return fs
+		.readdirSync("/proc")
+		.filter((entry) => /^\d+$/.test(entry))
+		.filter((pid) => {
+			try {
+				if (fs.statSync(`/proc/${pid}`).uid !== uid) return false;
+				return fs
+					.readdirSync(`/proc/${pid}/fd`)
+					.some((fd) => fs.readlinkSync(`/proc/${pid}/fd/${fd}`) === target);
+			} catch {
+				return false;
+			}
+		})
+		.map(Number)
+		.toSorted((a, b) => a - b);
+}
+
+/**
  * Pids of every process holding `file` open, or [] when the file is missing or nothing has it open.
  * Only this user's processes started since `file`'s directory was created are asked: the world's
  * files can only be held by processes the harness started after creating it. A machine-wide scan
@@ -131,6 +157,7 @@ for pid in map(int, sys.argv[3:]):
  */
 export function processesHolding(file) {
 	if (!fs.existsSync(file)) return [];
+	if (process.platform === "linux") return linuxHolders(file);
 	const candidates = processesStartedSince(fs.statSync(path.dirname(file)).birthtimeMs);
 	if (candidates.length === 0) return [];
 	const {dev, ino} = fs.statSync(file);

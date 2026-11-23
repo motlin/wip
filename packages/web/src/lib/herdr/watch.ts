@@ -33,8 +33,8 @@ export interface HerdrWaitOptions {
  * connection. Once the subscription starts it also asks for the pane's current status once, so an
  * agent that finished before the subscription existed still counts (only `done`: a freshly launched
  * claude can report idle before it starts the prompt). An `idle` event counts as finished only after a
- * `working` one, for the same reason; `done` counts at any time. Settling in any way clears the timer, the
- * abort listener, and the socket.
+ * `working` one, or once the pane read working when the subscription started, for the same reason;
+ * `done` counts at any time. Settling in any way clears the timer, the abort listener, and the socket.
  */
 export async function waitForHerdrAgent(
 	paneId: string,
@@ -72,7 +72,11 @@ export async function waitForHerdrAgent(
 		const checkCurrentStatus = async () => {
 			if (checkedCurrentStatus) return;
 			checkedCurrentStatus = true;
-			if ((await currentAgentStatus(paneId, socketPath)) === "done") finish("done");
+			const status = await currentAgentStatus(paneId, socketPath);
+			// Already working when the subscription started: its working event came before it, so a
+			// later idle means finished.
+			if (status === "working") worked = true;
+			if (status === "done") finish("done");
 		};
 
 		const handleLine = (line: string) => {

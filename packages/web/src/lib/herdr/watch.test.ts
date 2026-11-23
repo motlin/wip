@@ -160,6 +160,24 @@ describe("waitForHerdrAgent", () => {
 		]);
 	});
 
+	it("resolves done on idle when the agent was already working when the subscription started", async () => {
+		const socketPath = path.join(dir, "h.sock");
+		let subscription: net.Socket | undefined;
+		const answer = herdr("working", (socket) => {
+			subscription = socket;
+		});
+		await listen(socketPath, (line, socket) => {
+			answer(line, socket);
+			// The agent finishes once wip has read its working status (the pane.get connection closed).
+			if (JSON.parse(line).method === "pane.get") {
+				socket.once("close", () => {
+					subscription?.write(statusEvent("p1", "idle"));
+				});
+			}
+		});
+		expect(await waitForHerdrAgent("p1", {timeoutMs: 2000, socketPath})).toBe("done");
+	});
+
 	it("keeps waiting when the pane is idle when the subscription starts", async () => {
 		const socketPath = path.join(dir, "h.sock");
 		await listen(socketPath, herdr("idle"));

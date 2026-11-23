@@ -67,7 +67,9 @@ function landingCategory(child: GitChildResult, project: ProjectInfo, entry: Rea
 		if (child.testStatus === "passed") return "tests_passed";
 		return project.hasTestConfigured ? "ready_to_test" : "no_test";
 	}
-	if ((child.commitsBehind ?? 0) > 0) return "needs_rebase";
+	// A branch that doesn't contain upstream is behind even before its behind count is measured.
+	if (child.needsRebase === true && category.startsWith("rebase_")) return category;
+	if ((child.commitsBehind ?? 0) > 0 || child.needsRebase === true) return "needs_rebase";
 	if (isGitChildPullRequest(child)) return classifyPullRequest({...child, testStatus: "unknown"}, project);
 	if (entry.list === "awaitingChecks") return "checks_running";
 	if (entry.list === "checksFailed") return "checks_failed";

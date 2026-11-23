@@ -92,6 +92,8 @@ describe("buildGrouped", () => {
 		// Listed by patch-id at a sha the buffer has not seen yet.
 		const samePatch = makeChild({...commit, sha: sha("3"), patchId: "patch-3"});
 		const behind = makeChild({...commit, sha: sha("4"), commitsBehind: 2});
+		// A branch that doesn't contain upstream, its behind count not measured yet.
+		const unmeasuredBehind = makeChild({...commit, sha: sha("b"), needsRebase: true});
 		const withPr = makeChild({
 			sha: sha("5"),
 			branch: "draft",
@@ -113,6 +115,7 @@ describe("buildGrouped", () => {
 				row("patch-3", sha("c")),
 				row(sha("4"), sha("4")),
 				row(sha("5"), sha("5")),
+				row(sha("b"), sha("b")),
 			],
 			awaitingChecks: [row(sha("6"), sha("6"))],
 			checksFailed: [row(sha("7"), sha("7"))],
@@ -125,6 +128,7 @@ describe("buildGrouped", () => {
 			pushed,
 			samePatch,
 			behind,
+			unmeasuredBehind,
 			withPr,
 			awaiting,
 			checksFailed,
@@ -138,7 +142,7 @@ describe("buildGrouped", () => {
 			{
 				...emptyGrouped(),
 				ready_to_test: {gitChildren: [untested]},
-				needs_rebase: {gitChildren: [behind]},
+				needs_rebase: {gitChildren: [behind, unmeasuredBehind]},
 				ready_to_push: {gitChildren: [baseline, pushed, samePatch]},
 				checks_running: {gitChildren: [withPr, awaiting]},
 				checks_failed: {gitChildren: [checksFailed]},
@@ -150,7 +154,7 @@ describe("buildGrouped", () => {
 				test_failed: {gitChildren: [baseline, withPr]},
 				needs_rebase: {gitChildren: [behind]},
 				pushed_no_pr: {gitChildren: [pushed]},
-				tests_passed: {gitChildren: [samePatch, awaiting, checksFailed, unlisted, inFlight]},
+				tests_passed: {gitChildren: [samePatch, unmeasuredBehind, awaiting, checksFailed, unlisted, inFlight]},
 			},
 		]);
 	});

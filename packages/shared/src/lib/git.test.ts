@@ -1,5 +1,5 @@
-import {describe, it, expect, beforeEach, afterEach} from "vite-plus/test";
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
+import {describe, it, expect, beforeEach, afterEach, afterAll} from "vite-plus/test";
+import {cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {execSync, execFileSync} from "node:child_process";
@@ -31,15 +31,29 @@ import {setupPolly} from "../test/setup-polly.js";
 import {resetGitHubRateLimit, markGitHubRateLimited} from "./rate-limit.js";
 import {resolveRepositoryPolicy} from "./config.js";
 
+/** One initialized repo per owner/repo pair; each test gets a copy instead of running git init again. */
+const repoTemplates = new Map<string, string>();
+
+afterAll(() => {
+	for (const template of repoTemplates.values()) rmSync(template, {recursive: true, force: true});
+});
+
 function createTestGitRepo(owner: string, repo: string): string {
+	const key = `${owner}/${repo}`;
+	let template = repoTemplates.get(key);
+	if (!template) {
+		template = mkdtempSync(join(tmpdir(), "wip-test-template-"));
+		execSync("git init -b main", {cwd: template, stdio: "ignore"});
+		execSync("git config user.email test@test.com", {cwd: template, stdio: "ignore"});
+		execSync("git config user.name Test", {cwd: template, stdio: "ignore"});
+		execSync(`git remote add origin https://github.com/${owner}/${repo}.git`, {
+			cwd: template,
+			stdio: "ignore",
+		});
+		repoTemplates.set(key, template);
+	}
 	const dir = mkdtempSync(join(tmpdir(), "wip-test-"));
-	execSync("git init -b main", {cwd: dir, stdio: "ignore"});
-	execSync("git config user.email test@test.com", {cwd: dir, stdio: "ignore"});
-	execSync("git config user.name Test", {cwd: dir, stdio: "ignore"});
-	execSync(`git remote add origin https://github.com/${owner}/${repo}.git`, {
-		cwd: dir,
-		stdio: "ignore",
-	});
+	cpSync(template, dir, {recursive: true});
 	return dir;
 }
 
@@ -659,26 +673,21 @@ describe("testBranch", () => {
 		return {dir, counter};
 	}
 
-	it("reuses a cached bad result by default", async () => {
+	it("reuses a cached bad result by default and re-runs it only when retest is asked", async () => {
 		const {dir, counter} = setupRedBranch();
 
 		const first = await testBranch(dir, "feature", "base", {});
 		const second = await testBranch(dir, "feature", "base", {});
+		const runsAfterCachedRerun = readFileSync(counter, "utf8");
+		const retested = await testBranch(dir, "feature", "base", {}, {retest: true});
 
-		expect([first.exitCode !== 0, second.exitCode !== 0, readFileSync(counter, "utf8")]).toStrictEqual([
-			true,
-			true,
-			"run\n",
-		]);
-	});
-
-	it("re-runs a cached bad result only when retest is asked", async () => {
-		const {dir, counter} = setupRedBranch();
-
-		await testBranch(dir, "feature", "base", {});
-		await testBranch(dir, "feature", "base", {}, {retest: true});
-
-		expect(readFileSync(counter, "utf8")).toBe("run\nrun\n");
+		expect([
+			first.exitCode !== 0,
+			second.exitCode !== 0,
+			runsAfterCachedRerun,
+			retested.exitCode !== 0,
+			readFileSync(counter, "utf8"),
+		]).toStrictEqual([true, true, "run\n", true, "run\nrun\n"]);
 	});
 });
 

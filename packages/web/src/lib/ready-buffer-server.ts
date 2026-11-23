@@ -482,12 +482,22 @@ export async function startReadyBuffer(
 	const {acquireProcessLock, getReadyBufferCapacity, getReadyBufferSize, loadWorkItems} = await import("@wip/shared");
 	const firstSeenOf = (project: string, id: string): string | undefined =>
 		loadWorkItems(project).find((item) => item.patchId === id)?.firstSeen;
-	if (acquireProcessLock("ready-buffer") === null) {
+	// Loaded before the lock and before the buffer is set: a failed import must leave neither held,
+	// or the bootstrap's next attempt finds this process's own lock, or a buffer with no listeners.
+	const {untrustedAgentFolders} = await import("./herdr/claude-trust.js");
+	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
+	const {emitter: mergeEmitter} = await import("./merge-queue.js");
+	const {emitter: taskEmitter} = await import("./task-queue.js");
+	const {childrenEmitter} = await import("./children-events.js");
+	const releaseLock = acquireProcessLock("ready-buffer");
+	if (releaseLock === null) {
 		log.general.warn("Ready buffer already running in another wip process; not starting it here");
 		return;
 	}
-	const power = await startPowerWatch(() => currentReadyBuffer());
-	const {untrustedAgentFolders} = await import("./herdr/claude-trust.js");
+	const power = await startPowerWatch(() => currentReadyBuffer()).catch((error: unknown) => {
+		releaseLock();
+		throw error;
+	});
 	const started = createReadyBuffer({
 		onBattery: () => power.onBattery(),
 		untrustedAgentFolders,
@@ -550,20 +560,17 @@ export async function startReadyBuffer(
 	});
 	setReadyBuffer(started);
 
-	const {readyBufferEmitter} = await import("./ready-buffer-events.js");
 	// The landing columns read this over the SSE stream.
 	started.onStateChange((state) => {
 		readyBufferEmitter.emit("state", state);
 	});
 
-	const {emitter: mergeEmitter} = await import("./merge-queue.js");
 	mergeEmitter.on("upstreamMoved", (event: {project: string}) => {
 		warnOnFailure(started.upstreamMoved(event.project), "upstreamMoved");
 	});
 	mergeEmitter.on("landed", (event: {project: string}) => {
 		warnOnFailure(started.landed(event.project), "landed");
 	});
-	const {emitter: taskEmitter} = await import("./task-queue.js");
 	taskEmitter.on("task", (event: {type: string; status: string}) => {
 		if (event.type !== "status" || event.status === "queued" || event.status === "running") return;
 		warnOnFailure(started.pull(), "task");
@@ -571,7 +578,6 @@ export async function startReadyBuffer(
 	readyBufferEmitter.on("onHold", (event: OnHoldSignal) => {
 		warnOnFailure(started.onHold(event.project), "onHold");
 	});
-	const {childrenEmitter} = await import("./children-events.js");
 	childrenEmitter.on("children", () => {
 		warnOnFailure(started.pull(), "children");
 		warnOnFailure(backgroundPusher().flush(), "push-flush");

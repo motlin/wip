@@ -1,6 +1,6 @@
-import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
+import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from "vite-plus/test";
 import {execFileSync, execSync} from "node:child_process";
-import {mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from "node:fs";
+import {cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 
@@ -39,29 +39,45 @@ function createRepo(): string {
 	return dir;
 }
 
+/** A fresh copy of a fixture repo built once per describe, so each test pays a copy instead of the git setup. */
+function copyOf(template: string): string {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "wip-children-worktrees-")));
+	cpSync(template, dir, {recursive: true});
+	return dir;
+}
+
 /**
  * A branch rewrite (Accept fix's squash, a rebase) leaves the old commit on no branch, but wip's own
  * worktrees (the `<repo>-test-worktree` that last tested it, a throwaway agent worktree) can still
  * sit detached on it, and `git rev-list --all` counts every worktree's HEAD.
  */
 describe("getChildCommits ignores commits only wip's own worktrees hold", () => {
+	let template: string;
 	let dir: string;
 	let base: string;
 	let rewritten: string;
 	let squashed: string;
 
+	beforeAll(() => {
+		template = createRepo();
+		base = commit(template, "base.txt");
+		sh(template, "git checkout -q -b feature");
+		rewritten = commit(template, "feature.txt");
+		sh(template, "git checkout -q main");
+		// The squash: the branch moves to a new commit with the same parent.
+		sh(template, `git branch -f feature ${base}`);
+		sh(template, "git checkout -q feature");
+		squashed = commit(template, "squashed.txt");
+		sh(template, "git checkout -q main");
+	});
+
+	afterAll(() => {
+		rmSync(template, {recursive: true, force: true});
+	});
+
 	beforeEach(() => {
 		initDb(":memory:");
-		dir = createRepo();
-		base = commit(dir, "base.txt");
-		sh(dir, "git checkout -q -b feature");
-		rewritten = commit(dir, "feature.txt");
-		sh(dir, "git checkout -q main");
-		// The squash: the branch moves to a new commit with the same parent.
-		sh(dir, `git branch -f feature ${base}`);
-		sh(dir, "git checkout -q feature");
-		squashed = commit(dir, "squashed.txt");
-		sh(dir, "git checkout -q main");
+		dir = copyOf(template);
 	});
 
 	afterEach(() => {
@@ -133,20 +149,29 @@ function prStatusesFor(branch: string, sha: string): PrStatuses {
  * listed again; with no PR it is effectively lost work and is listed remote-only, never ready.
  */
 describe("getChildCommits and commits only a remote-tracking branch holds", () => {
+	let template: string;
 	let dir: string;
 	let base: string;
 	let pushed: string;
 
+	beforeAll(() => {
+		template = createRepo();
+		base = commit(template, "base.txt");
+		sh(template, "git checkout -q -b vault-feature");
+		pushed = commit(template, "vault.txt");
+		sh(template, "git checkout -q main");
+		sh(template, "git remote add origin https://github.com/e2e-user/repo.git");
+		sh(template, "git remote add upstream https://github.com/acme/repo.git");
+		sh(template, `git update-ref refs/remotes/origin/vault-feature ${pushed}`);
+	});
+
+	afterAll(() => {
+		rmSync(template, {recursive: true, force: true});
+	});
+
 	beforeEach(() => {
 		initDb(":memory:");
-		dir = createRepo();
-		base = commit(dir, "base.txt");
-		sh(dir, "git checkout -q -b vault-feature");
-		pushed = commit(dir, "vault.txt");
-		sh(dir, "git checkout -q main");
-		sh(dir, "git remote add origin https://github.com/e2e-user/repo.git");
-		sh(dir, "git remote add upstream https://github.com/acme/repo.git");
-		sh(dir, `git update-ref refs/remotes/origin/vault-feature ${pushed}`);
+		dir = copyOf(template);
 	});
 
 	afterEach(() => {
@@ -206,28 +231,38 @@ describe("getChildCommits and commits only a remote-tracking branch holds", () =
  * when the PR remote fetches them (`+refs/pull/*\/head:refs/remotes/<remote>/pr/*`).
  */
 describe("prRefsMissing and setUpPrRefs", () => {
+	let template: string;
 	let dir: string;
 	let bare: string;
 
-	beforeEach(() => {
-		initDb(":memory:");
+	// Tests only fetch from the bare upstream, so every copy shares the one the template pushed to.
+	beforeAll(() => {
 		bare = realpathSync(mkdtempSync(join(tmpdir(), "wip-pr-refs-bare-")));
 		sh(bare, "git init -q --bare -b main");
-		dir = createRepo();
-		commit(dir, "base.txt");
-		sh(dir, `git remote add upstream ${bare}`);
-		sh(dir, "git push -q upstream main");
-		sh(dir, "git checkout -q -b pr-head");
-		commit(dir, "pr.txt");
-		sh(dir, "git checkout -q main");
-		sh(dir, "git push -q upstream pr-head:refs/pull/3/head");
-		sh(dir, `git branch -q -D pr-head`);
+		template = createRepo();
+		commit(template, "base.txt");
+		sh(template, `git remote add upstream ${bare}`);
+		sh(template, "git push -q upstream main");
+		sh(template, "git checkout -q -b pr-head");
+		commit(template, "pr.txt");
+		sh(template, "git checkout -q main");
+		sh(template, "git push -q upstream pr-head:refs/pull/3/head");
+		sh(template, `git branch -q -D pr-head`);
+	});
+
+	afterAll(() => {
+		rmSync(template, {recursive: true, force: true});
+		rmSync(bare, {recursive: true, force: true});
+	});
+
+	beforeEach(() => {
+		initDb(":memory:");
+		dir = copyOf(template);
 	});
 
 	afterEach(() => {
 		resetDb();
 		rmSync(dir, {recursive: true, force: true});
-		rmSync(bare, {recursive: true, force: true});
 	});
 
 	it("reports a remote that fetches no refs/pull/* as missing PR refs", async () => {

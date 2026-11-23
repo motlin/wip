@@ -1,6 +1,6 @@
-import {afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
+import {afterAll, afterEach, beforeEach, describe, expect, it} from "vite-plus/test";
 import {execSync} from "node:child_process";
-import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
+import {cpSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 
@@ -26,22 +26,36 @@ function revParse(dir: string, ref: string): string {
 	return sh(dir, `git rev-parse ${ref}`);
 }
 
+type Repo = {dir: string; base: string; a: string; b: string};
+
+/** Built once per file; each test gets a copy instead of running the git setup again. */
+let template: Repo | undefined;
+
+afterAll(() => {
+	if (template) rmSync(template.dir, {recursive: true, force: true});
+});
+
 /**
  * main:    base
  * feature: base -> A (a.txt) -> B (b.txt)
  * The main worktree stays on main.
  */
-function createRepo(): {dir: string; base: string; a: string; b: string} {
+function createRepo(): Repo {
+	if (!template) {
+		const dir = mkdtempSync(join(tmpdir(), "wip-landing-template-"));
+		sh(dir, "git init -q -b main");
+		sh(dir, "git config user.email test@test.com");
+		sh(dir, "git config user.name Test");
+		const base = commitFile(dir, "shared.txt", "one\n", "base");
+		sh(dir, "git checkout -q -b feature");
+		const a = commitFile(dir, "a.txt", "a\n", "A");
+		const b = commitFile(dir, "b.txt", "b\n", "B");
+		sh(dir, "git checkout -q main");
+		template = {dir, base, a, b};
+	}
 	const dir = mkdtempSync(join(tmpdir(), "wip-landing-"));
-	sh(dir, "git init -q -b main");
-	sh(dir, "git config user.email test@test.com");
-	sh(dir, "git config user.name Test");
-	const base = commitFile(dir, "shared.txt", "one\n", "base");
-	sh(dir, "git checkout -q -b feature");
-	const a = commitFile(dir, "a.txt", "a\n", "A");
-	const b = commitFile(dir, "b.txt", "b\n", "B");
-	sh(dir, "git checkout -q main");
-	return {dir, base, a, b};
+	cpSync(template.dir, dir, {recursive: true});
+	return {...template, dir};
 }
 
 /** Move main forward with an unrelated commit so later landings are not fast-forwards. */

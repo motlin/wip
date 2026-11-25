@@ -22,7 +22,7 @@
 		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
 	"devDependencies": {
-		"@vitest/coverage-v8": "^5.1.0",
+		"@vitest/coverage-v8": "^5.1.1",
 		"eslint-plugin-storybook": "^10.6.7",
 		"fallow": "^3.43.2",
 		"markdownlint-cli2": "^0.24.1",
